@@ -23,5 +23,3 @@ jobs:
             component: '[
                            {"name": "dbaas-aggregator", "file": "./Dockerfile", "context": "."}
                         ]'
-        secrets:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
