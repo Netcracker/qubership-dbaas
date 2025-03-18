@@ -12,3 +12,16 @@ jobs:
             java-version: 21
         secrets:
             maven-token: ${{ secrets.GITHUB_TOKEN }}
+    call-docker-publish:
+        uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@main
+        with:
+            ref: "main"
+            artifact-id: "dbaas-aggregator"
+            context: "."
+            dry-run: false
+            download-artifact: true
+            component: '[
+                           {"name": "dbaas-aggregator", "file": "./Dockerfile", "context": "."}
+                        ]'
+        secrets:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
