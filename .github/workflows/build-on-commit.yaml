@@ -20,9 +20,5 @@ jobs:
         with:
             ref: "main"
             artifact-id: "dbaas-aggregator"
-            context: "."
             dry-run: false
             download-artifact: true
-            component: '[
-                           {"name": "dbaas-aggregator", "file": "./Dockerfile", "context": "."}
-                        ]'
