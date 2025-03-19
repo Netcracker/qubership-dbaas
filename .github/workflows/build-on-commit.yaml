@@ -18,7 +18,5 @@ jobs:
         needs: mvn
         uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@main
         with:
-            ref: "main"
             artifact-id: "dbaas-aggregator"
-            dry-run: false
             download-artifact: true
