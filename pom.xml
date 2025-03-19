@@ -23,6 +23,7 @@
                 <module>dbaas-aggregator-parent</module>
                 <module>encryption-services-cipher</module>
                 <module>dbaas-aggregator</module>
+                <module>dbaas-report-aggregate</module>
             </modules>
         </profile>
     </profiles>

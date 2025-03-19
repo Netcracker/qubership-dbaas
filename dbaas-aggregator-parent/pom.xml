@@ -17,6 +17,7 @@
         <maven.compiler.target>21</maven.compiler.target>
         <compiler-plugin.version>3.13.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.2</surefire-plugin.version>
+        <jacoco.plugin.version>0.8.12</jacoco.plugin.version>
 
         <jackson-bom.version>2.18.2</jackson-bom.version>
         <quarkus.platform.version>3.15.1</quarkus.platform.version>
@@ -28,6 +29,9 @@
         <quarkus.platform.group-id>io.quarkus</quarkus.platform.group-id>
         <lombok.version>1.18.36</lombok.version>
         <junit.version>5.11.4</junit.version>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${project.basedir}/../dbaas-report-aggregate/target/site/jacoco-aggregate/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
     <dependencyManagement>
@@ -127,6 +131,18 @@
                         <DOCKER_HOST>${env.TEST_DOCKER_URL}</DOCKER_HOST>
                     </environmentVariables>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
