@@ -13,6 +13,7 @@ jobs:
     secrets:
       maven-token: ${{ secrets.GITHUB_TOKEN }}
       sonar-token: ${{ secrets.SONAR_TOKEN }}
+
   call-docker-publish:
     needs: mvn
     uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@main
