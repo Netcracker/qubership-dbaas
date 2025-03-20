@@ -16,7 +16,7 @@ jobs:
       maven-command: "--batch-mode deploy -Dgpg.skip=true org.sonarsource.scanner.maven:sonar-maven-plugin:${{ vars.SONAR_PLUGIN_VERSION }}:sonar -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}"
       server-id: github
       java-version: 21
-      artifact-id: ${{TAG_NAME}}
+      artifact-id: ${{ env.TAG_NAME }}
       upload-artifact: true
     secrets:
       maven-token: ${{ secrets.GITHUB_TOKEN }}
@@ -26,5 +26,5 @@ jobs:
     uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@main
     needs: [ tag-name, mvn ]
     with:
-      artifact-id: ${{TAG_NAME}}
+      artifact-id: ${{ env.TAG_NAME }}
       download-artifact: true
