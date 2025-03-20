@@ -4,19 +4,22 @@ on:
   - push
 
 jobs:
-  tag-name:
+  tag:
     name: Construct tag name
     runs-on: ubuntu-latest
     steps:
-      - run: echo "$TAG_NAME=dbaas-aggregator-$(date +'%Y%m%dT%H:%M:%S')" >> $GITHUB_ENV
+      - id: tag
+        run: echo "name=dbaas-aggregator-$(date +'%Y%m%dT%H:%M:%S')" >> $GITHUB_OUTPUT
+    outputs:
+      name: ${{ steps.tag.outputs.name }}
   mvn:
     uses: netcracker/qubership-workflow-hub/.github/workflows/maven-publish.yml@main
-    needs: [ tag-name ]
+    needs: [ tag ]
     with:
       maven-command: "--batch-mode deploy -Dgpg.skip=true org.sonarsource.scanner.maven:sonar-maven-plugin:${{ vars.SONAR_PLUGIN_VERSION }}:sonar -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}"
       server-id: github
       java-version: 21
-      artifact-id: ${{ env.TAG_NAME }}
+      artifact-id: ${{ needs.tag.outputs.name }}
       upload-artifact: true
     secrets:
       maven-token: ${{ secrets.GITHUB_TOKEN }}
@@ -24,7 +27,7 @@ jobs:
 
   call-docker-publish:
     uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@main
-    needs: [ tag-name, mvn ]
+    needs: [ tag, mvn ]
     with:
-      artifact-id: ${{ env.TAG_NAME }}
+      artifact-id: ${{ needs.tag.outputs.name }}
       download-artifact: true
