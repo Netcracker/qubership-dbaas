@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: tag
-        run: echo "name=dbaas-aggregator-$(date +'%Y%m%dT%H:%M:%S')" >> $GITHUB_OUTPUT
+        run: echo "name=dbaas-aggregator-$(date +'%Y%m%dT%H%M%S')" >> $GITHUB_OUTPUT
     outputs:
       name: ${{ steps.tag.outputs.name }}
   mvn:
