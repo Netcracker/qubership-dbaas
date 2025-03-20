@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jre-alpine
+FROM ghcr.io/netcracker/qubership-core.java-alpine.amd64:dev-docker-publish
 MAINTAINER qubership
 
 COPY --chown=10001:0 dbaas-aggregator/target/lib/* /app/lib/
