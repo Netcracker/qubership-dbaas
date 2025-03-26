@@ -39,12 +39,17 @@ jobs:
           java-version: 21
           distribution: 'temurin'
           server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.gpg-private-key }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
       - name: Deploy jar to Maven Central
         run: mvn --batch-mode deploy -Dgpg.skip=true org.sonarsource.scanner.maven:sonar-maven-plugin:${{ vars.SONAR_PLUGIN_VERSION }}:sonar -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}
         env:
           MAVEN_USERNAME: ${{ secrets.maven-username }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.gpg-passphrase }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Log in to GitHub Container Registry
