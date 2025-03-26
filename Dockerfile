@@ -1,4 +1,4 @@
-FROM ghcr.io/netcracker/qubership-core.java-alpine.amd64:dev-docker-publish
+FROM ghcr.io/netcracker/qubership/java-base:main-20250325183423-1
 MAINTAINER qubership
 
 COPY --chown=10001:0 dbaas-aggregator/target/lib/* /app/lib/
