@@ -1,22 +1,30 @@
 name: Build on Commit
 
 on:
-  - push
+  workflow_dispatch:
 
 jobs:
   mvn:
     uses: netcracker/qubership-workflow-hub/.github/workflows/maven-publish.yml@main
     with:
-      maven-command: "--batch-mode deploy -Dgpg.skip=true org.sonarsource.scanner.maven:sonar-maven-plugin:${{ vars.SONAR_PLUGIN_VERSION }}:sonar -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}"
-      server-id: github
-      java-version: 21
+      maven-command: "--batch-mode package -Dgpg.skip=true -DskipTests=true"
+      server-id: "github"
+      upload-artifact: true
     secrets:
       maven-token: ${{ secrets.GITHUB_TOKEN }}
-      sonar-token: ${{ secrets.SONAR_TOKEN }}
 
   call-docker-publish:
+    runs-on: ubuntu-latest
+    name: Docker Publish
     needs: mvn
-    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@main
-    with:
-      artifact-id: "dbaas-aggregator"
-      download-artifact: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.ref }}
+
+      - uses: rparf/qubership-workflow-hub/actions/docker-publish@main
+        with:
+          artifact-id: "artifact"
+          download-artifact: true
+          ref: ${{ github.event.ref }}
