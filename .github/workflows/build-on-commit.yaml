@@ -44,7 +44,7 @@ jobs:
           gpg-private-key: ${{ secrets.gpg-private-key }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
-      - name: Deploy jar to Maven Central
+      - name: Build and deploy jar to Maven Central
         run: mvn --batch-mode deploy -Dgpg.skip=true org.sonarsource.scanner.maven:sonar-maven-plugin:${{ vars.SONAR_PLUGIN_VERSION }}:sonar -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}
         env:
           MAVEN_USERNAME: ${{ secrets.maven-username }}
@@ -65,7 +65,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push core-image
+      - name: Build and push docker image
         uses: docker/build-push-action@v6
         with:
           context: .
