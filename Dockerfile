@@ -1,4 +1,4 @@
-FROM ghcr.io/netcracker/qubership/java-base:main-20250325183423-1
+FROM ghcr.io/netcracker/qubership/java-base:main-20250330180504-10
 MAINTAINER qubership
 
 COPY --chown=10001:0 dbaas-aggregator/target/lib/* /app/lib/
