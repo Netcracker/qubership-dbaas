@@ -68,6 +68,7 @@ jobs:
       tag-name: v${{ github.event.inputs.version }}
 
   build:
+    needs: [tag]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -100,7 +101,7 @@ jobs:
           path: target/*.jar
 
 #  docker-build-publish:
-#    needs: [tag]
+#    needs: [build]
 #    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
 #    with:
 #      artifact-id: ${{ github.event.repository.name }}
@@ -110,7 +111,7 @@ jobs:
 #      platforms: linux/amd64,linux/arm64
 
 #  github-release:
-#    needs: [tag]
+#    needs: [docker-build-publish]
 #    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
 #    with:
 #      version: ${{ github.event.inputs.version }}
