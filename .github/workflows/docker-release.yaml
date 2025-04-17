@@ -84,7 +84,7 @@ jobs:
       - name: Build JAR artifact
         run: mvn clean package -DskipTests
         env:
-          MAVEN_USERNAME: estetsenko
+          MAVEN_USERNAME: ${{ secrets.maven-username }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload JAR artifact
