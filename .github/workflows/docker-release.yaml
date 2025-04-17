@@ -105,15 +105,15 @@ jobs:
           name: ${{ github.event.repository.name }}
           path: target/*.jar
 
-  docker-build-publish:
-    needs: [build]
-    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
-    with:
-      artifact-id: ${{ github.event.repository.name }}
-      ref: v${{ inputs.version }}
-      download-artifact: true
-      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
-      platforms: linux/amd64,linux/arm64
+#  docker-build-publish:
+#    needs: [build]
+#    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
+#    with:
+#      artifact-id: ${{ github.event.repository.name }}
+#      ref: v${{ inputs.version }}
+#      download-artifact: true
+#      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+#      platforms: linux/amd64,linux/arm64
 
 #  github-release:
 #    needs: [docker-build-publish]
