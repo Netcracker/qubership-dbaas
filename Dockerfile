@@ -10,3 +10,5 @@ EXPOSE 8080
 WORKDIR /app
 
 USER 10001:10001
+
+CMD ["java", "-Xmx512m", "-Dlog.level=INFO", "-jar", "/app/dbaas-aggregator.jar"]
