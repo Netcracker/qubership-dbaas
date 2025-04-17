@@ -37,6 +37,16 @@ public class JdbcUtils {
                                                    String pgUser, String pgPassword, int maxPoolSize,
                                                    TransactionIntegration transactionIntegration) throws SQLException {
         String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, pgDatabase);
+        if (TlsUtils.isInternalTlsEnabled()) {
+            try {
+                log.debug("Going to use secured connection to postgres");
+                AgroalDataSource agroalDataSource = buildDataSource(true, url, pgUser, pgPassword, maxPoolSize, transactionIntegration);
+                agroalDataSource.getConnection(); // check connection in tls mode
+                return agroalDataSource;
+            } catch (Exception e) {
+                log.warn("TLS is enabled in dbaas-aggregator, but disabled in postgres");
+            }
+        }
         log.debug("Using not secured connection to postgres");
         return buildDataSource(false, url, pgUser, pgPassword, maxPoolSize, transactionIntegration);
     }
