@@ -99,6 +99,11 @@ jobs:
           MAVEN_USERNAME: estetsenko
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: DEBUG
+        run: |
+          ls -a
+          ls -a target
+
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
