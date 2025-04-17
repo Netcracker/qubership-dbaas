@@ -37,7 +37,7 @@ public class JdbcUtils {
                                                    String pgUser, String pgPassword, int maxPoolSize,
                                                    TransactionIntegration transactionIntegration) throws SQLException {
         String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, pgDatabase);
-        if (TlsUtils.isInternalTlsEnabled()) {
+        if (isInternalTlsEnabled()) {
             try {
                 log.debug("Going to use secured connection to postgres");
                 AgroalDataSource agroalDataSource = buildDataSource(true, url, pgUser, pgPassword, maxPoolSize, transactionIntegration);
@@ -49,6 +49,11 @@ public class JdbcUtils {
         }
         log.debug("Using not secured connection to postgres");
         return buildDataSource(false, url, pgUser, pgPassword, maxPoolSize, transactionIntegration);
+    }
+
+    private static boolean isInternalTlsEnabled() {
+        String internalTlsEnabled = System.getenv("INTERNAL_TLS_ENABLED");
+        return Boolean.parseBoolean(internalTlsEnabled);
     }
 
     private static AgroalDataSource buildDataSource(boolean withTls, String url, String pgUser,
