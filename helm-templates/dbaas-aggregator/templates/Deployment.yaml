@@ -48,7 +48,7 @@ spec:
                 emptyDir: {}
             -   name: secret
                 emptyDir: {}
-        {{ end }}        
+        {{ end }}
             containers:
             -   name: '{{ .Values.SERVICE_NAME }}'
                 image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
@@ -75,10 +75,9 @@ spec:
                 args:
                 - java
                 - '{{ .Values.MEM_ARGS }}'
-                - -Djava.security.egd=file:/dev/./urandom
                 - -jar
                 - --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
-                - /app/dbaas-aggregator-2.0.0-SNAPSHOT.jar
+                - /app/dbaas-aggregator.jar
                 ports:
                 -   name: web
                     containerPort: 8080
