@@ -1,19 +1,18 @@
 package org.qubership.cloud.dbaas.service.event.listener;
 
 import io.quarkus.narayana.jta.QuarkusTransaction;
+import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-
 import org.postgresql.PGNotification;
 import org.postgresql.jdbc.PgConnection;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import javax.sql.DataSource;
 
 @Slf4j
 public abstract class AbstractPgTableListener implements Runnable {
@@ -21,13 +20,8 @@ public abstract class AbstractPgTableListener implements Runnable {
     protected DataSource dataSource;
     protected Connection conn;
     protected String connectionStatement;
-
-    public void stopListening() {
-        running.set(false);
-    }
-
-    private static final long RECONNECT_TIMEOUT = 10000;
-
+    @Setter
+    private long reconnectTimeout = 10000;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     protected abstract void reloadH2Cache(UUID id);
@@ -41,6 +35,9 @@ public abstract class AbstractPgTableListener implements Runnable {
         running.set(true);
         while (running.get()) {
             try {
+                if (conn == null) {
+                    establishConnection(dataSource.getConnection());
+                }
                 PgConnection pgConn = unwrapPgConnection();
                 PGNotification[] notifications = pgConn.getNotifications(300_000);
                 if (notifications != null) {
@@ -57,18 +54,24 @@ public abstract class AbstractPgTableListener implements Runnable {
             } catch (SQLException psqlException) {
                 Connection conn;
                 log.debug("got an error during pg notifying.", psqlException);
-                if (!this.conn.isValid(60)) {
+                if (!this.conn.isValid(60) || this.conn.isReadOnly()) {
                     while (true) {
                         try {
                             conn = dataSource.getConnection();
+                            if (conn.isReadOnly()) {
+                                conn.close();
+                                log.debug("Connection is read only, wait and reconnect...");
+                                Thread.sleep(reconnectTimeout);
+                                continue;
+                            }
+                            this.conn.close(); // this close() should be executed for original Connection, not PgConnection
+                            establishConnection(conn);
                             break;
                         } catch (Exception exception) {
                             log.debug("Caught exception while trying to get connection = {}", exception.getMessage());
-                            Thread.sleep(RECONNECT_TIMEOUT);
+                            Thread.sleep(reconnectTimeout);
                         }
                     }
-                    this.conn.close(); // this close() should be executed for original Connection, not PgConnection
-                    establishConnection(conn);
                 }
             } catch (Exception ex) {
                 // debug because we support working without pg in runtime (read only mode) and error level will spam in log
@@ -89,5 +92,9 @@ public abstract class AbstractPgTableListener implements Runnable {
 
     private PgConnection unwrapPgConnection() throws SQLException {
         return conn.unwrap(PgConnection.class);
+    }
+
+    public void stopListening() {
+        running.set(false);
     }
 }

@@ -1,11 +1,10 @@
 package org.qubership.cloud.dbaas.service.event.listener;
 
 
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import io.agroal.api.AgroalDataSource;
 import lombok.extern.slf4j.Slf4j;
+import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 
-import java.sql.SQLException;
 import java.util.UUID;
 
 @Slf4j
@@ -13,13 +12,11 @@ public class PgPhysicalDatabaseTableListener extends AbstractPgTableListener {
 
     private PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
 
-
     public PgPhysicalDatabaseTableListener(AgroalDataSource dataSource,
-                                           PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository) throws SQLException {
+                                           PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository) {
         this.dataSource = dataSource;
         this.physicalDatabaseDbaasRepository = physicalDatabaseDbaasRepository;
         this.connectionStatement = "LISTEN physical_database_table_changes_event";
-        establishConnection(dataSource.getConnection());
     }
 
     @Override
@@ -33,5 +30,4 @@ public class PgPhysicalDatabaseTableListener extends AbstractPgTableListener {
     protected String tableName() {
         return "physical database";
     }
-
 }
