@@ -7,10 +7,7 @@ import org.qubership.cloud.dbaas.dto.RecreateDatabaseRequest;
 import org.qubership.cloud.dbaas.dto.LinkDatabasesRequest;
 import org.qubership.cloud.dbaas.dto.UpdateConnectionPropertiesRequest;
 import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3SingleCP;
-import org.qubership.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
-import org.qubership.cloud.dbaas.dto.v3.UpdateClassifierRequestV3;
+import org.qubership.cloud.dbaas.dto.v3.*;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
 import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
@@ -263,6 +260,64 @@ class DatabaseOperationControllerV3Test {
         doReturn(databaseRegistry).when(dBaaService).findDatabaseByClassifierAndType(classifier, mongodb, true);
         doReturn(databaseRegistry).when(dBaaService).updateDatabaseConnectionProperties(request, mongodb);
         doReturn(new DatabaseResponseV3SingleCP()).when(dBaaService).processConnectionPropertiesV3(eq(database.getDatabaseRegistry().get(0)), eq(Role.ADMIN.toString()));
+        performRequest(getUpdateConnectionPropertiesUrl(mongodb), TEST_NAMESPACE, Method.PUT, request, 200);
+    }
+
+    @Test
+    void updateConnectionPropertiesSuccessStatusWithInCorrectEncryptedPassword() throws Exception {
+        SortedMap<String, Object> classifier = new TreeMap<String, Object>() {{
+            put("namespace", TEST_NAMESPACE);
+            put("microserviceName", "serviceOne");
+            put("scope", "tenant");
+            put("tenantId", "serviceOne");
+        }};
+        Map<String, Object> newConnProperties = createTestConnectionPropertiesWithInCorrectEncryptedPassword(Role.ADMIN.toString());
+        UpdateConnectionPropertiesRequest request = createUpdateConnectionPropertiesRequest(classifier, newConnProperties, Role.ADMIN.toString());
+        String mongodb = "mongodb";
+        RegisterDatabaseRequestV3 requestV3 = new RegisterDatabaseRequestV3();
+        requestV3.setClassifier(classifier);
+        Database database = new Database(requestV3);
+        database.setConnectionProperties(Collections.singletonList(new HashMap<String, Object>() {{
+            put("role", Role.ADMIN.toString());
+        }}));
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setDatabase(database);
+        databaseRegistry.setClassifier(classifier);
+        ArrayList<DatabaseRegistry> databaseRegistries = new ArrayList<DatabaseRegistry>();
+        databaseRegistries.add(databaseRegistry);
+        database.setDatabaseRegistry(databaseRegistries);
+        doReturn(databaseRegistry).when(dBaaService).findDatabaseByClassifierAndType(classifier, mongodb, true);
+        doReturn(databaseRegistry).when(dBaaService).updateDatabaseConnectionProperties(request, mongodb);
+        doReturn(new DatabaseResponseV3SingleCP()).when(dBaaService).processConnectionPropertiesV3(database.getDatabaseRegistry().get(0), Role.ADMIN.toString());
+        performRequest(getUpdateConnectionPropertiesUrl(mongodb), TEST_NAMESPACE, Method.PUT, request, 400);
+    }
+
+    @Test
+    void updateConnectionPropertiesSuccessStatusWithCorrectEncryptedPassword() throws Exception {
+        SortedMap<String, Object> classifier = new TreeMap<String, Object>() {{
+            put("namespace", TEST_NAMESPACE);
+            put("microserviceName", "serviceOne");
+            put("scope", "tenant");
+            put("tenantId", "serviceOne");
+        }};
+        Map<String, Object> newConnProperties = createTestConnectionPropertiesWithCorrectEncryptedPassword(Role.ADMIN.toString());
+        UpdateConnectionPropertiesRequest request = createUpdateConnectionPropertiesRequest(classifier, newConnProperties, Role.ADMIN.toString());
+        String mongodb = "mongodb";
+        RegisterDatabaseRequestV3 requestV3 = new RegisterDatabaseRequestV3();
+        requestV3.setClassifier(classifier);
+        Database database = new Database(requestV3);
+        database.setConnectionProperties(Collections.singletonList(new HashMap<String, Object>() {{
+            put("role", Role.ADMIN.toString());
+        }}));
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setDatabase(database);
+        databaseRegistry.setClassifier(classifier);
+        ArrayList<DatabaseRegistry> databaseRegistries = new ArrayList<DatabaseRegistry>();
+        databaseRegistries.add(databaseRegistry);
+        database.setDatabaseRegistry(databaseRegistries);
+        doReturn(databaseRegistry).when(dBaaService).findDatabaseByClassifierAndType(classifier, mongodb, true);
+        doReturn(databaseRegistry).when(dBaaService).updateDatabaseConnectionProperties(request, mongodb);
+        doReturn(new DatabaseResponseV3SingleCP()).when(dBaaService).processConnectionPropertiesV3(database.getDatabaseRegistry().get(0), Role.ADMIN.toString());
         performRequest(getUpdateConnectionPropertiesUrl(mongodb), TEST_NAMESPACE, Method.PUT, request, 200);
     }
 
@@ -562,5 +617,21 @@ class DatabaseOperationControllerV3Test {
         }};
     }
 
+    private Map<String, Object> createTestConnectionPropertiesWithCorrectEncryptedPassword(String role) {
+        return new HashMap<String, Object>() {{
+            put("url", "http://test-url");
+            put("username", "test");
+            put("role", role);
+            put("encryptedPassword", "{v2c}{AES}{DEFAULT_KEY}{BmJWW/qsyfgN7EisgfjOaLHc+EOs7S1MYwB87sv4325/L/zojG7u7RDUjFa3K9t/}");
+        }};
+    }
 
+    private Map<String, Object> createTestConnectionPropertiesWithInCorrectEncryptedPassword(String role) {
+        return new HashMap<String, Object>() {{
+            put("url", "http://test-url");
+            put("username", "test");
+            put("role", role);
+            put("encryptedPassword", "abcd");
+        }};
+    }
 }

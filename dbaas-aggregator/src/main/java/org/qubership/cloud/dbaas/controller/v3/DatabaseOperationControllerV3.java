@@ -11,10 +11,7 @@ import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
 import org.qubership.cloud.dbaas.exceptions.*;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.service.BlueGreenService;
-import org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.cloud.dbaas.service.OperationService;
+import org.qubership.cloud.dbaas.service.*;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -58,6 +55,8 @@ public class DatabaseOperationControllerV3 {
     PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
     @Inject
     OperationService operationService;
+    @Inject
+    EncryptionServiceProvider encryptionServiceProvider;
 
     @Operation(summary = "V3. Change user password",
             description = "The API changes password of a user that is related to the specified database. A password will be changed to a random value." +
@@ -237,6 +236,7 @@ public class DatabaseOperationControllerV3 {
     @APIResponses({
             @APIResponse(responseCode = "400", description = "Database classifier or new connection properties must not be nil", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "400", description = "New connection properties must contain key 'role'", content = @Content(schema = @Schema(implementation = String.class))),
+            @APIResponse(responseCode = "400", description = "Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "400", description = "classifier contains namespace different from namespace in the path", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "404", description = "there is no existing database with such type and classifier", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "404", description = "Database with classifier does not contain connection properties for role", content = @Content(schema = @Schema(implementation = String.class))),
@@ -264,6 +264,15 @@ public class DatabaseOperationControllerV3 {
             log.error("New connection properties must contain key 'role': {}", updateConnectionPropertiesRequest);
             errors.add(new InvalidUpdateConnectionPropertiesRequestException("New connection properties must contain key 'role'",
                     Source.builder().build()));
+        }
+        if (updateConnectionPropertiesRequest.getConnectionProperties().containsKey("encryptedPassword")) {
+            try {
+                encryptionServiceProvider.getEncryptionService((String) updateConnectionPropertiesRequest.getConnectionProperties().get("encryptedPassword"));
+            } catch (NoSuchElementException e) {
+                log.error("Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext");
+                errors.add(new InvalidUpdateConnectionPropertiesRequestException("Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext",
+                        Source.builder().build()));
+            }
         }
         if (!errors.isEmpty()) {
             throw new MultiValidationException(errors);
