@@ -16,6 +16,7 @@ import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposit
 import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import org.qubership.cloud.dbaas.service.*;
 import org.qubership.cloud.dbaas.service.processengine.tasks.*;
+import org.qubership.cloud.dbaas.test.profile.ProcessOrchestratorEnabledProfile;
 import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
@@ -25,7 +26,6 @@ import io.quarkus.test.InMemoryLogHandler;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -511,12 +511,11 @@ class BlueGreenStabilityTest {
     }
 
     @NoArgsConstructor
-    protected static final class ProdModeFalseProfile implements QuarkusTestProfile {
+    protected static final class ProdModeFalseProfile extends ProcessOrchestratorEnabledProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
-            Map<String, String> properties = new HashMap<>();
+            Map<String, String> properties = super.getConfigOverrides();
             properties.put("dbaas.production.mode", "false");
-            properties.put("quarkus.log.category.\"org.qubership.cloud.dbaas.service.processengine.tasks\".level", "debug");
             return properties;
         }
     }
