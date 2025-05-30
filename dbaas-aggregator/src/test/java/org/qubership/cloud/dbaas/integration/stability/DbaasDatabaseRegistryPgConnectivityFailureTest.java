@@ -70,7 +70,7 @@ class DbaasDatabaseRegistryPgConnectivityFailureTest {
         SortedMap<String, Object> classifierToCheck = database.getClassifier();
         QuarkusTransaction.requiringNew().call(() -> databaseDbaasRepository.saveAnyTypeLogDb(database));
         DatabaseRegistry pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(classifierToCheck, database.getType()).get();
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(pgDatabase.getId()).isPresent());
         PostgresqlContainerResource.postgresql.stop();
         boolean exceptionHappened = false;

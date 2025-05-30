@@ -74,6 +74,10 @@ public class BlueGreenService {
 
     private final Random random = new Random();
 
+    protected long RETRY_STATIC_DELAY_MILLIS = 5000L;
+    protected int RETRY_DYNAMIC_RANGE_DELAY_MILLIS = 2048;
+    protected int RETRY_COUNT = 5;
+
     // todo arvo: when there are plenty dependencies it means bad composition and we should think about composition
     public BlueGreenService(
             DBBackupsService backupsService,
@@ -393,7 +397,7 @@ public class BlueGreenService {
                 if (!Thread.currentThread().isInterrupted()) {
                     if (ex != null || actionResult == null || Boolean.TRUE.equals(condition.test(actionResult))) {
                         try {
-                            Thread.sleep(5000L + random.nextInt(2048));
+                            Thread.sleep(RETRY_STATIC_DELAY_MILLIS + random.nextInt(RETRY_DYNAMIC_RANGE_DELAY_MILLIS));
                         } catch (InterruptedException exception) {
                             stopRetrying = true;
                         }
@@ -406,7 +410,7 @@ public class BlueGreenService {
                 log.info("Task was terminated");
                 stopRetrying = true;
             }
-        } while (!stopRetrying && !Thread.currentThread().isInterrupted() && counter < 5 && Boolean.TRUE.equals(condition.test(actionResult)));
+        } while (!stopRetrying && !Thread.currentThread().isInterrupted() && counter < RETRY_COUNT && Boolean.TRUE.equals(condition.test(actionResult)));
         if (stopRetrying) {
             Thread.currentThread().interrupt();
         }

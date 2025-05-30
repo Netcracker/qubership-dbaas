@@ -70,7 +70,7 @@ class DbaasDatabaseRegistryStabilityTest {
         databaseRegistryToSave.getClassifier().put("test", "val");
         databaseRegistryToSave.setDatabase(database);
 
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId()).isPresent());
         Optional<DatabaseRegistry> pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
         Optional<org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry> h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
@@ -79,7 +79,7 @@ class DbaasDatabaseRegistryStabilityTest {
         Assertions.assertTrue(h2UnsavedDatabase.isEmpty());
 
         databaseRegistryRepository.persist(databaseRegistryToSave);
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(databaseRegistryToSave.getId()).isPresent());
 
         Optional<DatabaseRegistry> pgSavedDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistryToSave.getClassifier(), databaseRegistryToSave.getType());

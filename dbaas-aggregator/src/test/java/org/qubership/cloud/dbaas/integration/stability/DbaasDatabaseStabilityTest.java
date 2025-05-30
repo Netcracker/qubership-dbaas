@@ -130,7 +130,7 @@ class DbaasDatabaseStabilityTest {
         DatabaseRegistry database = createDatabase();
         database.getClassifier().put("sameDatabase", "sameDatabase");
         QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(database));
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(database.getId()).isPresent());
 
         Optional<DatabaseRegistry> pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
@@ -144,7 +144,7 @@ class DbaasDatabaseStabilityTest {
         final UUID pgDatabaseId = pgDatabase.get().getId();
         h2DatabaseRegistryRepository.getEntityManager().clear();
         QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.deleteById(pgDatabaseId));
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(pgDatabaseId).isEmpty());
         pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
         h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
@@ -161,7 +161,7 @@ class DbaasDatabaseStabilityTest {
         QuarkusTransaction.requiringNew().run(() -> databasesRepository.persist(database));
         log.debug("database id = {}", database.getId());
 
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRepository.findByIdOptional(database.getId()).isPresent());
         Database pgDatabase = databasesRepository.findByClassifierAndType(database.getDatabaseRegistry().get(0).getClassifier(), database.getDatabaseRegistry().get(0).getType());
         org.qubership.cloud.dbaas.entity.h2.Database h2Database = h2DatabaseRepository.findByClassifierAndType(database.getDatabaseRegistry().get(0).getClassifier(), database.getDatabaseRegistry().get(0).getType());
@@ -174,7 +174,7 @@ class DbaasDatabaseStabilityTest {
         database.getClassifier().put("externalDatabase", "external");
 
         QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(database));
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(database.getId()).isPresent());
 
         Optional<DatabaseRegistry> pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
@@ -185,7 +185,7 @@ class DbaasDatabaseStabilityTest {
         assertEquals(pgDatabase.get().getClassifier(), h2Database.get().getClassifier());
         h2DatabaseRegistryRepository.getEntityManager().clear();
         QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.deleteById(database.getId()));
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(database.getId()).isEmpty());
 
         pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());

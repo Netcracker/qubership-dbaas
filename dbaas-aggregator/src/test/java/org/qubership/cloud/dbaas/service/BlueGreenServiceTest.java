@@ -84,6 +84,8 @@ class BlueGreenServiceTest {
                 aggregatedDatabaseAdministrationService, bgNamespaceRepository, balancingRulesService,
                 databaseRolesService, bgDomainRepository, dBaaService, bgTrackRepository, processService, declarativeDbaasCreationService,
                 backupsDbaasRepository, databaseConfigurationCreationService);
+        blueGreenService.RETRY_DYNAMIC_RANGE_DELAY_MILLIS = 10;
+        blueGreenService.RETRY_STATIC_DELAY_MILLIS = 10;
     }
 
     @Test

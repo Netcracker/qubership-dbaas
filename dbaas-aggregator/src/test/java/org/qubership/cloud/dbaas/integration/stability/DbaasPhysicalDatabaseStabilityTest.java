@@ -55,7 +55,7 @@ class DbaasPhysicalDatabaseStabilityTest {
     void testSameDatabaseInH2() {
         PhysicalDatabase physicalDatabase = createPhysicalDatabase();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.save(physicalDatabase));
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2PhysicalDatabaseRepository.findByIdOptional(physicalDatabase.getId()).isPresent());
 
         PhysicalDatabase pgDatabase = physicalDatabasesRepository.findByPhysicalDatabaseIdentifier(physicalDatabase.getPhysicalDatabaseIdentifier());
@@ -64,7 +64,7 @@ class DbaasPhysicalDatabaseStabilityTest {
         assertEquals(pgDatabase, h2Database.get().asPgEntity());
         h2PhysicalDatabaseRepository.getEntityManager().clear();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.delete(physicalDatabase));
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2PhysicalDatabaseRepository.findByIdOptional(physicalDatabase.getId()).isEmpty());
 
         pgDatabase = physicalDatabasesRepository.findByPhysicalDatabaseIdentifier(physicalDatabase.getPhysicalDatabaseIdentifier());
@@ -77,7 +77,7 @@ class DbaasPhysicalDatabaseStabilityTest {
     void testDatabaseEventH2() {
         PhysicalDatabase physicalDatabase = createPhysicalDatabase();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabasesRepository.persist(physicalDatabase));
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2PhysicalDatabaseRepository.findByIdOptional(physicalDatabase.getId()).isPresent());
 
         PhysicalDatabase pgDatabase = physicalDatabasesRepository.findByPhysicalDatabaseIdentifier(physicalDatabase.getPhysicalDatabaseIdentifier());
