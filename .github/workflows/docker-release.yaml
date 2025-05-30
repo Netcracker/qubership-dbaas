@@ -14,6 +14,7 @@ on:
         type: boolean
         default: false
         description: 'Dry run'
+
 permissions:
   contents: write
   packages: write
@@ -25,9 +26,6 @@ jobs:
       - name: Input parameters
         run: |
           echo "Version: ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
-
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Check if tag exists
         id: check_tag
@@ -54,6 +52,7 @@ jobs:
     uses: netcracker/qubership-workflow-hub/.github/workflows/tag-creator.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
     with:
       tag-name: v${{ github.event.inputs.version }}
+      ref: ${{ github.ref }}
 
   build:
     needs: [tag]
@@ -83,6 +82,7 @@ jobs:
 
       - name: Build JAR artifact
         run: mvn clean package -DskipTests
+        working-directory: dbaas
         env:
           MAVEN_USERNAME: ${{ secrets.maven-username }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -91,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}
-          path: dbaas-aggregator/target
+          path: dbaas/dbaas-aggregator/target
           if-no-files-found: error
           retention-days: 1
 
@@ -104,9 +104,20 @@ jobs:
       download-artifact: true
       dry-run: ${{ github.event.inputs.dry-run == 'true' }}
       platforms: linux/amd64,linux/arm64
+      component: '[{"name": "default", "file": "dbaas/Dockerfile", "context": "."}]'
+
+  docker-build-publish-validation-image:
+    needs: [tag]
+    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
+    with:
+      artifact-id: ${{ github.event.repository.name }}-validation-image
+      ref: v${{ inputs.version }}
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+      platforms: linux/amd64,linux/arm64
+      component: '[{"name": "default", "file": "validation-image/Dockerfile", "context": "validation-image"}]'      
 
   github-release:
-    needs: [docker-build-publish]
+    needs: [docker-build-publish, docker-build-publish-validation-image]
     uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
     with:
       version: ${{ github.event.inputs.version }}
