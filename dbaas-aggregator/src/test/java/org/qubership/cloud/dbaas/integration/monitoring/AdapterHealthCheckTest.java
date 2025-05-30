@@ -109,11 +109,12 @@ class AdapterHealthCheckTest {
         DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM);
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2));
 
+        log.info("Start health check from test");
         adapterHealthCheck.healthCheck();
 
         HealthCheckResponse health = adaptersAccessIndicator.getStatus().get();
-        Assert.assertEquals(HealthStatus.PROBLEM, health.getStatus());
         log.info("data {}", health.getDetails());
+        Assert.assertEquals(HealthStatus.PROBLEM, health.getStatus());
         Assert.assertEquals(1, health.getDetails().size());
     }
 
