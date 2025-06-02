@@ -45,6 +45,6 @@ class SwaggerOpenApiDocsTest {
         JsonElement je = jp.parse(swaggerJson);
         List<String> prettyJsonString = Arrays.asList(gson.toJson(je).split("\n"));
         Files.write(Paths.get("./target/swagger.json"), prettyJsonString);
-        Files.write(Paths.get("../docs/OpenAPI.json"), prettyJsonString);
+        Files.write(Paths.get("../../docs/OpenAPI.json"), prettyJsonString);
     }
 }
