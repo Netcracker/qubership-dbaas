@@ -1,0 +1,79 @@
+name: Dev Mvn Docker Build
+run-name: "Dev build repository: ${{ github.ref_name }} #${{ github.run_number }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact-name:
+        description: 'Artifact name'
+        required: false
+        default: ''
+      tags:
+        description: 'Tags'
+        required: false
+        type: string
+        default: ''
+      java-version:
+        description: 'Java version (e.g., 21)'
+        required: false
+        type: string
+        default: "21"
+      dry-run:
+        description: 'Dry run'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  dev-build:
+    uses: netcracker/qubership-workflow-hub/.github/workflows/maven-publish.yml@main
+    with:
+      maven-command: "--batch-mode package -Dgpg.skip=true -DskipTests=true"
+      java-version: ${{ github.event.inputs.java-version }}
+      upload-artifact: true
+      artifact-id: ${{ github.event.inputs.artifact-name || github.event.repository.name }}
+      server-id: "github"
+    secrets:
+      maven-token: ${{ secrets.GITHUB_TOKEN }}
+
+  perform-version:
+    runs-on: ubuntu-latest
+    needs: dev-build
+    outputs:
+      metadata: "${{ steps.metadata.outputs.result }}"
+      tags: "${{ steps.prepare_tags.outputs.tags }}"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Create name
+        uses: netcracker/qubership-workflow-hub/actions/metadata-action@main
+        id: metadata
+        with:
+          configuration-path: .github/metadata-config.yml
+
+      - name: Echo metadata
+        run: echo "Metadata result ${{ steps.metadata.outputs.result }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Prepare tags
+        id: prepare_tags
+        run: |
+          BASE_TAG="${{ steps.metadata.outputs.result }}"
+          EXTRA_TAG="${{ github.event.inputs.tags }}"
+          if [ -n "$EXTRA_TAG" ]; then
+            TAGS="${BASE_TAG}, ${EXTRA_TAG}"
+          else
+            TAGS="${BASE_TAG}"
+          fi
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "tags: ${TAGS}" >> $GITHUB_STEP_SUMMARY
+
+  docker-build:
+    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@main
+    needs: perform-version
+    with:
+      ref: ${{ github.event.ref }}
+      artifact-id: ${{ github.event.inputs.artifact-name || github.event.repository.name }}
+      dry-run: ${{ github.event.inputs.dry-run }}
+      download-artifact: true
+      tags: ${{ needs.perform-version.outputs.tags }}
