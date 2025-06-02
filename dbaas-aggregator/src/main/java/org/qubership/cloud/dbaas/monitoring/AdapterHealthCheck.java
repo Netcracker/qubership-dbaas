@@ -37,10 +37,10 @@ public class AdapterHealthCheck {
 
     @Scheduled(every = "2m") // Every 2 Min recalculate health
     public void healthCheck() {
-        log.info("Health check started");
+        log.debug("Health check started");
         final List<DbaasAdapter> adapters = physicalDatabasesService.getAllAdapters();
         HealthCheckResponseBuilder adapterHealthBuilder = HealthCheckResponse.builder().name(ADAPTERS_HEALTH_CHECK_NAME).up();
-        log.info("Adapters list: {}", adapters);
+        log.debug("Adapters list: {}", adapters);
         for (DbaasAdapter adapter : adapters) {
             if (Boolean.TRUE.equals(adapter.isDisabled())) {
                 log.debug("Adapter with id {} is disabled", adapter.identifier());
