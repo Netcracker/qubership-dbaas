@@ -20,44 +20,16 @@ permissions:
   packages: write
 
 jobs:
-  check-tag:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Input parameters
-        run: |
-          echo "Version: ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
-
-      - name: Check if tag exists
-        id: check_tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-checker@c07a5bf430a3c0120e189e6b54061b9bb8dde362
-        with:
-          tag: 'v${{ github.event.inputs.version }}'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Output result
-        run: |
-          echo "Tag exists: ${{ steps.check_tag.outputs.exists }}"
-          echo "Tag name: v${{ github.event.inputs.version }}"
-
-      - name: Fail if tag exists
-        if: steps.check_tag.outputs.exists == 'true'
-        run: |
-          echo "Tag already exists: v${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "Tag already exists: v${{ github.event.inputs.version }}"
-          exit 1
-
-  tag:
-    needs: [check-tag]
-    uses: netcracker/qubership-workflow-hub/.github/workflows/tag-creator.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
-    with:
-      tag-name: v${{ github.event.inputs.version }}
-      ref: ${{ github.ref }}
-
   build:
-    needs: [tag]
     runs-on: ubuntu-latest
     steps:
+      - name: Create Tag
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
+        with:
+          ref: ${{ github.ref }}
+          tag-name: v${{ github.event.inputs.version }}
+          check-tag: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -133,9 +105,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
 
+      - name: Delete Tag in case of Dry Run
+        if: ${{ github.event.inputs.dry-run == 'true' }}
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
+        with:
+          ref: ${{ github.ref }}
+          tag-name: v${{ github.event.inputs.version }}
+          delete-tag: true
+
   github-release:
     needs: [build]
-    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
+    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v1.0.3
     with:
       version: ${{ github.event.inputs.version }}
       publish: false
