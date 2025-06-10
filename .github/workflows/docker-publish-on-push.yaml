@@ -1,39 +1,31 @@
 ---
-name: Release And Publish Docker Artifact
+name: Publish Docker Artifact On Push
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        required: true
-        default: '1.0.0'
-        type: string
-        description: 'Release version (e.g., 1.0.0)'
-      dry-run:
-        required: false
-        type: boolean
-        default: false
-        description: 'Dry run'
+  push
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  build:
+  prepare-variables:
     runs-on: ubuntu-latest
     steps:
-      - name: Create Tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
-        with:
-          ref: ${{ github.ref }}
-          tag-name: v${{ github.event.inputs.version }}
-          check-tag: true
+      - id: tag_build_number
+        run: echo "tag=$(echo ${{github.ref_name}} | tr -cs 'a-zA-Z0-9' '-')$(date +'%Y%m%d%H%M%S')-${{ github.run_number }}" >> $GITHUB_OUTPUT
+      - id: tag_snapshot
+        run: echo "tag=$(echo ${{github.ref_name}} | tr -cs 'a-zA-Z0-9' '-')snapshot" >> $GITHUB_OUTPUT
+    outputs:
+      tag_build_number: ${{ steps.tag_build_number.outputs.tag }}
+      tag_snapshot: ${{ steps.tag_snapshot.outputs.tag }}
 
+  build:
+    runs-on: ubuntu-latest
+    needs: prepare-variables
+    steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: v${{ github.event.inputs.version }}
 
       - name: Cache Maven dependencies
         uses: actions/cache@v4
@@ -58,7 +50,7 @@ jobs:
         env:
           MAVEN_USERNAME: ${{ secrets.maven-username }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-
+      
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
@@ -68,11 +60,10 @@ jobs:
             dbaas/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar
           if-no-files-found: error
           retention-days: 1
-  
+
       - name: Build and Publish Docker Image
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
         with:
-          ref: v${{ inputs.version }}
           download-artifact: true
           download-artifact-path: ./artifacts
           component: |
@@ -84,14 +75,15 @@ jobs:
               }
             ]
           platforms: linux/amd64,linux/arm64
-          dry-run: ${{ github.event.inputs.dry-run == 'true' }}            
+          tags: |
+            ${{ needs.prepare-variables.outputs.tag_build_number }}
+            ${{ needs.prepare-variables.outputs.tag_snapshot }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
-      
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
+
       - name: Build and Publish Validation Docker Image
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
         with:
-          ref: v${{ inputs.version }}
           component: |
             [
               {
@@ -101,21 +93,8 @@ jobs:
               }
             ]
           platforms: linux/amd64,linux/arm64              
-          dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+          tags: |
+            ${{ needs.prepare-variables.outputs.tag_build_number }}
+            ${{ needs.prepare-variables.outputs.tag_snapshot }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
-
-      - name: Delete Tag in case of Dry Run
-        if: ${{ github.event.inputs.dry-run == 'true' }}
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
-        with:
-          ref: ${{ github.ref }}
-          tag-name: v${{ github.event.inputs.version }}
-          delete-tag: true
-
-  github-release:
-    needs: [build]
-    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v1.0.3
-    with:
-      version: ${{ github.event.inputs.version }}
-      publish: false
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  
