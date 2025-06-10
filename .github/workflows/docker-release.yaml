@@ -90,34 +90,51 @@ jobs:
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.repository.name }}
-          path: dbaas/dbaas-aggregator/target
+          name: dbaas
+          path: |
+            dbaas/dbaas-aggregator/target/lib
+            dbaas/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar
           if-no-files-found: error
           retention-days: 1
-
-  docker-build-publish:
-    needs: [build]
-    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
-    with:
-      artifact-id: ${{ github.event.repository.name }}
-      ref: v${{ inputs.version }}
-      download-artifact: true
-      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
-      platforms: linux/amd64,linux/arm64
-      component: '[{"name": "default", "file": "dbaas/Dockerfile", "context": "."}]'
-
-  docker-build-publish-validation-image:
-    needs: [tag]
-    uses: netcracker/qubership-workflow-hub/.github/workflows/docker-publish.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
-    with:
-      artifact-id: ${{ github.event.repository.name }}-validation-image
-      ref: v${{ inputs.version }}
-      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
-      platforms: linux/amd64,linux/arm64
-      component: '[{"name": "default", "file": "validation-image/Dockerfile", "context": "validation-image"}]'      
+  
+      - name: Build and Publish Docker Image
+        uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
+        with:
+          ref: v${{ inputs.version }}
+          download-artifact: true
+          download-artifact-path: ./artifacts
+          component: |
+            [
+              {
+                "name": "default", 
+                "file": "dbaas/Dockerfile", 
+                "context": "./artifacts/dbaas"
+              }
+            ]
+          platforms: linux/amd64,linux/arm64
+          dry-run: ${{ github.event.inputs.dry-run == 'true' }}            
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
+      
+      - name: Build and Publish Validation Docker Image
+        uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
+        with:
+          ref: v${{ inputs.version }}
+          component: |
+            [
+              {
+                "name": "default", 
+                "file": "validation-image/Dockerfile", 
+                "context": "./validation-image"
+              }
+            ]
+          platforms: linux/amd64,linux/arm64              
+          dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
 
   github-release:
-    needs: [docker-build-publish, docker-build-publish-validation-image]
+    needs: [build]
     uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@c07a5bf430a3c0120e189e6b54061b9bb8dde362
     with:
       version: ${{ github.event.inputs.version }}
