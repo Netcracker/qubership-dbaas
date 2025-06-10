@@ -71,7 +71,7 @@ jobs:
               {
                 "name": "default", 
                 "file": "dbaas/Dockerfile", 
-                "context": "./artifacts"
+                "context": "./artifacts/dbaas"
               }
             ]
           platforms: linux/amd64,linux/arm64
