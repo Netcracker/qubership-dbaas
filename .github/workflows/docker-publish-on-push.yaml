@@ -83,7 +83,7 @@ jobs:
 
   docker-build-publish-validation-image:
     runs-on: ubuntu-latest
-    needs: [prepare-variables]
+    needs: [prepare-variables, build]
     steps:
       - name: Build and Publish Docker Image
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
