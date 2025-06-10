@@ -16,13 +16,9 @@ jobs:
         run: echo "tag=$(echo ${{github.ref_name}} | tr -cs 'a-zA-Z0-9' '-')$(date +'%Y%m%d%H%M%S')-${{ github.run_number }}" >> $GITHUB_OUTPUT
       - id: tag_snapshot
         run: echo "tag=$(echo ${{github.ref_name}} | tr -cs 'a-zA-Z0-9' '-')snapshot" >> $GITHUB_OUTPUT
-      - id: main_artifact
-        run: echo "main_artifact=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
     outputs:
       tag_build_number: ${{ steps.tag_build_number.outputs.tag }}
       tag_snapshot: ${{ steps.tag_snapshot.outputs.tag }}
-      main_artifact: ${{ steps.main_artifact.outputs.main_artifact }}
-      validation_image_artifact: ${{ steps.main_artifact.outputs.main_artifact }}-validation-image
 
   build:
     runs-on: ubuntu-latest
@@ -54,16 +50,27 @@ jobs:
         env:
           MAVEN_USERNAME: ${{ secrets.maven-username }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbass
+          path: dbaas/dbaas-aggregator/target
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build and Publish Docker Image
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
         with:
+          download-artifact: true
+          artifact-id: dbass
+          download-artifact-path: ./artifacts
           component: |
             [
               {
                 "name": "default", 
                 "file": "dbaas/Dockerfile", 
-                "context": "./dbaas/dbaas-aggregator/target"
+                "context": "./artifacts"
               }
             ]
           platforms: linux/amd64,linux/arm64
@@ -81,7 +88,6 @@ jobs:
       - name: Build and Publish Docker Image
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
         with:
-          artifact-id: ${{ needs.prepare-variables.outputs.validation_image_artifact }}
           component: |
             [
               {
