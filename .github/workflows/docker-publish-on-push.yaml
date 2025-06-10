@@ -56,8 +56,8 @@ jobs:
         with:
           name: dbass
           path: |
-            dbaas/dbaas-aggregator/lib
-            dbaas/dbaas-aggregator/dbaas-aggregator-*-runner.jar
+            dbaas/dbaas-aggregator/target/lib
+            dbaas/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar
           if-no-files-found: error
           retention-days: 1
 
