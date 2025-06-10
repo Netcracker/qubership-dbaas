@@ -65,7 +65,6 @@ jobs:
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
         with:
           download-artifact: true
-          download-artifact-ids: dbass
           download-artifact-path: ./artifacts
           component: |
             [
