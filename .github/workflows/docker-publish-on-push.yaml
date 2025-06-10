@@ -77,7 +77,6 @@ jobs:
           tags: |
             ${{ needs.prepare-variables.outputs.tag_build_number }}
             ${{ needs.prepare-variables.outputs.tag_snapshot }}
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
 
@@ -100,6 +99,5 @@ jobs:
           tags: |
             ${{ needs.prepare-variables.outputs.tag_build_number }}
             ${{ needs.prepare-variables.outputs.tag_snapshot }}
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
