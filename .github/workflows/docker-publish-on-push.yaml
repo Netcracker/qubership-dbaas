@@ -55,7 +55,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dbass
-          path: dbaas/dbaas-aggregator/target
+          path: |
+            dbaas/dbaas-aggregator/lib
+            dbaas/dbaas-aggregator/dbaas-aggregator-*-runner.jar
           if-no-files-found: error
           retention-days: 1
 
@@ -63,7 +65,7 @@ jobs:
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
         with:
           download-artifact: true
-          artifact-id: dbass
+          download-artifact-ids: dbass
           download-artifact-path: ./artifacts
           component: |
             [
