@@ -54,7 +54,7 @@ jobs:
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dbass
+          name: dbaas
           path: |
             dbaas/dbaas-aggregator/target/lib
             dbaas/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar
