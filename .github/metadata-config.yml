@@ -1,0 +1,8 @@
+branches-template:
+  - main: "{{ref-name}}-{{timestamp}}-{{runNumber}}"
+  - "feature/*": "{{ref-name}}-{{timestamp}}-{{runNumber}}"
+  - "fix/*": "{{ref-name}}-{{timestamp}}-{{runNumber}}"
+  - "fix": "{{ref-name}}-{{timestamp}}-{{runNumber}}"
+  - tag: "v{{major}}.{{minor}}.{{patch}}"
+dist-tags:
+  - main: "latest"
