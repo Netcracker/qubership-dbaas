@@ -118,4 +118,4 @@ jobs:
     uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v1.0.3
     with:
       version: ${{ github.event.inputs.version }}
-      publish: ${{ github.event.inputs.dry-run == 'true' }}
+      publish: ${{ github.event.inputs.dry-run == 'false' }}
