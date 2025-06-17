@@ -21,7 +21,7 @@ jobs:
         id: metadata
         uses: netcracker/qubership-workflow-hub/actions/metadata-action@v1.0.3
         with:
-          configuration-path: '/.github/metadata-action-config.yaml'
+          configuration-path: '.github/metadata-action-config.yaml'
           short-sha: '7'
           show-report: 'true'
 
