@@ -1,5 +1,5 @@
 ---
-name: Release And Publish Docker Artifact
+name: Manual Docker & Github Release
 
 on:
   workflow_dispatch:
