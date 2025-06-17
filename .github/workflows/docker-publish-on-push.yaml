@@ -9,92 +9,24 @@ permissions:
   packages: write
 
 jobs:
-  prepare-variables:
+  metadata:
     runs-on: ubuntu-latest
-    steps:
-      - id: tag_build_number
-        run: echo "tag=$(echo ${{github.ref_name}} | tr -cs 'a-zA-Z0-9' '-')$(date +'%Y%m%d%H%M%S')-${{ github.run_number }}" >> $GITHUB_OUTPUT
-      - id: tag_snapshot
-        run: echo "tag=$(echo ${{github.ref_name}} | tr -cs 'a-zA-Z0-9' '-')snapshot" >> $GITHUB_OUTPUT
     outputs:
-      tag_build_number: ${{ steps.tag_build_number.outputs.tag }}
-      tag_snapshot: ${{ steps.tag_snapshot.outputs.tag }}
-
-  build:
-    runs-on: ubuntu-latest
-    needs: prepare-variables
+      tags: ${{ steps.metadata.outputs.result }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Cache Maven dependencies
-        uses: actions/cache@v4
+      - name: Generate Metadata
+        id: metadata
+        uses: netcracker/qubership-workflow-hub/actions/metadata-action@v1.0.3
         with:
-          path: ~/.m2
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+          configuration-path: './.github/metadata-action-config.yml'
+          short-sha: '7'
+          show-report: 'true'
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: 21
-          distribution: 'temurin'
-          server-id: github
-          server-username: MAVEN_USERNAME
-          server-password: MAVEN_PASSWORD
-
-      - name: Build JAR artifact
-        run: mvn clean package -DskipTests
-        working-directory: dbaas
-        env:
-          MAVEN_USERNAME: ${{ secrets.maven-username }}
-          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dbaas
-          path: |
-            dbaas/dbaas-aggregator/target/lib
-            dbaas/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Build and Publish Docker Image
-        uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
-        with:
-          download-artifact: true
-          download-artifact-path: ./artifacts
-          component: |
-            [
-              {
-                "name": "default", 
-                "file": "dbaas/Dockerfile", 
-                "context": "./artifacts/dbaas"
-              }
-            ]
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ needs.prepare-variables.outputs.tag_build_number }}
-            ${{ needs.prepare-variables.outputs.tag_snapshot }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
-
-      - name: Build and Publish Validation Docker Image
-        uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
-        with:
-          component: |
-            [
-              {
-                "name": "default", 
-                "file": "validation-image/Dockerfile", 
-                "context": "./validation-image"
-              }
-            ]
-          platforms: linux/amd64,linux/arm64              
-          tags: |
-            ${{ needs.prepare-variables.outputs.tag_build_number }}
-            ${{ needs.prepare-variables.outputs.tag_snapshot }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  
+  build-and-publish:
+    needs: metadata
+    uses: ./.github/workflows/docker-build-publish.yaml
+    with:
+      docker-tags: ${{ needs.metadata.outputs.tags }}

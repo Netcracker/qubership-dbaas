@@ -1,0 +1,58 @@
+---
+name: Release And Publish Docker Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        default: '1.0.0'
+        type: string
+        description: 'Release version (e.g., 1.0.0)'
+      dry-run:
+        required: false
+        type: boolean
+        default: false
+        description: 'Dry run'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Tag
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
+        with:
+          ref: ${{ github.ref }}
+          tag-name: v${{ github.event.inputs.version }}
+          check-tag: true
+
+  build-and-publish:
+    needs: create-tag
+    uses: ./.github/workflows/docker-build-publish.yaml
+    with:
+      ref: v${{ github.event.inputs.version }}
+      docker-tags: v${{ github.event.inputs.version }}
+
+  cleanup-on-dry-run:
+    needs: build-and-publish
+    if: ${{ github.event.inputs.dry-run == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Tag
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
+        with:
+          ref: ${{ github.ref }}
+          tag-name: v${{ github.event.inputs.version }}
+          delete-tag: true
+
+  github-release:
+    needs: [build-and-publish]
+    if: ${{ github.event.inputs.dry-run == 'false' }}
+    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v1.0.3
+    with:
+      version: ${{ github.event.inputs.version }}
+      publish: true
