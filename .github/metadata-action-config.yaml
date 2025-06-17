@@ -1,9 +1,9 @@
 branches-template:
-  - main: "latest, {{ref-name}}-{{timestamp}}-{{runNumber}}, {{ref-name}}-{{short-sha}}"
+  - main: "latest, {{ref-name}}-{{timestamp}}-{{github.context.runNumber}}, {{ref-name}}-{{short-sha}}"
   - "feature/*": "feature-{{ref-name}}-{{timestamp}}, feature-{{ref-name}}-{{short-sha}}"
   - "release/*": "release-{{ref-name}}-{{timestamp}}, release-{{ref-name}}-{{short-sha}}"
   - tag: "v{{major}}.{{minor}}.{{patch}}"
 
-default-template: "{{ref-name}}-{{timestamp}}-{{runNumber}}"
+default-template: "{{ref-name}}-{{timestamp}}-{{github.context.runNumber}}"
 
 
