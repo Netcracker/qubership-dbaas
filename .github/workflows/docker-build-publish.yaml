@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         description: 'Git ref to checkout'
+      dry-run:
+        required: false
+        type: boolean
+        default: false
+        description: 'Whether to perform a dry run'
 
 permissions:
   contents: write
@@ -80,6 +85,7 @@ jobs:
             ]
           platforms: linux/amd64,linux/arm64
           tags: ${{ inputs.docker-tags }}
+          dry-run: ${{ inputs.dry-run }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
       
@@ -97,5 +103,6 @@ jobs:
             ]
           platforms: linux/amd64,linux/arm64              
           tags: ${{ inputs.docker-tags }}
+          dry-run: ${{ inputs.dry-run }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
