@@ -36,7 +36,7 @@ jobs:
     with:
       ref: v${{ github.event.inputs.version }}
       docker-tags: v${{ github.event.inputs.version }}
-      dry-run: ${{ github.event.inputs.dry-run }}
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
 
   cleanup-on-dry-run:
     needs: build-and-publish
