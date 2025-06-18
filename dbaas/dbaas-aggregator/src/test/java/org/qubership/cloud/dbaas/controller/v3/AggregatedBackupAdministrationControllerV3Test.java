@@ -2,6 +2,18 @@ package org.qubership.cloud.dbaas.controller.v3;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.test.InjectMock;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.common.http.TestHTTPEndpoint;
+import io.quarkus.test.junit.QuarkusTest;
+import io.restassured.RestAssured;
+import io.restassured.config.EncoderConfig;
+import io.restassured.http.ContentType;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.core.MediaType;
+import org.junit.jupiter.api.Test;
+import org.mockito.internal.stubbing.answers.AnswersWithDelay;
+import org.mockito.internal.stubbing.answers.Returns;
 import org.qubership.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
 import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.entity.pg.Database;
@@ -13,35 +25,22 @@ import org.qubership.cloud.dbaas.exceptions.NamespaceRestorationFailedException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import org.qubership.cloud.dbaas.service.*;
-import io.quarkus.test.InjectMock;
-import io.quarkus.test.common.QuarkusTestResource;
-import io.quarkus.test.common.http.TestHTTPEndpoint;
-import io.quarkus.test.junit.QuarkusTest;
-import io.restassured.RestAssured;
-import io.restassured.config.EncoderConfig;
-import io.restassured.http.ContentType;
-import jakarta.inject.Inject;
-import jakarta.ws.rs.core.MediaType;
-
-import org.junit.jupiter.api.Test;
 
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import static io.restassured.RestAssured.given;
+import static jakarta.ws.rs.core.Response.Status.*;
+import static org.hamcrest.Matchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 import static org.qubership.cloud.core.error.rest.tmf.TmfErrorResponse.TYPE_V1_0;
 import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
 import static org.qubership.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_2000;
 import static org.qubership.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_4014;
-import static io.restassured.RestAssured.given;
-import static jakarta.ws.rs.core.Response.Status.*;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
@@ -118,7 +117,7 @@ class AggregatedBackupAdministrationControllerV3Test {
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceRestoration namespaceRestoration = new NamespaceRestoration();
         namespaceRestoration.setId(UUID.randomUUID());
-        when(dbBackupsService.restore(any(), any(), any(), eq(false), any())).thenReturn(namespaceRestoration);
+        when(dbBackupsService.restore(any(), any(), any(), eq(false), any())).thenAnswer(new AnswersWithDelay(100, new Returns(namespaceRestoration)));
         aggregatedBackupAdministrationControllerV3.awaitOperationSeconds = 0;
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
