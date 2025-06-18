@@ -1,6 +1,17 @@
 package org.qubership.cloud.dbaas.integration.monitoring;
 
+import io.micrometer.core.instrument.Meter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.quarkus.test.InjectMock;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.mockito.InjectSpy;
+import jakarta.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthCheck;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
@@ -12,30 +23,18 @@ import org.qubership.cloud.dbaas.service.AdapterActionTrackerClient;
 import org.qubership.cloud.dbaas.service.DbaasAdapter;
 import org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2;
 import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
-import io.micrometer.core.instrument.Meter;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.quarkus.test.InjectMock;
-import io.quarkus.test.common.QuarkusTestResource;
-import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.mockito.InjectSpy;
-import jakarta.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_PROBLEM;
-import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_PROBLEM;
+import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
 
 
 @Slf4j
@@ -93,8 +92,8 @@ class AdapterHealthCheckTest {
 
     @Test
     void checkAdapterStatusAllUp() {
-        DbaasAdapter adapter1 = getMockedDbaasAdapter(HEALTH_STATUS_UP);
-        DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_UP);
+        DbaasAdapter adapter1 = getMockedDbaasAdapter(HEALTH_STATUS_UP, "AllUp_1");
+        DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_UP, "AllUp_2");
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2));
         adapterHealthCheck.healthCheck();
 
@@ -105,8 +104,8 @@ class AdapterHealthCheckTest {
 
     @Test
     void checkAdapterStatusUpAndProblem() {
-        DbaasAdapter adapter1 = getMockedDbaasAdapter(HEALTH_STATUS_UP);
-        DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM);
+        DbaasAdapter adapter1 = getMockedDbaasAdapter(HEALTH_STATUS_UP, "UpAndProblem_UP");
+        DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM, "UpAndProblem_PROBLEM");
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2));
 
         adapterHealthCheck.healthCheck();
@@ -119,8 +118,8 @@ class AdapterHealthCheckTest {
 
     @Test
     void checkAdapterStatusProblemAndProblem() {
-        DbaasAdapter adapter1 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM);
-        DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM);
+        DbaasAdapter adapter1 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM, "ProblemAndProblem_PROBLEM_1");
+        DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM, "ProblemAndProblem_PROBLEM_2");
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2));
 
         adapterHealthCheck.healthCheck();
@@ -132,11 +131,12 @@ class AdapterHealthCheckTest {
     }
 
     @NotNull
-    private DbaasAdapter getMockedDbaasAdapter(AdapterHealthStatus health) {
+    private DbaasAdapter getMockedDbaasAdapter(AdapterHealthStatus health, String name) {
         DbaasAdapter adapter1 = mock(DbaasAdapter.class);
         when(adapter1.getAdapterHealth()).thenReturn(health);
-        when(adapter1.identifier()).thenReturn(UUID.randomUUID().toString());
+        when(adapter1.identifier()).thenReturn(name);
         when(adapter1.type()).thenReturn("postgresql");
+        when(adapter1.toString()).thenReturn(name);
         return adapter1;
     }
 }

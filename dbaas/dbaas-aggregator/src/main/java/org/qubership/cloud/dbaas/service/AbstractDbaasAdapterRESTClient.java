@@ -364,4 +364,15 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
     }
 
     protected abstract Map<String, Boolean> sendSupportsRequest();
+
+    @Override
+    public String toString() {
+        return "AbstractDbaasAdapterRESTClient{" +
+                "adapterAddress='" + adapterAddress + '\'' +
+                ", type='" + type + '\'' +
+                ", identifier='" + identifier + '\'' +
+                ", disabled=" + disabled +
+                ", supportedVersion='" + supportedVersion + '\'' +
+                '}';
+    }
 }

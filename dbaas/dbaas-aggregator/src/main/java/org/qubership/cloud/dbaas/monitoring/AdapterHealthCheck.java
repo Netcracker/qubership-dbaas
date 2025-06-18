@@ -47,11 +47,11 @@ public class AdapterHealthCheck {
                 continue;
             }
             AdapterHealthStatus health = adapter.getAdapterHealth();
-            log.debug("check {} adapter", adapter.type());
+            log.debug("check {} adapter {}", adapter.type(), adapter.identifier());
             Supplier<Number> adapterStatusConverter = () -> convertAdapterStatus(health.getStatus());
             Gauge.builder("dbaas.adapter.health", adapterStatusConverter).tags("identifier", adapter.identifier(), "type", adapter.type()).register(meterRegistry);
             if (!HEALTH_CHECK_STATUS_UP.equals(health.getStatus())) {
-                log.warn("{} has problem. Status: {}", adapter.type(), health.getStatus());
+                log.warn("{} {} has problem. Status: {}", adapter.type(), adapter.identifier(), health.getStatus());
                 adapterHealthBuilder.problem()
                         .details("details " + adapter.identifier(), adapter.type() + " adapter has problem.");
             }
