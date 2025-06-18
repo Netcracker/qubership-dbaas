@@ -1,5 +1,5 @@
 FROM ghcr.io/netcracker/qubership/java-base:1.0.0
-MAINTAINER qubership
+LABEL maintainer="qubership"
 
 ARG BASE_PATH=.
 

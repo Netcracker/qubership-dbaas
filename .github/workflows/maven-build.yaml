@@ -1,3 +1,4 @@
+---
 name: Maven build
 
 on:
@@ -7,10 +8,11 @@ on:
 
 jobs:
   mvn:
-    uses: netcracker/qubership-core-infra/.github/workflows/maven-build-with-sonar.yaml@v1.0.5
+    uses: netcracker/qubership-core-infra/.github/workflows/maven-build-with-sonar.yaml@v1.0.6
     with:
       event-name: ${{ github.event_name }}
       actor: ${{ github.actor }}
       sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
+      pom-file-path: dbaas/pom.xml
     secrets:
       sonar-token: ${{ secrets.SONAR_TOKEN }}

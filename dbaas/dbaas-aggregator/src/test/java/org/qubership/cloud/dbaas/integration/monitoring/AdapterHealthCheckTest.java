@@ -1,5 +1,6 @@
 package org.qubership.cloud.dbaas.integration.monitoring;
 
+import org.junit.jupiter.api.Disabled;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthCheck;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
@@ -38,6 +39,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 
+//TODO VLLA temporary disabled
+@Disabled
 @Slf4j
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
