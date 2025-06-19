@@ -28,4 +28,3 @@ spec:
             - secretRef:
                 name: {{ .Values.SERVICE_NAME }}-env-variables
       restartPolicy: Never
-{{- end }}
