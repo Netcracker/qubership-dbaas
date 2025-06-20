@@ -1,0 +1,32 @@
+---
+name: Publish Docker Artifact On Push
+
+on:
+  push
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.metadata.outputs.result }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Metadata
+        id: metadata
+        uses: netcracker/qubership-workflow-hub/actions/metadata-action@v1.0.3
+        with:
+          configuration-path: '.github/metadata-action-config.yaml'
+          short-sha: '7'
+          show-report: 'true'
+
+  build-and-publish:
+    needs: metadata
+    uses: ./.github/workflows/docker-build-publish.yaml
+    with:
+      docker-tags: ${{ needs.metadata.outputs.tags }}
