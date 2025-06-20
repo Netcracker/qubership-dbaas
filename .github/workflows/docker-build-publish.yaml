@@ -1,0 +1,108 @@
+name: Build and Publish Docker Images
+
+on:
+  workflow_call:
+    inputs:
+      docker-tags:
+        required: true
+        type: string
+        description: 'Docker tags to apply to the images'
+      download-artifact:
+        required: false
+        type: boolean
+        default: true
+        description: 'Whether to download artifacts before building'
+      ref:
+        required: false
+        type: string
+        description: 'Git ref to checkout'
+      dry-run:
+        required: false
+        type: boolean
+        default: false
+        description: 'Whether to perform a dry run'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: 'temurin'
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+
+      - name: Build JAR artifact
+        run: mvn clean package -DskipTests
+        working-directory: dbaas
+        env:
+          MAVEN_USERNAME: ${{ secrets.maven-username }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbaas
+          path: |
+            dbaas/dbaas-aggregator/target/lib
+            dbaas/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Build and Publish Docker Image
+        uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
+        with:
+          ref: ${{ inputs.ref }}
+          download-artifact: ${{ inputs.download-artifact }}
+          download-artifact-path: ./artifacts
+          component: |
+            [
+              {
+                "name": "default", 
+                "file": "dbaas/Dockerfile", 
+                "context": "./artifacts/dbaas"
+              }
+            ]
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ inputs.docker-tags }}
+          dry-run: ${{ inputs.dry-run }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
+      
+      - name: Build and Publish Validation Docker Image
+        uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
+        with:
+          ref: ${{ inputs.ref }}
+          component: |
+            [
+              {
+                "name": "qubership-dbaas-validation-image", 
+                "file": "validation-image/Dockerfile", 
+                "context": "./validation-image"
+              }
+            ]
+          platforms: linux/amd64,linux/arm64              
+          tags: ${{ inputs.docker-tags }}
+          dry-run: ${{ inputs.dry-run }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
