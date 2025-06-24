@@ -2,7 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: maven
-    directory: /dbaas
+    directory: /
     schedule:
       interval: weekly
     groups:
