@@ -55,8 +55,6 @@ class AdapterHealthCheckTest {
     PhysicalDatabasesService physicalDatabasesService;
     @InjectSpy
     AdaptersAccessIndicator adaptersAccessIndicator;
-    @Inject
-    AdapterHealthCheck adapterHealthCheck;
 
     @BeforeEach
     public void cleanUp() {
@@ -75,6 +73,7 @@ class AdapterHealthCheckTest {
                 adapterRestClientV2, "identifier3", mock(AdapterActionTrackerClient.class));
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2, adapter3));
         when(adaptersAccessIndicator.getStatus()).thenReturn(new AtomicReference<>());
+        AdapterHealthCheck adapterHealthCheck = new AdapterHealthCheck(physicalDatabasesService, adaptersAccessIndicator,  meterRegistry);
         adapterHealthCheck.healthCheck();
 
         List<Meter> meters = meterRegistry.getMeters();
@@ -95,6 +94,8 @@ class AdapterHealthCheckTest {
         DbaasAdapter adapter1 = getMockedDbaasAdapter(HEALTH_STATUS_UP, "AllUp_1");
         DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_UP, "AllUp_2");
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2));
+
+        AdapterHealthCheck adapterHealthCheck = new AdapterHealthCheck(physicalDatabasesService, adaptersAccessIndicator,  meterRegistry);
         adapterHealthCheck.healthCheck();
 
         HealthCheckResponse health = adaptersAccessIndicator.getStatus().get();
@@ -108,6 +109,7 @@ class AdapterHealthCheckTest {
         DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM, "UpAndProblem_PROBLEM");
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2));
 
+        AdapterHealthCheck adapterHealthCheck = new AdapterHealthCheck(physicalDatabasesService, adaptersAccessIndicator,  meterRegistry);
         adapterHealthCheck.healthCheck();
 
         HealthCheckResponse health = adaptersAccessIndicator.getStatus().get();
@@ -122,6 +124,7 @@ class AdapterHealthCheckTest {
         DbaasAdapter adapter2 = getMockedDbaasAdapter(HEALTH_STATUS_PROBLEM, "ProblemAndProblem_PROBLEM_2");
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(adapter1, adapter2));
 
+        AdapterHealthCheck adapterHealthCheck = new AdapterHealthCheck(physicalDatabasesService, adaptersAccessIndicator,  meterRegistry);
         adapterHealthCheck.healthCheck();
 
         HealthCheckResponse health = adaptersAccessIndicator.getStatus().get();
