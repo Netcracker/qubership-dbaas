@@ -28,10 +28,10 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
-                <module>dbaas-aggregator-parent</module>
-                <module>encryption-services-cipher</module>
-                <module>dbaas-aggregator</module>
-                <module>dbaas-report-aggregate</module>
+                <module>dbaas/dbaas-aggregator-parent</module>
+                <module>dbaas/encryption-services-cipher</module>
+                <module>dbaas/dbaas-aggregator</module>
+                <module>dbaas/dbaas-report-aggregate</module>
             </modules>
         </profile>
     </profiles>
