@@ -51,7 +51,7 @@ jobs:
           delete-tag: true
 
   github-release:
-    needs: [ build-and-publish ]
+    needs: [build-and-publish]
     if: ${{ github.event.inputs.dry-run == 'false' }}
     uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v1.0.3
     with:

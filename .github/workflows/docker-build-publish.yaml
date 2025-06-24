@@ -77,8 +77,8 @@ jobs:
           component: |
             [
               {
-                "name": "default",
-                "file": "dbaas/Dockerfile",
+                "name": "default", 
+                "file": "dbaas/Dockerfile", 
                 "context": "./artifacts/dbaas"
               }
             ]
@@ -86,8 +86,8 @@ jobs:
           tags: ${{ inputs.docker-tags }}
           dry-run: ${{ inputs.dry-run }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
+      
       - name: Build and Publish Validation Docker Image
         uses: netcracker/qubership-workflow-hub/actions/docker-action@v1.0.3
         with:
@@ -95,13 +95,13 @@ jobs:
           component: |
             [
               {
-                "name": "qubership-dbaas-validation-image",
-                "file": "validation-image/Dockerfile",
+                "name": "qubership-dbaas-validation-image", 
+                "file": "validation-image/Dockerfile", 
                 "context": "./validation-image"
               }
             ]
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64              
           tags: ${{ inputs.docker-tags }}
           dry-run: ${{ inputs.dry-run }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

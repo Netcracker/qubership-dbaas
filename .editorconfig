@@ -33,6 +33,3 @@ profile = black
 
 [*.sh]
 indent_size = 4
-
-[{*.yaml,*.yml}]
-indent_size = 2
