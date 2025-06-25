@@ -749,10 +749,17 @@ public class DBBackupsService {
                         .toList()
             );
         }
-        NamespaceRestoration result = new NamespaceRestoration();
-        result.setId(restorationId);
+
+        NamespaceRestoration result;
+        Optional<NamespaceRestoration> existingRestoration = backup.getRestorations().stream().filter(r -> r.getId().equals(restorationId)).findAny();
+        if (existingRestoration.isPresent()) {
+            result = existingRestoration.get();
+        } else {
+            result = new NamespaceRestoration();
+            result.setId(restorationId);
+            addToBackup(backup, result);
+        }
         result.setStatus(Status.PROCEEDING);
-        addToBackup(backup, result);
 
         backup.setStatus(NamespaceBackup.Status.RESTORING);
         runInNewTransaction(() -> backupsDbaasRepository.save(backup)); // save backup restore proceeds

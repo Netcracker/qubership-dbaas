@@ -3,14 +3,18 @@ package org.qubership.cloud.dbaas.integration.stability;
 
 import com.google.common.base.Strings;
 import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.controller.BlueGreenControllerV1;
+import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import org.qubership.cloud.dbaas.dto.declarative.DatabaseDeclaration;
 import org.qubership.cloud.dbaas.dto.role.Role;
 import org.qubership.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import org.qubership.cloud.dbaas.entity.pg.*;
+import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import org.qubership.cloud.dbaas.entity.pg.backup.RestoreResult;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.repositories.dbaas.ActionTrackDbaasRepository;
+import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
@@ -83,21 +87,17 @@ class BlueGreenStabilityTest {
     @Inject
     BlueGreenService blueGreenService;
     @Inject
-    BlueGreenControllerV1 blueGreenControllerV1;
-    @Inject
     DatabasesRepository databasesRepository;
     @Inject
     DeclarativeDbaasCreationService declarativeDbaasCreationService;
-    @Inject
-    AdapterActionTrackerClient adapterActionTrackerClient;
     @InjectMock
     PhysicalDatabasesService physicalDatabasesService;
     @InjectMock
     BalancingRulesService balancingRulesService;
     @InjectMock
     AggregatedDatabaseAdministrationService aggregatedDatabaseAdministrationService;
-    @InjectMock
-    ActionTrackDbaasRepository actionTrackDbaasRepository;
+    @Inject
+    BackupsDbaasRepository backupsDbaasRepository;
 
     private static BgStateRequest.BGStateNamespace createBgStateNamespace(String state, String namespace, String version) {
         BgStateRequest.BGStateNamespace bgNamespace1 = new BgStateRequest.BGStateNamespace();
@@ -371,6 +371,75 @@ class BlueGreenStabilityTest {
         assertTrue(tasks.stream().anyMatch(task -> UpdateBgStateTask.class.getName().equals(task.getType())));
     }
 
+    @Test
+    void testRetryRestorationOfBackupWithStuckRestoringStatus() {
+        DbaasAdapterRESTClientV2 adapter = Mockito.mock(DbaasAdapterRESTClientV2.class);
+        when(adapter.identifier()).thenReturn("adapter-id");
+        when(adapter.isUsersSupported()).thenReturn(true);
+        when(physicalDatabasesService.getAdapterById(eq(adapter.identifier()))).thenReturn(adapter);
+
+        DatabaseDeclarativeConfig databaseDeclarativeConfig = createDatabaseDeclarativeConfig("ms1", NS_1);
+
+        DatabaseRegistry databaseRegistry = createDatabaseRegistry();
+        Database database = new Database();
+        database.setName("db1");
+        database.setResources(List.of());
+        database.setAdapterId(adapter.identifier());
+        database.setConnectionProperties(List.of());
+        database.setPhysicalDatabaseId("postgres");
+        database.setDatabaseRegistry(List.of(databaseRegistry));
+        databaseRegistry.setDatabase(database);
+        List<DatabaseRegistry> databaseRegistries = List.of(databaseRegistry);
+
+        DatabasesBackup databasesBackup = new DatabasesBackup();
+        databasesBackup.setDatabases(List.of("db1"));
+        databasesBackup.setAdapterId(adapter.identifier());
+
+        NamespaceRestoration namespaceRestoration = new NamespaceRestoration();
+        namespaceRestoration.setId(UUID.randomUUID());
+        RestoreResult restoreResult = new RestoreResult();
+        restoreResult.setStatus(Status.SUCCESS);
+        restoreResult.setDatabasesBackup(databasesBackup);
+        restoreResult.setChangedNameDb(Map.of("db1", "db2"));
+        namespaceRestoration.setRestoreResults(List.of(restoreResult));
+        when(adapter.restore(any(), any(), anyBoolean(), any(), any())).thenReturn(restoreResult);
+
+        NamespaceBackup namespaceBackup = new NamespaceBackup();
+        namespaceBackup.setId(UUID.randomUUID());
+        namespaceBackup.setBackups(List.of(databasesBackup));
+        namespaceBackup.setDatabaseRegistries(databaseRegistries);
+        ArrayList<NamespaceRestoration> restorations = new ArrayList<>();
+        restorations.add(namespaceRestoration);
+        namespaceBackup.setRestorations(restorations);
+
+        // Emulate case with backup and restore items stuck in wrong statuses
+        // In this case we should just retry the same restoration
+        namespaceBackup.setStatus(NamespaceBackup.Status.RESTORING);
+        namespaceRestoration.setStatus(Status.PROCEEDING);
+        backupsDbaasRepository.save(namespaceBackup);
+
+        Optional<Database> restoredDatabase = blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", null, namespaceRestoration.getId(), namespaceBackup.getId(), new HashMap<>());
+        assertEquals("db2",  restoredDatabase.get().getName());
+        namespaceBackup = backupsDbaasRepository.findById(namespaceBackup.getId()).get();
+        assertEquals(1, namespaceBackup.getRestorations().size());
+        NamespaceRestoration newRestoration = namespaceBackup.getRestorations().get(0);
+        assertEquals(namespaceRestoration.getId(), newRestoration.getId());
+        assertEquals(NamespaceBackup.Status.ACTIVE, namespaceBackup.getStatus());
+        assertEquals(Status.SUCCESS, newRestoration.getStatus());
+    }
+
+    private DatabaseDeclarativeConfig createDatabaseDeclarativeConfig(String microserviceName, String namespace) {
+        DatabaseDeclarativeConfig result = new DatabaseDeclarativeConfig();
+        result.setType("postgresql");
+
+        TreeMap<String, Object> classifier = new TreeMap<>();
+        classifier.put("scope", "service");
+        classifier.put("microserviceName", microserviceName);
+        classifier.put("namespace", namespace);
+        result.setNamespace(namespace);
+        result.setClassifier(classifier);
+        return result;
+    }
 
     @SneakyThrows
     @Test
@@ -503,6 +572,7 @@ class BlueGreenStabilityTest {
 
     private DatabaseRegistry createDatabaseRegistry(String namespace) {
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setId(UUID.randomUUID());
         databaseRegistry.setClassifier(getClassifier());
         databaseRegistry.setType(POSTGRESQL);
         databaseRegistry.setNamespace(namespace);

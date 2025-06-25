@@ -523,6 +523,7 @@ public class DBBackupsServiceTest {
     private NamespaceBackup getNamespaceBackupSample() {
         final NamespaceBackup namespaceBackup = new NamespaceBackup(UUID.randomUUID(), TEST_NAMESPACE, new ArrayList<>(), new ArrayList<>());
         namespaceBackup.setBackups(new ArrayList<>());
+        namespaceBackup.setRestorations(new ArrayList<>());
         return namespaceBackup;
     }
 
