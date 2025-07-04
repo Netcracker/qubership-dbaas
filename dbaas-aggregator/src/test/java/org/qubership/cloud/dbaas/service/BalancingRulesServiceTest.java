@@ -58,7 +58,7 @@ public class BalancingRulesServiceTest {
     private final String TEST_DB_ID = "test-db-id";
 
     @Test
-    public void testSaveNewRule() {
+    void testSaveNewRule() {
         final String ruleName = "test-rule";
         final RuleRegistrationRequest ruleRegistrationRequest = getRuleRegistrationRequestSample();
         final PerNamespaceRule perNamespaceRule = getPerNamespaceRuleSample();
@@ -73,7 +73,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testSaveUpdateMode() {
+    void testSaveUpdateMode() {
         final String ruleName = "test-rule";
         final RuleRegistrationRequest ruleRegistrationRequest = getRuleRegistrationRequestSample();
         final PerNamespaceRule perNamespaceRule = getPerNamespaceRuleSample();
@@ -87,7 +87,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testRulesRegistrationOrdering() {
+    void testRulesRegistrationOrdering() {
         final String ruleName = "test-rule-2";
         final PerNamespaceRule existingRule = new PerNamespaceRule("test-rule", 1L, TEST_DB_TYPE, TEST_NAMESPACE, "test-phybid", RuleType.NAMESPACE);
         when(balancingRulesDbaasRepository.findByNamespace(TEST_NAMESPACE)).thenReturn(Collections.singletonList(existingRule));
@@ -106,7 +106,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testRulesApplicationOrder() {
+    void testRulesApplicationOrder() {
         final String phyDbId1 = "test-phybid-1";
         final String phyDbId2 = "test-phybid-2";
         final PerNamespaceRule perNamespaceRule1 = new PerNamespaceRule(
@@ -138,7 +138,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testSaveMicroserviceRule() {
+    void testSaveMicroserviceRule() {
         final List<OnMicroserviceRuleRequest> ruleRegistrationRequest = getRuleRegistrationPerMicroserviceRequestSample();
         final PerMicroserviceRule perMicroserviceRule = getPerMicroserviceRuleSample();
 
@@ -162,7 +162,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testUpdateMicroserviceRule() {
+    void testUpdateMicroserviceRule() {
         final List<OnMicroserviceRuleRequest> ruleRegistrationRequest = getRuleRegistrationPerMicroserviceRequestSample();
         final PerMicroserviceRule perMicroserviceRule = getPerMicroserviceRuleSample();
         perMicroserviceRule.getRules().get(0).setLabel("test=some2");
@@ -185,7 +185,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testAddRuleOnMicroservice() {
+    void testAddRuleOnMicroservice() {
         when(balancingRulesDbaasRepository.findPerMicroserviceByNamespaceWithMaxGeneration(TEST_NAMESPACE)).
                 thenReturn(Collections.singletonList(getPerMicroserviceRuleSample()));
         when(balancingRulesDbaasRepository.saveAll(any())).thenReturn(Collections.singletonList(getPerMicroserviceRuleSample()));
@@ -210,7 +210,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testNotFoundLabel() {
+    void testNotFoundLabel() {
         when(balancingRulesDbaasRepository.findPerMicroserviceByNamespaceWithMaxGeneration(TEST_NAMESPACE)).
                 thenReturn(Collections.singletonList(getPerMicroserviceRuleSample()));
         when(physicalDatabasesService.getPhysicalDatabaseContainsLabel("test", "some", TEST_DB_TYPE)).
@@ -223,7 +223,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testMoreThanOneDatabaseWithLabel() {
+    void testMoreThanOneDatabaseWithLabel() {
         when(balancingRulesDbaasRepository.findPerMicroserviceByNamespaceWithMaxGeneration(TEST_NAMESPACE)).
                 thenReturn(Collections.singletonList(getPerMicroserviceRuleSample()));
         when(physicalDatabasesService.getPhysicalDatabaseContainsLabel("test", "some", TEST_DB_TYPE)).
@@ -236,7 +236,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testAddRuleOnMicroserviceNoConflict() {
+    void testAddRuleOnMicroserviceNoConflict() {
         when(physicalDatabasesService.getPhysicalDatabaseContainsLabel("test", "some", TEST_DB_TYPE)).
                 thenReturn(Collections.singletonList(getPhysicalDatabaseSample()));
         when(balancingRulesDbaasRepository.saveAll(anyList())).then(returnsFirstArg());
@@ -251,7 +251,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testAddRuleOnMicroserviceNewGeneration() {
+    void testAddRuleOnMicroserviceNewGeneration() {
         String TEST_SECOND_MICROSERVICE = TEST_MICROSERVICE + "second";
         String TEST_DB_TYPE_SECOND = TEST_DB_TYPE + "second";
         when(physicalDatabasesService.getPhysicalDatabaseContainsLabel("test", "some", TEST_DB_TYPE)).
@@ -274,7 +274,7 @@ public class BalancingRulesServiceTest {
 
 
     @Test
-    public void testAddRuleOnMicroserviceNoConflictUpdate() {
+    void testAddRuleOnMicroserviceNoConflictUpdate() {
         PerMicroserviceRule rule = getPerMicroserviceRuleSample();
         rule.setRules(Collections.singletonList(new RuleOnMicroservice("diff")));
 
@@ -294,7 +294,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testAddRuleOnMicroserviceBadRequest() {
+    void testAddRuleOnMicroserviceBadRequest() {
         PerMicroserviceRule rule = getPerMicroserviceRuleSample();
         rule.setRules(Collections.singletonList(new RuleOnMicroservice("diff")));
 
@@ -323,7 +323,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testApplyMicroserviceBalancingNullRule() {
+    void testApplyMicroserviceBalancingNullRule() {
         when(balancingRulesDbaasRepository.findPerMicroserviceByNamespaceAndMicroserviceAndTypeWithMaxGeneration(TEST_NAMESPACE, TEST_MICROSERVICE, TEST_DB_TYPE))
                 .thenReturn(Optional.empty());
 
@@ -331,7 +331,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testSerializeDeserializeRuleOnMicroservice() throws JsonProcessingException {
+    void testSerializeDeserializeRuleOnMicroservice() throws JsonProcessingException {
         PerMicroserviceRule perMicroserviceRule = getPerMicroserviceRuleSample();
         ListRuleOnMicroserviceConverter converter = new ListRuleOnMicroserviceConverter();
         List<RuleOnMicroservice> ruleOnMicroservices = perMicroserviceRule.getRules();
@@ -345,7 +345,7 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
-    public void testApplyMicroserviceBalancingRule() {
+    void testApplyMicroserviceBalancingRule() {
         PhysicalDatabase expectedDatabase = getPhysicalDatabaseSample();
         when(balancingRulesDbaasRepository.findPerMicroserviceByNamespaceAndMicroserviceAndTypeWithMaxGeneration(TEST_NAMESPACE, TEST_MICROSERVICE, TEST_DB_TYPE))
                 .thenReturn(Optional.of(getPerMicroserviceRuleSample()));

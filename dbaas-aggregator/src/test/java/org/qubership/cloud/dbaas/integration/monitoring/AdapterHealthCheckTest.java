@@ -20,7 +20,6 @@ import io.quarkus.test.junit.mockito.InjectSpy;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
-import org.junit.Assert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,10 +29,9 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_PROBLEM;
 import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -60,7 +58,7 @@ class AdapterHealthCheckTest {
     AdapterHealthCheck adapterHealthCheck;
 
     @BeforeEach
-    public void cleanUp() {
+    void cleanUp() {
         this.meterRegistry.clear();
     }
 
@@ -99,8 +97,8 @@ class AdapterHealthCheckTest {
         adapterHealthCheck.healthCheck();
 
         HealthCheckResponse health = adaptersAccessIndicator.getStatus().get();
-        Assert.assertEquals(HealthStatus.UP, health.getStatus());
-        Assert.assertEquals(false, health.getDetails() != null);
+        assertEquals(HealthStatus.UP, health.getStatus());
+        assertNotNull(health.getDetails());
     }
 
     @Test
@@ -112,9 +110,9 @@ class AdapterHealthCheckTest {
         adapterHealthCheck.healthCheck();
 
         HealthCheckResponse health = adaptersAccessIndicator.getStatus().get();
-        Assert.assertEquals(HealthStatus.PROBLEM, health.getStatus());
+        assertEquals(HealthStatus.PROBLEM, health.getStatus());
         log.info("data {}", health.getDetails());
-        Assert.assertEquals(1, health.getDetails().size());
+        assertEquals(1, health.getDetails().size());
     }
 
     @Test
@@ -126,9 +124,9 @@ class AdapterHealthCheckTest {
         adapterHealthCheck.healthCheck();
 
         HealthCheckResponse health = adaptersAccessIndicator.getStatus().get();
-        Assert.assertEquals(HealthStatus.PROBLEM, health.getStatus());
+        assertEquals(HealthStatus.PROBLEM, health.getStatus());
         log.info("data {}", health.getDetails());
-        Assert.assertEquals(2, health.getDetails().size());
+        assertEquals(2, health.getDetails().size());
     }
 
     @NotNull

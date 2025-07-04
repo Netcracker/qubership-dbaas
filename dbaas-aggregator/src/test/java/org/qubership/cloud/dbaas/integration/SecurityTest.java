@@ -78,7 +78,7 @@ class SecurityTest {
     PasswordEncryption passwordEncryption;
 
     @BeforeEach
-    public void prepareMock() {
+    void prepareMock() {
         testDbaasAdapter = mock(DbaasAdapter.class);
         when(dbaasAdapterRESTClientFactory.createDbaasAdapterClientV2(any(), any(), any(), any(), any(), any(), any())).thenReturn(testDbaasAdapter);
         CreatedDatabaseV3 testDatabase = new CreatedDatabaseV3();

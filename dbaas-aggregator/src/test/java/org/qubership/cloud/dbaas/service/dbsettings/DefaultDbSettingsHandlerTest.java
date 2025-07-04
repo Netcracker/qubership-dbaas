@@ -34,7 +34,7 @@ class DefaultDbSettingsHandlerTest {
     private DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         physicalDatabasesService = Mockito.mock(PhysicalDatabasesService.class);
         logicalDbDbaasRepository = Mockito.mock(LogicalDbDbaasRepository.class);
         databaseRegistryDbaasRepository = Mockito.mock(DatabaseRegistryDbaasRepository.class);

@@ -31,13 +31,13 @@ public class AdapterSupportsTest {
     private DbaasAdapterRESTClientV2 dbaasAdapterRESTClient;
 
     @BeforeEach
-    public void init() {
+    void init() {
         dbaasAdapterRESTClient = new DbaasAdapterRESTClientV2("", "", restClient, "", tracker);
         adapterSupports = new AdapterSupports(dbaasAdapterRESTClient, "v2");
     }
 
     @Test
-    public void testSettings() {
+    void testSettings() {
 
         final String settings = "settings";
         final Map<String, Boolean> responseBody = new HashMap<>();
@@ -53,7 +53,7 @@ public class AdapterSupportsTest {
     }
 
     @Test
-    public void testUsers() {
+    void testUsers() {
         final String users = "users";
         final Map<String, Boolean> responseBody = new HashMap<>();
         responseBody.put(users, false);
@@ -69,7 +69,7 @@ public class AdapterSupportsTest {
     }
 
     @Test
-    public void testDescribeDatabases() {
+    void testDescribeDatabases() {
         final String describeDatabases = "describeDatabases";
         final Map<String, Boolean> responseBody = new HashMap<>();
         responseBody.put(describeDatabases, true);
@@ -85,7 +85,7 @@ public class AdapterSupportsTest {
     }
 
     @Test
-    public void testSettingsWith404() {
+    void testSettingsWith404() {
         when(restClient.supports(anyString())).thenThrow(new NotFoundException());
 
         boolean actualValue = adapterSupports.settings();
@@ -93,14 +93,14 @@ public class AdapterSupportsTest {
     }
 
     @Test
-    public void testContract_exact() {
+    void testContract_exact() {
         ApiVersion apiVersion = new ApiVersion(List.of(new ApiVersion.Spec("/api", 1, 2, List.of(1))));
         adapterSupports = new AdapterSupports(dbaasAdapterRESTClient, "v2", apiVersion);
         assertTrue(adapterSupports.contract(1, 2));
     }
 
     @Test
-    public void testContract_minorBelow() {
+    void testContract_minorBelow() {
 
         ApiVersion apiVersion = new ApiVersion(List.of(new ApiVersion.Spec("/api", 1, 3, List.of(1))));
         adapterSupports = new AdapterSupports(dbaasAdapterRESTClient, "v2", apiVersion);
@@ -108,28 +108,28 @@ public class AdapterSupportsTest {
     }
 
     @Test
-    public void testContract_minorAbove() {
+    void testContract_minorAbove() {
         ApiVersion apiVersion = new ApiVersion(List.of(new ApiVersion.Spec("/api", 1, 1, List.of(1))));
         adapterSupports = new AdapterSupports(dbaasAdapterRESTClient, "v2", apiVersion);
         assertFalse(adapterSupports.contract(1, 3));
     }
 
     @Test
-    public void testContract_lowerMajorNotSupported() {
+    void testContract_lowerMajorNotSupported() {
         ApiVersion apiVersion = new ApiVersion(List.of(new ApiVersion.Spec("/api", 3, 0, List.of(3))));
         adapterSupports = new AdapterSupports(dbaasAdapterRESTClient, "v2", apiVersion);
         assertFalse(adapterSupports.contract(2, 1));
     }
 
     @Test
-    public void testContract_lowerMajorSupported() {
+    void testContract_lowerMajorSupported() {
         ApiVersion apiVersion = new ApiVersion(List.of(new ApiVersion.Spec("/api", 3, 0, List.of(3, 2))));
         adapterSupports = new AdapterSupports(dbaasAdapterRESTClient, "v2", apiVersion);
         assertTrue(adapterSupports.contract(2, 1));
     }
 
     @Test
-    public void testContract_majorAbove() {
+    void testContract_majorAbove() {
         ApiVersion apiVersion = new ApiVersion(List.of(new ApiVersion.Spec("/api", 1, 2, List.of(1))));
         adapterSupports = new AdapterSupports(dbaasAdapterRESTClient, "v2", apiVersion);
         assertFalse(adapterSupports.contract(2, 1));

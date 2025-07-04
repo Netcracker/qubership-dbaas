@@ -1,5 +1,8 @@
 package org.qubership.cloud.encryption.key;
 
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.qubership.cloud.encryption.cipher.exception.BadKeyPasswordException;
 import org.qubership.cloud.encryption.config.ConfigurationParser;
 import org.qubership.cloud.encryption.config.keystore.type.KeyConfig;
@@ -9,27 +12,25 @@ import org.qubership.cloud.encryption.config.xml.DefaultConfigurationCryptoProvi
 import org.qubership.cloud.encryption.config.xml.XmlConfigurationSerializer;
 import org.qubership.cloud.encryption.key.exception.IllegalKeystoreConfigurationException;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.util.Collections;
 import java.util.List;
 
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
+
 
 @SuppressWarnings("unused")
 public class LocalKeyStoreTest {
     private ConfigurationParser parser;
-    private TemporaryFolder tmp;
 
     private static final String keystoreType = "JCEKS";
     private static final String ksPass = "someKsPassword";
@@ -37,30 +38,24 @@ public class LocalKeyStoreTest {
     private static final String keyPassword = "myKeyPassword";
     private static final String algorithm = "AES";
 
-    @Before
-    public void setUp() throws Exception {
+    @TempDir
+    private Path tmp;
+
+    @BeforeEach
+    void setUp() throws Exception {
         SecretKey secretKey = KeyGenerator.getInstance("AES").generateKey();
         parser = new XmlConfigurationSerializer(new DefaultConfigurationCryptoProvider(secretKey));
-
-        tmp = new TemporaryFolder();
-        tmp.create();
     }
 
-    @After
-    public void tearDown() throws Exception {
-        tmp.delete();
-        tmp = null;
-    }
-
-    @Test(expected = NullPointerException.class)
-    public void testNullConfigurationNotAvailable() throws Exception {
-        LocalKeyStore keyStore = new LocalKeyStore(null);
+    @Test
+    void testNullConfigurationNotAvailable() throws Exception {
+        assertThrows(NullPointerException.class, () -> new LocalKeyStore(null));
         fail("it restrict contract");
     }
 
     @Test
-    public void testKeyAvailableFromKeystore() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    void testKeyAvailableFromKeystore() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -70,7 +65,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(new char[0]));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -86,8 +81,8 @@ public class LocalKeyStoreTest {
     }
 
     @Test
-    public void testNullAsResultFindKeyByAliasWhenTheyAbsetnInKeystore() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    void testNullAsResultFindKeyByAliasWhenTheyAbsetnInKeystore() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -108,8 +103,8 @@ public class LocalKeyStoreTest {
     }
 
     @Test
-    public void testFindKeyByAliasAndInterface() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    void testFindKeyByAliasAndInterface() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -134,13 +129,12 @@ public class LocalKeyStoreTest {
                 findKey, Matchers.nullValue());
     }
 
-    @Test(expected = IllegalKeystoreConfigurationException.class)
-    public void testThrowReadableExceptionIfConfigurationIllegal() throws Exception {
+    @Test
+    void testThrowReadableExceptionIfConfigurationIllegal() throws Exception {
         LocalKeystoreConfig config = new ConfigurationBuildersFactory().getLocalKeystoreConfigBuilder("MyBadKs")
                 .setLocation("/u02/ks.ks").setPassword("123").setKeystoreType("NotExistsTypes").build();
 
-
-        LocalKeyStore localKeystore = new LocalKeyStore(config);
+        assertThrows(IllegalKeystoreConfigurationException.class, () -> new LocalKeyStore(config));
 
         fail("Illegal configuration shoul lead to correspond exception, if we pars configuration in asynchron "
                 + "we can get runtime exception that will be difficult detect");
@@ -148,8 +142,8 @@ public class LocalKeyStoreTest {
     }
 
     @Test
-    public void testDeprecatedKeyStore() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    void testDeprecatedKeyStore() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -177,8 +171,8 @@ public class LocalKeyStoreTest {
     }
 
     @Test
-    public void testKeystoreWithProtectedKey() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    void testKeystoreWithProtectedKey() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -209,8 +203,8 @@ public class LocalKeyStoreTest {
     }
 
     @Test
-    public void testKeyDeprecatedImplicitly() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    void testKeyDeprecatedImplicitly() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -242,9 +236,9 @@ public class LocalKeyStoreTest {
         assertThat("Key should be deprecated because if was set implicitly", findKey.isDeprecated(), Matchers.is(true));
     }
 
-    @Test(expected = BadKeyPasswordException.class)
-    public void testThrowReadableExceptionIfKeyProtectedButHasWrongPassword() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    @Test
+    void testThrowReadableExceptionIfKeyProtectedButHasWrongPassword() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -254,7 +248,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(keyPassword.toCharArray()));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -268,17 +262,15 @@ public class LocalKeyStoreTest {
 
         LocalKeyStore localKeyStore = new LocalKeyStore(config);
 
-        AliasedKey findKey = localKeyStore.getAliasedKey(keyAlias);
-
+        assertThrows(BadKeyPasswordException.class, () -> localKeyStore.getAliasedKey(keyAlias));
 
         fail("Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
                 + "we can get runtime exception that will be difficult detect");
-
     }
 
-    @Test(expected = BadKeyPasswordException.class)
-    public void testThrowReadableExceptionIfKeyProtectedButPasswordNotSpecified() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    @Test
+    void testThrowReadableExceptionIfKeyProtectedButPasswordNotSpecified() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -288,7 +280,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(keyPassword.toCharArray()));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -301,17 +293,15 @@ public class LocalKeyStoreTest {
 
         LocalKeyStore localKeyStore = new LocalKeyStore(config);
 
-        AliasedKey findKey = localKeyStore.getAliasedKey(keyAlias);
-
+        assertThrows(BadKeyPasswordException.class, () -> localKeyStore.getAliasedKey(keyAlias));
 
         fail("Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
                 + "we can get runtime exception that will be difficult detect");
-
     }
 
-    @Test(expected = BadKeyPasswordException.class)
-    public void testThrowReadableExceptionIfKeyNotProtectedButHasPassword() throws Exception {
-        final String location = tmp.newFile("test.ks").getAbsolutePath();
+    @Test
+    void testThrowReadableExceptionIfKeyNotProtectedButHasPassword() throws Exception {
+        final String location = tmp.resolve("test.ks").toAbsolutePath().toString();
 
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
@@ -321,7 +311,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(new char[0]));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -335,12 +325,10 @@ public class LocalKeyStoreTest {
 
         LocalKeyStore localKeyStore = new LocalKeyStore(config);
 
-        AliasedKey findKey = localKeyStore.getAliasedKey(keyAlias);
-
+        assertThrows(BadKeyPasswordException.class, () -> localKeyStore.getAliasedKey(keyAlias));
 
         fail("Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
                 + "we can get runtime exception that will be difficult detect");
-
     }
 }
 

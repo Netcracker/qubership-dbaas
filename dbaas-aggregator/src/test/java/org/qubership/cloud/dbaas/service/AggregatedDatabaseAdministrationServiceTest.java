@@ -91,7 +91,7 @@ public class AggregatedDatabaseAdministrationServiceTest {
     }
 
     @BeforeEach
-    public void setUp() throws Exception {
+    void setUp() throws Exception {
         Mockito.reset();
         createRequest = new DatabaseCreateRequestV3();
         createRequest.setType("postgresql");
@@ -102,7 +102,7 @@ public class AggregatedDatabaseAdministrationServiceTest {
     }
 
     @Test
-    public void whenCreateDatabaseFromRequest_catchWebApplicationException() {
+    void whenCreateDatabaseFromRequest_catchWebApplicationException() {
         when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("error", new PSQLException("exception", PSQLState.UNIQUE_VIOLATION), "constraint_name"));
         when(databaseRegistry.getDatabase()).thenReturn(database);
         when(dBaaService.findDatabaseByClassifierAndType(eq(createRequest.getClassifier()), eq(createRequest.getType()), eq(true))).thenReturn(databaseRegistry);
@@ -119,7 +119,7 @@ public class AggregatedDatabaseAdministrationServiceTest {
     }
 
     @Test
-    public void whenCreateDatabaseFromRequest_WithBlueGreenDomain() {
+    void whenCreateDatabaseFromRequest_WithBlueGreenDomain() {
         when(dBaaService.getConnectionPropertiesService()).thenReturn(connectionPropertiesService);
         when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("error", new PSQLException("exception", PSQLState.UNIQUE_VIOLATION), "constraint_name"));
         when(database.getDbState()).thenReturn(new DbState(DbState.DatabaseStateStatus.CREATED));
@@ -144,7 +144,7 @@ public class AggregatedDatabaseAdministrationServiceTest {
     }
 
     @Test
-    public void whenCreateDatabaseFromRequest_WithBlueGreenDomain_ShareTransactional() {
+    void whenCreateDatabaseFromRequest_WithBlueGreenDomain_ShareTransactional() {
         when(dBaaService.getConnectionPropertiesService()).thenReturn(connectionPropertiesService);
         AtomicInteger saveCount = new AtomicInteger(0);
         when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenAnswer(invocation -> {
@@ -186,7 +186,7 @@ public class AggregatedDatabaseAdministrationServiceTest {
     }
 
     @Test
-    public void testCorrectDatabaseCreationWhenDbStateIsCreated() {
+    void testCorrectDatabaseCreationWhenDbStateIsCreated() {
         when(dBaaService.getConnectionPropertiesService()).thenReturn(connectionPropertiesService);
         when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("error", new PSQLException("exception", PSQLState.UNIQUE_VIOLATION), "constraint_name"));
         when(database.getDbState()).thenReturn(new DbState(DbState.DatabaseStateStatus.CREATED));
@@ -203,7 +203,7 @@ public class AggregatedDatabaseAdministrationServiceTest {
     }
 
     @Test
-    public void testReturnsAcceptedWhenDbStateIsProcessing() {
+    void testReturnsAcceptedWhenDbStateIsProcessing() {
         when(dBaaService.getConnectionPropertiesService()).thenReturn(connectionPropertiesService);
         when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("error", new PSQLException("exception", PSQLState.UNIQUE_VIOLATION), "constraint_name"));
         when(database.getDbState()).thenReturn(new DbState(DbState.DatabaseStateStatus.PROCESSING));

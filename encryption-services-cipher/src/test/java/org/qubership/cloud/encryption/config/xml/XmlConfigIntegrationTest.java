@@ -2,6 +2,12 @@ package org.qubership.cloud.encryption.config.xml;
 
 import com.google.common.collect.Iterables;
 import com.google.common.io.Files;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.io.IOUtils;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.qubership.cloud.encryption.config.EncryptionConfiguration;
 import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
 import org.qubership.cloud.encryption.config.exception.IllegalConfiguration;
@@ -14,24 +20,19 @@ import org.qubership.cloud.encryption.config.xml.matchers.KeyStoreConfigMatchers
 import org.qubership.cloud.encryption.config.xml.matchers.KeyStoreSubsystemConfigMatchers;
 import org.qubership.cloud.encryption.config.xml.pojo.conf.EncryptionConfig;
 import org.qubership.cloud.encryption.config.xml.pojo.keystore.KeyStoreSubsystemXmlConf;
-import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.io.IOUtils;
-import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("unchecked")
 public class XmlConfigIntegrationTest {
@@ -40,37 +41,35 @@ public class XmlConfigIntegrationTest {
 
     private XmlConfigurationSerializer xmlConfigurationAdapter;
 
-    private TemporaryFolder tmp;
+    @TempDir
+    private Path tmp;
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    void setUp() throws Exception {
         xmlConfigurationAdapter =
                 new XmlConfigurationSerializer(new DefaultConfigurationCryptoProvider(DEFAULT_SECRET_KEY));
-        tmp = new TemporaryFolder();
-        tmp.create();
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        tmp.delete();
-        tmp = null;
-    }
-
-    // todo fix
-    @Test(expected = RuntimeException.class)
-    public void testNotAvailableLoadConfigurationFromNotExistsFile() throws Exception {
-        xmlConfigurationAdapter.loadConfiguration(new File("notexistsfile"));
-        fail("We should restrict loading config from not exists file");
-    }
-
-    @Test(expected = NullPointerException.class)
-    public void testFileToLoadConfigCanNotBeNull() throws Exception {
-        xmlConfigurationAdapter.loadConfiguration((File) null);
-        fail("Null file that should contain configuration restrict contract");
     }
 
     @Test
-    public void testEncryptionSubsystemLoadsCorrect() throws Exception {
+    void testNotAvailableLoadConfigurationFromNotExistsFile() {
+        assertThrows(
+                RuntimeException.class,
+                () -> xmlConfigurationAdapter.loadConfiguration(new File("notexistsfile")),
+                "We should restrict loading config from not exists file"
+        );
+    }
+
+    @Test
+    void testFileToLoadConfigCanNotBeNull() {
+        assertThrows(
+                NullPointerException.class,
+                () -> xmlConfigurationAdapter.loadConfiguration((File) null),
+                "Null file that should contain configuration restrict contract"
+        );
+    }
+
+    @Test
+    void testEncryptionSubsystemLoadsCorrect() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -79,7 +78,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testEncryptionSubSystem_parsAlgorithm() throws Exception {
+    void testEncryptionSubSystem_parsAlgorithm() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -89,7 +88,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testEncryptionSubSystem_parsKeyAlias() throws Exception {
+    void testEncryptionSubSystem_parsKeyAlias() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -100,7 +99,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testEncryptionSubSystem_parsKeyStoreName() throws Exception {
+    void testEncryptionSubSystem_parsKeyStoreName() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -113,8 +112,8 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testEncryptionSubSystem_2waySerialize_checkAlgorithm() throws Exception {
-        File file = tmp.newFile();
+    void testEncryptionSubSystem_2waySerialize_checkAlgorithm() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         final String waitAlgorithmName = "DES";
 
@@ -133,8 +132,9 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testEncryptionSubSystem_2waySerialize_checkKeyAlias() throws Exception {
-        File file = tmp.newFile();
+    void testEncryptionSubSystem_2waySerialize_checkKeyAlias() throws Exception {
+        File file = tmp.resolve("test").toFile();
+
 
         final String waitValue = "myKey";
 
@@ -152,8 +152,8 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testEncryptionSubSystem_2waySerialize_checkKeystore() throws Exception {
-        File file = tmp.newFile();
+    void testEncryptionSubSystem_2waySerialize_checkKeystore() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         final String waitValue = "myKeyStore";
 
@@ -171,7 +171,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStoreLoadsCorrect() throws Exception {
+    void testKeyStoreLoadsCorrect() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
         System.out.println(encryptionConfiguration);
@@ -180,7 +180,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStore_defaultKeystoreExists() throws Exception {
+    void testKeyStore_defaultKeystoreExists() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -191,7 +191,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStore_defaultKeystoreParsCorrect() throws Exception {
+    void testKeyStore_defaultKeystoreParsCorrect() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -202,7 +202,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStore_whenDefaultKeystoreNotSpecifyExplicitUseFirstKeyStore() throws Exception {
+    void testKeyStore_whenDefaultKeystoreNotSpecifyExplicitUseFirstKeyStore() throws Exception {
         File cfg = getResource(
                 "/org/qubership/security/encryption/config/xml/filled-keystore-subsystem-without-default-keystore.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
@@ -215,7 +215,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStoreFilled_listKeyStoreConfigNotEmpty() throws Exception {
+    void testKeyStoreFilled_listKeyStoreConfigNotEmpty() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -227,7 +227,7 @@ public class XmlConfigIntegrationTest {
 
 
     @Test
-    public void testLocalKeyStoreConfig_parsePathCorrect() throws Exception {
+    void testLocalKeyStoreConfig_parsePathCorrect() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -242,7 +242,7 @@ public class XmlConfigIntegrationTest {
 
 
     @Test
-    public void testLocalKeyStoreConfig_parseTypeCorrect() throws Exception {
+    void testLocalKeyStoreConfig_parseTypeCorrect() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -255,7 +255,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testLocalKeyStoreConfig_parsePasswordCorrect() throws Exception {
+    void testLocalKeyStoreConfig_parsePasswordCorrect() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -268,7 +268,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testLocalKeyStoreConfig_parseIsDeprecatedCorrect() throws Exception {
+    void testLocalKeyStoreConfig_parseIsDeprecatedCorrect() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -281,7 +281,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testLocalKeyStoreConfig_keysNotEmpty() throws Exception {
+    void testLocalKeyStoreConfig_keysNotEmpty() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -294,7 +294,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testLocalKeyStoreConfig_keyAliasParsedCorrectly() throws Exception {
+    void testLocalKeyStoreConfig_keyAliasParsedCorrectly() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -304,11 +304,11 @@ public class XmlConfigIntegrationTest {
         LocalKeystoreConfig keyStoreWithKeys = (LocalKeystoreConfig) Iterables.get(keyStores, 3);
         KeyConfig keyConfig = Iterables.get(keyStoreWithKeys.getKeys(), 0);
 
-        assertEquals("key1", keyConfig.getAlias() );
+        assertEquals("key1", keyConfig.getAlias());
     }
 
     @Test
-    public void testLocalKeyStoreConfig_keyIsNotDeprecatedByDefault() throws Exception {
+    void testLocalKeyStoreConfig_keyIsNotDeprecatedByDefault() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -322,7 +322,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testLocalKeyStoreConfig_keyDeprecatedParsedCorrectly() throws Exception {
+    void testLocalKeyStoreConfig_keyDeprecatedParsedCorrectly() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -336,7 +336,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testLocalKeyStoreConfig_keyPasswordParsedCorrectly() throws Exception {
+    void testLocalKeyStoreConfig_keyPasswordParsedCorrectly() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -346,11 +346,11 @@ public class XmlConfigIntegrationTest {
         LocalKeystoreConfig keyStoreWithKeys = (LocalKeystoreConfig) Iterables.get(keyStores, 3);
         KeyConfig keyConfig = Iterables.get(keyStoreWithKeys.getKeys(), 0);
 
-        assertEquals(keyConfig.getPassword(), "123456");
+        assertEquals("123456", keyConfig.getPassword());
     }
 
     @Test
-    public void testLocalKeyStoreConfig_keyEmptyPasswordParsedCorrectly() throws Exception {
+    void testLocalKeyStoreConfig_keyEmptyPasswordParsedCorrectly() throws Exception {
         File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
@@ -364,8 +364,8 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStoreSubSystem_2waySerialize_checkIdentity() throws Exception {
-        File file = tmp.newFile();
+    void testKeyStoreSubSystem_2waySerialize_checkIdentity() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         final String waitIdentity = "keyst";
 
@@ -392,13 +392,12 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStoreSubSystem_2waySerialize_checkLocation() throws Exception {
-        File file = tmp.newFile();
+    void testKeyStoreSubSystem_2waySerialize_checkLocation() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         final String location = "./tmp.ks";
 
-        List<KeystoreConfig> keystores = Arrays.<KeystoreConfig>asList(
-
+        List<KeystoreConfig> keystores = List.of(
                 new ConfigurationBuildersFactory().getLocalKeystoreConfigBuilder("KS-1").setLocation(location)
                         .setKeystoreType("jcs")
                         .setPassword(
@@ -422,8 +421,8 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStoreSubSystem_2waySerialize_checkKeystoreType() throws Exception {
-        File file = tmp.newFile();
+    void testKeyStoreSubSystem_2waySerialize_checkKeystoreType() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         final String type = "myksType";
 
@@ -449,13 +448,12 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStoreSubSystem_2waySerialize_checkKeystorePassword() throws Exception {
-        File file = tmp.newFile();
+    void testKeyStoreSubSystem_2waySerialize_checkKeystorePassword() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         final String password = "superpassword";
 
-        List<KeystoreConfig> keystores = Arrays.<KeystoreConfig>asList(
-
+        List<KeystoreConfig> keystores = List.of(
                 new ConfigurationBuildersFactory().getLocalKeystoreConfigBuilder("KS-1").setLocation("/u02/some.ks")
                         .setKeystoreType("jks").setPassword(password).build());
 
@@ -476,8 +474,8 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testKeyStoreSubSystem_2waySerialize_setDefaultKeystore() throws Exception {
-        File file = tmp.newFile();
+    void testKeyStoreSubSystem_2waySerialize_setDefaultKeystore() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         final String password = "superpassword";
 
@@ -502,37 +500,37 @@ public class XmlConfigIntegrationTest {
                 KeyStoreConfigMatchers.keyStoreIdentity(equalTo(secondKS.getKeystoreIdentifier()))));
     }
 
-    @Test(expected = IllegalConfiguration.class)
-    public void testBeforeParseXmlTheyShouldBeValidateByXSD() throws Exception {
+    @Test
+    void testBeforeParseXmlTheyShouldBeValidateByXSD() throws Exception {
         File cfg =
                 getResource("/org/qubership/security/encryption/config/xml/configuration-without-required-node.xml");
 
-        EncryptionConfiguration loadedCfg = xmlConfigurationAdapter.loadConfiguration(cfg);
-
-        fail("Not correct filled configuration should be ignore, and provider that allow load it should fail with correspond exception, "
-                + "because not correct configure security can lead to undefined server state. XSD it contract, that should be observed. "
-                + "Was load result" + loadedCfg);
-    }
-
-    @Test(expected = IllegalConfiguration.class)
-    public void testBeforeStoreConfigurationShouldBeProcessXSDValidation() throws Exception {
-        final File file = tmp.newFile();
-        EncryptionConfig config = new EncryptionConfig();
-        config.setKeystoreSubsystemConfig(new KeyStoreSubsystemXmlConf());
-
-        xmlConfigurationAdapter.saveConfiguration(file, config);
-
-        String result = Files.toString(file, Charset.forName("UTF-8"));
-
-        fail("Before save configuration they should be validate, because if we save not valid configuration they can be load after save, "
-                + "and code that save it can not learn about it, "
-                + "but if we validate all parameters before save, we can throws correspond exception if so of parameters configure not correct. Unmarshalling result:\n"
-                + result);
+        assertThrows(
+                IllegalConfiguration.class,
+                () -> xmlConfigurationAdapter.loadConfiguration(cfg),
+                "Not correct filled configuration should be ignore, and provider that allow load it should fail with correspond exception, "
+                        + "because not correct configure security can lead to undefined server state. XSD it contract, that should be observed."
+        );
     }
 
     @Test
-    public void testPasswordStoresInXmlInEncryptedForm() throws Exception {
-        File file = tmp.newFile();
+    void testBeforeStoreConfigurationShouldBeProcessXSDValidation() throws Exception {
+        File file = tmp.resolve("test").toFile();
+        EncryptionConfig config = new EncryptionConfig();
+        config.setKeystoreSubsystemConfig(new KeyStoreSubsystemXmlConf());
+
+        assertThrows(
+                IllegalConfiguration.class,
+                () -> xmlConfigurationAdapter.saveConfiguration(file, config),
+                "Before save configuration they should be validate, because if we save not valid configuration they can be load after save, "
+                        + "and code that save it can not learn about it, "
+                        + "but if we validate all parameters before save, we can throws correspond exception if so of parameters configure not correct."
+        );
+    }
+
+    @Test
+    void testPasswordStoresInXmlInEncryptedForm() throws Exception {
+        File file = tmp.resolve("test").toFile();
 
         String password = "{AES}noCryptedPassword";
 
@@ -544,7 +542,7 @@ public class XmlConfigIntegrationTest {
 
         writeConfig(file, config);
 
-        String xml = Files.toString(file, Charset.forName("UTF-8"));
+        String xml = Files.asCharSource(file, StandardCharsets.UTF_8).read();
 
         assertThat(
                 "Password should be encrypted before save it to xml, because without it keystore can be stolen and all the keys in it compromised",
@@ -552,16 +550,16 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    public void testNotEncryptedSecureDataByLoadingEncryptsAndStoreToXml() throws Exception {
+    void testNotEncryptedSecureDataByLoadingEncryptsAndStoreToXml() throws Exception {
         String plainTextPassword = "qwerty";
         File cfgFile = getResource(
                 "/org/qubership/security/encryption/config/xml/filled-keystore-subsystem-without-default-keystore.xml");
 
-        assert Files.toString(cfgFile, Charset.forName("UTF-8")).contains(plainTextPassword);
+        assertTrue(Files.asCharSource(cfgFile, StandardCharsets.UTF_8).read().contains(plainTextPassword));
 
         EncryptionConfiguration readConfiguration = xmlConfigurationAdapter.loadConfiguration(cfgFile);
 
-        String xmlConfig = Files.toString(cfgFile, Charset.forName("UTF-8"));
+        String xmlConfig = Files.asCharSource(cfgFile, StandardCharsets.UTF_8).read();
 
         System.out.println("Lazy encryption parameter encryption:\n" + xmlConfig);
 
@@ -584,15 +582,15 @@ public class XmlConfigIntegrationTest {
 
     private void writeConfig(File file, EncryptionConfiguration configuration) throws IOException {
         xmlConfigurationAdapter.saveConfiguration(file, configuration);
-        String result = Files.toString(file, Charset.forName("UTF-8"));
-        System.out.println("Unmarshaling:\n" + result);
+        String result = Files.asCharSource(file, StandardCharsets.UTF_8).read();
+        System.out.println("Unmarshalling:\n" + result);
     }
 
     private File getResource(String resourceName) throws IOException {
-        String data = IOUtils.toString(this.getClass().getResourceAsStream(resourceName));
+        String data = IOUtils.toString(this.getClass().getResourceAsStream(resourceName), StandardCharsets.UTF_8);
         System.out.println("Read configuration:\n" + data);
-        File targetFile = tmp.newFile();
-        Files.write(data, targetFile, Charset.forName("UTF-8"));
+        File targetFile = tmp.resolve("test").toFile();
+        Files.asCharSink(targetFile, StandardCharsets.UTF_8).write(data);
         return targetFile;
     }
 }
