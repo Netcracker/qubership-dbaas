@@ -14,7 +14,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
-public class NotTemplateEncryptResultTest {
+class NotTemplateEncryptResultTest {
 
     @SuppressWarnings("unused")
     @Test

@@ -6,7 +6,7 @@ import org.hamcrest.Matchers;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 
-public class CryptoServiceStubTest {
+class CryptoServiceStubTest {
 
     @Test
     void testEncryptText() {

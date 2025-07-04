@@ -35,7 +35,7 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("unchecked")
-public class XmlConfigIntegrationTest {
+class XmlConfigIntegrationTest {
     private static final SecretKey DEFAULT_SECRET_KEY =
             new SecretKeySpec(Base64.decodeBase64("rhwh/TKdB9Hb6zpLBHW/mw=="), "AES");
 
@@ -45,7 +45,7 @@ public class XmlConfigIntegrationTest {
     private Path tmp;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         xmlConfigurationAdapter =
                 new XmlConfigurationSerializer(new DefaultConfigurationCryptoProvider(DEFAULT_SECRET_KEY));
     }
@@ -369,8 +369,7 @@ public class XmlConfigIntegrationTest {
 
         final String waitIdentity = "keyst";
 
-        List<KeystoreConfig> keystores = Arrays.<KeystoreConfig>asList(
-
+        List<KeystoreConfig> keystores = List.of(
                 new ConfigurationBuildersFactory().getLocalKeystoreConfigBuilder(waitIdentity)
                         .setLocation("./keystore.ks").setKeystoreType("jcs").setPassword("123").build());
 
@@ -426,8 +425,7 @@ public class XmlConfigIntegrationTest {
 
         final String type = "myksType";
 
-        List<KeystoreConfig> keystores = Arrays.<KeystoreConfig>asList(
-
+        List<KeystoreConfig> keystores = List.of(
                 new ConfigurationBuildersFactory().getLocalKeystoreConfigBuilder("KS-1").setLocation("/u02/some.ks")
                         .setKeystoreType(type).setPassword("{AES}noCryptedPassword").build());
 
@@ -514,7 +512,7 @@ public class XmlConfigIntegrationTest {
     }
 
     @Test
-    void testBeforeStoreConfigurationShouldBeProcessXSDValidation() throws Exception {
+    void testBeforeStoreConfigurationShouldBeProcessXSDValidation() {
         File file = tmp.resolve("test").toFile();
         EncryptionConfig config = new EncryptionConfig();
         config.setKeystoreSubsystemConfig(new KeyStoreSubsystemXmlConf());

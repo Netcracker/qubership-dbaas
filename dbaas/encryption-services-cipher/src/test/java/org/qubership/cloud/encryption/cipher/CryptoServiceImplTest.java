@@ -29,13 +29,12 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class CryptoServiceImplTest {
+class CryptoServiceImplTest {
     private CryptoService cryptoService;
     private KeyStoreStub keyStore;
 
     @BeforeEach
     void setUp() throws Exception {
-        // String defaultAlgorithm = "AES/ECB/PKCS5Padding";
         String defaultAlgorithm = "AES/CBC/PKCS5Padding";
         String defaultKeyAlias = "AESDefaultKey";
 
@@ -374,7 +373,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    void testSameEncryptedTextHaveDifferentEncryptedResult() throws Exception {
+    void testSameEncryptedTextHaveDifferentEncryptedResult() {
         String plainText = "Secure string for encrypt with salt";
 
         final String encryptedTextFirst =
@@ -391,7 +390,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    void testSameEnctyptedTextWithSameIVHaveEqualEncryptedResult() throws Exception {
+    void testSameEnctyptedTextWithSameIVHaveEqualEncryptedResult() {
         String plainText = "secret";
         byte[] iv = new byte[16];
         ThreadLocalRandom.current().nextBytes(iv);
@@ -527,7 +526,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    void testEncryptBySymmetricKeyBigText() throws Exception {
+    void testEncryptBySymmetricKeyBigText() {
         final StringBuilder secretBuilder = new StringBuilder();
         while (secretBuilder.length() < 10240) {
             secretBuilder.append("secret").append("(").append(secretBuilder.length()).append(")");

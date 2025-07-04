@@ -13,7 +13,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.allOf;
 
 // todo maybe parametrized test?
-public class CryptoParameterTest {
+class CryptoParameterTest {
     @Test
     void testRequestWithDefaultParametersEmpty() throws Exception {
         EncryptionRequest request = EncryptionRequestBuilder.createBuilder().setPlainText("plaintext").build();

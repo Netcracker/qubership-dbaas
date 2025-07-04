@@ -4,8 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class DecryptionRequestBuilderTest {
-    @SuppressWarnings("unused")
+class DecryptionRequestBuilderTest {
     @Test
     void testEncryptedTextByteArrayCanNotBeNull() {
         assertThrows(

@@ -14,7 +14,7 @@ import java.util.Collections;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
-public class V2CryptoProviderTest {
+class V2CryptoProviderTest {
     CryptoProvider provider;
     private KeyStore keyStore;
 
@@ -30,7 +30,7 @@ public class V2CryptoProviderTest {
     }
 
     @Test
-    void testCheckSuitableFormat() throws Exception {
+    void testCheckSuitableFormat() {
         String template = "{v2c}{DES}{secKeyAlias}{95ec+8MrCLM=}";
 
         boolean result = provider.isKnowEncryptedFormat(template);
@@ -39,7 +39,7 @@ public class V2CryptoProviderTest {
     }
 
     @Test
-    void testCheckSuitableFormat_withDefaultAlgorithm() throws Exception {
+    void testCheckSuitableFormat_withDefaultAlgorithm() {
         String template =
                 "{v2c}{AES/ECB/PKCS5Padding}{AESDefaultKey}{tE6Y9niEE3pMT6i5IHp5urF8Gm68PZLiZbr/xONDptAGz5tWLtp5rnrrW1762exa0N+7IUMC075P8P9n7m9DCpKebsfKhUyNFcETbDMNTWXw=}";
 
@@ -49,7 +49,7 @@ public class V2CryptoProviderTest {
     }
 
     @Test
-    void testCheckNotSuitableFormat() throws Exception {
+    void testCheckNotSuitableFormat() {
         String template = "{new}{v2c}{DES}{secKeyAlias}{95ec+8MrCLM=}";
 
         boolean result = provider.isKnowEncryptedFormat(template);
@@ -58,7 +58,7 @@ public class V2CryptoProviderTest {
     }
 
     @Test
-    void testTomsFormatTemplateNotSuitable() throws Exception {
+    void testTomsFormatTemplateNotSuitable() {
         String template = "{DES}JUW5jgRqH0w=";
 
         boolean result = provider.isKnowEncryptedFormat(template);
@@ -67,13 +67,11 @@ public class V2CryptoProviderTest {
     }
 
     @Test
-    void testNotSuitableFormatWhenMidlePartContainAdditionalInfo() throws Exception {
+    void testNotSuitableFormatWhenMidlePartContainAdditionalInfo() {
         String template = "{v2c}{DES}{secKeyAlias}{SOME_PARAMETER}{95ec+8MrCLM=}";
 
         boolean result = provider.isKnowEncryptedFormat(template);
         assertThat("Suitable format {v2c}{algorithm}{secKeyAlias}{base64(encryptedData)} but for check was use "
                 + template, result, equalTo(false));
     }
-
-
 }

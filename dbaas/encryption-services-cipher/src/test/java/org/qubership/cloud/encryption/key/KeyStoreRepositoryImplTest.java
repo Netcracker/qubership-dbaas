@@ -27,7 +27,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings({"unchecked", "unused"})
-public class KeyStoreRepositoryImplTest {
+class KeyStoreRepositoryImplTest {
     private ConfigurationParser parser;
 
     @TempDir

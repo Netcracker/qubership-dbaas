@@ -5,8 +5,7 @@ import org.qubership.cloud.encryption.cipher.EncryptionRequest;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class EncryptionRequestBuilderTest {
-    @SuppressWarnings("unused")
+class EncryptionRequestBuilderTest {
     @Test
     void testPlainTextByteArrayCanNotBeNull() {
         assertThrows(
@@ -21,7 +20,7 @@ public class EncryptionRequestBuilderTest {
         EncryptionRequest result = (EncryptionRequest) EncryptionRequestBuilder.createBuilder();
         assertThrows(
                 NullPointerException.class,
-                () -> result.getPlainText(),
+                result::getPlainText,
                 "empty array it empty string, but in case if value was not specify we should fail with NPE"
         );
     }

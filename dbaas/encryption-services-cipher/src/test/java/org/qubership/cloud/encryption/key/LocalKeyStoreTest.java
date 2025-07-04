@@ -25,11 +25,10 @@ import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.fail;
 
 
 @SuppressWarnings("unused")
-public class LocalKeyStoreTest {
+class LocalKeyStoreTest {
     private ConfigurationParser parser;
 
     private static final String keystoreType = "JCEKS";
@@ -90,7 +89,7 @@ public class LocalKeyStoreTest {
         KeyStore keyStore = java.security.KeyStore.getInstance(keystoreType);
         keyStore.load(null, new char[0]);
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -117,7 +116,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(new char[0]));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -157,7 +156,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(new char[0]));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -186,7 +185,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(keyPassword.toCharArray()));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
@@ -218,7 +217,7 @@ public class LocalKeyStoreTest {
         keyStore.setEntry(keyAlias, new KeyStore.SecretKeyEntry(secretKey),
                 new KeyStore.PasswordProtection(keyPassword.toCharArray()));
 
-        try (FileOutputStream out = new FileOutputStream(new File(location))) {
+        try (FileOutputStream out = new FileOutputStream(location)) {
             keyStore.store(out, ksPass.toCharArray());
         }
 
