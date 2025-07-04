@@ -1,0 +1,18 @@
+---
+name: Maven build
+
+on:
+  push:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  mvn:
+    uses: netcracker/qubership-core-infra/.github/workflows/maven-build-with-sonar.yaml@v1.0.6
+    with:
+      event-name: ${{ github.event_name }}
+      actor: ${{ github.actor }}
+      sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
+      pom-file-path: pom.xml
+    secrets:
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
