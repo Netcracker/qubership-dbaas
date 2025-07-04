@@ -72,7 +72,7 @@ public class BlueGreenControllerV1 {
         ProcessInstanceImpl processInstance = blueGreenService.warmup(bgStateRequest.getBGState());
         AsyncResponse warmupResponse = new AsyncResponse();
         warmupResponse.setMessage("Warmup successfully done");
-        if (processInstance == null) {
+        if (processInstance == null) { //TODO when is it possible?
             return Response.ok(warmupResponse).build();
         }
         warmupResponse.setTrackingId(processInstance.getId());
