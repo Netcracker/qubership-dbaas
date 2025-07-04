@@ -1,5 +1,6 @@
 package org.qubership.cloud.encryption.key;
 
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -11,7 +12,6 @@ import org.qubership.cloud.encryption.config.xml.ConfigurationBuildersFactory;
 import org.qubership.cloud.encryption.config.xml.DefaultConfigurationCryptoProvider;
 import org.qubership.cloud.encryption.config.xml.XmlConfigurationSerializer;
 import org.qubership.cloud.encryption.key.exception.IllegalKeystoreConfigurationException;
-import org.hamcrest.Matchers;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -48,9 +48,12 @@ public class LocalKeyStoreTest {
     }
 
     @Test
-    void testNullConfigurationNotAvailable() throws Exception {
-        assertThrows(NullPointerException.class, () -> new LocalKeyStore(null));
-        fail("it restrict contract");
+    void testNullConfigurationNotAvailable() {
+        assertThrows(
+                NullPointerException.class,
+                () -> new LocalKeyStore(null),
+                "it restrict contract"
+        );
     }
 
     @Test
@@ -130,15 +133,16 @@ public class LocalKeyStoreTest {
     }
 
     @Test
-    void testThrowReadableExceptionIfConfigurationIllegal() throws Exception {
+    void testThrowReadableExceptionIfConfigurationIllegal() {
         LocalKeystoreConfig config = new ConfigurationBuildersFactory().getLocalKeystoreConfigBuilder("MyBadKs")
                 .setLocation("/u02/ks.ks").setPassword("123").setKeystoreType("NotExistsTypes").build();
 
-        assertThrows(IllegalKeystoreConfigurationException.class, () -> new LocalKeyStore(config));
-
-        fail("Illegal configuration shoul lead to correspond exception, if we pars configuration in asynchron "
-                + "we can get runtime exception that will be difficult detect");
-
+        assertThrows(
+                IllegalKeystoreConfigurationException.class,
+                () -> new LocalKeyStore(config),
+                "Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
+                        + "we can get runtime exception that will be difficult detect"
+        );
     }
 
     @Test
@@ -262,10 +266,12 @@ public class LocalKeyStoreTest {
 
         LocalKeyStore localKeyStore = new LocalKeyStore(config);
 
-        assertThrows(BadKeyPasswordException.class, () -> localKeyStore.getAliasedKey(keyAlias));
-
-        fail("Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
-                + "we can get runtime exception that will be difficult detect");
+        assertThrows(
+                BadKeyPasswordException.class,
+                () -> localKeyStore.getAliasedKey(keyAlias),
+                "Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
+                        + "we can get runtime exception that will be difficult detect"
+        );
     }
 
     @Test
@@ -293,10 +299,13 @@ public class LocalKeyStoreTest {
 
         LocalKeyStore localKeyStore = new LocalKeyStore(config);
 
-        assertThrows(BadKeyPasswordException.class, () -> localKeyStore.getAliasedKey(keyAlias));
+        assertThrows(
+                BadKeyPasswordException.class,
+                () -> localKeyStore.getAliasedKey(keyAlias),
+                "Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
+                        + "we can get runtime exception that will be difficult detect"
+        );
 
-        fail("Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
-                + "we can get runtime exception that will be difficult detect");
     }
 
     @Test
@@ -325,10 +334,12 @@ public class LocalKeyStoreTest {
 
         LocalKeyStore localKeyStore = new LocalKeyStore(config);
 
-        assertThrows(BadKeyPasswordException.class, () -> localKeyStore.getAliasedKey(keyAlias));
-
-        fail("Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
-                + "we can get runtime exception that will be difficult detect");
+        assertThrows(
+                BadKeyPasswordException.class,
+                () -> localKeyStore.getAliasedKey(keyAlias),
+                "Illegal configuration should lead to correspond exception, if we pars configuration in asynchron "
+                        + "we can get runtime exception that will be difficult detect"
+        );
     }
 }
 

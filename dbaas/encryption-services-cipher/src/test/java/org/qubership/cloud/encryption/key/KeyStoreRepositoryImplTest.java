@@ -1,5 +1,6 @@
 package org.qubership.cloud.encryption.key;
 
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,12 +13,10 @@ import org.qubership.cloud.encryption.config.xml.DefaultConfigurationCryptoProvi
 import org.qubership.cloud.encryption.config.xml.XmlConfigurationSerializer;
 import org.qubership.cloud.encryption.config.xml.pojo.keystore.RemoteKeystoreXmlConf;
 import org.qubership.cloud.encryption.key.exception.IllegalKeystoreConfigurationException;
-import org.hamcrest.Matchers;
 
 import javax.annotation.Nonnull;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -26,9 +25,8 @@ import java.util.List;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.fail;
 
-@SuppressWarnings({ "unchecked", "unused" })
+@SuppressWarnings({"unchecked", "unused"})
 public class KeyStoreRepositoryImplTest {
     private ConfigurationParser parser;
 
@@ -51,8 +49,11 @@ public class KeyStoreRepositoryImplTest {
 
     @Test
     void testNullLikeConfigurationCanNotBeSpecify() {
-        assertThrows(NullPointerException.class, () -> new KeyStoreRepositoryImpl(null));
-        fail("It restrict contract");
+        assertThrows(
+                NullPointerException.class,
+                () -> new KeyStoreRepositoryImpl(null),
+                "It restrict contract"
+        );
     }
 
     @Test
@@ -115,22 +116,27 @@ public class KeyStoreRepositoryImplTest {
         KeystoreSubsystemConfig config = new ConfigurationBuildersFactory().getKeystoreConfigBuilder()
                 .setKeyStores(List.of(new RemoteKeystoreXmlConf())).build();
 
-        assertThrows(UnsupportedOperationException.class, () -> new KeyStoreRepositoryImpl(config));
-        fail("Remote keystore not implemented yet");
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> new KeyStoreRepositoryImpl(config),
+                "Remote keystore not implemented yet"
+        );
     }
 
     @Test
-    void testParseNotCorrectFilledKeystoreLeadToFailAllKeystores() throws Exception {
+    void testParseNotCorrectFilledKeystoreLeadToFailAllKeystores() {
         LocalKeystoreConfig notValidConfig = new ConfigurationBuildersFactory().getLocalKeystoreConfigBuilder("ks2")
                 .setPassword("123").setKeystoreType("notExistsType").setLocation("/dev/null").build();
 
         KeystoreSubsystemConfig config = new ConfigurationBuildersFactory().getKeystoreConfigBuilder()
                 .setKeyStores(List.of(notValidConfig)).build();
 
-        assertThrows(IllegalKeystoreConfigurationException.class, () -> new KeyStoreRepositoryImpl(config));
-
-        fail("When one ofe keystore have not correct parameters should fail configure all another keystores, "
-                + "because if we ignore it exception, it lead to proble in runtime that will be detected after a while");
+        assertThrows(
+                IllegalKeystoreConfigurationException.class,
+                () -> new KeyStoreRepositoryImpl(config),
+                "When one ofe keystore have not correct parameters should fail configure all another keystores, "
+                        + "because if we ignore it exception, it lead to proble in runtime that will be detected after a while"
+        );
     }
 
     private LocalKeystoreConfig generateLocalKeystoreConfig(@Nonnull String identity) throws Exception {
