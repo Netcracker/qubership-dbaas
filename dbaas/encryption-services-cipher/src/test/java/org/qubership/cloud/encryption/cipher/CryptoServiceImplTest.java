@@ -1,6 +1,10 @@
 package org.qubership.cloud.encryption.cipher;
 
 import com.google.common.collect.ImmutableList;
+import org.apache.commons.codec.binary.Base64;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.qubership.cloud.encryption.cipher.build.DecryptionRequestBuilder;
 import org.qubership.cloud.encryption.cipher.build.EncryptionRequestBuilder;
 import org.qubership.cloud.encryption.cipher.exception.CryptoException;
@@ -11,32 +15,26 @@ import org.qubership.cloud.encryption.cipher.provider.V2CryptoProvider;
 import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
 import org.qubership.cloud.encryption.config.xml.ConfigurationBuildersFactory;
 import org.qubership.cloud.encryption.key.KeyStoreStub;
-import org.apache.commons.codec.binary.Base64;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.Before;
-import org.junit.Test;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Security;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class CryptoServiceImplTest {
+class CryptoServiceImplTest {
     private CryptoService cryptoService;
     private KeyStoreStub keyStore;
 
-    @Before
-    public void setUp() throws Exception {
-        // String defaultAlgorithm = "AES/ECB/PKCS5Padding";
+    @BeforeEach
+    void setUp() throws Exception {
         String defaultAlgorithm = "AES/CBC/PKCS5Padding";
         String defaultKeyAlias = "AESDefaultKey";
 
@@ -53,15 +51,18 @@ public class CryptoServiceImplTest {
     }
 
     @SuppressWarnings("unused")
-    @Test(expected = NullPointerException.class)
-    public void testNotAvailableEncryptNullMessage() throws Exception {
+    @Test
+    void testNotAvailableEncryptNullMessage() {
         String message = null;
-        String result = cryptoService.encrypt(message);
-        fail("null value can't be encrypted by contract, if it necessary null can be convert to empty string");
+        assertThrows(
+                NullPointerException.class,
+                () -> cryptoService.encrypt(message),
+                "null value can't be encrypted by contract, if it necessary null can be convert to empty string"
+        );
     }
 
     @Test
-    public void testPlainTextEncryptsWithDefaultParameters() throws Exception {
+    void testPlainTextEncryptsWithDefaultParameters() {
         String message = "Very secret information";
         String result = cryptoService.encrypt(message);
 
@@ -74,29 +75,32 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testTextCanBeEncryptedTwice() throws Exception {
+    void testTextCanBeEncryptedTwice() {
         String message = "secret";
         String firstEncrypt = cryptoService.encrypt(message);
         String secondEncrypt = cryptoService.encrypt(firstEncrypt);
 
         assertThat("CryptoService should encrypt any text that was request for encrypt. "
-                + "Service can't check rule like isEncrypted() because plain text can have form already encrypted "
-                + "and if we not encrypt it, it text will be process like plain text, and can lead to problem when "
-                + "will be perform decrypt for it encrypted result",
+                        + "Service can't check rule like isEncrypted() because plain text can have form already encrypted "
+                        + "and if we not encrypt it, it text will be process like plain text, and can lead to problem when "
+                        + "will be perform decrypt for it encrypted result",
 
                 secondEncrypt, allOf(not(equalTo(firstEncrypt)), not(equalTo(message))));
     }
 
     @SuppressWarnings("unused")
-    @Test(expected = NullPointerException.class)
-    public void testNotAvailableDecryptNullString() throws Exception {
+    @Test
+    void testNotAvailableDecryptNullString() {
         String encryptedText = null;
-        String result = cryptoService.decrypt(encryptedText).getResultAsString();
-        fail("By contract describe in interface, null value can't be decrypted because they not contain information");
+        assertThrows(
+                NullPointerException.class,
+                () -> cryptoService.decrypt(encryptedText).getResultAsString(),
+                "By contract describe in interface, null value can't be decrypted because they not contain information"
+        );
     }
 
     @Test
-    public void encryptedTextWithDefaultParametersCanBeDecryptBySameWay() throws Exception {
+    void encryptedTextWithDefaultParametersCanBeDecryptBySameWay() {
         String original = "Very secret information";
         String crypted = cryptoService.encrypt(original);
         String decrypted = cryptoService.decrypt(crypted).getResultAsString();
@@ -106,7 +110,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testEncryptWithDifferentKeyReturnNotEqualResult() throws Exception {
+    void testEncryptWithDifferentKeyReturnNotEqualResult() throws Exception {
         final String algorithm = "AES/ECB/PKCS5Padding";
 
         KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
@@ -129,21 +133,23 @@ public class CryptoServiceImplTest {
                 firstResult, not(equalTo(secondResult)));
     }
 
-    @Test(expected = IllegalCryptoParametersException.class)
-    public void testNotAvailableEncryptTextWithNotExistsAlgorithm() throws Exception {
+    @Test
+    void testNotAvailableEncryptTextWithNotExistsAlgorithm() {
         final String algorithm = "NotExistsAlgorithm/NoExistsModule/NotExistPadding";
 
         final String plainText = "secret message for encrypt by not exists algorithm";
 
-        final String encryptedResult =
-                cryptoService.encryptDSLRequest().algorithm(algorithm).encrypt(plainText).getResultAsBase64String();
-        fail("When via dsl specified not exists algorithm for encryption, service should try find provider for it algorithm, "
-                + "and if provider not exists throws exception that specified bad parameter. "
-                + "If exception not throws it can means that algorithm not applies: " + encryptedResult);
+        assertThrows(
+                IllegalCryptoParametersException.class,
+                () -> cryptoService.encryptDSLRequest().algorithm(algorithm).encrypt(plainText).getResultAsBase64String(),
+                "When via dsl specified not exists algorithm for encryption, service should try find provider for it algorithm, "
+                        + "and if provider not exists throws exception that specified bad parameter. "
+                        + "If exception not throws it can means that algorithm not applies"
+        );
     }
 
     @Test
-    public void testTextEncryptedWithKeyCanBeAlsoDecryptWithItKey() throws Exception {
+    void testTextEncryptedWithKeyCanBeAlsoDecryptWithItKey() throws Exception {
         final String algorithm = "AES/ECB/PKCS5Padding";
         final SecretKey key = KeyGenerator.getInstance("AES").generateKey();
         final String plainText = "Secret plain text";
@@ -157,22 +163,21 @@ public class CryptoServiceImplTest {
                 equalTo(plainText));
     }
 
-    @Test(expected = CryptoException.class)
-    public void testTextEcnryptedByDefaultKeyCanNotBeDecryptedByCustomKey() throws Exception {
+    @Test
+    void testTextEcnryptedByDefaultKeyCanNotBeDecryptedByCustomKey() throws Exception {
         final SecretKey key = KeyGenerator.getInstance("AES").generateKey();
         final String plainText = "secret";
 
         final String encryptedText = cryptoService.encrypt(plainText);
-        final String decryptedText =
-                cryptoService.decryptDSLRequest().key(key).decrypt(encryptedText).getResultAsString();
-
-        assertThat(
-                "When for decription specified not correct key, we can't get same plain text that was encrypted by different key",
-                decryptedText, not(equalTo(plainText)));
+        assertThrows(
+                CryptoException.class,
+                () -> cryptoService.decryptDSLRequest().key(key).decrypt(encryptedText).getResultAsString(),
+                "When for description specified not correct key, we can't get same plain text that was encrypted by different key"
+        );
     }
 
     @Test
-    public void testEncryptTextByDifferentKeyAliasLeadToDifferentEncryptedTextResult() throws Exception {
+    void testEncryptTextByDifferentKeyAliasLeadToDifferentEncryptedTextResult() throws Exception {
         final String algorithm = "AES/ECB/PKCS5Padding";
 
         KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
@@ -197,7 +202,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testPriorityByExplicitSpecifiedKey() throws Exception {
+    void testPriorityByExplicitSpecifiedKey() throws Exception {
         final String algorithm = "AES/ECB/PKCS5Padding";
 
         KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
@@ -216,13 +221,13 @@ public class CryptoServiceImplTest {
                 .encrypt(plaintext).getResultAsBase64String();
 
         assertThat("In case when for encryption request specifies opposite parameters like keyAlias and explicit key, "
-                + "priority should be safe on explicit parameter. "
-                + "In current test we want that for two encryption will be use explicit key and result will be same",
+                        + "priority should be safe on explicit parameter. "
+                        + "In current test we want that for two encryption will be use explicit key and result will be same",
                 encryptedWithPriorityOnExplicitKey, equalTo(encryptedWithExplicitKey));
     }
 
     @Test
-    public void testPriorityByExplicitSpecifiedKeyDuringDecrypt() throws Exception {
+    void testPriorityByExplicitSpecifiedKeyDuringDecrypt() throws Exception {
         final String algorithm = "AES/ECB/PKCS5Padding";
 
         KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
@@ -247,22 +252,22 @@ public class CryptoServiceImplTest {
                 decryptedText, equalTo(plaintext));
     }
 
-    @Test(expected = NotExistsSecurityKey.class)
-    public void testNotAvailableEncryptTextByNotExistsInKeyStoreKeyAlias() throws Exception {
+    @Test
+    void testNotAvailableEncryptTextByNotExistsInKeyStoreKeyAlias() {
         final String notExistsKeyAlias = "notExistsInKeyStoreKeyAlias";
 
         final String plaintext = "secret";
-        final String result = cryptoService.encryptDSLRequest().keyAlias(notExistsKeyAlias).encrypt(plaintext)
-                .getResultAsBase64String();
-
-        fail("When for encryption specified key alias that not exists in KeyStore encryption service should "
-                + "fail with exception that specified key not exists, but if we ignore it message and encrypt text "
-                + "with default key, they will be never decrypted on another mashine. In that test encryption result: "
-                + result);
+        assertThrows(
+                NotExistsSecurityKey.class,
+                () -> cryptoService.encryptDSLRequest().keyAlias(notExistsKeyAlias).encrypt(plaintext).getResultAsBase64String(),
+                "When for encryption specified key alias that not exists in KeyStore encryption service should "
+                        + "fail with exception that specified key not exists, but if we ignore it message and encrypt text "
+                        + "with default key, they will be never decrypted on another machine."
+        );
     }
 
-    @Test(expected = NotExistsSecurityKey.class)
-    public void testNotAvailableDecryptTextByNotExistsInKeyStoreKeyAlias() throws Exception {
+    @Test
+    void testNotAvailableDecryptTextByNotExistsInKeyStoreKeyAlias() throws Exception {
         final String algorithm = "DES";
         final String keyAlias = "uniqueSecretKeyAlias";
         final String plainText = "secret";
@@ -278,16 +283,17 @@ public class CryptoServiceImplTest {
         // remove key from KeyStore
         keyStore.clear();
 
-        final String decryptText = cryptoService.decryptDSLRequest().algorithm(algorithm).keyAlias(keyAlias)
-                .decrypt(encryptedText).getResultAsString();
+        assertThrows(
+                NotExistsSecurityKey.class,
+                () -> cryptoService.decryptDSLRequest().algorithm(algorithm).keyAlias(keyAlias).decrypt(encryptedText).getResultAsString(),
+                "When by some reason specified key alias not exists in KeyStore we should fail with exception about not found key. "
+                        + "If we will be use default key for decrypt it can lead to not correct decryption result and as result difficult to debug bugs."
+        );
 
-        fail("When by some reason specified key alias not exists in KeyStore we should fail with exception about not found key. "
-                + "If we will be use default key for decrypt it can lead to not correct decryption result and as result difficult to debug bugs."
-                + "Decrypted text result: " + decryptText + " Original encrypted text result: " + plainText);
     }
 
     @Test
-    public void testEncryptedByTemplateCanBeDecryptWithoutNecessaryKnowAboutAlgorithmOrKeyName() throws Exception {
+    void testEncryptedByTemplateCanBeDecryptWithoutNecessaryKnowAboutAlgorithmOrKeyName() throws Exception {
         final String algorithm = "DES";
         final String keyAlias = "secKeyAlias";
         final String plainText = "secret";
@@ -303,14 +309,14 @@ public class CryptoServiceImplTest {
         final String decryptedFromTemplateText = cryptoService.decrypt(encryptedByTemplate).getResultAsString();
 
         assertThat("When key encrypted with some parameters and it parameters inject result message "
-                + "for example like template {v2}{algorithm}{keyAlias}{data} it not necessary specify it parameters during decrypt, "
-                + "because all information already exist in decrypt data ",
+                        + "for example like template {v2}{algorithm}{keyAlias}{data} it not necessary specify it parameters during decrypt, "
+                        + "because all information already exist in decrypt data ",
 
                 decryptedFromTemplateText, equalTo(plainText));
     }
 
-    @Test(expected = UnsupportedOperationException.class)
-    public void testNotAvailableCreateTemplateDecryptedStringWhenItCanRestrictSecureRules() throws Exception {
+    @Test
+    void testNotAvailableCreateTemplateDecryptedStringWhenItCanRestrictSecureRules() throws Exception {
         final String algorithm = "DES";
         final String plainText = "secret";
 
@@ -322,18 +328,20 @@ public class CryptoServiceImplTest {
         final EncryptResult cryptoResult =
                 cryptoService.encryptDSLRequest().algorithm(algorithm).key(secretKey).encrypt(plainText);
 
-        final String template = cryptoResult.getResultAsEncryptionServiceTemplate();
+        assertThrows(
+                UnsupportedOperationException.class,
+                cryptoResult::getResultAsEncryptionServiceTemplate,
+                "When plain text encrypts with some custom parameters for example own Secret Key that not stores in KeyStore, "
+                        + "we can't build template string that inject encryption parameters for easy decrypt, "
+                        + "because it we inject key it restrict security rules because secret key and crypted data by it key stores together."
+                        + "If we encrypt data without inject some parameters, it restrict encryption service contract because when we get "
+                        + "it string to decryptMethod we can't decrypt read required parameters for decryption."
+        );
 
-        fail("When plain text encrypts with some custom parameters for example own Secret Key that not stores in KeyStore, "
-                + "we can't build template string that inject encryption parameters for easy decrypt, "
-                + "because it we inject key it restrict security rules because secret key and crypted data by it key stores together."
-                + "If we encrypt data without inject some parameters, it restrict encryption service contract because when we get "
-                + "it string to decryptMethod we can't decrypt read required parameters for decryption. In that test we get result: "
-                + template);
     }
 
     @Test
-    public void testCryptedWithDefaultParametersCanBeDecryptedWithDefaultParametersWhenWeSetItLikeTemplate()
+    void testCryptedWithDefaultParametersCanBeDecryptedWithDefaultParametersWhenWeSetItLikeTemplate()
             throws Exception {
         // withoult salt algorithm
         String defaultAlgorithm = "AES";
@@ -365,7 +373,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testSameEncryptedTextHaveDifferentEncryptedResult() throws Exception {
+    void testSameEncryptedTextHaveDifferentEncryptedResult() {
         String plainText = "Secure string for encrypt with salt";
 
         final String encryptedTextFirst =
@@ -382,7 +390,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testSameEnctyptedTextWithSameIVHaveEqualEncryptedResult() throws Exception {
+    void testSameEnctyptedTextWithSameIVHaveEqualEncryptedResult() {
         String plainText = "secret";
         byte[] iv = new byte[16];
         ThreadLocalRandom.current().nextBytes(iv);
@@ -398,7 +406,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testEncryptedDataHaveCorrectIV() throws Exception {
+    void testEncryptedDataHaveCorrectIV() {
         String plainText = "secret";
         byte[] iv = new byte[16];
         ThreadLocalRandom.current().nextBytes(iv);
@@ -413,7 +421,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testProviderCanEncryptDataWithoutDefaultParameters() throws Exception {
+    void testProviderCanEncryptDataWithoutDefaultParameters() throws Exception {
         CryptoSubsystemConfig config = new ConfigurationBuildersFactory().getCryptoSubsystemConfigBuilder().build();
 
         CryptoProvider provider = new V2CryptoProvider(keyStore, config);
@@ -436,8 +444,8 @@ public class CryptoServiceImplTest {
                 decrypted, equalTo(plainText));
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void testIllegalStateExceptionWhenNecessaryUseDefaultParameter_algorithm_AndTheyNotDefined()
+    @Test
+    void testIllegalStateExceptionWhenNecessaryUseDefaultParameter_algorithm_AndTheyNotDefined()
             throws Exception {
         CryptoSubsystemConfig config = new ConfigurationBuildersFactory().getCryptoSubsystemConfigBuilder()
                 .setDefaultKeyAlias("secretKeyAlias").build();
@@ -450,20 +458,19 @@ public class CryptoServiceImplTest {
 
         final String plainText = "secret";
 
-        byte[] crypted = provider.encrypt(EncryptionRequestBuilder.createBuilder().setPlainText(plainText).build())
-                .getResultAsByteArray();
-
-        fail("When in encryption or decryption request not defined some default parameter and they should be use provider should "
-                + "throw correspond exception, because if we will be use system default parameters then can conflict between themselves, "
-                + "for example in configuration specify like default key that was generate for DES algorithm but default algorithm "
-                + "was not specify and if provider like default algorithm will be use hardcoded AES algorithm "
-                + "it can lead to encryption/decryption exception that size block not correct for algorithm: "
-                + Arrays.toString(crypted));
+        assertThrows(
+                IllegalStateException.class,
+                () -> provider.encrypt(EncryptionRequestBuilder.createBuilder().setPlainText(plainText).build()).getResultAsByteArray(),
+                "When in encryption or decryption request not defined some default parameter and they should be use provider should "
+                        + "throw correspond exception, because if we will be use system default parameters then can conflict between themselves, "
+                        + "for example in configuration specify like default key that was generate for DES algorithm but default algorithm "
+                        + "was not specify and if provider like default algorithm will be use hardcoded AES algorithm "
+                        + "it can lead to encryption/decryption exception that size block not correct for algorithm."
+        );
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void testIllegalStateExceptionWhenNecessaryUseDefaultParameter_defaultKeyAlias_AndTheyNotDefined()
-            throws Exception {
+    @Test
+    void testIllegalStateExceptionWhenNecessaryUseDefaultParameter_defaultKeyAlias_AndTheyNotDefined() {
         CryptoSubsystemConfig config =
                 new ConfigurationBuildersFactory().getCryptoSubsystemConfigBuilder().setDefaultAlgorithm("DES").build();
 
@@ -471,19 +478,19 @@ public class CryptoServiceImplTest {
 
         final String plainText = "secret";
 
-        byte[] crypted = provider.encrypt(EncryptionRequestBuilder.createBuilder().setPlainText(plainText).build())
-                .getResultAsByteArray();
-
-        fail("When in encryption or decryption request not defined some default parameter and they should be use provider should "
-                + "throw correspond exception, because if we will be use system default parameters then can conflict between themselves, "
-                + "for example in configuration specify like default key that was generate for DES algorithm but default algorithm "
-                + "was not specify and if provider like default algorithm will be use hardcoded AES algorithm "
-                + "it can lead to encryption/decryption exception that size block not correct for algorithm: "
-                + Arrays.toString(crypted));
+        assertThrows(
+                IllegalStateException.class,
+                () -> provider.encrypt(EncryptionRequestBuilder.createBuilder().setPlainText(plainText).build()).getResultAsByteArray(),
+                "When in encryption or decryption request not defined some default parameter and they should be use provider should "
+                        + "throw correspond exception, because if we will be use system default parameters then can conflict between themselves, "
+                        + "for example in configuration specify like default key that was generate for DES algorithm but default algorithm "
+                        + "was not specify and if provider like default algorithm will be use hardcoded AES algorithm "
+                        + "it can lead to encryption/decryption exception that size block not correct for algorithm."
+        );
     }
 
     @Test
-    public void testEncryptByAsymmetricKeyBigText() throws Exception {
+    void testEncryptByAsymmetricKeyBigText() throws Exception {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
         final int keySize = 1024 * 2;
@@ -519,7 +526,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testEncryptBySymmetricKeyBigText() throws Exception {
+    void testEncryptBySymmetricKeyBigText() {
         final StringBuilder secretBuilder = new StringBuilder();
         while (secretBuilder.length() < 10240) {
             secretBuilder.append("secret").append("(").append(secretBuilder.length()).append(")");
@@ -536,7 +543,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testGetEncryptedMetaInfo() {
+    void testGetEncryptedMetaInfo() {
         String defaultAlgorithm = "AES/CBC/PKCS5Padding";
         String defaultKeyAlias = "AESDefaultKey";
         String message = "Very secret information";
@@ -550,7 +557,7 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testGetEncryptedMetaInfoBadEncryptedData() {
+    void testGetEncryptedMetaInfoBadEncryptedData() {
         String result = "So bad result";
         EncryptionMetaInfo metaInfo = cryptoService.getEncryptedMetaInfo(result);
 

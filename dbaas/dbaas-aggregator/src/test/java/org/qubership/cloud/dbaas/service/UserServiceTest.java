@@ -53,7 +53,7 @@ class UserServiceTest {
     private ProcessConnectionPropertiesService connectionPropertiesService;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         userService.setDBaaService(dBaaService);
     }
 

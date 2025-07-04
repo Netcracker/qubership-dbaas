@@ -62,12 +62,12 @@ class DatabaseRegistryRepositoryTest {
     }
 
     @BeforeEach
-    public void before() {
+    void before() {
         databaseRegistryDbaasRepository = new DatabaseRegistryDbaasRepositoryImpl(databasesRepository, h2DatabaseRepository, databaseRegistryRepository, h2DatabaseRegistryRepository);
     }
 
     @Test
-    public void testSaveAll() {
+    void testSaveAll() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         DatabaseRegistry db_2 = generateRandomDatabase(true);
         List<DatabaseRegistry> dbs = Stream.of(db_1, db_2).collect(Collectors.toList());
@@ -114,7 +114,7 @@ class DatabaseRegistryRepositoryTest {
     }
 
     @Test
-    public void testSaveExternalDatabase() {
+    void testSaveExternalDatabase() {
         DatabaseRegistry db = generateRandomDatabase(true);
         db.setExternallyManageable(true);
         when(entityManager.merge(db.getDatabase())).then(invocationOnMock -> invocationOnMock.getArgument(0));
@@ -127,7 +127,7 @@ class DatabaseRegistryRepositoryTest {
 
 
     @Test
-    public void testSaveAnyTypeLogDb() {
+    void testSaveAnyTypeLogDb() {
         DatabaseRegistry db = generateRandomDatabase(true);
 //        when(entityManager.merge(db.getDatabase())).then(invocationOnMock -> invocationOnMock.getArgument(0));
         when(databasesRepository.getEntityManager()).thenReturn(entityManager);
@@ -137,7 +137,7 @@ class DatabaseRegistryRepositoryTest {
     }
 
     @Test
-    public void testDelete() {
+    void testDelete() {
         DatabaseRegistry db = generateRandomDatabase(true);
         when(databasesRepository.findByIdOptional(db.getDatabase().getId())).thenReturn(Optional.of(db.getDatabase()));
         databaseRegistryDbaasRepository.delete(db);
@@ -146,7 +146,7 @@ class DatabaseRegistryRepositoryTest {
     }
 
     @Test
-    public void testDeleteById() {
+    void testDeleteById() {
         DatabaseRegistry db = generateRandomDatabase(true);
 
         when(databasesRepository.findByIdOptional(db.getDatabase().getId())).thenReturn(Optional.of(db.getDatabase()));
@@ -157,7 +157,7 @@ class DatabaseRegistryRepositoryTest {
     }
 
     @Test
-    public void testFindAllInternalDatabases() {
+    void testFindAllInternalDatabases() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         db_1.setExternallyManageable(true);
         DatabaseRegistry db_2 = generateRandomDatabase(true);
@@ -172,7 +172,7 @@ class DatabaseRegistryRepositoryTest {
     }
 
     @Test
-    public void testDeleteExternalDatabases() {
+    void testDeleteExternalDatabases() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         db_1.setExternallyManageable(true);
         db_1.setMarkedForDrop(true);

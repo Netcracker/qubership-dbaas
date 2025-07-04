@@ -47,12 +47,12 @@ class DbaasDatabaseRegistryStabilityTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         clean();
     }
 
     @AfterEach
-    public void tearDown() {
+    void tearDown() {
         clean();
     }
 

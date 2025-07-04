@@ -6,13 +6,13 @@ import org.junit.jupiter.api.Test;
 public class DbaaSHelperTest {
 
     @Test
-    public void testIsDevModeFalse() {
+    void testIsDevModeFalse() {
         DbaaSHelper dbaaSHelper = new DbaaSHelper(true, "local");
         Assertions.assertTrue(dbaaSHelper.isProductionMode());
     }
 
     @Test
-    public void testIsDevModeTrue() {
+    void testIsDevModeTrue() {
         DbaaSHelper dbaaSHelper = new DbaaSHelper(false, "local");
         Assertions.assertFalse(dbaaSHelper.isProductionMode());
     }

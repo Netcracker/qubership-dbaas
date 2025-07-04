@@ -24,7 +24,7 @@ public class PasswordEncryptionTest {
     DataEncryption dataEncryption = mock(DataEncryption.class);
 
     @Test
-    public void testEncrypt() {
+    void testEncrypt() {
         Database database = new Database();
         List<Map<String, Object>> connectionList = Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
@@ -41,7 +41,7 @@ public class PasswordEncryptionTest {
     }
 
     @Test
-    public void testEncryptUserPassword() {
+    void testEncryptUserPassword() {
         DatabaseUser user = new DatabaseUser();
         user.setDatabase(new Database());
         user.setConnectionProperties(new HashMap<String, Object>() {{
@@ -57,7 +57,7 @@ public class PasswordEncryptionTest {
     }
 
     @Test
-    public void testEncryptRole() {
+    void testEncryptRole() {
         Database database = new Database();
         List<Map<String, Object>> connectionList = Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
@@ -74,7 +74,7 @@ public class PasswordEncryptionTest {
     }
 
     @Test
-    public void testDecrypt() {
+    void testDecrypt() {
         Database database = new Database();
         List<Map<String, Object>> connectionList = Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
@@ -93,7 +93,7 @@ public class PasswordEncryptionTest {
     }
 
     @Test
-    public void testDecryptUserPasswors() {
+    void testDecryptUserPasswors() {
         DatabaseUser user = new DatabaseUser();
         user.setConnectionProperties(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
@@ -110,7 +110,7 @@ public class PasswordEncryptionTest {
     }
 
     @Test
-    public void testUpdate() {
+    void testUpdate() {
         Database database = new Database();
         database.setConnectionProperties(Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");

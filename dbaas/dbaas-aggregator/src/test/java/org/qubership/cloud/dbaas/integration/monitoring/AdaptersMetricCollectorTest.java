@@ -25,13 +25,13 @@ public class AdaptersMetricCollectorTest {
     MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     @AfterEach
-    public void tearDown() {
+    void tearDown() {
         this.meterRegistry.clear();
     }
 
 
     @BeforeEach
-    public void cleanUp() {
+    void cleanUp() {
         this.meterRegistry.clear();
     }
 

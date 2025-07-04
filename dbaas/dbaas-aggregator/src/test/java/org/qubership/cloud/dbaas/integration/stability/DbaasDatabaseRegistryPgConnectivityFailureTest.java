@@ -54,7 +54,7 @@ class DbaasDatabaseRegistryPgConnectivityFailureTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         clean();
     }
 

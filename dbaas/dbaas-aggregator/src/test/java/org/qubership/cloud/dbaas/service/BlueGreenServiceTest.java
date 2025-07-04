@@ -79,7 +79,7 @@ class BlueGreenServiceTest {
     BlueGreenService blueGreenService;
 
     @BeforeEach
-    public void setup() {
+    void setup() {
         blueGreenService = new BlueGreenService(backupsService, logicalDbDbaasRepository,
                 aggregatedDatabaseAdministrationService, bgNamespaceRepository, balancingRulesService,
                 databaseRolesService, bgDomainRepository, dBaaService, bgTrackRepository, processService, declarativeDbaasCreationService,

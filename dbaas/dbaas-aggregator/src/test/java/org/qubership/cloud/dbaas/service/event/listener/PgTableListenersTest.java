@@ -40,7 +40,7 @@ class PgTableListenersTest {
     private AbstractPgTableListener currentListener;
 
     @BeforeEach
-    public void setup() {
+    void setup() {
         MockitoAnnotations.openMocks(this);
         Mockito.doNothing().when(databaseDbaasRepository).reloadH2Cache(Mockito.any());
         Mockito.doNothing().when(databaseDbaasRepository).reloadH2Cache();
@@ -53,7 +53,7 @@ class PgTableListenersTest {
     }
 
     @AfterEach
-    public void cleanup() {
+    void cleanup() {
         currentListener.stopListening();
     }
 

@@ -1,21 +1,21 @@
 package org.qubership.cloud.encryption.cipher;
 
+import org.junit.jupiter.api.Test;
 import org.qubership.cloud.encryption.cipher.build.DecryptionRequestBuilder;
 import org.qubership.cloud.encryption.cipher.build.EncryptionRequestBuilder;
 import org.hamcrest.Matchers;
-import org.junit.Test;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import java.util.Set;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.allOf;
-import static org.junit.Assert.assertThat;
 
 // todo maybe parametrized test?
-public class CryptoParameterTest {
+class CryptoParameterTest {
     @Test
-    public void testRequestWithDefaultParametersEmpty() throws Exception {
+    void testRequestWithDefaultParametersEmpty() throws Exception {
         EncryptionRequest request = EncryptionRequestBuilder.createBuilder().setPlainText("plaintext").build();
 
         Set<CryptoParameter> result = CryptoParameter.whatParameterDefined(request);
@@ -26,7 +26,7 @@ public class CryptoParameterTest {
     }
 
     @Test
-    public void testRequestContainExplicitAlgorithm() throws Exception {
+    void testRequestContainExplicitAlgorithm() throws Exception {
         EncryptionRequest request =
                 EncryptionRequestBuilder.createBuilder().setAlgorithm("DES").setPlainText("secret").build();
 
@@ -37,7 +37,7 @@ public class CryptoParameterTest {
     }
 
     @Test
-    public void testRequestContainExplicitKeyAlias() throws Exception {
+    void testRequestContainExplicitKeyAlias() throws Exception {
         EncryptionRequest request =
                 EncryptionRequestBuilder.createBuilder().setKeyAlias("secretKey").setPlainText("secret").build();
 
@@ -48,7 +48,7 @@ public class CryptoParameterTest {
     }
 
     @Test
-    public void testRequestContainExplicitKey() throws Exception {
+    void testRequestContainExplicitKey() throws Exception {
         SecretKey secretKey = KeyGenerator.getInstance("DES").generateKey();
 
         EncryptionRequest request =
@@ -61,7 +61,7 @@ public class CryptoParameterTest {
     }
 
     @Test
-    public void testRequestContainExplicitAlogorithmAndKeyAlias() throws Exception {
+    void testRequestContainExplicitAlogorithmAndKeyAlias() throws Exception {
         EncryptionRequest request = EncryptionRequestBuilder.createBuilder().setAlgorithm("AES").setKeyAlias("MyKey")
                 .setPlainText("secret").build();
 
@@ -73,7 +73,7 @@ public class CryptoParameterTest {
     }
 
     @Test
-    public void testDecryptRequestDefineAlogirhmAndKeyAlias() throws Exception {
+    void testDecryptRequestDefineAlogirhmAndKeyAlias() throws Exception {
         DecryptionRequest request = DecryptionRequestBuilder.createBuilder().setAlgorithm("AES").setKeyAlias("MyKey")
                 .setEncryptedText(new byte[] { 0x1, 0x3, 0x5 }).build();
 
