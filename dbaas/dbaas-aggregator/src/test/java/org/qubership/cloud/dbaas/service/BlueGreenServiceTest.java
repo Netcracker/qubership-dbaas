@@ -1,5 +1,16 @@
 package org.qubership.cloud.dbaas.service;
 
+import jakarta.ws.rs.core.Response;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import org.qubership.cloud.dbaas.dto.role.Role;
@@ -19,24 +30,13 @@ import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
 import org.qubership.core.scheduler.po.task.TaskState;
-import jakarta.ws.rs.core.Response;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.Mockito.*;
+import static org.qubership.cloud.dbaas.Constants.*;
+import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 
 @ExtendWith(MockitoExtension.class)
 class BlueGreenServiceTest {
@@ -134,8 +134,8 @@ class BlueGreenServiceTest {
         verify(declarativeDbaasCreationService, times(1)).findAllByNamespace("test-namespace-active");
         verify(databaseRegistryDbaasRepository).findAnyLogDbRegistryTypeByNamespace("test-namespace-active");
         verify(dBaaService).shareDbToNamespace(argThat(dbr -> dbr.getBgVersion() == null
-                                                              && dbr.getDatabase().equals(databaseRegistry.getDatabase()) && dbr.getNamespace().equals("test-namespace-active")
-                                                              && dbr.getClassifier().get(NAMESPACE).equals("test-namespace-active")), eq("test-namespace-candidate"));
+                && dbr.getDatabase().equals(databaseRegistry.getDatabase()) && dbr.getNamespace().equals("test-namespace-active")
+                && dbr.getClassifier().get(NAMESPACE).equals("test-namespace-active")), eq("test-namespace-candidate"));
     }
 
     @Test
@@ -1159,10 +1159,12 @@ class BlueGreenServiceTest {
     private DatabaseRegistry createDatabaseRegistry(Map<String, Object> classifier, String type, String adapterId, String username, String dbName) {
         Database database = new Database();
         database.setId(UUID.randomUUID());
-        ArrayList<Map<String, Object>> connectionProperties = new ArrayList<>(List.of(new HashMap<String, Object>() {{
-            put("username", username);
-            put(ROLE, Role.ADMIN.toString());
-        }}));
+        List<Map<String, Object>> connectionProperties = List.of(
+                Map.of(
+                        "username", username,
+                        ROLE, Role.ADMIN.toString()
+                )
+        );
         database.setConnectionProperties(connectionProperties);
         database.setClassifier(new TreeMap<>(classifier));
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
@@ -1178,9 +1180,7 @@ class BlueGreenServiceTest {
         database.setName(dbName);
         database.setAdapterId(adapterId);
         database.setPhysicalDatabaseId(adapterId);
-        database.setSettings(new HashMap<>() {{
-            put("setting-one", "value-one");
-        }});
+        database.setSettings(Map.of("setting-one", "value-one"));
         database.setDbState(new DbState(DbState.DatabaseStateStatus.CREATED));
         database.setResources(new LinkedList<>(Arrays.asList(new DbResource("username", username),
                 new DbResource("database", dbName))));
