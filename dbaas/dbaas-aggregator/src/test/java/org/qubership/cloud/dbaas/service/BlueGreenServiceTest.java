@@ -537,9 +537,7 @@ class BlueGreenServiceTest {
         bgState.setControllerNamespace(NS_C);
         bgStateRequest.setBGState(bgState);
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            blueGreenService.initBgDomain(bgStateRequest);
-        });
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
 
         Assertions.assertTrue(exception.getMessage().contains("States of bgRequest must be active and idle, but were active and differentState"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
@@ -552,12 +550,10 @@ class BlueGreenServiceTest {
         BgDomain bgDomain = new BgDomain();
         BgNamespace bgNamespace = new BgNamespace();
         bgNamespace.setNamespace(NS_1);
-        bgDomain.setNamespaces(Arrays.asList(bgNamespace));
+        bgDomain.setNamespaces(List.of(bgNamespace));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace));
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            blueGreenService.initBgDomain(bgStateRequest);
-        });
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
         Assertions.assertTrue(exception.getMessage().contains("One of requested namespaces already used in another bgDomain"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
     }
@@ -581,9 +577,7 @@ class BlueGreenServiceTest {
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace3));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace4));
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            blueGreenService.initBgDomain(bgStateRequest);
-        });
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
         Assertions.assertTrue(exception.getMessage().contains("These namespaces already belongs to different bgDomains"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
     }
@@ -1184,7 +1178,7 @@ class BlueGreenServiceTest {
         database.setName(dbName);
         database.setAdapterId(adapterId);
         database.setPhysicalDatabaseId(adapterId);
-        database.setSettings(new HashMap<String, Object>() {{
+        database.setSettings(new HashMap<>() {{
             put("setting-one", "value-one");
         }});
         database.setDbState(new DbState(DbState.DatabaseStateStatus.CREATED));
