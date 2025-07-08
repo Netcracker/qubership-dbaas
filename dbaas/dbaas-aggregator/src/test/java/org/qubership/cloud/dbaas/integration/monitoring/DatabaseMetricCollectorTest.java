@@ -28,14 +28,14 @@ class DatabaseMetricCollectorTest {
     private MonitoringService monitoringService;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         monitoringService = mock(MonitoringService.class);
         metricCollector = new DatabaseMetricCollector(monitoringService, meterRegistry);
         cleanUp();
     }
 
     @AfterEach
-    public void cleanUp() {
+    void cleanUp() {
         meterRegistry.clear();
     }
 

@@ -57,7 +57,7 @@ public class DBBackupsServiceTest {
 
 
     @BeforeEach
-    public void beforeEach() {
+    void beforeEach() {
         backupsDbaasRepository = Mockito.mock(BackupsDbaasRepository.class);
         buckupEntityManager = Mockito.mock(EntityManager.class);
         when(backupsDbaasRepository.getEntityManager()).thenReturn(buckupEntityManager);
@@ -74,7 +74,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testCollectBackup() {
+    void testCollectBackup() {
         final UUID id = UUID.randomUUID();
         final DatabaseRegistry database = getDatabaseSample();
         when(databaseRegistryDbaasRepository.findInternalDatabaseRegistryByNamespace(TEST_NAMESPACE)).thenReturn(Collections.singletonList(database));
@@ -95,7 +95,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testDeleteBackup() throws NamespaceBackupDeletionFailedException {
+    void testDeleteBackup() throws NamespaceBackupDeletionFailedException {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
         databasesBackup.setAdapterId(TEST_ADAPTER_ID);
@@ -118,7 +118,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testDeleteWithExpectedNamespaceBackupDeletionFailedException() throws NamespaceBackupDeletionFailedException {
+    void testDeleteWithExpectedNamespaceBackupDeletionFailedException() throws NamespaceBackupDeletionFailedException {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
         namespaceBackup.getBackups().add(databasesBackup);
@@ -149,7 +149,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void deleteRestore() {
+    void deleteRestore() {
         NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         namespaceBackup.setStatus(NamespaceBackup.Status.FAIL);
         NamespaceRestoration namespaceRestoration = new NamespaceRestoration();
@@ -167,7 +167,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testValidateBackup() {
+    void testValidateBackup() {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final DatabasesBackup firstDatabasesBackup = getDatabasesBackupSample();
         final DatabasesBackup secondDatabasesBackup = getDatabasesBackupSample();
@@ -189,7 +189,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testRestoreSameNamespace() throws NamespaceRestorationFailedException {
+    void testRestoreSameNamespace() throws NamespaceRestorationFailedException {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final UUID restorationId = UUID.randomUUID();
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
@@ -211,7 +211,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testRestoreSameNamespaceWithoutDelete() throws NamespaceRestorationFailedException {
+    void testRestoreSameNamespaceWithoutDelete() throws NamespaceRestorationFailedException {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final UUID restorationId = UUID.randomUUID();
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
@@ -242,7 +242,7 @@ public class DBBackupsServiceTest {
 
 
     @Test
-    public void testRestoreAnotherNamespace() throws NamespaceRestorationFailedException {
+    void testRestoreAnotherNamespace() throws NamespaceRestorationFailedException {
         final String anotherNamespace = "another-namespace";
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final UUID restorationId = UUID.randomUUID();
@@ -267,7 +267,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testRestoreWithOldClassifier() throws NamespaceRestorationFailedException {
+    void testRestoreWithOldClassifier() throws NamespaceRestorationFailedException {
         NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         UUID restorationId = UUID.randomUUID();
         DatabasesBackup databasesBackup = getDatabasesBackupSample();
@@ -305,7 +305,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testRestoreAnotherNamespaceCopy() throws NamespaceRestorationFailedException {
+    void testRestoreAnotherNamespaceCopy() throws NamespaceRestorationFailedException {
         final String anotherNamespace = "another-namespace";
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final UUID restorationId = UUID.randomUUID();
@@ -378,7 +378,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testRestoreWithExpectedNamespaceRestorationFailedException() throws NamespaceRestorationFailedException {
+    void testRestoreWithExpectedNamespaceRestorationFailedException() throws NamespaceRestorationFailedException {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final UUID restorationId = UUID.randomUUID();
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
@@ -399,7 +399,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testRestoreWithNoDbs() throws NamespaceRestorationFailedException {
+    void testRestoreWithNoDbs() throws NamespaceRestorationFailedException {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final UUID restorationId = UUID.randomUUID();
         // make sure databases and backup lists are empty
@@ -411,7 +411,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testCheckAdaptersOnBackupOperation() {
+    void testCheckAdaptersOnBackupOperation() {
         Map<String, DbaasAdapter> dbaasAdapters = prepareBackupOperation();
         List<DbaasAdapter> unsupportedBackupAdapters = dbBackupsService.checkAdaptersOnBackupOperation(TEST_NAMESPACE);
         assertEquals(1, unsupportedBackupAdapters.size());
@@ -420,7 +420,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testBackupWithCheckAdapters() {
+    void testBackupWithCheckAdapters() {
         final UUID id = UUID.randomUUID();
         Map<String, DbaasAdapter> dbaasAdapters = prepareBackupOperation();
         dbaasAdapters.forEach((adapterName, dbaasAdapter) -> when(physicalDatabasesService.getAdapterById(dbaasAdapter.identifier())).thenReturn(dbaasAdapter));
@@ -440,7 +440,7 @@ public class DBBackupsServiceTest {
     }
 
     @Test
-    public void testBackupWithNoDbs() {
+    void testBackupWithNoDbs() {
         final UUID id = UUID.randomUUID();
         // return empty list of databases
         when(databaseRegistryDbaasRepository.findInternalDatabaseRegistryByNamespace(eq(TEST_NAMESPACE))).then(invocation -> Collections.emptyList());

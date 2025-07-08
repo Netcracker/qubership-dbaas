@@ -32,12 +32,12 @@ class DatabasesHistoryDaoEmbeddedTest {
     DatabaseHistoryRepository historyRepository;
 
     @AfterEach
-    public void cleanUp() {
+    void cleanUp() {
         historyRepository.deleteAll();
     }
 
     @Test
-    public void backupRecordTest() {
+    void backupRecordTest() {
         DatabaseRegistry database = generateRandomDatabase(true, "mongodb", "test-namespace");
         Assertions.assertEquals(0, historyRepository.listAll().size());
         Integer lastVersion = databaseHistoryDbaasRepository.getLastVersionByName(database.getName());
@@ -62,7 +62,7 @@ class DatabasesHistoryDaoEmbeddedTest {
     }
 
     @Test
-    public void getLastVersionByNameTest() {
+    void getLastVersionByNameTest() {
         DatabaseRegistry database = generateRandomDatabase(true, "mongodb", "test-namespace");
         addRecordToHistoryDbaasRepository(database, 1);
         addRecordToHistoryDbaasRepository(database, 2);

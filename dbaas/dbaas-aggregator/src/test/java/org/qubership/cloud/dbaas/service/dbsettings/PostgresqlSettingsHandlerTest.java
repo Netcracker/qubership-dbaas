@@ -25,7 +25,7 @@ public class PostgresqlSettingsHandlerTest {
     private ArgumentCaptor<Map<String, Object>> settingsCaptor;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setDatabase(new Database());
         defaultDbSettingsMock = mock(DefaultDbSettingsHandler.class);
@@ -35,7 +35,7 @@ public class PostgresqlSettingsHandlerTest {
     }
 
     @Test
-    public void testUpdateSettings_WithChangesInExtensions() {
+    void testUpdateSettings_WithChangesInExtensions() {
         Map<String, Object> existingSettings = new HashMap<>();
         existingSettings.put(PG_EXTENSIONS, Arrays.asList("extension1", "extension2"));
         databaseRegistry.setSettings(existingSettings);
@@ -53,7 +53,7 @@ public class PostgresqlSettingsHandlerTest {
     }
 
     @Test
-    public void testUpdateSettings_newSettingsContainsNewPgExtensions() {
+    void testUpdateSettings_newSettingsContainsNewPgExtensions() {
         Map<String, Object> existingSettings = new HashMap<>();
         existingSettings.put(PG_EXTENSIONS, Arrays.asList("extension1", "extension2"));
         databaseRegistry.setSettings(existingSettings);
@@ -70,7 +70,7 @@ public class PostgresqlSettingsHandlerTest {
     }
 
     @Test
-    public void testUpdateSettings_newSettingsContainsLessPgExtensions() {
+    void testUpdateSettings_newSettingsContainsLessPgExtensions() {
         Map<String, Object> existingSettings = new HashMap<>();
         existingSettings.put(PG_EXTENSIONS, Arrays.asList("extension1", "extension2"));
         databaseRegistry.setSettings(existingSettings);
@@ -87,7 +87,7 @@ public class PostgresqlSettingsHandlerTest {
     }
 
     @Test
-    public void testUpdateSettings_NoChangesInExtensions() {
+    void testUpdateSettings_NoChangesInExtensions() {
         PostgresqlSettingsHandler postgresqlSettingsHandlerSpy = spy(new PostgresqlSettingsHandler(defaultDbSettingsMock));
         Map<String, Object> existingSettings = new HashMap<>();
         existingSettings.put(PG_EXTENSIONS, Arrays.asList("extension1", "extension2"));
@@ -104,7 +104,7 @@ public class PostgresqlSettingsHandlerTest {
     }
 
     @Test
-    public void testUpdateSettings_NullNewSettings() {
+    void testUpdateSettings_NullNewSettings() {
         PostgresqlSettingsHandler postgresqlSettingsHandlerSpy = spy(new PostgresqlSettingsHandler(defaultDbSettingsMock));
         Map<String, Object> existingSettings = new HashMap<>();
         existingSettings.put(PG_EXTENSIONS, Arrays.asList("extension1", "extension2"));
@@ -118,7 +118,7 @@ public class PostgresqlSettingsHandlerTest {
     }
 
     @Test
-    public void testUpdateSettings_EmptyNewSettings() {
+    void testUpdateSettings_EmptyNewSettings() {
         PostgresqlSettingsHandler postgresqlSettingsHandlerSpy = spy(new PostgresqlSettingsHandler(defaultDbSettingsMock));
         Map<String, Object> existingSettings = new HashMap<>();
         existingSettings.put(PG_EXTENSIONS, Arrays.asList("extension1", "extension2"));
@@ -132,7 +132,7 @@ public class PostgresqlSettingsHandlerTest {
     }
 
     @Test
-    public void testUpdateSettings_ErrorInDefaultDbSettings() {
+    void testUpdateSettings_ErrorInDefaultDbSettings() {
         Map<String, Object> existingSettings = new HashMap<>();
         existingSettings.put(PG_EXTENSIONS, Arrays.asList("extension1", "extension2"));
 

@@ -61,7 +61,7 @@ class DbaasAdapterRESTClientV2Test {
     private final String TEST_MESSAGE = "Backup deleted";
 
     @BeforeEach
-    public void init() {
+    void init() {
         dbaasAdapterRESTClient = new DbaasAdapterRESTClientV2(TEST_ADAPTER_ADDRESS, TEST_TYPE, restClient, TEST_IDENTIFIER, tracker);
     }
 

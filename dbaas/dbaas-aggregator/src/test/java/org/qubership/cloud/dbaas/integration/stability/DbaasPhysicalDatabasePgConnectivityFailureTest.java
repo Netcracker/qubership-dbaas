@@ -40,7 +40,7 @@ class DbaasPhysicalDatabasePgConnectivityFailureTest {
     PhysicalDatabasesRepository physicalDatabasesRepository;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         clean();
     }
 

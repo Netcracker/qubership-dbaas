@@ -24,7 +24,7 @@ class HealthControllerTest {
     HealthService healthService;
 
     @Test
-    public void testLivenessProbe() {
+    void testLivenessProbe() {
         when(healthService.getProbes()).thenReturn(new AggregatedHealthResponse(HealthStatus.UP, null));
         given().when().get("/probes/live")
                 .then()
@@ -37,7 +37,7 @@ class HealthControllerTest {
     }
 
     @Test
-    public void testReadinessProbe() {
+    void testReadinessProbe() {
         when(healthService.getProbes()).thenReturn(new AggregatedHealthResponse(HealthStatus.UP, null));
         given().when().get("/probes/ready")
                 .then()

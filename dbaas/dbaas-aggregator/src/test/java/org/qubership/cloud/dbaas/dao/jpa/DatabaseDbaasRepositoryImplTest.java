@@ -58,12 +58,12 @@ public class DatabaseDbaasRepositoryImplTest {
     }
 
     @BeforeEach
-    public void before() {
+    void before() {
         databaseDbaasRepositoryImpl = new DatabaseDbaasRepositoryImpl(databasesRepository, h2DatabaseRepository, h2DatabaseRegistryRepository);
     }
 
     @Test
-    public void testFindAnyLogDbTypeByNamespace() {
+    void testFindAnyLogDbTypeByNamespace() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         DatabaseRegistry db_2 = generateRandomDatabase(true);
         List<DatabaseRegistry> dbs = Stream.of(db_1, db_2).toList();
@@ -79,7 +79,7 @@ public class DatabaseDbaasRepositoryImplTest {
     }
 
     @Test
-    public void testFindInternalDatabaseByNamespace() {
+    void testFindInternalDatabaseByNamespace() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         db_1.setExternallyManageable(true);
         DatabaseRegistry db_2 = generateRandomDatabase(true);
@@ -96,7 +96,7 @@ public class DatabaseDbaasRepositoryImplTest {
     }
 
     @Test
-    public void testFindInternalDatabasesByNamespaceAndType() {
+    void testFindInternalDatabasesByNamespaceAndType() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         db_1.setExternallyManageable(true);
         DatabaseRegistry db_2 = generateRandomDatabase(true);
@@ -113,7 +113,7 @@ public class DatabaseDbaasRepositoryImplTest {
     }
 
     @Test
-    public void testFindById() {
+    void testFindById() {
         Database db = generateRandomDatabase(true).getDatabase();
         when(databasesRepository.findByIdOptional(eq(db.getId()))).then(invocationOnMock -> Optional.of(db));
 
@@ -132,7 +132,7 @@ public class DatabaseDbaasRepositoryImplTest {
     }
 
     @Test
-    public void testFindExternalDatabasesByNamespace() {
+    void testFindExternalDatabasesByNamespace() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         db_1.setExternallyManageable(true);
         DatabaseRegistry db_2 = generateRandomDatabase(true);
@@ -149,7 +149,7 @@ public class DatabaseDbaasRepositoryImplTest {
     }
 
     @Test
-    public void testDeleteAll() {
+    void testDeleteAll() {
         DatabaseRegistry db_1 = generateRandomDatabase(true);
         db_1.setExternallyManageable(true);
         DatabaseRegistry db_2 = generateRandomDatabase(true);

@@ -1,15 +1,15 @@
 package org.qubership.cloud.encryption;
 
+import org.junit.jupiter.api.Test;
 import org.qubership.cloud.encryption.cipher.CryptoService;
 import org.hamcrest.Matchers;
-import org.junit.Test;
 
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
-public class CryptoServiceStubTest {
+class CryptoServiceStubTest {
 
     @Test
-    public void testEncryptText() throws Exception {
+    void testEncryptText() {
         String plainText = "secret";
 
         CryptoService cryptoService = new CryptoServiceStub();
@@ -20,7 +20,7 @@ public class CryptoServiceStubTest {
     }
 
     @Test
-    public void testEncryptAndDecrypt() throws Exception {
+    void testEncryptAndDecrypt() {
         String plainText = "secret";
 
         CryptoService cryptoService = new CryptoServiceStub();

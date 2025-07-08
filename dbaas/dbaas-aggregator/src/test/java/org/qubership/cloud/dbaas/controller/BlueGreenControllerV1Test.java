@@ -1,6 +1,16 @@
 package org.qubership.cloud.dbaas.controller;
 
-import org.qubership.cloud.dbaas.dto.BulkDatabaseCreateResponse;
+import jakarta.ws.rs.core.GenericType;
+import jakarta.ws.rs.core.Response;
+import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.qubership.cloud.dbaas.dto.bluegreen.*;
 import org.qubership.cloud.dbaas.entity.pg.*;
 import org.qubership.cloud.dbaas.entity.pg.BgNamespace;
@@ -17,55 +27,31 @@ import org.qubership.core.scheduler.po.DataContext;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
 import org.qubership.core.scheduler.po.task.TaskState;
-import jakarta.ws.rs.core.GenericType;
-import jakarta.ws.rs.core.Response;
-import lombok.extern.slf4j.Slf4j;
-
-import org.jetbrains.annotations.NotNull;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
 import static jakarta.ws.rs.core.Response.Status.ACCEPTED;
-import static jakarta.ws.rs.core.Response.Status.OK;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
+import static org.qubership.cloud.dbaas.Constants.*;
+import static org.qubership.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
 
-@RunWith(MockitoJUnitRunner.class)
+@SuppressWarnings("resource")
+@ExtendWith(MockitoExtension.class)
 @Slf4j
 class BlueGreenControllerV1Test {
-
-    private static BlueGreenControllerV1 blueGreenControllerV1;
-    private static BlueGreenService blueGreenService;
-
-    private static DbaaSHelper dbaaSHelper;
-
-    private static ProcessService processService;
-
-    @BeforeAll
-    static void setup() {
-        blueGreenControllerV1 = new BlueGreenControllerV1();
-        blueGreenService = Mockito.mock(BlueGreenService.class);
-        blueGreenControllerV1.blueGreenService = blueGreenService;
-        processService = Mockito.mock(ProcessService.class);
-        blueGreenControllerV1.processService = processService;
-        dbaaSHelper = Mockito.mock(DbaaSHelper.class);
-        blueGreenControllerV1.dbaaSHelper = dbaaSHelper;
-    }
+    @Mock
+    BlueGreenService blueGreenService;
+    @Mock
+    DbaaSHelper dbaaSHelper;
+    @Mock
+    ProcessService processService;
+    @InjectMocks
+    BlueGreenControllerV1 blueGreenControllerV1;
 
     @Test
-    void warmupOK() {
-        BulkDatabaseCreateResponse bulkDatabaseCreateResponse = new BulkDatabaseCreateResponse();
-        bulkDatabaseCreateResponse.setCreationStatus(OK);
-        List<BulkDatabaseCreateResponse> warmupResult = Arrays.asList(bulkDatabaseCreateResponse);
+    void warmupAccepted() {
         BgStateRequest bgStateRequest = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, "test-namespace1", "v1"),
                 createBgStateNamespace(CANDIDATE_STATE, "test-namespace", "v2"));
         ProcessInstanceImpl processInstance = Mockito.mock(ProcessInstanceImpl.class);
@@ -292,7 +278,7 @@ class BlueGreenControllerV1Test {
 
         Response orphanDatabasesResponseEntity = blueGreenControllerV1.getOrphans(namespaces);
 
-        List<OrphanDatabasesResponse> orphanDatabasesResponse = orphanDatabasesResponseEntity.readEntity(new GenericType<List<OrphanDatabasesResponse>>() {
+        List<OrphanDatabasesResponse> orphanDatabasesResponse = orphanDatabasesResponseEntity.readEntity(new GenericType<>() {
         });
         Assertions.assertEquals(1, orphanDatabasesResponse.size());
         OrphanDatabasesResponse targetResponse = orphanDatabasesResponse.get(0);
@@ -375,10 +361,10 @@ class BlueGreenControllerV1Test {
         when(task1.getState()).thenReturn(TaskState.IN_PROGRESS);
         when(task1.getType()).thenReturn(NewDatabaseTask.class.getName());
         TaskInstanceImpl task2 = mock(TaskInstanceImpl.class);
-        when(task2.getState()).thenReturn(TaskState.IN_PROGRESS);
+        lenient().when(task2.getState()).thenReturn(TaskState.IN_PROGRESS);
         when(task2.getType()).thenReturn(BackupDatabaseTask.class.getName());
         TaskInstanceImpl task3 = mock(TaskInstanceImpl.class);
-        when(task3.getState()).thenReturn(TaskState.NOT_STARTED);
+        lenient().when(task3.getState()).thenReturn(TaskState.NOT_STARTED);
         when(task3.getType()).thenReturn(RestoreDatabaseTask.class.getName());
         TaskInstanceImpl task4 = mock(TaskInstanceImpl.class);
         when(task4.getState()).thenReturn(TaskState.NOT_STARTED);
@@ -392,13 +378,13 @@ class BlueGreenControllerV1Test {
         DataContext dataContext = mock(DataContext.class);
         CloneDatabaseProcessObject cloneDatabaseProcessObject = new CloneDatabaseProcessObject(config, "v2", new TreeMap<>(), "source-ns");
         when(dataContext.get("processObject")).thenReturn(cloneDatabaseProcessObject);
-        when(task2.getContext()).thenReturn(dataContext);
-        when(task3.getContext()).thenReturn(dataContext);
+        lenient().when(task2.getContext()).thenReturn(dataContext);
+        lenient().when(task3.getContext()).thenReturn(dataContext);
         when(task4.getContext()).thenReturn(dataContext);
 
         TaskInstanceImpl task5 = mock(TaskInstanceImpl.class);
-        when(task5.getState()).thenReturn(TaskState.IN_PROGRESS);
-        when(task5.getName()).thenReturn(UPDATE_BG_STATE_TASK);
+        lenient().when(task5.getState()).thenReturn(TaskState.IN_PROGRESS);
+        lenient().when(task5.getName()).thenReturn(UPDATE_BG_STATE_TASK);
 
         when(processInstance.getTasks()).thenReturn(List.of(task1, task2, task3, task4, task5));
         return processInstance;
@@ -415,29 +401,5 @@ class BlueGreenControllerV1Test {
         result.setNamespace(namespace);
         result.setClassifier(classifier);
         return result;
-    }
-
-    private static BgStateRequest.BGStateNamespace createBgStateNamespace(String state, String namespace) {
-        return createBgStateNamespace(state, namespace, null);
-    }
-
-    private BgStateRequest createBgStateRequest() {
-        BgStateRequest bgStateRequest = new BgStateRequest();
-        var bgState = new BgStateRequest.BGState();
-        BgStateRequest.BGStateNamespace bgNamespace = createBgStateNamespace(CANDIDATE_STATE, "test-namespace", "v2");
-        bgState.setUpdateTime(new Date());
-        bgState.setOriginNamespace(bgNamespace);
-        bgState.setPeerNamespace(bgNamespace);
-        bgStateRequest.setBGState(bgState);
-        return bgStateRequest;
-    }
-
-    @NotNull
-    private BgStateRequest.BGStateNamespace createRequestNamespace() {
-        BgStateRequest.BGStateNamespace bgNamespace = new BgStateRequest.BGStateNamespace();
-        bgNamespace.setName("test-namespace");
-        bgNamespace.setState(CANDIDATE_STATE);
-        bgNamespace.setVersion("v2");
-        return bgNamespace;
     }
 }

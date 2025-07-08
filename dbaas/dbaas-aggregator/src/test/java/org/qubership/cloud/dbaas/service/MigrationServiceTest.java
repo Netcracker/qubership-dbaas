@@ -59,7 +59,7 @@ public class MigrationServiceTest {
     private final String TEST_TYPE = "test-type";
 
     @Test
-    public void testRegisterRequestValidation() {
+    void testRegisterRequestValidation() {
         final RegisterDatabaseRequestV3 wrongAdapterId = getRegisterDatabaseRequestSample();
         wrongAdapterId.setAdapterId("wrong-adapter-id");
 
@@ -84,7 +84,7 @@ public class MigrationServiceTest {
     }
 
     @Test
-    public void testRegisterDatabasesWithAdapterId() {
+    void testRegisterDatabasesWithAdapterId() {
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
         when(dbaasAdapter.getDatabases()).thenReturn(Collections.singleton(TEST_DB_NAME));
@@ -200,7 +200,7 @@ public class MigrationServiceTest {
     }
 
     @Test
-    public void testRegisterDatabasesWithAdapterIdAndPhybId() {
+    void testRegisterDatabasesWithAdapterIdAndPhybId() {
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
 
@@ -223,7 +223,7 @@ public class MigrationServiceTest {
     }
 
     @Test
-    public void testRegisterDatabasesWithPhybId() {
+    void testRegisterDatabasesWithPhybId() {
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
 
@@ -248,7 +248,7 @@ public class MigrationServiceTest {
     }
 
     @Test
-    public void testRegisterDatabasesWithoutAdapterIdAndPhybId() {
+    void testRegisterDatabasesWithoutAdapterIdAndPhybId() {
         when(physicalDatabasesService.getAllAdapters()).thenReturn(List.of(dbaasAdapter, secondDbaasAdapter));
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
@@ -275,7 +275,7 @@ public class MigrationServiceTest {
     }
 
     @Test
-    public void testRegisterDatabasesWithoutAdapterIdAndPhybIdConflict() {
+    void testRegisterDatabasesWithoutAdapterIdAndPhybIdConflict() {
         when(physicalDatabasesService.getAllAdapters()).thenReturn(List.of(dbaasAdapter, secondDbaasAdapter));
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getAdapterById(TEST_SECOND_ADAPTER_ID)).thenReturn(secondDbaasAdapter);
@@ -309,7 +309,7 @@ public class MigrationServiceTest {
     }
 
     @Test
-    public void testRegisterDatabasesFail() {
+    void testRegisterDatabasesFail() {
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
         when(dbaasAdapter.getDatabases()).thenReturn(Collections.singleton(TEST_DB_NAME));
@@ -329,7 +329,7 @@ public class MigrationServiceTest {
     }
 
     @Test
-    public void testRegisterDatabasesOldAdapter() {
+    void testRegisterDatabasesOldAdapter() {
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
         when(dbaasAdapter.getDatabases()).thenReturn(Collections.singleton(TEST_DB_NAME));
