@@ -60,7 +60,7 @@ class DeclarativeControllerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         BgTrack track = new BgTrack();
         track.setId(UUID.randomUUID().toString());
         ProcessInstanceImpl processInstance = Mockito.mock(ProcessInstanceImpl.class);
@@ -116,7 +116,7 @@ class DeclarativeControllerTest {
     }
 
     @Test
-    public void testGetOperationStatusInProgress() {
+    void testGetOperationStatusInProgress() {
         ProcessInstanceImpl testProcessInstance = createTestProcessInstance(TaskState.COMPLETED, TaskState.IN_PROGRESS);
         when(testProcessInstance.getState()).thenReturn(TaskState.IN_PROGRESS);
         String trackingId = "trackingId";
@@ -131,7 +131,7 @@ class DeclarativeControllerTest {
 
 
     @Test
-    public void testDeclarativeControllerDbCreateRequest() throws JsonProcessingException {
+    void testDeclarativeControllerDbCreateRequest() throws JsonProcessingException {
         DeclarativeDatabaseCreationRequest dbCreateRequest = getDeclarativeDatabaseCreationRequest();
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
@@ -144,7 +144,7 @@ class DeclarativeControllerTest {
     }
 
     @Test
-    public void testDeclarativeControllerUnknownConfigKing() throws JsonProcessingException {
+    void testDeclarativeControllerUnknownConfigKing() throws JsonProcessingException {
         RolesRegistrationRequest rolesRegistrationRequest = getRolesRegistrationRequest();
         rolesRegistrationRequest.setKind("some-custom-kind");
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")

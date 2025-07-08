@@ -1,5 +1,16 @@
 package org.qubership.cloud.dbaas.service;
 
+import jakarta.ws.rs.core.Response;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import org.qubership.cloud.dbaas.dto.role.Role;
@@ -19,23 +30,15 @@ import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
 import org.qubership.core.scheduler.po.task.TaskState;
-import jakarta.ws.rs.core.Response;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
+import static org.junit.Assert.assertThrows;
 import static org.qubership.cloud.dbaas.Constants.*;
 import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static org.mockito.Mockito.*;
+import static org.qubership.cloud.dbaas.Constants.*;
+import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 
 @ExtendWith(MockitoExtension.class)
 class BlueGreenServiceTest {
@@ -78,7 +81,7 @@ class BlueGreenServiceTest {
     BlueGreenService blueGreenService;
 
     @BeforeEach
-    public void setup() {
+    void setup() {
         blueGreenService = new BlueGreenService(backupsService, logicalDbDbaasRepository,
                 aggregatedDatabaseAdministrationService, bgNamespaceRepository, balancingRulesService,
                 databaseRolesService, bgDomainRepository, dBaaService, bgTrackRepository, processService, declarativeDbaasCreationService,
@@ -133,8 +136,8 @@ class BlueGreenServiceTest {
         verify(declarativeDbaasCreationService, times(1)).findAllByNamespace("test-namespace-active");
         verify(databaseRegistryDbaasRepository).findAnyLogDbRegistryTypeByNamespace("test-namespace-active");
         verify(dBaaService).shareDbToNamespace(argThat(dbr -> dbr.getBgVersion() == null
-                                                              && dbr.getDatabase().equals(databaseRegistry.getDatabase()) && dbr.getNamespace().equals("test-namespace-active")
-                                                              && dbr.getClassifier().get(NAMESPACE).equals("test-namespace-active")), eq("test-namespace-candidate"));
+                && dbr.getDatabase().equals(databaseRegistry.getDatabase()) && dbr.getNamespace().equals("test-namespace-active")
+                && dbr.getClassifier().get(NAMESPACE).equals("test-namespace-active")), eq("test-namespace-candidate"));
     }
 
     @Test
@@ -536,9 +539,7 @@ class BlueGreenServiceTest {
         bgState.setControllerNamespace(NS_C);
         bgStateRequest.setBGState(bgState);
 
-        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> {
-            blueGreenService.initBgDomain(bgStateRequest);
-        });
+        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
 
         Assertions.assertTrue(exception.getMessage().contains("States of bgRequest must be active and idle, but were active and differentState"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
@@ -551,12 +552,10 @@ class BlueGreenServiceTest {
         BgDomain bgDomain = new BgDomain();
         BgNamespace bgNamespace = new BgNamespace();
         bgNamespace.setNamespace(NS_1);
-        bgDomain.setNamespaces(Arrays.asList(bgNamespace));
+        bgDomain.setNamespaces(List.of(bgNamespace));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace));
 
-        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> {
-            blueGreenService.initBgDomain(bgStateRequest);
-        });
+        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
         Assertions.assertTrue(exception.getMessage().contains("One of requested namespaces already used in another bgDomain"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
     }
@@ -580,9 +579,7 @@ class BlueGreenServiceTest {
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace3));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace4));
 
-        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> {
-            blueGreenService.initBgDomain(bgStateRequest);
-        });
+        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
         Assertions.assertTrue(exception.getMessage().contains("These namespaces already belongs to different bgDomains"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
     }
@@ -1164,10 +1161,12 @@ class BlueGreenServiceTest {
     private DatabaseRegistry createDatabaseRegistry(Map<String, Object> classifier, String type, String adapterId, String username, String dbName) {
         Database database = new Database();
         database.setId(UUID.randomUUID());
-        ArrayList<Map<String, Object>> connectionProperties = new ArrayList<>(List.of(new HashMap<String, Object>() {{
-            put("username", username);
-            put(ROLE, Role.ADMIN.toString());
-        }}));
+        List<Map<String, Object>> connectionProperties = List.of(
+                Map.of(
+                        "username", username,
+                        ROLE, Role.ADMIN.toString()
+                )
+        );
         database.setConnectionProperties(connectionProperties);
         database.setClassifier(new TreeMap<>(classifier));
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
@@ -1183,9 +1182,7 @@ class BlueGreenServiceTest {
         database.setName(dbName);
         database.setAdapterId(adapterId);
         database.setPhysicalDatabaseId(adapterId);
-        database.setSettings(new HashMap<String, Object>() {{
-            put("setting-one", "value-one");
-        }});
+        database.setSettings(Map.of("setting-one", "value-one"));
         database.setDbState(new DbState(DbState.DatabaseStateStatus.CREATED));
         database.setResources(new LinkedList<>(Arrays.asList(new DbResource("username", username),
                 new DbResource("database", dbName))));

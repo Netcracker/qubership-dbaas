@@ -117,12 +117,12 @@ class BlueGreenStabilityTest {
     }
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         clean();
     }
 
     @AfterEach
-    public void tearDown() {
+    void tearDown() {
         clean();
     }
 

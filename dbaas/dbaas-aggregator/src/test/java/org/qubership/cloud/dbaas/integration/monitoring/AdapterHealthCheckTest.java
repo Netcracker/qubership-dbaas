@@ -57,7 +57,7 @@ class AdapterHealthCheckTest {
     AdaptersAccessIndicator adaptersAccessIndicator;
 
     @BeforeEach
-    public void cleanUp() {
+    void cleanUp() {
         this.meterRegistry.clear();
     }
 
