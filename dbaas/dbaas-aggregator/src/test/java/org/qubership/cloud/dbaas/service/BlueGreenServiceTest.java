@@ -33,9 +33,6 @@ import org.qubership.core.scheduler.po.task.TaskState;
 
 import java.util.*;
 
-import static org.junit.Assert.assertThrows;
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static org.mockito.Mockito.*;
 import static org.qubership.cloud.dbaas.Constants.*;
 import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
