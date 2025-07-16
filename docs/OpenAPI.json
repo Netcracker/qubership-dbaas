@@ -5233,7 +5233,7 @@
             "type": "string"
           },
           "additionalRoles": {
-            "description": "Сonnection properties properties that require additional roles",
+            "description": "Connection properties properties that require additional roles",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AdditionalRoles"
