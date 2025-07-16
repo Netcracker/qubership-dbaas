@@ -62,7 +62,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     @Inject
     AggregatedBackupAdministrationControllerV3 aggregatedBackupAdministrationControllerV3;
 
-    private ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void testGetAllBackupsInNamespace() {
@@ -81,7 +81,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testRestoreBackupInNamespace() throws NamespaceRestorationFailedException, IllegalAccessException {
+    void testRestoreBackupInNamespace() throws NamespaceRestorationFailedException {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().post("/{backupId}/restorations", TEST_UUID)
@@ -173,7 +173,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testGetBackupInNamespace() throws Exception {
+    void testGetBackupInNamespace() {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().get("/{backupId}", TEST_UUID)
@@ -225,7 +225,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testCollectBackupInNamespace() throws Exception {
+    void testCollectBackupInNamespace() {
         when(asyncOperations.getBackupPool()).thenReturn(new ThreadPoolExecutor(1, 1,
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
@@ -248,7 +248,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testCollectBackupInNamespaceWithoutIgnoreNotBackupableDatabases() throws Exception {
+    void testCollectBackupInNamespaceWithoutIgnoreNotBackupableDatabases() {
         DbaasAdapter adapterOne = new DbaasAdapterRESTClientV2("address-of-redis-adapter-1", "redis", null, "redis-adapter-1", mock(AdapterActionTrackerClient.class));
         DbaasAdapter adapterTwo = new DbaasAdapterRESTClientV2("address-of-redis-adapter-2", "redis", null, "redis-adapter-2", mock(AdapterActionTrackerClient.class));
         when(dbBackupsService.checkAdaptersOnBackupOperation(TEST_NAMESPACE)).thenReturn(Arrays.asList(adapterOne, adapterTwo));
@@ -269,7 +269,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testCollectBackupInNamespaceWithIgnoreNotBackupableDatabases() throws IllegalAccessException {
+    void testCollectBackupInNamespaceWithIgnoreNotBackupableDatabases() {
         when(asyncOperations.getBackupPool()).thenReturn(new ThreadPoolExecutor(1, 1,
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
@@ -286,7 +286,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testDeleteBackupInNamespaceWithBackupNotFound() throws Exception {
+    void testDeleteBackupInNamespaceWithBackupNotFound() {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when()
@@ -296,7 +296,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testDeleteBackupInNamespaceForbiddenWithWrongNamespace() throws Exception {
+    void testDeleteBackupInNamespaceForbiddenWithWrongNamespace() {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         when(backupsDbaasRepository.findById(TEST_UUID)).thenReturn(Optional.of(namespaceBackup));
         given().auth().preemptive().basic("backup_manager", "backup_manager")
@@ -308,7 +308,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testDeleteBackupInNamespaceWithProceedingStatus() throws Exception {
+    void testDeleteBackupInNamespaceWithProceedingStatus() {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         namespaceBackup.setStatus(NamespaceBackup.Status.PROCEEDING);
         when(backupsDbaasRepository.findById(TEST_UUID)).thenReturn(Optional.of(namespaceBackup));
@@ -322,7 +322,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testDeleteBackupInNamespaceWithSuccessStatus() throws Exception {
+    void testDeleteBackupInNamespaceWithSuccessStatus() {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         namespaceBackup.setStatus(NamespaceBackup.Status.ACTIVE);
         when(backupsDbaasRepository.findById(TEST_UUID)).thenReturn(Optional.of(namespaceBackup));
@@ -341,7 +341,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testDeleteBackupInNamespaceWithIllegalArgumentException() throws Exception {
+    void testDeleteBackupInNamespaceWithIllegalArgumentException() {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         namespaceBackup.setStatus(NamespaceBackup.Status.ACTIVE);
         when(backupsDbaasRepository.findById(TEST_UUID)).thenReturn(Optional.of(namespaceBackup));
@@ -362,7 +362,7 @@ class AggregatedBackupAdministrationControllerV3Test {
     }
 
     @Test
-    void testDeleteBackupInNamespaceWithNamespaceBackupDeletionFailedException() throws Exception {
+    void testDeleteBackupInNamespaceWithNamespaceBackupDeletionFailedException() {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         namespaceBackup.setStatus(NamespaceBackup.Status.ACTIVE);
         when(backupsDbaasRepository.findById(TEST_UUID)).thenReturn(Optional.of(namespaceBackup));
