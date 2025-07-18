@@ -78,6 +78,7 @@ public class BlueGreenControllerV1 {
         warmupResponse.setTrackingId(processInstance.getId());
         warmupResponse.setMessage(getProcessMessage(processInstance));
 
+        log.info("Warmup successfully started");
         return Response.accepted(warmupResponse).build();
     }
 
