@@ -966,11 +966,11 @@ public class DBaaService {
     public DatabaseRegistry shareDbToNamespace(DatabaseRegistry sourceRegistry, String targetNamespace) {
         Database sourceDatabase = sourceRegistry.getDatabase();
         DatabaseRegistry newRegistry = new DatabaseRegistry(sourceRegistry, targetNamespace);
+        log.debug("Share static database to {} namespace with new classifier {}", targetNamespace, newRegistry.getClassifier());
         Optional<DatabaseRegistry> existingRegistry = sourceDatabase.getDatabaseRegistry().stream()
                 .filter(dbr -> dbr.getClassifier().equals(newRegistry.getClassifier())
                                && dbr.getType().equals(newRegistry.getType()))
                 .findFirst();
-        log.debug("Share static database to {} namespace with new classifier {}", targetNamespace, newRegistry.getClassifier());
         if (existingRegistry.isEmpty()) {
             sourceDatabase.getDatabaseRegistry().add(newRegistry);
             logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(newRegistry);

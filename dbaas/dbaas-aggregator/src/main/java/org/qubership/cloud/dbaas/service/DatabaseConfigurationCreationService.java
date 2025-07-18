@@ -1,5 +1,13 @@
 package org.qubership.cloud.dbaas.service;
 
+import jakarta.annotation.Nullable;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.qubership.cloud.context.propagation.core.ContextManager;
 import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
 import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
@@ -9,21 +17,11 @@ import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
 import org.qubership.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
 import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import org.qubership.cloud.dbaas.service.processengine.processes.AllDatabasesCreationProcess;
 import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import org.qubership.core.scheduler.po.DataContext;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
-import jakarta.annotation.Nullable;
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
-import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
@@ -43,9 +41,6 @@ public class DatabaseConfigurationCreationService {
     LogicalDbDbaasRepository logicalDbDbaasRepository;
     @Inject
     ProcessService processService;
-    @Inject
-    DatabaseDeclarativeConfigRepository declarativeConfigRepository;
-
 
     public ProcessInstanceImpl createProcessInstance(List<AbstractDatabaseProcessObject> processObjects, String operation,
                                                      String namespace) {
@@ -54,23 +49,24 @@ public class DatabaseConfigurationCreationService {
 
     public ProcessInstanceImpl createProcessInstance(List<AbstractDatabaseProcessObject> processObjects, String operation,
                                                      String namespace, @Nullable String version) {
+        log.debug("Process creation started for {} in namespace {}", operation, namespace);
         ProcessInstanceImpl process = processService.createProcess(new AllDatabasesCreationProcess(processObjects), namespace, operation);
+        log.debug("Context filling started");
         for (TaskInstanceImpl task : process.getTasks()) {
-            task.getContext().apply((DataContext c) -> c.put(X_REQUEST_ID, ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId()));
-            if (UPDATE_BG_STATE_TASK.equals(task.getName())) {
-                task.getContext().apply((DataContext c) -> {
+            task.getContext().apply((DataContext c) -> {
+                c.put(X_REQUEST_ID, ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId());
+                if (UPDATE_BG_STATE_TASK.equals(task.getName())) {
                     c.put("operation", operation);
                     c.put("namespace", namespace);
                     c.put("version", version);
-                });
-                continue;
-            }
-            task.getContext().apply((DataContext c) ->
-                    c.put("processObject",
-                            processObjects.stream()
-                                    .filter(p -> p.getId().toString().equals(task.getName().split(":")[1]))
-                                    .findFirst().get()));
+                } else {
+                    c.put("processObject", processObjects.stream()
+                            .filter(p -> p.getId().toString().equals(task.getName().split(":")[1]))
+                            .findFirst().get());
+                }
+            });
         }
+        log.debug("Process creation finished");
         return process;
     }
 
@@ -85,10 +81,10 @@ public class DatabaseConfigurationCreationService {
             subProcesses = createProcessBasedOnConfiguration(bgNamespace.orElseThrow().getVersion(),
                     rawSourceClassifier, databaseConfig, databaseConfig.getVersioningApproach());
         } else if (APPLY_CONFIG_OPERATION.equals(operation)) {
-                subProcesses = createProcessBasedOnConfiguration(bgNamespace.isPresent() ? bgNamespace.get().getVersion() : null,
-                        convertClassifierConfigToClassifier(rawSourceClassifier, databaseConfig.getNamespace()), databaseConfig,
-                        databaseConfig.getInstantiationApproach(),
-                        cloneToNewDatabases);
+            subProcesses = createProcessBasedOnConfiguration(bgNamespace.isPresent() ? bgNamespace.get().getVersion() : null,
+                    convertClassifierConfigToClassifier(rawSourceClassifier, databaseConfig.getNamespace()), databaseConfig,
+                    databaseConfig.getInstantiationApproach(),
+                    cloneToNewDatabases);
         } else {
             throw new RuntimeException("not supported type");
         }

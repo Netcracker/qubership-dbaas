@@ -110,66 +110,66 @@ public class BlueGreenService {
 
     public ProcessInstanceImpl warmup(BgStateRequest.BGState bgState) {
         BgNamespace requestedCandidateNamespace = new BgNamespace(bgState.getBgNamespaceWithState(CANDIDATE_STATE).orElseThrow(), bgState.getUpdateTime());
-
         BgNamespace requestedActiveNamespace = new BgNamespace(bgState.getBgNamespaceWithState(ACTIVE_STATE).orElseThrow(), bgState.getUpdateTime());
-
         BgNamespace idleBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(requestedCandidateNamespace.getNamespace())
                 .orElseThrow(() -> new BgRequestValidationException("Can't find idle namespace for namespace"));
-
-
         BgNamespace activeBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(requestedActiveNamespace.getNamespace())
                 .orElseThrow(() -> new BgRequestValidationException("Can't find active namespace for namespace"));
-
-
+        String activeNamespace = activeBgNamespace.getNamespace();
+        String candidateNamespace = requestedCandidateNamespace.getNamespace();
         if (CANDIDATE_STATE.equals(idleBgNamespace.getState()) && ACTIVE_STATE.equals(activeBgNamespace.getState())) {
             return null;
         }
         if (!ACTIVE_STATE.equals(activeBgNamespace.getState()) || !IDLE_STATE.equals(idleBgNamespace.getState())) {
             throw new BgRequestValidationException("Only Active + Idle namespaces are allowed for warmup");
         }
-
-        String activeNamespace = activeBgNamespace.getNamespace();
-        if (activeNamespace.equals(requestedCandidateNamespace.getNamespace())) {
+        if (activeNamespace.equals(candidateNamespace)) {
             throw new BgRequestValidationException("You can warmup only candidate namespace");
         }
-        Optional<BgTrack> trackOptional = bgTrackRepository.findByNamespaceAndOperation(requestedCandidateNamespace.getNamespace(), WARMUP_OPERATION);
+
+        Optional<BgTrack> trackOptional = bgTrackRepository.findByNamespaceAndOperation(candidateNamespace, WARMUP_OPERATION);
         if (trackOptional.isPresent()) {
             ProcessInstanceImpl process = processService.getProcess(trackOptional.get().getId());
             if (process != null) {
+                log.info("Found existing process for warmup operation in {} namespace: id={}", candidateNamespace, process.getId());
                 TaskState state = process.getState();
                 if (TaskState.IN_PROGRESS.equals(state) || TaskState.NOT_STARTED.equals(state)) {
+                    log.warn("Old process is in progress, there is no need to create a new one");
                     return process;
                 } else if (TaskState.TERMINATED.equals(state) || TaskState.FAILED.equals(state)) {
+                    log.warn("Retrying the old process");
                     processService.retryProcess(process);
                     return process;
                 }
             }
         }
 
-        copyNamespaceRules(activeNamespace, requestedCandidateNamespace.getNamespace());
-        copyMicroserviceRules(activeNamespace, requestedCandidateNamespace.getNamespace());
-        copyDatabaseRoles(activeNamespace, requestedCandidateNamespace.getNamespace());
+        // TODO: move to separate async task
+        copyNamespaceRules(activeNamespace, candidateNamespace);
+        copyMicroserviceRules(activeNamespace, candidateNamespace);
+        copyDatabaseRoles(activeNamespace, candidateNamespace);
+        shareStaticDatabases(activeNamespace, candidateNamespace);
 
+        return createAndStartWarmupProcess(activeNamespace, requestedCandidateNamespace);
+    }
+
+    private ProcessInstanceImpl createAndStartWarmupProcess(String activeNamespace, BgNamespace requestedCandidateNamespace) {
+        log.debug("Create configs for new process");
         List<DatabaseDeclarativeConfig> declarativeConfigs = declarativeDbaasCreationService.findAllByNamespace(activeNamespace);
-
         ArrayList<DatabaseToDeclarativeCreation> configsToCreateDatabase = new ArrayList<>();
-
-
         for (DatabaseDeclarativeConfig databaseDeclarativeConfig : declarativeConfigs) {
             DatabaseDeclarativeConfig newConfiguration = declarativeDbaasCreationService.saveConfigurationWithNewNamespace(databaseDeclarativeConfig,
                     requestedCandidateNamespace.getNamespace());
             if (Boolean.TRUE.equals(newConfiguration.getLazy())) {
                 continue;
             }
-            DatabaseExistence allDatabaseExists = databaseConfigurationCreationService.isAllDatabaseExists(newConfiguration,
-                    requestedActiveNamespace.getNamespace());
+            DatabaseExistence allDatabaseExists = databaseConfigurationCreationService.isAllDatabaseExists(newConfiguration, activeNamespace);
             if (allDatabaseExists.isExist() && allDatabaseExists.isActual()) {
                 log.debug("all databases with configuration = {} are exists", newConfiguration);
                 continue;
             }
             configsToCreateDatabase.add(new DatabaseToDeclarativeCreation(newConfiguration, false,
                     new TreeMap<>(databaseDeclarativeConfig.getClassifier())));
-
         }
         ArrayList<AbstractDatabaseProcessObject> processObjects = new ArrayList<>();
         configsToCreateDatabase.forEach(config -> {
@@ -178,15 +178,12 @@ public class BlueGreenService {
         });
         ProcessInstanceImpl process = databaseConfigurationCreationService.createProcessInstance(processObjects,
                 WARMUP_OPERATION, requestedCandidateNamespace.getNamespace(), requestedCandidateNamespace.getVersion());
-
-        warmupStaticDatabases(requestedCandidateNamespace.getNamespace(), requestedActiveNamespace.getNamespace());
-
         processService.startProcess(process);
-
         return process;
     }
 
-    private void warmupStaticDatabases(String candidateNamespace, String activeNamespace) {
+    private void shareStaticDatabases(String activeNamespace, String candidateNamespace) {
+        log.debug("Share static databases from {} to {} namespace", activeNamespace, candidateNamespace);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(activeNamespace)
                 .stream().filter(dbr -> dbr.getBgVersion() == null && !dbr.getClassifier().containsKey(MARKED_FOR_DROP))
                 .forEach(staticDatabaseRegistry -> dBaaService.shareDbToNamespace(staticDatabaseRegistry, candidateNamespace));
