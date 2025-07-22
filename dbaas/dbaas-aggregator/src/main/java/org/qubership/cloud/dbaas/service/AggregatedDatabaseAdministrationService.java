@@ -397,7 +397,7 @@ public class AggregatedDatabaseAdministrationService {
             if (createdDatabase != null && createdDatabase.getResources() != null) {
                 log.info("Rollback creation of database {}", createdDatabase.getName());
                 dBaaService.dropDatabase(databaseRegistry);
-                log.info("Database resources: " + createdDatabase.getResources() + " were dropped via roll back operation");
+                log.info("Database resources: {} were dropped via roll back operation", createdDatabase.getResources());
             }
             log.info("Rollback creation of registry {}", databaseRegistry.getId());
             databaseRegistryDbaasRepository.delete(databaseRegistry);

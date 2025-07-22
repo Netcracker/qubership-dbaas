@@ -133,7 +133,7 @@ public class PasswordEncryption {
                 ? ConnectionDescription.DEFAULT_CONNECTION_DESCRIPTION : database.getConnectionDescription();
         List<Map<String, Object>> connectionProperties = database.getConnectionProperties().stream().map(HashMap::new).collect(Collectors.toList());
         if (connectionProperties == null) {
-            throw new RecordIsCorruptedException(String.format("Record in DbaaS of database with id {} is corrupted", database.getId()));
+            throw new RecordIsCorruptedException(String.format("Record in DBaaS of database with id %s is corrupted", database.getId()));
         }
         List<Boolean> decrypts = connectionProperties.stream().map(cp -> connectionDescription
                 .getFields()
