@@ -41,10 +41,9 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.qubership.cloud.dbaas.Constants.ROLE;
 import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -421,6 +420,32 @@ class DebugServiceTest {
         DatabaseRegistry registeredDb3 = createDatabase(type, "adapter", "username", "db3");
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
         when(databaseRegistryDbaasRepository.findAllInternalDatabases()).thenReturn(List.of(registeredDb1, registeredDb3));
+        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
+        physicalDatabase.setPhysicalDatabaseIdentifier("test-id");
+        when(physicalDatabasesService.getByAdapterId("adapter")).thenReturn(physicalDatabase);
+        when(responseHelper.toDatabaseResponse(List.of(registeredDb3), false))
+                .thenReturn(convertDatabaseToDatabaseListCp(List.of(registeredDb3)));
+
+        List<LostDatabasesResponse> lostDatabases = debugService.findLostDatabases();
+        assertEquals(1, lostDatabases.size());
+        assertEquals("db3", lostDatabases.get(0).getDatabases().get(0).getName());
+    }
+
+    @Test
+    void testFindLostDatabasesWithNullPhysicalDatabaseId() {
+        DbaasAdapter adapter = mock(DbaasAdapter.class);
+        when(adapter.isDisabled()).thenReturn(false);
+        when(adapter.identifier()).thenReturn("adapter");
+
+        when(adapter.getDatabases()).thenReturn(Set.of("db1", "db2"));
+        when(physicalDatabasesService.getAllAdapters()).thenReturn(List.of(adapter));
+        String type = "postgresql";
+        DatabaseRegistry registeredDb1 = createDatabase(type, "adapter", "username", "db1");
+        DatabaseRegistry registeredDb3 = createDatabase(type, "adapter", "username", "db3");
+        DatabaseRegistry registeredDb4 = createDatabase(type, null, "username", "db4");
+        registeredDb4.setPhysicalDatabaseId(null);
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+        when(databaseRegistryDbaasRepository.findAllInternalDatabases()).thenReturn(List.of(registeredDb1, registeredDb3, registeredDb4));
         PhysicalDatabase physicalDatabase = new PhysicalDatabase();
         physicalDatabase.setPhysicalDatabaseIdentifier("test-id");
         when(physicalDatabasesService.getByAdapterId("adapter")).thenReturn(physicalDatabase);
