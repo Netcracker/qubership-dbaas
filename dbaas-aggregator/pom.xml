@@ -158,7 +158,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.5</version>
+            <version>42.7.7</version>
         </dependency>
         <dependency>
             <groupId>org.qubership.cloud.security.core.utils</groupId>
@@ -168,6 +168,7 @@
         <dependency>
             <groupId>commons-beanutils</groupId>
             <artifactId>commons-beanutils</artifactId>
+            <version>1.11.0</version>
         </dependency>
 
         <dependency>
