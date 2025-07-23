@@ -61,7 +61,8 @@ public class PhysicalDatabaseRegistrationControllerV3 {
             @APIResponse(responseCode = "409", description = "Database could not be registered as physical database already " +
                     "exists with another adapter id or the same adapter already exists and it is used with other physical database"),
             @APIResponse(responseCode = "502", description = "Adapter is not available during handshake process"),
-            @APIResponse(responseCode = "400", description = "Adapter already running")})
+            @APIResponse(responseCode = "400", description = "Adapter already running or request validation failed"),
+    })
     @Path("/{phydbid}")
     @PUT
     @Transactional

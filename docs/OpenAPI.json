@@ -3679,7 +3679,7 @@
             "description": "Adapter is not available during handshake process"
           },
           "400": {
-            "description": "Adapter already running"
+            "description": "Adapter already running or request validation failed"
           },
           "401": {
             "description": "Not Authorized"
@@ -5221,7 +5221,7 @@
         }
       },
       "Instruction": {
-        "description": "V3 Responce model for starting the migration procedure",
+        "description": "V3 Response model for starting the migration procedure",
         "required": [
           "id",
           "additionalRoles"
