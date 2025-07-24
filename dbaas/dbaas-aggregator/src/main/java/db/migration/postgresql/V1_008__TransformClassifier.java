@@ -132,7 +132,7 @@ public class V1_008__TransformClassifier extends BaseJavaMigration {
     }
 
     private Map<String, Object> migrateV2ClassifierToV3(Map<String, Object> classifier, String namespace) {
-        Map<String, Object> classifierV3 = null;
+        Map<String, Object> classifierV3;
         classifierV3 = new TreeMap<>(classifier);
         Object isService = classifierV3.get("isServiceDb");
         if (isService == null) {

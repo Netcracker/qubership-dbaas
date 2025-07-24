@@ -22,7 +22,7 @@ public class CryptoServicePasswordEncryption implements DataEncryption {
     /**
      * Regexp to check that the data has been encrypted by V2CryptoProvider
      *
-     * @see org.qubership.cloud.dbaas.service.encryption.cipher.provider.V2CryptoProvider
+     * @see org.qubership.cloud.encryption.cipher.provider.V2CryptoProvider
      */
     private static final Pattern TEMPLATE_REGEXP = Pattern.compile(
             "^\\{v2c\\}(\\{(?<algorithm>[^\\{\\}]*)\\}){1}(\\{(?<keyAlias>[^\\{\\}]*)\\}){1}(\\{(?<iv>[a-zA-Z0-9\\=\\/\\+]+)\\}){0,1}(\\{(?<cryptData>[a-zA-Z0-9\\=\\/\\+]+)\\}){1}$");

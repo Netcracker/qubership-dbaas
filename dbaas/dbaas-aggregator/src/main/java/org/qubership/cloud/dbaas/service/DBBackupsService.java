@@ -374,15 +374,11 @@ public class DBBackupsService {
         return collectedBackups.stream().map(DatabasesBackup::getStatus)
                 .map(Status::ordinal).max(Integer::compareTo)
                 .map(it -> Status.values()[it]).map(it -> {
-                    switch (it) {
-                        case SUCCESS:
-                            return NamespaceBackup.Status.ACTIVE;
-                        case PROCEEDING:
-                            return NamespaceBackup.Status.PROCEEDING;
-                        case FAIL:
-                        default:
-                            return FAIL;
-                    }
+                    return switch (it) {
+                        case SUCCESS -> NamespaceBackup.Status.ACTIVE;
+                        case PROCEEDING -> NamespaceBackup.Status.PROCEEDING;
+                        default -> FAIL;
+                    };
                 })
                 // allow backups with no dbs for scenarios with clean namespace
                 .orElse(NamespaceBackup.Status.ACTIVE);
@@ -636,7 +632,7 @@ public class DBBackupsService {
                 log.info("Metadata was change successfully from db with name {}", dbName);
             } catch (Exception e) {
                 log.error("Failed to update metadata for database {}", dbName, e);
-                failReasonBuilder.append("Failed to update metadata for database " + dbName);
+                failReasonBuilder.append("Failed to update metadata for database ").append(dbName);
                 failReasonBuilder.append(System.lineSeparator());
                 result.setStatus(Status.FAIL);
             }
@@ -821,7 +817,7 @@ public class DBBackupsService {
     private StringBuilder appendFailed(StringBuilder builder, Status status, String adapterId) {
         if (Status.FAIL.equals(status)) {
             DbaasAdapter adapter = adapterOf(adapterId);
-            builder.append(builder.length() > 0 ? " , " : " [ ")
+            builder.append(!builder.isEmpty() ? " , " : " [ ")
                     .append(status)
                     .append(" restoration  in adapter ")
                     .append(adapterId)

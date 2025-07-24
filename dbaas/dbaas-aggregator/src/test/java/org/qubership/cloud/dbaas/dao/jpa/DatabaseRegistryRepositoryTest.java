@@ -184,11 +184,11 @@ class DatabaseRegistryRepositoryTest {
         when(databasesRepository.findByIdOptional(db_1.getDatabase().getId())).thenReturn(Optional.of(db_1.getDatabase()));
         when(databaseRegistryRepository.findByIdOptional(db_1.getId())).thenReturn(Optional.of(db_1));
 
-        for (int i = 0; i < dbs.size(); i++) {
-            databaseRegistryDbaasRepository.deleteExternalDatabases(Collections.singletonList(dbs.get(i).getDatabase()), dbs.get(i).getNamespace());
+        for (DatabaseRegistry db : dbs) {
+            databaseRegistryDbaasRepository.deleteExternalDatabases(Collections.singletonList(db.getDatabase()), db.getNamespace());
 
-            int invocations = dbs.get(i).isExternallyManageable() ? 1 : 0;
-            verify(databasesRepository, times(invocations)).delete(eq(dbs.get(i).getDatabase()));
+            int invocations = db.isExternallyManageable() ? 1 : 0;
+            verify(databasesRepository, times(invocations)).delete(eq(db.getDatabase()));
         }
     }
 

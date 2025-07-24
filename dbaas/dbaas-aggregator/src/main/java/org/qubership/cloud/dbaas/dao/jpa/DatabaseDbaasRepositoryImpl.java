@@ -234,8 +234,8 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
             return;
         }
         List<org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry> databaseRegistry = database.get().getDatabaseRegistry();
-        for (int i = 0; i < databaseRegistry.size(); i++) {
-            safeDeleteAndFlushDatabaseRegistry(databaseRegistry.get(i).getId());
+        for (DatabaseRegistry registry : databaseRegistry) {
+            safeDeleteAndFlushDatabaseRegistry(registry.getId());
         }
     }
 

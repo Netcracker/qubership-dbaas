@@ -173,7 +173,7 @@ public class DebugService {
                                              List<PerMicroserviceRule> microserviceRules) {
 
         var defaultRules = physicalDatabases.stream()
-            .filter(database -> Boolean.TRUE.equals(database.isGlobal()))
+            .filter(database -> database.isGlobal())
             .map(this::convertDumpDefaultRuleV3)
             .toList();
 

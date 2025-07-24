@@ -172,7 +172,7 @@ public class MigrationService {
      *                              value - optional with collection of names of the databases, which present in
      *                              this adapter. Empty optional means that adapter version is too old
      *                              and database existence validation can be skipped
-     * @param isUserCreation
+     * @param isUserCreation        whether to create user resources
      */
     private void registerDatabaseWithAdapterId(RegisterDatabaseResponseBuilder responseBuilder,
                                                RegisterDatabaseRequestV3 requestsWithAdapterId,
@@ -185,7 +185,7 @@ public class MigrationService {
         try {
             log.info("Register database {} in adapter with id {} and physical id {}", dbName, requestsWithAdapterId.getAdapterId(), requestsWithAdapterId.getPhysicalDatabaseId());
             Optional<Collection<String>> dbsInAdapter = databasesPerAdapter.get(requestsWithAdapterId.getAdapterId());
-            if (!dbsInAdapter.isPresent() || !dbsInAdapter.get().contains(dbName)) {
+            if (dbsInAdapter.isEmpty() || !dbsInAdapter.get().contains(dbName)) {
                 log.info("Database {} is not found at specified adapter databases collection, maybe old " +
                         "version of adapter is used", dbName);
                 if (dbsInAdapter.isPresent()) {

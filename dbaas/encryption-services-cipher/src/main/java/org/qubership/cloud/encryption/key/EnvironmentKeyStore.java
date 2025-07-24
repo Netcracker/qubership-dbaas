@@ -106,7 +106,7 @@ public class EnvironmentKeyStore implements KeyStore {
 
         KeyConfig keyConfig = protectedKeys.get(aliasName);
 
-        boolean isKeyDeprecated = false;
+        boolean isKeyDeprecated;
         if (deprecated) {
             isKeyDeprecated = true;
         } else {

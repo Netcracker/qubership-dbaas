@@ -145,7 +145,7 @@ class DBaaServiceTest {
         doReturn(false).when(mongoDefaultAdapter).isUsersSupported();
         adapterNotSupportUsers(namespace, dbType, connection, classifierRequest);
         doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
-        ;
+
         doThrow(new WebApplicationException(Response.Status.NOT_FOUND)).when(mongoDefaultAdapter).ensureUser(userName, null, databaseName, Role.ADMIN.toString());
         passwordChangeFail(namespace, dbType, connection, classifierRequest);
     }

@@ -15,7 +15,6 @@ import org.qubership.cloud.encryption.key.exception.IllegalKeystoreConfiguration
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Path;
 import java.security.KeyStore;

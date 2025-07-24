@@ -30,7 +30,7 @@ public @interface TimeMeasure {
     /**
      * Must be a class field names for tags
      *
-     * @return list of fields
+     * @return array of fields
      * @see io.micrometer.core.instrument.Timer.Builder#tags(String...)
      */
     @Nonbinding

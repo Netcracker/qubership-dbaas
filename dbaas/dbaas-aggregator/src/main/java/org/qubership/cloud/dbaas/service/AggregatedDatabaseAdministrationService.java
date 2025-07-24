@@ -382,7 +382,7 @@ public class AggregatedDatabaseAdministrationService {
                 || databaseRegistry.getDatabase().getConnectionProperties().get(0).isEmpty()) {
             Map<String, Object> anotherMap = new HashMap<>();
             anotherMap.put(ROLE, Role.ADMIN.toString());
-            databaseRegistry.getDatabase().setConnectionProperties(Arrays.asList(anotherMap));
+            databaseRegistry.getDatabase().setConnectionProperties(List.of(anotherMap));
         }
         dBaaService.getConnectionPropertiesService().addAdditionalPropToCP(databaseRegistry);
         log.debug("Database connection properties = {}", databaseRegistry.getDatabase().getConnectionProperties());
@@ -437,7 +437,7 @@ public class AggregatedDatabaseAdministrationService {
             if (databaseRegistry.getDatabase().getConnectionProperties() == null) {
                 Map<String, Object> anotherMap = new HashMap<>();
                 anotherMap.put(ROLE, Role.ADMIN.toString());
-                databaseRegistry.getDatabase().setConnectionProperties(Arrays.asList(anotherMap));
+                databaseRegistry.getDatabase().setConnectionProperties(List.of(anotherMap));
             }
             dBaaService.getConnectionPropertiesService().addAdditionalPropToCP(databaseRegistry);
             ConnectionPropertiesUtils.getConnectionProperties(databaseRegistry.getDatabase().getConnectionProperties(),

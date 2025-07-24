@@ -6,7 +6,6 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.ToString;
-import org.hibernate.annotations.GenericGenerator;
 
 import java.io.Serializable;
 import java.util.List;

@@ -392,7 +392,7 @@ public class BlueGreenService {
             } finally {
                 log.debug("action result = {}", actionResult);
                 if (!Thread.currentThread().isInterrupted()) {
-                    if (ex != null || actionResult == null || Boolean.TRUE.equals(condition.test(actionResult))) {
+                    if (ex != null || actionResult == null || condition.test(actionResult)) {
                         try {
                             Thread.sleep(RETRY_STATIC_DELAY_MILLIS + random.nextInt(RETRY_DYNAMIC_RANGE_DELAY_MILLIS));
                         } catch (InterruptedException exception) {
@@ -407,11 +407,11 @@ public class BlueGreenService {
                 log.info("Task was terminated");
                 stopRetrying = true;
             }
-        } while (!stopRetrying && !Thread.currentThread().isInterrupted() && counter < RETRY_COUNT && Boolean.TRUE.equals(condition.test(actionResult)));
+        } while (!stopRetrying && !Thread.currentThread().isInterrupted() && counter < RETRY_COUNT && condition.test(actionResult));
         if (stopRetrying) {
             Thread.currentThread().interrupt();
         }
-        if (actionResult == null || Boolean.TRUE.equals(condition.test(actionResult)) || stopRetrying) {
+        if (actionResult == null || condition.test(actionResult) || stopRetrying) {
             exceptionConsumer.accept(ex);
         }
         return actionResult;
