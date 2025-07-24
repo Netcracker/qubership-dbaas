@@ -3,13 +3,12 @@ package org.qubership.cloud.dbaas.controller.v3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.qubership.cloud.dbaas.DbaasApiPath;
 import org.qubership.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
+import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.v3.*;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
 import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabaseInstruction;
-import org.qubership.cloud.dbaas.exceptions.AdapterUnavailableException;
-import org.qubership.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
-import org.qubership.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
+import org.qubership.cloud.dbaas.exceptions.*;
 import org.qubership.cloud.dbaas.service.InstructionService;
 import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
 import jakarta.annotation.security.RolesAllowed;
@@ -62,7 +61,8 @@ public class PhysicalDatabaseRegistrationControllerV3 {
             @APIResponse(responseCode = "409", description = "Database could not be registered as physical database already " +
                     "exists with another adapter id or the same adapter already exists and it is used with other physical database"),
             @APIResponse(responseCode = "502", description = "Adapter is not available during handshake process"),
-            @APIResponse(responseCode = "400", description = "Adapter already running")})
+            @APIResponse(responseCode = "400", description = "Adapter already running or request validation failed"),
+    })
     @Path("/{phydbid}")
     @PUT
     @Transactional
@@ -73,6 +73,8 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                              @Parameter(description = "Parameters for registering physical database.", required = true)
                              PhysicalDatabaseRegistryRequestV3 parameters)
             throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException, JsonProcessingException {
+        log.debug("Starting registration of new adapter: {}, {}, {}", type, phydbid, parameters);
+        validateRequest(parameters);
         Optional<PhysicalDatabase> foundDatabase = physicalDatabasesService.foundPhysicalDatabase(phydbid, type, parameters);
         if (foundDatabase.isPresent()) {
             PhysicalDatabase physicalDatabase = foundDatabase.get();
@@ -115,6 +117,17 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         }
         physicalDatabasesService.physicalDatabaseRegistration(phydbid, type, parameters);
         return Response.created(URI.create(DBAAS_PATH_V3 + "/" + type + "/physical_databases/" + phydbid)).build();
+    }
+
+    private void validateRequest(PhysicalDatabaseRegistryRequestV3 parameters) {
+        URI uri = URI.create(parameters.getAdapterAddress());
+        String host = uri.getHost();
+        String protocol = uri.getScheme();
+
+        if (host == null || protocol == null){
+            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4045,
+                    ErrorCodes.CORE_DBAAS_4045.getDetail(parameters.getAdapterAddress()), Source.builder().pointer("/adapterAddress").build());
+        }
     }
 
     @Operation(summary = "V3. Change default physical database",

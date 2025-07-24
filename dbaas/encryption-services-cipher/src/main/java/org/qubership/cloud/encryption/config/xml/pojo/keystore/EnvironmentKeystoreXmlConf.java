@@ -1,22 +1,21 @@
 package org.qubership.cloud.encryption.config.xml.pojo.keystore;
 
 import com.google.common.base.MoreObjects;
+import jakarta.xml.bind.annotation.*;
+import jakarta.xml.bind.annotation.adapters.CollapsedStringAdapter;
+import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import org.qubership.cloud.encryption.config.keystore.type.MutableEnvironmentKeystoreConfig;
-
-import javax.xml.bind.annotation.*;
-import javax.xml.bind.annotation.adapters.CollapsedStringAdapter;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 
 /**
  * Keys are passed through environment variables.
- * 
+ *
  * <p>
  * Java class for environment-keystoreType complex type.
- * 
+ *
  * <p>
  * The following schema fragment specifies the expected content contained within this class.
- * 
+ *
  * <pre>
  * &lt;complexType name="environment-keystoreType">
  *   &lt;complexContent>
@@ -55,9 +54,9 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Gets the value of the prefix property.
-     * 
+     *
      * @return possible object is {@link String }
-     * 
+     *
      */
     public String getPrefix() {
         return prefix;
@@ -65,9 +64,9 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Sets the value of the prefix property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setPrefix(String value) {
         this.prefix = value;
@@ -75,7 +74,7 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Gets the value of the encrypted property.
-     * 
+     *
      */
     public boolean isEncrypted() {
         return encrypted;
@@ -83,7 +82,7 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Sets the value of the encrypted property.
-     * 
+     *
      */
     public void setEncrypted(boolean value) {
         this.encrypted = value;
@@ -91,9 +90,9 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Gets the value of the passwordVar property.
-     * 
+     *
      * @return possible object is {@link String }
-     * 
+     *
      */
     public String getPasswordVar() {
         return passwordVar;
@@ -101,9 +100,9 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Sets the value of the passwordVar property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setPasswordVar(String value) {
         this.passwordVar = value;
@@ -111,9 +110,9 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Gets the value of the defaultKeyVar property.
-     * 
+     *
      * @return possible object is {@link String }
-     * 
+     *
      */
     public String getDefaultKeyVar() {
         return defaultKeyVar;
@@ -121,9 +120,9 @@ public class EnvironmentKeystoreXmlConf extends AbstractKeystoreXmlConf implemen
 
     /**
      * Sets the value of the defaultKeyVar property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setDefaultKeyVar(String value) {
         this.defaultKeyVar = value;

@@ -203,6 +203,11 @@ public enum ErrorCodes implements ErrorCode {
             "Invalid link databases request",
             "Invalid link databases request: %s."),
 
+    CORE_DBAAS_4045(
+            "CORE-DBAAS-4045",
+            "Adapter address name has wrong format",
+            "register request contains adapter address field, but it has wrong format: %s. " +
+                    "Must be in format: <schema>://<service-name>.<namespace>:<port>, e.g.: http://dbaas-postgres-adapter.postgresql:8080"),
 
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",

@@ -2,6 +2,7 @@
 package org.qubership.cloud.encryption.config.xml.pojo.conf;
 
 import com.google.common.base.MoreObjects;
+import jakarta.xml.bind.annotation.*;
 import org.qubership.cloud.encryption.config.MutableEncryptionConfiguration;
 import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
 import org.qubership.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
@@ -9,16 +10,15 @@ import org.qubership.cloud.encryption.config.xml.pojo.crypto.CryptoSubsystemXmlC
 import org.qubership.cloud.encryption.config.xml.pojo.keystore.KeyStoreSubsystemXmlConf;
 
 import javax.annotation.Nonnull;
-import javax.xml.bind.annotation.*;
 
 
 /**
  * <p>
  * Java class for anonymous complex type.
- * 
+ *
  * <p>
  * The following schema fragment specifies the expected content contained within this class.
- * 
+ *
  * <pre>
  * &lt;complexType>
  *   &lt;complexContent>
@@ -31,8 +31,8 @@ import javax.xml.bind.annotation.*;
  *   &lt;/complexContent>
  * &lt;/complexType>
  * </pre>
- * 
- * 
+ *
+ *
  */
 @XmlAccessorType(XmlAccessType.FIELD)
 @XmlType(name = "", propOrder = { "keystoreSubsystem", "encryptionSubsystem" })
