@@ -120,6 +120,16 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .when().put("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(BAD_GATEWAY.getStatusCode());
+
+        reset(physicalDatabasesService);
+        physicalDatabaseRegistryRequest.setAdapterAddress("String");
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", TEST_TYPE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .when().put("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode());
     }
 
     @Test
@@ -397,7 +407,7 @@ class PhysicalDatabaseRegistrationControllerV3Test {
 
     private PhysicalDatabaseRegistryRequestV3 getPhysicalDatabaseRegistryRequestV3Sample() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequestV3 = new PhysicalDatabaseRegistryRequestV3();
-        physicalDatabaseRegistryRequestV3.setAdapterAddress("test-address");
+        physicalDatabaseRegistryRequestV3.setAdapterAddress("http://dbaas-postgres-adapter.postgresql:8080");
         Map<String, Boolean> features = new HashMap<>();
         features.put("multiusers", true);
         List<String> roles = Arrays.asList(Role.ADMIN.toString(), "ro");

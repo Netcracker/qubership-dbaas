@@ -353,7 +353,7 @@ public class DBBackupsService {
             interrupted = true;
             throw e;
         } catch (Exception e) {
-            log.error("Error during backup " + id + " collection in " + namespace, e);
+            log.error("Error during backup {} collection in {}", id, namespace, e);
             backup.setStatus(NamespaceBackup.Status.FAIL);
             List<String> failReasons = backup.getFailReasons() == null ? new ArrayList<>() : backup.getFailReasons();
             failReasons.add("Exception " + e.getClass() + " during backup collection: " + e.getMessage());
@@ -635,7 +635,7 @@ public class DBBackupsService {
                 adapter.changeMetaData(dbName, metadata);
                 log.info("Metadata was change successfully from db with name {}", dbName);
             } catch (Exception e) {
-                log.error("Failed to update metadata for database {}. Exception {}", dbName, e);
+                log.error("Failed to update metadata for database {}", dbName, e);
                 failReasonBuilder.append("Failed to update metadata for database " + dbName);
                 failReasonBuilder.append(System.lineSeparator());
                 result.setStatus(Status.FAIL);

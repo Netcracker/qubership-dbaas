@@ -128,7 +128,7 @@ public class AdapterActionTrackerClient {
                 log.warn("OptimisticLockException lock happened. Try to perform clean actions again");
                 cleanActions();
             } catch (Exception ex) {
-                log.warn("Failed to clean tracking actions {}, skip save", ex);
+                log.warn("Failed to clean tracking actions, skip save", ex);
             }
         }
     }
