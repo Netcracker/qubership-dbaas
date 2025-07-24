@@ -12,7 +12,4 @@ jobs:
     with:
       event-name: ${{ github.event_name }}
       actor: ${{ github.actor }}
-      sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
       pom-file-path: pom.xml
-    secrets:
-      sonar-token: ${{ secrets.SONAR_TOKEN }}
