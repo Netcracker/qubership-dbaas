@@ -2,6 +2,10 @@ package org.qubership.cloud.encryption.config.xml;
 
 import com.google.common.base.Preconditions;
 import com.google.common.io.Resources;
+import jakarta.xml.bind.JAXBContext;
+import jakarta.xml.bind.JAXBException;
+import jakarta.xml.bind.Marshaller;
+import jakarta.xml.bind.Unmarshaller;
 import org.qubership.cloud.encryption.config.ConfigurationParser;
 import org.qubership.cloud.encryption.config.ConfigurationSerializer;
 import org.qubership.cloud.encryption.config.EncryptionConfiguration;
@@ -13,10 +17,6 @@ import org.xml.sax.SAXException;
 
 import javax.annotation.Nonnull;
 import javax.xml.XMLConstants;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
-import javax.xml.bind.Unmarshaller;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
 import java.io.File;
@@ -84,7 +84,7 @@ public class XmlConfigurationSerializer implements ConfigurationParser, Configur
     private Unmarshaller createUnmarshaller() throws JAXBException, SAXException, IOException {
         Unmarshaller unmarshaller = getJaxbContext().createUnmarshaller();
         unmarshaller.setSchema(getSchema());
-        
+
         return unmarshaller;
     }
 
@@ -105,7 +105,7 @@ public class XmlConfigurationSerializer implements ConfigurationParser, Configur
             throw new IllegalConfiguration(String.format("Error occurred while reading schema {%s}", XSD_SCHEMA), e);
         }
     }
-    
+
     @Override
     public void saveConfiguration(OutputStream outputStream, EncryptionConfiguration config) {
         try {
@@ -125,7 +125,7 @@ public class XmlConfigurationSerializer implements ConfigurationParser, Configur
         Marshaller marshaller = context.createMarshaller();
         marshaller.setSchema(getSchema());
         marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
-        
+
         return marshaller;
     }
 
