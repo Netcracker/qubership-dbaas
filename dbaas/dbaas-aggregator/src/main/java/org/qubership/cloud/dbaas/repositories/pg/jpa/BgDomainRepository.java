@@ -14,5 +14,5 @@ public class BgDomainRepository implements PanacheRepositoryBase<BgDomain, UUID>
 
     public Optional<BgDomain> findByControllerNamespace(String namespace) {
         return find("controllerNamespace", namespace).firstResultOptional();
-    };
+    }
 }

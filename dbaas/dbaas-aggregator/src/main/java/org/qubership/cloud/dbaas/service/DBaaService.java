@@ -6,7 +6,6 @@ import org.qubership.cloud.dbaas.dto.*;
 import org.qubership.cloud.dbaas.dto.role.Role;
 import org.qubership.cloud.dbaas.dto.v3.*;
 import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import org.qubership.cloud.dbaas.exceptions.*;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;

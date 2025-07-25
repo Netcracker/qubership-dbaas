@@ -42,7 +42,7 @@ public abstract class AbstractDatabaseAdministrationController {
         }
         checkDeletionRequest();
         compositeNamespaceService.deleteNamespace(namespace);
-        boolean removeRules = deleteRules == null ? true : deleteRules;
+        boolean removeRules = deleteRules == null || deleteRules;
         Long number = dBaaService.deleteDatabasesAsync(namespace, namespaceDatabases, removeRules);
         return Response.ok(String.format("Successfully deleted %d databases and namespace specific resources in %s namespace", number, namespace)).build();
     }

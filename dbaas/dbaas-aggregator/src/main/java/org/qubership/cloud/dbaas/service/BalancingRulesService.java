@@ -183,15 +183,15 @@ public class BalancingRulesService {
     private PhysicalDatabase processMicroserviceBalancingRules(String namespace, String microservice, String databaseType, List<PerMicroserviceRule> rules) {
         Optional<PerMicroserviceRule> ruleToApply =
                 rules.stream().max(Comparator.comparingLong(PerMicroserviceRule::getGeneration));
-        if (!ruleToApply.isPresent()) {
+        if (ruleToApply.isEmpty()) {
             log.warn("Rule in namespace={} with microservice={} and databaseType={} not found", namespace, microservice, databaseType);
             return null;
         }
-        if (ruleToApply.get().getRules() == null || ruleToApply.get().getRules().size() == 0) {
+        if (ruleToApply.get().getRules() == null || ruleToApply.get().getRules().isEmpty()) {
             log.warn("Rule in namespace={} with microservice={} and databaseType={} is empty", namespace, microservice, databaseType);
             return null;
         }
-        if (ruleToApply.get().getRules().get(0).getLabel() == null || ruleToApply.get().getRules().get(0).getLabel().equals("")) {
+        if (ruleToApply.get().getRules().get(0).getLabel() == null || ruleToApply.get().getRules().get(0).getLabel().isEmpty()) {
             log.warn("Rule in namespace={} with microservice={} and databaseType={} has no labels", namespace, microservice, databaseType);
             return null;
         }
@@ -254,7 +254,7 @@ public class BalancingRulesService {
 
 
     public ValidateRulesResponse validateMicroservicesRules(List<OnMicroserviceRuleRequest> onMicroserviceRulesRequest, String namespace) {
-        Map<String, String> mapLabelToPhysDb = null;
+        Map<String, String> mapLabelToPhysDb;
         try {
             mapLabelToPhysDb = mapLabelsToPhysicalDatabases(onMicroserviceRulesRequest, namespace);
         } catch (InvalidMicroserviceRuleSizeException | OnMicroserviceBalancingRuleException e) {

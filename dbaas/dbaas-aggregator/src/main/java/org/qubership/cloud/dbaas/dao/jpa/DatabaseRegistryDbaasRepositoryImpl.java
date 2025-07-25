@@ -184,7 +184,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
                 log.info("External database registry in {} with classifier {} was dropped", namespace, databaseRegistry.getClassifier());
                 count++;
             } catch (Exception ex) {
-                log.error("Error happened during dropping external database registry id {}, with message {}", databaseRegistry.getId(), ex);
+                log.error("Error happened during dropping external database registry id {}, with message {}", databaseRegistry.getId(), ex.getMessage(), ex);
             }
         }
 

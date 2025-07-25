@@ -169,7 +169,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
         params.put("allowEviction", Collections.singletonList(allowEviction.toString()));
 
         TrackedAction backupActionTrack = collectBackup(allowEviction, null, databases);
-        DatabasesBackup backup = null;
+        DatabasesBackup backup;
         try {
             backup = tracker.waitForBackup(backupActionTrack, this);
         } catch (InteruptedPollingException e) {
@@ -233,7 +233,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
 
     @Override
     public AdapterHealthStatus getAdapterHealth() {
-        AdapterHealthStatus status = null;
+        AdapterHealthStatus status;
         try {
             status = getHealth();
         } catch (Exception e) {

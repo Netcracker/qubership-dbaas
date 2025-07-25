@@ -100,7 +100,7 @@ public class LocalKeyStore implements KeyStore {
 
         KeyConfig keyConfig = protectedKeys.get(aliasName);
 
-        boolean isKeyDeprecated = false;
+        boolean isKeyDeprecated;
         if (deprecated) {
             isKeyDeprecated = true;
         } else {

@@ -26,6 +26,7 @@ import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.util.Arrays;
 import java.util.Map;
@@ -38,7 +39,7 @@ public class CryptoServiceStub implements CryptoService {
     private final Map<String, AliasedKey> keystore = Maps.newHashMap();
 
     public CryptoServiceStub() {
-        SecretKey secretKey = null;
+        SecretKey secretKey;
         try {
             secretKey = KeyGenerator.getInstance("AES").generateKey();
             keystore.put(DEFAULT_KEY_ALIAS, new ImmutableAliasedKey(secretKey, DEFAULT_KEY_ALIAS));
@@ -173,7 +174,7 @@ public class CryptoServiceStub implements CryptoService {
             byte[] encryptedText = request.getEncryptedText();
             EncryptResult encryptResult = entry.getValue();
             if (Arrays.equals(encryptedText, encryptResult.getResultAsByteArray())) {
-                return new ImmutableDecryptResult(entry.getKey(), Charset.forName("UTF-8"));
+                return new ImmutableDecryptResult(entry.getKey(), StandardCharsets.UTF_8);
             }
         }
 
@@ -182,7 +183,7 @@ public class CryptoServiceStub implements CryptoService {
 
             byte[] decryptedData = cipher.doFinal(request.getEncryptedText());
 
-            return new ImmutableDecryptResult(decryptedData, Charset.forName("UTF-8"));
+            return new ImmutableDecryptResult(decryptedData, StandardCharsets.UTF_8);
         } catch (GeneralSecurityException e) {
             throw new DecryptException("Exception occurs during decrypt data from request:" + request, e);
         }

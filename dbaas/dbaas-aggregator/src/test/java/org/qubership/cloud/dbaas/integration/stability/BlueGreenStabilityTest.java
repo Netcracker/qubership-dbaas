@@ -632,7 +632,7 @@ class BlueGreenStabilityTest {
         public void run() {
             // warmup execution
             for (int i = 0; i < numberOfMessagesToConsume; i++) {
-                String processId = null;
+                String processId;
                 try {
                     processId = transferQueue.take();
                 } catch (InterruptedException e) {

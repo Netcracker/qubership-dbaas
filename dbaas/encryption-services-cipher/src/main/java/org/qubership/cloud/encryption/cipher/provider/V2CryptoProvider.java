@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,17 +26,17 @@ import java.util.regex.Pattern;
  * algorithm and key alias that was use for encryption, it necessary for light-way migrate data when default key was
  * modify.<br/>
  * Template format:
- * 
+ *
  * <pre>
  * {v2c}{algorithm}{keyAlias}{base64(salt)}{base64(cryptData)}
  * </pre>
- * 
+ *
  * Example:
- * 
+ *
  * <pre>
  * {v2c}{DES}{secKeyAlias}{95ec+8MrCLM=}
  * </pre>
- * 
+ *
  * <pre>
  * {v2c}{AES/ECB/PKCS5Padding}{AESDefaultKey}{tE6Y9niEE3pMT6i5IHp5urF8Gm68PZLiZbrxONDptAGz5tWLtp5rnrrW1762exa0N+7IUMC075P8P9n7m9DCpKebsfKhUyNFcETbDMNTWXw=}
  * </pre>
@@ -79,7 +80,7 @@ public class V2CryptoProvider extends AbstractJCACryptoProvider implements Crypt
     @Override
     public DecryptResult decrypt(@Nonnull DecryptionRequest request) {
         byte[] decryptedMessage = jcaDecrypt(request);
-        return new ImmutableDecryptResult(decryptedMessage, Charset.forName("UTF-8"));
+        return new ImmutableDecryptResult(decryptedMessage, StandardCharsets.UTF_8);
     }
 
     @Override

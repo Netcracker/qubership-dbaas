@@ -6,6 +6,7 @@ import org.qubership.cloud.encryption.cipher.EncryptionRequest;
 
 import javax.annotation.Nonnull;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public final class EncryptionRequestBuilder extends AbstractCryptoRequestBuilder<IEncryptionRequestBuilder>
@@ -35,7 +36,7 @@ public final class EncryptionRequestBuilder extends AbstractCryptoRequestBuilder
     @Override
     public IEncryptionRequestBuilder setPlainText(@Nonnull String plainText) {
         Preconditions.checkNotNull(plainText, "Plain text can't be null");
-        this.plainText = plainText.getBytes(Charset.forName("UTF-8"));
+        this.plainText = plainText.getBytes(StandardCharsets.UTF_8);
         return self();
     }
 

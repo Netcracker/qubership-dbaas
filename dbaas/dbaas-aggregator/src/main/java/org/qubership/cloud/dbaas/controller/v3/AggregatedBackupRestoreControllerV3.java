@@ -88,7 +88,7 @@ public class AggregatedBackupRestoreControllerV3 {
                                                       @PathParam("restorationId") UUID restorationId) {
         log.info("Request to get info on backup {} restoration {}", backupId, restorationId);
         Optional<NamespaceBackup> backup = backupsDbaasRepository.findById(backupId);
-        if (!backup.isPresent()) {
+        if (backup.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pathVariable("backupId").build());
         }
         NamespaceRestoration restoration = backup.map(NamespaceBackup::getRestorations)

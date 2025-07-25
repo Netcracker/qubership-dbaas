@@ -93,7 +93,7 @@ class MonitoringServiceTest {
         when(databaseRegistryDbaasRepository.findAllDatabasesAnyLogTypeFromCache()).thenReturn(Arrays.asList(registry1, registry2));
 
         List<DatabaseMonitoringEntryStatus> databaseMonitoringEntryStatus = monitoringService.getDatabaseMonitoringEntryStatus();
-        assertEquals(databaseMonitoringEntryStatus.get(0).getStatus(), HEALTH_CHECK_STATUS_UP);
+        assertEquals(HEALTH_CHECK_STATUS_UP, databaseMonitoringEntryStatus.get(0).getStatus());
         assertEquals("someHost", databaseMonitoringEntryStatus.get(0).getHost());
         assertEquals("someMS1", databaseMonitoringEntryStatus.get(0).getMicroservice());
         assertEquals("namespace", databaseMonitoringEntryStatus.get(0).getNamespace());
@@ -192,7 +192,7 @@ class MonitoringServiceTest {
         when(databaseRegistryDbaasRepository.findAllDatabasesAnyLogTypeFromCache()).thenReturn(Arrays.asList(database));
 
         List<DatabaseMonitoringEntryStatus> databaseMonitoringEntryStatus = monitoringService.getDatabaseMonitoringEntryStatus();
-        assertEquals(databaseMonitoringEntryStatus.get(0).getStatus(), HEALTH_CHECK_STATUS_UP);
+        assertEquals(HEALTH_CHECK_STATUS_UP, databaseMonitoringEntryStatus.get(0).getStatus());
         assertEquals("someHost", databaseMonitoringEntryStatus.get(0).getHost());
         assertEquals("null", databaseMonitoringEntryStatus.get(0).getMicroservice());
         assertEquals("namespace", databaseMonitoringEntryStatus.get(0).getNamespace());

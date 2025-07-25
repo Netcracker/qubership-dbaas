@@ -100,7 +100,7 @@ public class AggregatedBackupAdministrationControllerV3 {
             @QueryParam("targetNamespace") String targetNamespace) {
         log.info("Request to restore backup {}", backupId);
         Optional<NamespaceBackup> backupOpt = backupsDbaasRepository.findById(backupId);
-        if (!backupOpt.isPresent()) {
+        if (backupOpt.isEmpty()) {
             log.error("Cannot find such backup {}", backupId);
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -170,7 +170,7 @@ public class AggregatedBackupAdministrationControllerV3 {
             @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Request to validate backup {} in {}", backupId, namespace);
         Optional<NamespaceBackup> backupOptional = backupsDbaasRepository.findById(backupId);
-        if (!backupOptional.isPresent()) {
+        if (backupOptional.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pointer("/backupId/validate").build());
         } else {
             log.info("Found requested backup {} to validate", backupId);
@@ -208,7 +208,7 @@ public class AggregatedBackupAdministrationControllerV3 {
             @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Request to get info on backup {} restoration {} in {}", backupId, restorationId, namespace);
         Optional<NamespaceBackup> backupOptional = backupsDbaasRepository.findById(backupId);
-        if (!backupOptional.isPresent()) {
+        if (backupOptional.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pointer("/backupId").build());
         }
         NamespaceBackup backup = backupOptional.get();
@@ -233,7 +233,7 @@ public class AggregatedBackupAdministrationControllerV3 {
                                          @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Request to get info on backup {} in {}", backupId, namespace);
         Optional<NamespaceBackup> backupOptional = backupsDbaasRepository.findById(backupId);
-        if (!backupOptional.isPresent()) {
+        if (backupOptional.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pointer("/backupId").build());
         } else {
             log.info("Found requested backup {} to get info", backupId);
@@ -324,7 +324,7 @@ public class AggregatedBackupAdministrationControllerV3 {
                                  @PathParam("backupId") UUID backupId) {
         log.info("Request to delete backup {} with id {}", namespace, backupId);
         Optional<NamespaceBackup> optionBackupToDelete = backupsDbaasRepository.findById(backupId);
-        if (!optionBackupToDelete.isPresent()) {
+        if (optionBackupToDelete.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pathVariable("backupId").build());
         }
         NamespaceBackup backupToDelete = optionBackupToDelete.get();
