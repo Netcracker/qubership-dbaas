@@ -3,7 +3,7 @@
   "info": {
     "title": "DBaaS Aggregator API",
     "description": "This documentation presents REST API for \"Database as a Service\" component. DBaaS is aggregator for all adapters. DBaaS is purposed to aggregate the requests for the administrated databases and send to the necessary adapter. DBaaS stores information about all databases used in cloud project. These databases are isolated by namespace. DBaaS uses Classifier for identification a database within one cloud namespace. Classifier indicates service information, such as scope, microserviceName, tenantId, namespace.",
-    "version": "master"
+    "version": "6.4.0"
   },
   "tags": [
     {
