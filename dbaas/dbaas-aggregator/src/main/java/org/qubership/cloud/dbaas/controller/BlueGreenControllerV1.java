@@ -65,14 +65,15 @@ public class BlueGreenControllerV1 {
     @Transactional
     public Response warmup(@Parameter(description = "target namespace to warmup version to warmup", required = true)
                                    BgStateRequest bgStateRequest) {
-        log.info("Received request to warmup {}", bgStateRequest);
+        log.info("Received request to warmup: {}", bgStateRequest);
         if (!isValidBgStateRequest(bgStateRequest.getBGState())) {
             throw new BgRequestValidationException("Origin namespace or peer namespace in not present");
         }
         ProcessInstanceImpl processInstance = blueGreenService.warmup(bgStateRequest.getBGState());
         AsyncResponse warmupResponse = new AsyncResponse();
         warmupResponse.setMessage("Warmup successfully done");
-        if (processInstance == null) { //TODO when is it possible?
+        if (processInstance == null) {
+            log.info("Warmup is not required, BG domain is already in Active-Candidate state");
             return Response.ok(warmupResponse).build();
         }
         warmupResponse.setTrackingId(processInstance.getId());
@@ -95,10 +96,11 @@ public class BlueGreenControllerV1 {
     @Transactional
     public Response promote(@Parameter(description = "BG state to promote", required = true)
                                     BgStateRequest bgStateRequest) {
-        log.info("Received request to promote {}", bgStateRequest);
+        log.info("Received request to promote: {}", bgStateRequest);
         blueGreenService.promote(bgStateRequest);
         BlueGreenResponse blueGreenResponse = new BlueGreenResponse();
         blueGreenResponse.setMessage("promote was done");
+        log.info("Promote successfully finished");
         return Response.ok(blueGreenResponse).build();
     }
 
@@ -115,10 +117,11 @@ public class BlueGreenControllerV1 {
     @Transactional
     public Response rollback(@Parameter(description = "BG state to rollback", required = true)
                                      BgStateRequest bgStateRequest) {
-        log.info("Received request to rollback {}", bgStateRequest);
+        log.info("Received request to rollback: {}", bgStateRequest);
         blueGreenService.rollback(bgStateRequest);
         BlueGreenResponse blueGreenResponse = new BlueGreenResponse();
         blueGreenResponse.setMessage("rollback was done");
+        log.info("Rollback successfully finished");
         return Response.ok(blueGreenResponse).build();
     }
 
@@ -140,6 +143,7 @@ public class BlueGreenControllerV1 {
         operationStatusResponse.setMessage(getProcessMessage(process));
         operationStatusResponse.setStatus(process.getState());
         operationStatusResponse.setOperationDetails(getOperationDetails(process));
+        log.info("Operation status: {}, {}", operationStatusResponse.getStatus(), operationStatusResponse.getMessage());
 
         return Response.ok(operationStatusResponse).build();
     }
@@ -159,13 +163,12 @@ public class BlueGreenControllerV1 {
                                       @PathParam("trackingId") String trackingId) {
         log.info("Received request to terminate operation with id = {}", trackingId);
         processService.terminateProcess(trackingId);
-        log.debug("terminate process with id = {}", trackingId);
         ProcessInstanceImpl process = processService.getProcess(trackingId);
-        log.debug("Process after termination {}", process.getState());
         OperationStatusResponse operationStatusResponse = new OperationStatusResponse();
         operationStatusResponse.setMessage(getProcessMessage(process));
         operationStatusResponse.setStatus(process.getState());
         operationStatusResponse.setOperationDetails(getOperationDetails(process));
+        log.info("Process successfully terminated: {} {}", operationStatusResponse.getStatus(), operationStatusResponse.getMessage());
         return Response.ok(operationStatusResponse).build();
     }
 
@@ -222,8 +225,9 @@ public class BlueGreenControllerV1 {
     @POST
     @Transactional
     public Response initBgDomain(BgStateRequest bgStateRequest) {
-        log.info("Receive request to init bg domain = {}", bgStateRequest);
+        log.info("Receive request to init bg domain: {}", bgStateRequest);
         blueGreenService.initBgDomain(bgStateRequest);
+        log.info("Domain successfully created");
         return Response.ok(new BlueGreenResponse("Success init domain")).build();
     }
 
@@ -240,7 +244,7 @@ public class BlueGreenControllerV1 {
     @POST
     @Transactional
     public Response commit(BgStateRequest bgStateRequest) {
-        log.info("Receive request to commit = {}", bgStateRequest);
+        log.info("Receive request to commit: {}", bgStateRequest);
         BgStateRequest.BGStateNamespace bgRequestNamespace1 = bgStateRequest.getBGState().getOriginNamespace();
         BgStateRequest.BGStateNamespace bgRequestNamespace2 = bgStateRequest.getBGState().getPeerNamespace();
         if (!(bgRequestNamespace1.getState().equals(ACTIVE_STATE) && bgRequestNamespace2.getState().equals(IDLE_STATE) ||
@@ -254,26 +258,23 @@ public class BlueGreenControllerV1 {
         }
         Optional<BgNamespace> optionalBgNamespace1 = domain.getNamespaces().stream().filter(v -> v.getNamespace().equals(bgRequestNamespace1.getName())).findFirst();
         Optional<BgNamespace> optionalBgNamespace2 = domain.getNamespaces().stream().filter(v -> v.getNamespace().equals(bgRequestNamespace2.getName())).findFirst();
+        log.info("Current domain state: {}, namespace1={}, namespace2={}", domain, optionalBgNamespace1, optionalBgNamespace2);
         if (optionalBgNamespace1.isEmpty() || optionalBgNamespace2.isEmpty()) {
-            throw new BgRequestValidationException("Request with incorrect namespaces");
+            throw new BgRequestValidationException("The requested namespaces are missing from the domain");
         }
 
         BgNamespace bgNamespace1 = optionalBgNamespace1.get();
         BgNamespace bgNamespace2 = optionalBgNamespace2.get();
-        if ((bgNamespace1.getState().equals(ACTIVE_STATE) && bgNamespace2.getState().equals(IDLE_STATE) ||
-                bgNamespace1.getState().equals(IDLE_STATE) && bgNamespace2.getState().equals(ACTIVE_STATE))) {
-            return Response.ok(new BlueGreenResponse("Commit successfully done")).build();
-        }
-
         if (!bgNamespace1.getState().equals(ACTIVE_STATE) && !bgNamespace2.getState().equals(ACTIVE_STATE)) {
-            throw new BgRequestValidationException("Blue-Green domain doesn't contain active state");
+            throw new BgRequestValidationException("Blue-Green domain doesn't contain an Active namespace");
         }
         if ((!bgRequestNamespace1.getState().equals(ACTIVE_STATE) || !bgNamespace1.getVersion().equals(bgRequestNamespace1.getVersion())) &&
                 (!bgRequestNamespace2.getState().equals(ACTIVE_STATE) || !bgNamespace2.getVersion().equals(bgRequestNamespace2.getVersion()))) {
-            throw new BgRequestValidationException("Incorrect version for active namespace");
+            throw new BgRequestValidationException("Incorrect version for Active namespace");
         }
 
         int markedDatabasesAsOrphan = blueGreenService.commit(bgStateRequest).size();
+        log.info("Commit operation successfully finished, {} databases are marked as Orphan", markedDatabasesAsOrphan);
         return Response.ok(new BlueGreenResponse(markedDatabasesAsOrphan + " databases are marked as Orphan")).build();
     }
 
@@ -323,30 +324,30 @@ public class BlueGreenControllerV1 {
     }
 
     @Operation(
-            summary = "Get All bg Domains",
-            description = "get all registered bg domains")
+            summary = "Get all BG domains",
+            description = "Get all registered BG domains")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Get registered bg domains"),
+            @APIResponse(responseCode = "200", description = "All registered BG domains"),
             @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
     })
     @Path("/get-domains")
     @GET
     public Response getBgDomains() {
-        log.info("receive request to get all bg domains");
+        log.info("Receive request to get all BG domains");
         return Response.ok(blueGreenService.getDomains().stream().map(BgDomainForGet::new)).build();
     }
 
     @Operation(
-            summary = "Get All bg Domains",
-            description = "get all registered bg domains")
+            summary = "Get specific BG domain",
+            description = "Get specific registered BG domain by namespace")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "registered bg domains"),
+            @APIResponse(responseCode = "200", description = "Specific registered BG domain"),
             @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
     })
     @Path("/get-domains/{namespace}")
     @GET
     public Response getBgDomain(@PathParam("namespace") String namespace) {
-        log.info("receive request to get all bg domains");
+        log.info("Receive request to get BG domain for {} namespace", namespace);
         return Response.ok(new BgDomainForGet(blueGreenService.getDomain(namespace))).build();
     }
 
@@ -360,13 +361,13 @@ public class BlueGreenControllerV1 {
     @Path("/list-domains")
     @GET
     public Response listBgDomains() {
-        log.info("receive request to list all BG domains");
+        log.info("Receive request to list all BG domains");
         return Response.ok(blueGreenService.getDomains().stream().map(BgDomainForList::new).toList()).build();
     }
 
     @Operation(
-            summary = "Delete bg Domains",
-            description = "destroy registered bg domain")
+            summary = "Delete BG domain",
+            description = "Destroy registered BG domain")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Blue-green domain successfully destroyed"),
             @APIResponse(responseCode = "400", description = "Incorrect request"),
@@ -378,7 +379,7 @@ public class BlueGreenControllerV1 {
     @DELETE
     @Transactional
     public Response destroyBgDomain(BgNamespaceRequest bgNamespaceRequest) {
-        log.info("receive request to destroy bg domain");
+        log.info("receive request to destroy BG domain: {}", bgNamespaceRequest);
         if (dbaaSHelper.isProductionMode()) {
             throw new ForbiddenDeleteOperationException();
         }
@@ -386,6 +387,7 @@ public class BlueGreenControllerV1 {
                 Set.of(bgNamespaceRequest.getOriginNamespace(), bgNamespaceRequest.getPeerNamespace()));
         blueGreenService.destroyDomain(listOfNamespaces);
         BlueGreenResponse blueGreenResponse = new BlueGreenResponse("Domain successfully destroyed");
+        log.info("BG domain successfully destroyed");
         return Response.ok(blueGreenResponse).build();
     }
 }

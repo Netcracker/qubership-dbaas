@@ -110,6 +110,7 @@ class BlueGreenControllerV1Test {
 
         Response commitResponse = blueGreenControllerV1.commit(bgStateRequestCommit);
         assertEquals(200, commitResponse.getStatus());
+        verify(blueGreenService, times(1)).commit(any());
     }
 
     @Test
@@ -153,7 +154,7 @@ class BlueGreenControllerV1Test {
         BgRequestValidationException exception = assertThrows(BgRequestValidationException.class, () -> {
             blueGreenControllerV1.commit(bgStateRequest);
         });
-        Assertions.assertTrue(exception.getMessage().contains("Request with incorrect namespaces"));
+        Assertions.assertTrue(exception.getMessage().contains("The requested namespaces are missing from the domain"));
     }
 
     @Test
@@ -173,7 +174,7 @@ class BlueGreenControllerV1Test {
         BgRequestValidationException exception = assertThrows(BgRequestValidationException.class, () -> {
             blueGreenControllerV1.commit(bgStateRequest);
         });
-        Assertions.assertTrue(exception.getMessage().contains("Blue-Green domain doesn't contain active state"));
+        Assertions.assertTrue(exception.getMessage().contains("Blue-Green domain doesn't contain an Active namespace"));
     }
 
     @Test
@@ -193,7 +194,7 @@ class BlueGreenControllerV1Test {
         BgRequestValidationException exception = assertThrows(BgRequestValidationException.class, () -> {
             blueGreenControllerV1.commit(bgStateRequest);
         });
-        Assertions.assertTrue(exception.getMessage().contains("Incorrect version for active namespace"));
+        Assertions.assertTrue(exception.getMessage().contains("Incorrect version for Active namespace"));
     }
 
     @Test

@@ -196,13 +196,15 @@ public class DBaaService {
     @Transactional
     public void dropDatabasesAsync(String namespace, List<DatabaseRegistry> databaseRegistries) {
         if (!dbaaSHelper.isProductionMode()) {
-            ExecutorService executorService = Executors.newSingleThreadExecutor();
+            try (ExecutorService executorService = Executors.newSingleThreadExecutor()) {
+                var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
-            executorService.submit(() -> {
-                log.info("Start async dropping versioned and transactional databases in {}", namespace);
-                dropDatabases(databaseRegistries, namespace);
-            });
-            executorService.shutdown();
+                executorService.submit(() -> {
+                    ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                    log.info("Start async dropping versioned and transactional databases in {}", namespace);
+                    dropDatabases(databaseRegistries, namespace);
+                });
+            }
         }
     }
 

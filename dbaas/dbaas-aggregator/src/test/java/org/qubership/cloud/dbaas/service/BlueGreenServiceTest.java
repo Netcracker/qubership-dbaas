@@ -642,12 +642,38 @@ class BlueGreenServiceTest {
         BgNamespace bgNamespace2 = new BgNamespace();
         bgNamespace2.setNamespace(NS_2);
         bgNamespace2.setBgDomain(bgDomain);
-        bgNamespace2.setState(IDLE_STATE);
+        bgNamespace2.setState(ACTIVE_STATE);
         bgDomain.setNamespaces(Arrays.asList(bgNamespace1, bgNamespace2));
 
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace1));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace2));
         Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.commit(bgStateRequest));
+    }
+
+    @Test
+    void testCommitIdleShouldCleanupNamespace() {
+        BgStateRequest bgStateRequest = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, NS_1), createBgStateNamespace(IDLE_STATE, NS_2));
+        BgDomain bgDomain = new BgDomain();
+        BgNamespace bgNamespace1 = new BgNamespace();
+        bgNamespace1.setNamespace(NS_1);
+        bgNamespace1.setBgDomain(bgDomain);
+        bgNamespace1.setState(ACTIVE_STATE);
+        BgNamespace bgNamespace2 = new BgNamespace();
+        bgNamespace2.setNamespace(NS_2);
+        bgNamespace2.setBgDomain(bgDomain);
+        bgNamespace2.setState(IDLE_STATE);
+        bgDomain.setNamespaces(Arrays.asList(bgNamespace1, bgNamespace2));
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace1));
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace2));
+
+        DatabaseRegistry dbRegistryVersioned = createDatabaseRegistry(createClassifier("test", NS_2), "postgresql", "adapter", "username", "dbName");
+        when(databaseRegistryDbaasRepository.findAllVersionedDatabaseRegistries(NS_2)).thenReturn(Collections.singletonList(dbRegistryVersioned));
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+
+        blueGreenService.commit(bgStateRequest);
+        verify(dBaaService, times(0)).dropDatabasesAsync(eq(NS_1), any());
+        verify(dBaaService, times(1)).dropDatabasesAsync(eq(NS_2), argThat(argument -> argument.contains(dbRegistryVersioned)));
+        verify(bgTrackRepository, times(1)).deleteByNamespaceAndOperation(eq(NS_2), eq(WARMUP_OPERATION));
     }
 
     @Test
