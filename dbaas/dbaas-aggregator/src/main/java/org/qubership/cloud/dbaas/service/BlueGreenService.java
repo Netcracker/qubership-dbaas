@@ -603,15 +603,16 @@ public class BlueGreenService {
         List<DatabaseRegistry> orphanDatabases = getOrphanDatabases(namespaces);
         if (delete) {
             log.info("{} databases are going to be deleted", orphanDatabases.size());
-            try (ExecutorService executorService = Executors.newSingleThreadExecutor()) {
-                var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
-                executorService.submit(() -> {
-                    ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-                    log.info("Start async dropping orphan databases");
-                    dBaaService.dropDatabases(orphanDatabases, null);
-                });
-            }
+            ExecutorService executorService = Executors.newSingleThreadExecutor();
+            var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
+            executorService.submit(() -> {
+                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                log.info("Start async dropping orphan databases");
+                dBaaService.dropDatabases(orphanDatabases, null);
+            });
+            executorService.shutdown();
         }
+
         return orphanDatabases;
     }
 
