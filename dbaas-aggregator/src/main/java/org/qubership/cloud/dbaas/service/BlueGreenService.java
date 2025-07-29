@@ -1,5 +1,6 @@
 package org.qubership.cloud.dbaas.service;
 
+import org.qubership.cloud.context.propagation.core.ContextManager;
 import org.qubership.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
 import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
@@ -17,6 +18,7 @@ import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgDomainRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
+import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -40,6 +42,7 @@ import static org.qubership.cloud.dbaas.Constants.*;
 import static org.qubership.cloud.dbaas.controller.v3.AggregatedBackupAdministrationControllerV3.DBAAS_PATH;
 import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
+import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @ApplicationScoped
 @Slf4j
@@ -113,6 +116,7 @@ public class BlueGreenService {
                 .orElseThrow(() -> new BgRequestValidationException("Can't find active namespace for namespace"));
         String activeNamespace = activeBgNamespace.getNamespace();
         String candidateNamespace = requestedCandidateNamespace.getNamespace();
+        log.info("Current BG domain state: namespace1={}, namespace2={}", activeNamespace, candidateNamespace);
         if (CANDIDATE_STATE.equals(idleBgNamespace.getState()) && ACTIVE_STATE.equals(activeBgNamespace.getState())) {
             return null;
         }
@@ -185,12 +189,14 @@ public class BlueGreenService {
                 .forEach(staticDatabaseRegistry -> dBaaService.shareDbToNamespace(staticDatabaseRegistry, candidateNamespace));
     }
 
-    private BgNamespace updateBgNamespace(BgNamespace candidateBgNamespace, String newState, String version) {
-        candidateBgNamespace.setState(newState);
-        candidateBgNamespace.setVersion(version);
-        candidateBgNamespace.setUpdateTime(new Date());
-        bgNamespaceRepository.persist(candidateBgNamespace);
-        return candidateBgNamespace;
+    private BgNamespace updateBgNamespace(BgNamespace bgNamespace, String newState, String version) {
+        log.info("Updating {} BG namespace. Current state: {}", bgNamespace.getNamespace(), bgNamespace);
+        bgNamespace.setState(newState);
+        bgNamespace.setVersion(version);
+        bgNamespace.setUpdateTime(new Date());
+        bgNamespaceRepository.persist(bgNamespace);
+        log.info("New state: {}", bgNamespace);
+        return bgNamespace;
     }
 
     private void copyDatabaseRoles(String sourceNamespace, String targetNamespace) {
@@ -463,8 +469,10 @@ public class BlueGreenService {
         BgNamespace activeBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateNamespaceActive.getName())
                 .orElseThrow(() -> new BgRequestValidationException("Can't find active namespace for namespace"));
         if (!ACTIVE_STATE.equals(activeBgNamespace.getState()) ||
-                !(CANDIDATE_STATE.equals(idleBgNamespace.getState()) || LEGACY_STATE.equals(idleBgNamespace.getState()))) {
-            throw new BgRequestValidationException("Only Active + Candidate/Legacy namespaces are allowed for commit");
+                !(CANDIDATE_STATE.equals(idleBgNamespace.getState())
+                        || LEGACY_STATE.equals(idleBgNamespace.getState())
+                        || IDLE_STATE.equals(idleBgNamespace.getState()))) {
+            throw new BgRequestValidationException("Only Active + Candidate/Legacy/Idle namespaces are allowed for commit");
         }
 
         List<DatabaseRegistry> markedDatabaseAsOrphan = commitDatabasesByNamespace(bgStateNamespaceIdle.getName());
@@ -472,23 +480,24 @@ public class BlueGreenService {
         deleteNamespaceRules(bgStateNamespaceIdle.getName());
         deleteMicroserviceRules(bgStateNamespaceIdle.getName());
         deleteDatabaseRoles(bgStateNamespaceIdle.getName());
+        bgTrackRepository.deleteByNamespaceAndOperation(bgStateNamespaceIdle.getName(), WARMUP_OPERATION);
 
         Optional<BgNamespace> optionalOriginBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateRequest.getBGState().getOriginNamespace().getName());
 
-        log.debug("Update state for bgNamespace = {} to state = {}", optionalOriginBgNamespace, bgStateRequest.getBGState().getOriginNamespace().getState());
         BgNamespace originBgNamespace = optionalOriginBgNamespace.orElseThrow();
         originBgNamespace.setState(bgStateRequest.getBGState().getOriginNamespace().getState());
         originBgNamespace.setVersion(bgStateRequest.getBGState().getOriginNamespace().getVersion());
         originBgNamespace.setUpdateTime(bgStateRequest.getBGState().getUpdateTime());
         bgNamespaceRepository.persist(originBgNamespace);
+        log.info("New BG state for {} namespace: {}", originBgNamespace.getNamespace(), originBgNamespace);
 
         Optional<BgNamespace> optionalPeerBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateRequest.getBGState().getPeerNamespace().getName());
-        log.debug("Update state for bgNamespace = {} to state={}", optionalPeerBgNamespace, bgStateRequest.getBGState().getPeerNamespace().getState());
         BgNamespace peerBgNamespace = optionalPeerBgNamespace.orElseThrow();
         peerBgNamespace.setState(bgStateRequest.getBGState().getPeerNamespace().getState());
         peerBgNamespace.setVersion(bgStateRequest.getBGState().getPeerNamespace().getVersion());
         peerBgNamespace.setUpdateTime(bgStateRequest.getBGState().getUpdateTime());
         bgNamespaceRepository.persist(peerBgNamespace);
+        log.info("New BG state for {} namespace: {}", peerBgNamespace.getNamespace(), peerBgNamespace);
 
         return markedDatabaseAsOrphan;
     }
@@ -568,6 +577,7 @@ public class BlueGreenService {
         Optional<BgNamespace> foundedPeerBgNamespaceOptional = bgNamespaceRepository.findBgNamespaceByNamespace(bgRequestedPeerNamespace.getName());
         BgNamespace foundedOriginBgNamespace = foundedOriginBgNamespaceOptional.orElseThrow();
         BgNamespace foundedPeerBgNamespace = foundedPeerBgNamespaceOptional.orElseThrow();
+        log.info("Current domain state: namespace1={}, namespace2={}", foundedOriginBgNamespace, foundedPeerBgNamespace);
 
         String firstState = foundedOriginBgNamespace.getState();
         String secondState = foundedPeerBgNamespace.getState();
@@ -578,9 +588,11 @@ public class BlueGreenService {
 
         foundedOriginBgNamespace.setState(bgRequestedOriginNamespace.getState());
         bgNamespaceRepository.persist(foundedOriginBgNamespace);
+        log.info("New BG state for {} namespace: {}", foundedOriginBgNamespace.getNamespace(), foundedOriginBgNamespace);
 
         foundedPeerBgNamespace.setState(bgRequestedPeerNamespace.getState());
         bgNamespaceRepository.persist(foundedPeerBgNamespace);
+        log.info("New BG state for {} namespace: {}", foundedPeerBgNamespace.getNamespace(), foundedPeerBgNamespace);
     }
 
     public List<DatabaseRegistry> dropOrphanDatabases(List<String> namespaces, Boolean delete) {
@@ -588,13 +600,15 @@ public class BlueGreenService {
         if (delete) {
             log.info("{} databases are going to be deleted", orphanDatabases.size());
             ExecutorService executorService = Executors.newSingleThreadExecutor();
+            var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
             executorService.submit(() -> {
+                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                 log.info("Start async dropping orphan databases");
                 dBaaService.dropDatabases(orphanDatabases, null);
             });
             executorService.shutdown();
-
         }
+
         return orphanDatabases;
     }
 

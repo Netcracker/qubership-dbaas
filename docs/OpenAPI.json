@@ -114,8 +114,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Delete bg Domains",
-        "description": "destroy registered bg domain",
+        "summary": "Delete BG domain",
+        "description": "Destroy registered BG domain",
         "requestBody": {
           "content": {
             "application/json": {
@@ -160,11 +160,11 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Get All bg Domains",
-        "description": "get all registered bg domains",
+        "summary": "Get all BG domains",
+        "description": "Get all registered BG domains",
         "responses": {
           "200": {
-            "description": "Get registered bg domains"
+            "description": "All registered BG domains"
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DbaaS."
@@ -188,8 +188,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Get All bg Domains",
-        "description": "get all registered bg domains",
+        "summary": "Get specific BG domain",
+        "description": "Get specific registered BG domain by namespace",
         "parameters": [
           {
             "name": "namespace",
@@ -202,7 +202,7 @@
         ],
         "responses": {
           "200": {
-            "description": "registered bg domains"
+            "description": "Specific registered BG domain"
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DbaaS."

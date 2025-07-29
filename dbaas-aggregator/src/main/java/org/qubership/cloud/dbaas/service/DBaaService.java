@@ -198,8 +198,9 @@ public class DBaaService {
     public void dropDatabasesAsync(String namespace, List<DatabaseRegistry> databaseRegistries) {
         if (!dbaaSHelper.isProductionMode()) {
             ExecutorService executorService = Executors.newSingleThreadExecutor();
-
+            var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
             executorService.submit(() -> {
+                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                 log.info("Start async dropping versioned and transactional databases in {}", namespace);
                 dropDatabases(databaseRegistries, namespace);
             });
