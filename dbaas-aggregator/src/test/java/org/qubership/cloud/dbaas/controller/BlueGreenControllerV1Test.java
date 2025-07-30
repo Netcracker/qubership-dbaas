@@ -110,6 +110,7 @@ class BlueGreenControllerV1Test {
 
     @Test
     void testAlreadyCommitted() {
+        reset(blueGreenService);
         BgStateRequest bgStateRequestCommit = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, "origin-namespace", "v1"),
                 createBgStateNamespace(IDLE_STATE, "peer-namespace", null));
 
