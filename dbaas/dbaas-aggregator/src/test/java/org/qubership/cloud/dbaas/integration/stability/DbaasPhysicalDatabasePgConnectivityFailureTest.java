@@ -40,7 +40,7 @@ class DbaasPhysicalDatabasePgConnectivityFailureTest {
     PhysicalDatabasesRepository physicalDatabasesRepository;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         clean();
     }
 
@@ -53,7 +53,7 @@ class DbaasPhysicalDatabasePgConnectivityFailureTest {
         PhysicalDatabase physicalDatabase = createPhysicalDatabase();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.save(physicalDatabase));
         PostgresqlContainerResource.postgresql.stop();
-        await().atMost(1, TimeUnit.MINUTES).pollInterval(5, TimeUnit.SECONDS).pollInSameThread()
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2PhysicalDatabaseRepository.findByIdOptional(physicalDatabase.getId()).isPresent());
         boolean exceptionHappened = false;
         try {

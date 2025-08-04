@@ -173,7 +173,7 @@ public class DebugService {
                                              List<PerMicroserviceRule> microserviceRules) {
 
         var defaultRules = physicalDatabases.stream()
-            .filter(database -> Boolean.TRUE.equals(database.isGlobal()))
+            .filter(database -> database.isGlobal())
             .map(this::convertDumpDefaultRuleV3)
             .toList();
 
@@ -228,6 +228,7 @@ public class DebugService {
         List<LostDatabasesResponse> lostDatabasesList = new ArrayList<>();
         List<DatabaseRegistry> registered = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllInternalDatabases();
         Map<String, List<DatabaseRegistry>> registeredDatabasesByPhisicalId = registered.stream()
+                .filter(f -> f.getPhysicalDatabaseId() != null)
                 .collect(Collectors.groupingBy(DatabaseRegistry::getPhysicalDatabaseId));
         for (DbaasAdapter adapter : physicalDatabasesService.getAllAdapters()) {
             if (Boolean.TRUE.equals(adapter.isDisabled())) continue;

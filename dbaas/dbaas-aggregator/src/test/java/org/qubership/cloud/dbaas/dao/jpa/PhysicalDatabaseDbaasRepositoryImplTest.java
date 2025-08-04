@@ -22,7 +22,7 @@ class PhysicalDatabaseDbaasRepositoryImplTest {
     PhysicalDatabasesRepository physicalDatabasesRepository;
 
     @BeforeEach
-    public void before() {
+    void before() {
         physicalDatabaseDbaasRepository = new PhysicalDatabaseDbaasRepositoryImpl(physicalDatabasesRepository, h2PhysicalDatabaseRepository);
     }
 

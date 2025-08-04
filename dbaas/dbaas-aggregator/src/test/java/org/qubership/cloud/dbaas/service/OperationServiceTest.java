@@ -30,7 +30,7 @@ class OperationServiceTest {
     private OperationService operationService;
 
     @BeforeEach
-    public void setup() {
+    void setup() {
         dBaaService = mock(DBaaService.class);
         physicalDatabasesService = mock(PhysicalDatabasesService.class);
         logicalDbDbaasRepository = mock(LogicalDbDbaasRepository.class);
@@ -38,14 +38,14 @@ class OperationServiceTest {
     }
 
     @Test
-    public void testChangeHost_ValidRequests_onCopy() {
+    void testChangeHost_ValidRequests_onCopy() {
         testOnCopy(true);
         verify(dBaaService, times(2)).saveDatabaseRegistry(any(DatabaseRegistry.class));
         verify(dBaaService, times(1)).markDatabasesAsOrphan(any(DatabaseRegistry.class));
     }
 
     @Test
-    public void testChangeHost_ValidRequests_onCopy_withOldOrphan() {
+    void testChangeHost_ValidRequests_onCopy_withOldOrphan() {
         UpdateHostRequest request = getUpdateHostRequest();
         request.setMakeCopy(true);
         request.setPhysicalDatabaseId("physicalDatabaseId2");
@@ -120,7 +120,7 @@ class OperationServiceTest {
     }
 
     @Test
-    public void testChangeHost_ValidRequests_inPlace() {
+    void testChangeHost_ValidRequests_inPlace() {
         testOnCopy(false);
         verify(dBaaService, times(1)).saveDatabaseRegistry(any(DatabaseRegistry.class));
     }
@@ -165,7 +165,7 @@ class OperationServiceTest {
     }
 
     @Test
-    public void testChangeHost_DatabaseNotFound() {
+    void testChangeHost_DatabaseNotFound() {
         when(dBaaService.findDatabaseByClassifierAndType(anyMap(), anyString(), anyBoolean()))
                 .thenReturn(null);
 
@@ -175,7 +175,7 @@ class OperationServiceTest {
     }
 
     @Test
-    public void testChangeHost_OriginHostNotFound() {
+    void testChangeHost_OriginHostNotFound() {
         // Mock behavior for dBaaService
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setDatabase(new Database());
@@ -201,7 +201,7 @@ class OperationServiceTest {
     }
 
     @Test
-    public void testLinkDbsToNamespace_ValidRequest() {
+    void testLinkDbsToNamespace_ValidRequest() {
         String sourceNamespace = "source";
         String targetNamespace = "target";
         String msName = "requiredMs";

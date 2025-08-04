@@ -16,7 +16,7 @@ public interface ConfigurationCryptoProvider {
     DecryptionResult decryptSecureParameters(@Nonnull EncryptionConfiguration config,
             @Nullable ConfigurationParser parser);
 
-    public static class DecryptionResult {
+    class DecryptionResult {
         @Nonnull
         private final EncryptionConfiguration configuration;
         private final boolean notEncryptedSecureParameterPresent;

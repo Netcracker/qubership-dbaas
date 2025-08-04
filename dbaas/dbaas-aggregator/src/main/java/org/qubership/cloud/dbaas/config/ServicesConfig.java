@@ -1,6 +1,7 @@
 package org.qubership.cloud.dbaas.config;
 
 import com.github.kagkarlsson.scheduler.task.Task;
+import io.quarkus.arc.properties.UnlessBuildProperty;
 import org.qubership.cloud.dbaas.JdbcUtils;
 import org.qubership.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
@@ -69,6 +70,7 @@ public class ServicesConfig {
     @Produces
     @Singleton
     @Startup
+    @UnlessBuildProperty(name = "dbaas.process-orchestrator.enabled", stringValue = "false", enableIfMissing = true)
     public ProcessOrchestrator processOrchestrator(@Named(PROCESS_ORCHESTRATOR_DATASOURCE) DataSource dataSource, @All List<Task<?>> list) {
         log.info("Creating PO with tasks: {}", list);
         return new ProcessOrchestrator(dataSource, 10, list);

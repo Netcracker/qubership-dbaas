@@ -1,5 +1,6 @@
 package org.qubership.cloud.dbaas.service;
 
+import jakarta.annotation.PreDestroy;
 import org.qubership.cloud.dbaas.entity.pg.BgTrack;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
 import org.qubership.core.scheduler.po.ProcessDefinition;
@@ -50,6 +51,7 @@ public class ProcessService {
             }
         }
 
+        log.debug("Call process orchestrator to create new process");
         ProcessInstanceImpl pi = QuarkusTransaction.requiringNew().call(() -> orchestrator.createProcess(definition));
         log.info("New process id: {}", pi.getId());
         if (WARMUP_OPERATION.equals(operation)) {
@@ -71,5 +73,10 @@ public class ProcessService {
     @Transactional(REQUIRES_NEW)
     public void retryProcess(ProcessInstanceImpl processInstance) {
         orchestrator.retryProcess(processInstance);
+    }
+
+    @PreDestroy
+    public void stop() {
+        orchestrator.stop();
     }
 }

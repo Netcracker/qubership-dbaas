@@ -21,7 +21,7 @@ import java.util.List;
 @PermitAll
 public class ApiVersionController {
 
-    private static final int API_MINOR = 25;
+    private static final int API_MINOR = 27;
     private static final int API_BLUE_GREEN_MINOR = 4;
     private static final int API_DECLARATIVE_MINOR = 0;
     private static final int API_COMPOSITE_MINOR = 0;

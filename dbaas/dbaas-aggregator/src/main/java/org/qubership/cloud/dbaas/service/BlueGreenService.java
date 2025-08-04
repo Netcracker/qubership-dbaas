@@ -1,5 +1,6 @@
 package org.qubership.cloud.dbaas.service;
 
+import org.qubership.cloud.context.propagation.core.ContextManager;
 import org.qubership.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
 import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
@@ -17,6 +18,7 @@ import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgDomainRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
+import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -40,6 +42,7 @@ import static org.qubership.cloud.dbaas.Constants.*;
 import static org.qubership.cloud.dbaas.controller.v3.AggregatedBackupAdministrationControllerV3.DBAAS_PATH;
 import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
+import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @ApplicationScoped
 @Slf4j
@@ -74,6 +77,10 @@ public class BlueGreenService {
 
     private final Random random = new Random();
 
+    protected long RETRY_STATIC_DELAY_MILLIS = 5000L;
+    protected int RETRY_DYNAMIC_RANGE_DELAY_MILLIS = 2048;
+    protected int RETRY_COUNT = 5;
+
     // todo arvo: when there are plenty dependencies it means bad composition and we should think about composition
     public BlueGreenService(
             DBBackupsService backupsService,
@@ -106,66 +113,67 @@ public class BlueGreenService {
 
     public ProcessInstanceImpl warmup(BgStateRequest.BGState bgState) {
         BgNamespace requestedCandidateNamespace = new BgNamespace(bgState.getBgNamespaceWithState(CANDIDATE_STATE).orElseThrow(), bgState.getUpdateTime());
-
         BgNamespace requestedActiveNamespace = new BgNamespace(bgState.getBgNamespaceWithState(ACTIVE_STATE).orElseThrow(), bgState.getUpdateTime());
-
         BgNamespace idleBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(requestedCandidateNamespace.getNamespace())
                 .orElseThrow(() -> new BgRequestValidationException("Can't find idle namespace for namespace"));
-
-
         BgNamespace activeBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(requestedActiveNamespace.getNamespace())
                 .orElseThrow(() -> new BgRequestValidationException("Can't find active namespace for namespace"));
-
-
+        String activeNamespace = activeBgNamespace.getNamespace();
+        String candidateNamespace = requestedCandidateNamespace.getNamespace();
+        log.info("Current BG domain state: namespace1={}, namespace2={}", activeNamespace, candidateNamespace);
         if (CANDIDATE_STATE.equals(idleBgNamespace.getState()) && ACTIVE_STATE.equals(activeBgNamespace.getState())) {
             return null;
         }
         if (!ACTIVE_STATE.equals(activeBgNamespace.getState()) || !IDLE_STATE.equals(idleBgNamespace.getState())) {
             throw new BgRequestValidationException("Only Active + Idle namespaces are allowed for warmup");
         }
-
-        String activeNamespace = activeBgNamespace.getNamespace();
-        if (activeNamespace.equals(requestedCandidateNamespace.getNamespace())) {
+        if (activeNamespace.equals(candidateNamespace)) {
             throw new BgRequestValidationException("You can warmup only candidate namespace");
         }
-        Optional<BgTrack> trackOptional = bgTrackRepository.findByNamespaceAndOperation(requestedCandidateNamespace.getNamespace(), WARMUP_OPERATION);
+
+        Optional<BgTrack> trackOptional = bgTrackRepository.findByNamespaceAndOperation(candidateNamespace, WARMUP_OPERATION);
         if (trackOptional.isPresent()) {
             ProcessInstanceImpl process = processService.getProcess(trackOptional.get().getId());
             if (process != null) {
+                log.info("Found existing process for warmup operation in {} namespace: id={}", candidateNamespace, process.getId());
                 TaskState state = process.getState();
                 if (TaskState.IN_PROGRESS.equals(state) || TaskState.NOT_STARTED.equals(state)) {
+                    log.warn("Old process is in progress, there is no need to create a new one");
                     return process;
                 } else if (TaskState.TERMINATED.equals(state) || TaskState.FAILED.equals(state)) {
+                    log.warn("Retrying the old process");
                     processService.retryProcess(process);
                     return process;
                 }
             }
         }
 
-        copyNamespaceRules(activeNamespace, requestedCandidateNamespace.getNamespace());
-        copyMicroserviceRules(activeNamespace, requestedCandidateNamespace.getNamespace());
-        copyDatabaseRoles(activeNamespace, requestedCandidateNamespace.getNamespace());
+        // TODO: move to separate async task
+        copyNamespaceRules(activeNamespace, candidateNamespace);
+        copyMicroserviceRules(activeNamespace, candidateNamespace);
+        copyDatabaseRoles(activeNamespace, candidateNamespace);
+        shareStaticDatabases(activeNamespace, candidateNamespace);
 
+        return createAndStartWarmupProcess(activeNamespace, requestedCandidateNamespace);
+    }
+
+    private ProcessInstanceImpl createAndStartWarmupProcess(String activeNamespace, BgNamespace requestedCandidateNamespace) {
+        log.debug("Create configs for new process");
         List<DatabaseDeclarativeConfig> declarativeConfigs = declarativeDbaasCreationService.findAllByNamespace(activeNamespace);
-
         ArrayList<DatabaseToDeclarativeCreation> configsToCreateDatabase = new ArrayList<>();
-
-
         for (DatabaseDeclarativeConfig databaseDeclarativeConfig : declarativeConfigs) {
             DatabaseDeclarativeConfig newConfiguration = declarativeDbaasCreationService.saveConfigurationWithNewNamespace(databaseDeclarativeConfig,
                     requestedCandidateNamespace.getNamespace());
             if (Boolean.TRUE.equals(newConfiguration.getLazy())) {
                 continue;
             }
-            DatabaseExistence allDatabaseExists = databaseConfigurationCreationService.isAllDatabaseExists(newConfiguration,
-                    requestedActiveNamespace.getNamespace());
+            DatabaseExistence allDatabaseExists = databaseConfigurationCreationService.isAllDatabaseExists(newConfiguration, activeNamespace);
             if (allDatabaseExists.isExist() && allDatabaseExists.isActual()) {
                 log.debug("all databases with configuration = {} are exists", newConfiguration);
                 continue;
             }
             configsToCreateDatabase.add(new DatabaseToDeclarativeCreation(newConfiguration, false,
                     new TreeMap<>(databaseDeclarativeConfig.getClassifier())));
-
         }
         ArrayList<AbstractDatabaseProcessObject> processObjects = new ArrayList<>();
         configsToCreateDatabase.forEach(config -> {
@@ -174,26 +182,25 @@ public class BlueGreenService {
         });
         ProcessInstanceImpl process = databaseConfigurationCreationService.createProcessInstance(processObjects,
                 WARMUP_OPERATION, requestedCandidateNamespace.getNamespace(), requestedCandidateNamespace.getVersion());
-
-        warmupStaticDatabases(requestedCandidateNamespace.getNamespace(), requestedActiveNamespace.getNamespace());
-
         processService.startProcess(process);
-
         return process;
     }
 
-    private void warmupStaticDatabases(String candidateNamespace, String activeNamespace) {
+    private void shareStaticDatabases(String activeNamespace, String candidateNamespace) {
+        log.debug("Share static databases from {} to {} namespace", activeNamespace, candidateNamespace);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(activeNamespace)
                 .stream().filter(dbr -> dbr.getBgVersion() == null && !dbr.getClassifier().containsKey(MARKED_FOR_DROP))
                 .forEach(staticDatabaseRegistry -> dBaaService.shareDbToNamespace(staticDatabaseRegistry, candidateNamespace));
     }
 
-    private BgNamespace updateBgNamespace(BgNamespace candidateBgNamespace, String newState, String version) {
-        candidateBgNamespace.setState(newState);
-        candidateBgNamespace.setVersion(version);
-        candidateBgNamespace.setUpdateTime(new Date());
-        bgNamespaceRepository.persist(candidateBgNamespace);
-        return candidateBgNamespace;
+    private BgNamespace updateBgNamespace(BgNamespace bgNamespace, String newState, String version) {
+        log.info("Updating {} BG namespace. Current state: {}", bgNamespace.getNamespace(), bgNamespace);
+        bgNamespace.setState(newState);
+        bgNamespace.setVersion(version);
+        bgNamespace.setUpdateTime(new Date());
+        bgNamespaceRepository.persist(bgNamespace);
+        log.info("New state: {}", bgNamespace);
+        return bgNamespace;
     }
 
     private void copyDatabaseRoles(String sourceNamespace, String targetNamespace) {
@@ -391,9 +398,9 @@ public class BlueGreenService {
             } finally {
                 log.debug("action result = {}", actionResult);
                 if (!Thread.currentThread().isInterrupted()) {
-                    if (ex != null || actionResult == null || Boolean.TRUE.equals(condition.test(actionResult))) {
+                    if (ex != null || actionResult == null || condition.test(actionResult)) {
                         try {
-                            Thread.sleep(5000L + random.nextInt(2048));
+                            Thread.sleep(RETRY_STATIC_DELAY_MILLIS + random.nextInt(RETRY_DYNAMIC_RANGE_DELAY_MILLIS));
                         } catch (InterruptedException exception) {
                             stopRetrying = true;
                         }
@@ -406,11 +413,11 @@ public class BlueGreenService {
                 log.info("Task was terminated");
                 stopRetrying = true;
             }
-        } while (!stopRetrying && !Thread.currentThread().isInterrupted() && counter < 5 && Boolean.TRUE.equals(condition.test(actionResult)));
+        } while (!stopRetrying && !Thread.currentThread().isInterrupted() && counter < RETRY_COUNT && condition.test(actionResult));
         if (stopRetrying) {
             Thread.currentThread().interrupt();
         }
-        if (actionResult == null || Boolean.TRUE.equals(condition.test(actionResult)) || stopRetrying) {
+        if (actionResult == null || condition.test(actionResult) || stopRetrying) {
             exceptionConsumer.accept(ex);
         }
         return actionResult;
@@ -466,8 +473,10 @@ public class BlueGreenService {
         BgNamespace activeBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateNamespaceActive.getName())
                 .orElseThrow(() -> new BgRequestValidationException("Can't find active namespace for namespace"));
         if (!ACTIVE_STATE.equals(activeBgNamespace.getState()) ||
-                !(CANDIDATE_STATE.equals(idleBgNamespace.getState()) || LEGACY_STATE.equals(idleBgNamespace.getState()))) {
-            throw new BgRequestValidationException("Only Active + Candidate/Legacy namespaces are allowed for commit");
+                !(CANDIDATE_STATE.equals(idleBgNamespace.getState())
+                        || LEGACY_STATE.equals(idleBgNamespace.getState())
+                        || IDLE_STATE.equals(idleBgNamespace.getState()))) {
+            throw new BgRequestValidationException("Only Active + Candidate/Legacy/Idle namespaces are allowed for commit");
         }
 
         List<DatabaseRegistry> markedDatabaseAsOrphan = commitDatabasesByNamespace(bgStateNamespaceIdle.getName());
@@ -475,23 +484,24 @@ public class BlueGreenService {
         deleteNamespaceRules(bgStateNamespaceIdle.getName());
         deleteMicroserviceRules(bgStateNamespaceIdle.getName());
         deleteDatabaseRoles(bgStateNamespaceIdle.getName());
+        bgTrackRepository.deleteByNamespaceAndOperation(bgStateNamespaceIdle.getName(), WARMUP_OPERATION);
 
         Optional<BgNamespace> optionalOriginBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateRequest.getBGState().getOriginNamespace().getName());
 
-        log.debug("Update state for bgNamespace = {} to state = {}", optionalOriginBgNamespace, bgStateRequest.getBGState().getOriginNamespace().getState());
         BgNamespace originBgNamespace = optionalOriginBgNamespace.orElseThrow();
         originBgNamespace.setState(bgStateRequest.getBGState().getOriginNamespace().getState());
         originBgNamespace.setVersion(bgStateRequest.getBGState().getOriginNamespace().getVersion());
         originBgNamespace.setUpdateTime(bgStateRequest.getBGState().getUpdateTime());
         bgNamespaceRepository.persist(originBgNamespace);
+        log.info("New BG state for {} namespace: {}", originBgNamespace.getNamespace(), originBgNamespace);
 
         Optional<BgNamespace> optionalPeerBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateRequest.getBGState().getPeerNamespace().getName());
-        log.debug("Update state for bgNamespace = {} to state={}", optionalPeerBgNamespace, bgStateRequest.getBGState().getPeerNamespace().getState());
         BgNamespace peerBgNamespace = optionalPeerBgNamespace.orElseThrow();
         peerBgNamespace.setState(bgStateRequest.getBGState().getPeerNamespace().getState());
         peerBgNamespace.setVersion(bgStateRequest.getBGState().getPeerNamespace().getVersion());
         peerBgNamespace.setUpdateTime(bgStateRequest.getBGState().getUpdateTime());
         bgNamespaceRepository.persist(peerBgNamespace);
+        log.info("New BG state for {} namespace: {}", peerBgNamespace.getNamespace(), peerBgNamespace);
 
         return markedDatabaseAsOrphan;
     }
@@ -571,6 +581,7 @@ public class BlueGreenService {
         Optional<BgNamespace> foundedPeerBgNamespaceOptional = bgNamespaceRepository.findBgNamespaceByNamespace(bgRequestedPeerNamespace.getName());
         BgNamespace foundedOriginBgNamespace = foundedOriginBgNamespaceOptional.orElseThrow();
         BgNamespace foundedPeerBgNamespace = foundedPeerBgNamespaceOptional.orElseThrow();
+        log.info("Current domain state: namespace1={}, namespace2={}", foundedOriginBgNamespace, foundedPeerBgNamespace);
 
         String firstState = foundedOriginBgNamespace.getState();
         String secondState = foundedPeerBgNamespace.getState();
@@ -581,9 +592,11 @@ public class BlueGreenService {
 
         foundedOriginBgNamespace.setState(bgRequestedOriginNamespace.getState());
         bgNamespaceRepository.persist(foundedOriginBgNamespace);
+        log.info("New BG state for {} namespace: {}", foundedOriginBgNamespace.getNamespace(), foundedOriginBgNamespace);
 
         foundedPeerBgNamespace.setState(bgRequestedPeerNamespace.getState());
         bgNamespaceRepository.persist(foundedPeerBgNamespace);
+        log.info("New BG state for {} namespace: {}", foundedPeerBgNamespace.getNamespace(), foundedPeerBgNamespace);
     }
 
     public List<DatabaseRegistry> dropOrphanDatabases(List<String> namespaces, Boolean delete) {
@@ -591,13 +604,15 @@ public class BlueGreenService {
         if (delete) {
             log.info("{} databases are going to be deleted", orphanDatabases.size());
             ExecutorService executorService = Executors.newSingleThreadExecutor();
+            var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
             executorService.submit(() -> {
+                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                 log.info("Start async dropping orphan databases");
                 dBaaService.dropDatabases(orphanDatabases, null);
             });
             executorService.shutdown();
-
         }
+
         return orphanDatabases;
     }
 

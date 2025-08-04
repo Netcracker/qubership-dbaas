@@ -1,51 +1,41 @@
 package org.qubership.cloud.dbaas.service;
 
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
 import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import org.qubership.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
 import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.qubership.core.scheduler.po.DataContext;
+import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.*;
-import static org.qubership.cloud.dbaas.service.DatabaseRolesServiceTest.POSTGRESQL_TYPE;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.qubership.cloud.dbaas.Constants.*;
+import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
+import static org.qubership.cloud.dbaas.service.DatabaseRolesServiceTest.POSTGRESQL_TYPE;
 
 class DatabaseConfigurationCreationServiceTest {
-
     DBaaService dBaaService;
-
     DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
-
     LogicalDbDbaasRepository logicalDbDbaasRepository;
-
-    private ProcessService processService;
-
-
-    DatabaseDeclarativeConfigRepository declarativeConfigRepository;
-
+    ProcessService processService;
     DatabaseConfigurationCreationService databaseConfigurationCreationService;
 
     public DatabaseConfigurationCreationServiceTest() {
         dBaaService = Mockito.mock(DBaaService.class);
         logicalDbDbaasRepository = Mockito.mock(LogicalDbDbaasRepository.class);
         databaseRegistryDbaasRepository = Mockito.mock(DatabaseRegistryDbaasRepository.class);
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-
         processService = Mockito.mock(ProcessService.class);
-        declarativeConfigRepository = Mockito.mock(DatabaseDeclarativeConfigRepository.class);
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
         this.databaseConfigurationCreationService = new DatabaseConfigurationCreationService(dBaaService,
-                logicalDbDbaasRepository, processService, declarativeConfigRepository);
+                logicalDbDbaasRepository, processService);
     }
 
     @Test
@@ -353,6 +343,20 @@ class DatabaseConfigurationCreationServiceTest {
         DatabaseExistence exists = databaseConfigurationCreationService.isAllDatabaseExists(databaseDeclarativeConfig, "namespace");
         Assertions.assertTrue(exists.isExist());
         Assertions.assertTrue(exists.isActual());
+    }
+
+    @Test
+    void applyContextOnlyOnce() {
+        ProcessInstanceImpl processInstance = mock(ProcessInstanceImpl.class);
+        TaskInstanceImpl taskInstance = mock(TaskInstanceImpl.class);
+        DataContext dataContext = mock(DataContext.class);
+        when(processService.createProcess(any(), any(), any())).thenReturn(processInstance);
+        when(processInstance.getTasks()).thenReturn(List.of(taskInstance));
+        when(taskInstance.getContext()).thenReturn(dataContext);
+
+        databaseConfigurationCreationService.createProcessInstance(new ArrayList<>(), "warmup", "test-namespace");
+        // Context should be applied only one time for each task, because it's very expensive operation
+        verify(dataContext, times(1)).apply(any());
     }
 
 

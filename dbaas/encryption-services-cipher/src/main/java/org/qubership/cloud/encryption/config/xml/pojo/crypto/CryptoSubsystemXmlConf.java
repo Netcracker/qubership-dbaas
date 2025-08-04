@@ -2,22 +2,22 @@ package org.qubership.cloud.encryption.config.xml.pojo.crypto;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Optional;
+import jakarta.xml.bind.annotation.*;
+import jakarta.xml.bind.annotation.adapters.CollapsedStringAdapter;
+import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import org.qubership.cloud.encryption.config.crypto.MutableCryptoSubsystemConfig;
 
 import javax.annotation.Nonnull;
-import javax.xml.bind.annotation.*;
-import javax.xml.bind.annotation.adapters.CollapsedStringAdapter;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 /**
  * Default parameters for encrypt/decrypt providers
- * 
+ *
  * <p>
  * Java class for subsystemType complex type.
- * 
+ *
  * <p>
  * The following schema fragment specifies the expected content contained within this class.
- * 
+ *
  * <pre>
  * &lt;complexType name="subsystemType">
  *   &lt;complexContent>
@@ -50,9 +50,9 @@ public class CryptoSubsystemXmlConf implements MutableCryptoSubsystemConfig {
 
     /**
      * Gets the value of the defaultAlgorithm property.
-     * 
+     *
      * @return possible object is {@link String }
-     * 
+     *
      */
     @Nonnull
     public Optional<String> getDefaultAlgorithm() {
@@ -61,9 +61,9 @@ public class CryptoSubsystemXmlConf implements MutableCryptoSubsystemConfig {
 
     /**
      * Sets the value of the defaultAlgorithm property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setDefaultAlgorithm(@Nonnull String value) {
         this.defaultAlgorithm = value;
@@ -79,9 +79,9 @@ public class CryptoSubsystemXmlConf implements MutableCryptoSubsystemConfig {
 
     /**
      * Gets the value of the defaultKeyAlias property.
-     * 
+     *
      * @return possible object is {@link String }
-     * 
+     *
      */
     @Nonnull
     public Optional<String> getDefaultKeyAlias() {
@@ -90,9 +90,9 @@ public class CryptoSubsystemXmlConf implements MutableCryptoSubsystemConfig {
 
     /**
      * Sets the value of the defaultKeyAlias property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setDefaultKeyAlias(@Nonnull String value) {
         this.defaultKeyAlias = value;

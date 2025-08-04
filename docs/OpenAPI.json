@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "DBaaS Aggregator API",
-    "description": "This documentation presents REST API for \"Database as a Service\" component. DBaaS is aggregator for all adapters. DBaaS is purposed to aggregate the requests for the administrated databases and send to the necessary adapter. DBaaS stores information about all databases used in cloud project. These databases are isolated by namespace. DBaaS uses Classifier for identification a database within one cloud namespace. Classifier indicates service information, such as scope, microserviceName, tenantId, namespace.",
-    "version": "master"
+    "description": "This documentation presents the REST API for the \"Database as a Service\" (DBaaS) component. DBaaS acts as an aggregator for all adapters. It is designed to collect requests for managed databases and route them to the appropriate adapter. DBaaS stores information about all databases used in a cloud project. These databases are isolated by namespace. DBaaS uses a Classifier to identify databases within a cloud namespace. The Classifier includes service-related information such as scope, microservice name, tenant ID, and namespace.",
+    "version": "main"
   },
   "tags": [
     {
@@ -114,8 +114,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Delete bg Domains",
-        "description": "destroy registered bg domain",
+        "summary": "Delete BG domain",
+        "description": "Destroy registered BG domain",
         "requestBody": {
           "content": {
             "application/json": {
@@ -160,11 +160,11 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Get All bg Domains",
-        "description": "get all registered bg domains",
+        "summary": "Get all BG domains",
+        "description": "Get all registered BG domains",
         "responses": {
           "200": {
-            "description": "Get registered bg domains"
+            "description": "All registered BG domains"
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DbaaS."
@@ -188,8 +188,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Get All bg Domains",
-        "description": "get all registered bg domains",
+        "summary": "Get specific BG domain",
+        "description": "Get specific registered BG domain by namespace",
         "parameters": [
           {
             "name": "namespace",
@@ -202,7 +202,7 @@
         ],
         "responses": {
           "200": {
-            "description": "registered bg domains"
+            "description": "Specific registered BG domain"
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DbaaS."
@@ -3679,7 +3679,7 @@
             "description": "Adapter is not available during handshake process"
           },
           "400": {
-            "description": "Adapter already running"
+            "description": "Adapter already running or request validation failed"
           },
           "401": {
             "description": "Not Authorized"
@@ -5221,7 +5221,7 @@
         }
       },
       "Instruction": {
-        "description": "V3 Responce model for starting the migration procedure",
+        "description": "V3 Response model for starting the migration procedure",
         "required": [
           "id",
           "additionalRoles"
@@ -5233,7 +5233,7 @@
             "type": "string"
           },
           "additionalRoles": {
-            "description": "Сonnection properties properties that require additional roles",
+            "description": "Connection properties properties that require additional roles",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AdditionalRoles"

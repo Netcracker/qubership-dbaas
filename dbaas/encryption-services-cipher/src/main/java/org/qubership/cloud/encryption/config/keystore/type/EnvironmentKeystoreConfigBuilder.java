@@ -19,20 +19,20 @@ public interface EnvironmentKeystoreConfigBuilder extends KeystoreConfigBuilder<
 
     /**
      * Set prefix of key's environment variables.
-     * 
+     *
      * @param prefix prefix
      */
     EnvironmentKeystoreConfigBuilder setPrefix(@Nonnull String prefix);
 
     /**
      * Set encryption flag of key's environment variables.
-     * 
+     *
      * @param encrypted encrypted
      */
     EnvironmentKeystoreConfigBuilder setEncrypted(@Nonnull boolean encrypted);
 
     /**
-     * @param password password
+     * @param passwordVar password
      */
     EnvironmentKeystoreConfigBuilder setPasswordVar(@Nullable String passwordVar);
 

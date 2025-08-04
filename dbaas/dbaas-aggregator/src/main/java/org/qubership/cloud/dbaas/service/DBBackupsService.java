@@ -353,7 +353,7 @@ public class DBBackupsService {
             interrupted = true;
             throw e;
         } catch (Exception e) {
-            log.error("Error during backup " + id + " collection in " + namespace, e);
+            log.error("Error during backup {} collection in {}", id, namespace, e);
             backup.setStatus(NamespaceBackup.Status.FAIL);
             List<String> failReasons = backup.getFailReasons() == null ? new ArrayList<>() : backup.getFailReasons();
             failReasons.add("Exception " + e.getClass() + " during backup collection: " + e.getMessage());
@@ -374,15 +374,11 @@ public class DBBackupsService {
         return collectedBackups.stream().map(DatabasesBackup::getStatus)
                 .map(Status::ordinal).max(Integer::compareTo)
                 .map(it -> Status.values()[it]).map(it -> {
-                    switch (it) {
-                        case SUCCESS:
-                            return NamespaceBackup.Status.ACTIVE;
-                        case PROCEEDING:
-                            return NamespaceBackup.Status.PROCEEDING;
-                        case FAIL:
-                        default:
-                            return FAIL;
-                    }
+                    return switch (it) {
+                        case SUCCESS -> NamespaceBackup.Status.ACTIVE;
+                        case PROCEEDING -> NamespaceBackup.Status.PROCEEDING;
+                        default -> FAIL;
+                    };
                 })
                 // allow backups with no dbs for scenarios with clean namespace
                 .orElse(NamespaceBackup.Status.ACTIVE);
@@ -635,8 +631,8 @@ public class DBBackupsService {
                 adapter.changeMetaData(dbName, metadata);
                 log.info("Metadata was change successfully from db with name {}", dbName);
             } catch (Exception e) {
-                log.error("Failed to update metadata for database {}. Exception {}", dbName, e);
-                failReasonBuilder.append("Failed to update metadata for database " + dbName);
+                log.error("Failed to update metadata for database {}", dbName, e);
+                failReasonBuilder.append("Failed to update metadata for database ").append(dbName);
                 failReasonBuilder.append(System.lineSeparator());
                 result.setStatus(Status.FAIL);
             }
@@ -749,10 +745,17 @@ public class DBBackupsService {
                         .toList()
             );
         }
-        NamespaceRestoration result = new NamespaceRestoration();
-        result.setId(restorationId);
+
+        NamespaceRestoration result;
+        Optional<NamespaceRestoration> existingRestoration = backup.getRestorations().stream().filter(r -> r.getId().equals(restorationId)).findAny();
+        if (existingRestoration.isPresent()) {
+            result = existingRestoration.get();
+        } else {
+            result = new NamespaceRestoration();
+            result.setId(restorationId);
+            addToBackup(backup, result);
+        }
         result.setStatus(Status.PROCEEDING);
-        addToBackup(backup, result);
 
         backup.setStatus(NamespaceBackup.Status.RESTORING);
         runInNewTransaction(() -> backupsDbaasRepository.save(backup)); // save backup restore proceeds
@@ -814,7 +817,7 @@ public class DBBackupsService {
     private StringBuilder appendFailed(StringBuilder builder, Status status, String adapterId) {
         if (Status.FAIL.equals(status)) {
             DbaasAdapter adapter = adapterOf(adapterId);
-            builder.append(builder.length() > 0 ? " , " : " [ ")
+            builder.append(!builder.isEmpty() ? " , " : " [ ")
                     .append(status)
                     .append(" restoration  in adapter ")
                     .append(adapterId)

@@ -86,7 +86,7 @@ public class Database extends AbstractDatabase {
         this.name = database.getName();
         this.markedForDrop = database.isMarkedForDrop();
         this.timeDbCreation = new Date();
-        this.backupDisabled = database.getBackupDisabled() != null && Boolean.valueOf(database.getBackupDisabled());
+        this.backupDisabled = database.getBackupDisabled() != null && database.getBackupDisabled();
         this.settings = database.getSettings() != null ? new HashMap<>(database.getSettings()) : null;
         this.connectionDescription = database.getConnectionDescription() != null ? new ConnectionDescription(database.getConnectionDescription()) : null;
         this.externallyManageable = database.isExternallyManageable();

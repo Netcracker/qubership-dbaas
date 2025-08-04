@@ -1,6 +1,7 @@
 package org.qubership.cloud.dbaas.integration.stability;
 
 import com.google.common.base.Strings;
+import io.quarkus.test.junit.TestProfile;
 import org.qubership.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import org.qubership.cloud.dbaas.dto.role.Role;
 import org.qubership.cloud.dbaas.entity.pg.*;
@@ -12,6 +13,7 @@ import org.qubership.cloud.dbaas.service.BlueGreenService;
 import org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2;
 import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
 import org.qubership.cloud.dbaas.service.ProcessService;
+import org.qubership.cloud.dbaas.test.profile.ProcessOrchestratorEnabledProfile;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.qubership.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -43,6 +45,7 @@ import static org.mockito.Mockito.when;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
+@TestProfile(ProcessOrchestratorEnabledProfile.class)
 @Slf4j
 class BlueGreenProdModeStabilityTest {
 
@@ -66,12 +69,12 @@ class BlueGreenProdModeStabilityTest {
     PhysicalDatabasesService physicalDatabasesService;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         clean();
     }
 
     @AfterEach
-    public void tearDown() {
+    void tearDown() {
         clean();
     }
 

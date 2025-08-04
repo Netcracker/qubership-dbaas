@@ -93,7 +93,7 @@ public class InstructionServiceTest {
         int count = 90;
         List<Database> logicalDatabases = generateListOfLogicalDatabase(count);
         Instruction instruction = instructionService.buildInstructionForAdditionalRoles(logicalDatabases);
-        Assertions.assertEquals(instruction.getAdditionalRoles().size(), count);
+        Assertions.assertEquals(count, instruction.getAdditionalRoles().size());
     }
 
     @Test
@@ -178,7 +178,7 @@ public class InstructionServiceTest {
                 TEST_PHYDBID,
                 TEST_TYPE,
                 Arrays.asList("admin", "rw", "ro"));
-        assertEquals(databaseForMigration.size(), 2);
+        assertEquals(2, databaseForMigration.size());
         databaseForMigration = instructionService.getLogicalDatabasesForMigration(
                 TEST_PHYDBID,
                 TEST_TYPE,

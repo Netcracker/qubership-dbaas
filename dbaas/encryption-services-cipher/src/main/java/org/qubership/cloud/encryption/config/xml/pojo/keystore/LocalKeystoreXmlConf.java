@@ -1,23 +1,23 @@
 package org.qubership.cloud.encryption.config.xml.pojo.keystore;
 
 import com.google.common.base.MoreObjects;
+import jakarta.xml.bind.annotation.*;
+import jakarta.xml.bind.annotation.adapters.CollapsedStringAdapter;
+import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import org.qubership.cloud.encryption.config.keystore.type.MutableLocalKeystoreConfig;
 
 import javax.annotation.Nonnull;
-import javax.xml.bind.annotation.*;
-import javax.xml.bind.annotation.adapters.CollapsedStringAdapter;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 /**
  * Keystores ensure the secure storage and management of private keys and secret key and trusted certificate authorities
  * (CAs). Keystore locate on server where locate qubership application
- * 
+ *
  * <p>
  * Java class for local-keystoreType complex type.
- * 
+ *
  * <p>
  * The following schema fragment specifies the expected content contained within this class.
- * 
+ *
  * <pre>
  * &lt;complexType name="local-keystoreType">
  *   &lt;complexContent>
@@ -63,9 +63,9 @@ public class LocalKeystoreXmlConf extends AbstractKeystoreXmlConf implements Mut
 
     /**
      * Sets the value of the location property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setLocation(String value) {
         this.location = value;
@@ -73,9 +73,9 @@ public class LocalKeystoreXmlConf extends AbstractKeystoreXmlConf implements Mut
 
     /**
      * Sets the value of the keystoreType property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setKeystoreType(String value) {
         this.keystoreType = value;
@@ -88,9 +88,9 @@ public class LocalKeystoreXmlConf extends AbstractKeystoreXmlConf implements Mut
 
     /**
      * Sets the value of the password property.
-     * 
+     *
      * @param value allowed object is {@link String }
-     * 
+     *
      */
     public void setPassword(String value) {
         this.password = value;

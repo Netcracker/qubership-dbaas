@@ -53,7 +53,7 @@ class UserServiceTest {
     private ProcessConnectionPropertiesService connectionPropertiesService;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         userService.setDBaaService(dBaaService);
     }
 
@@ -86,7 +86,7 @@ class UserServiceTest {
         GetOrCreateUserResponse getOrCreateUserResponse = userService.createUser(request, database);
 
         assertNotNull(getOrCreateUserResponse.getUserId());
-        assertEquals(getOrCreateUserResponse.getConnectionProperties().get("username"), "test-user");
+        assertEquals("test-user", getOrCreateUserResponse.getConnectionProperties().get("username"));
         verify(adapter,
                 times(1)).createUser(eq(dbName), any(), eq(request.getUserRole()), eq(request.getUsernamePrefix()));
         verify(databaseUserRepository, times(2)).persist(any(DatabaseUser.class));

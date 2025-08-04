@@ -8,7 +8,7 @@ import java.security.Key;
 public interface EncryptionRequest extends CryptoRequest {
     /**
      * Plain test that should be encrypted
-     * 
+     *
      * @return not null byte array for plain text
      */
     @Nonnull
@@ -16,7 +16,7 @@ public interface EncryptionRequest extends CryptoRequest {
 
     /**
      * Algorithm that should be apply for encryption
-     * 
+     *
      * @return optional
      */
     @Nonnull
@@ -25,11 +25,11 @@ public interface EncryptionRequest extends CryptoRequest {
 
     /**
      * Key that should be use for encrypt plain text
-     *
+     * <p>
      * <b>Note:</b> It method return opposite value for {@link EncryptionRequest#getKeyAlias()} and current method have
      * higher priority for use, so, in case when specified explicitly {@link Key} and keyAlias should be use explicit
      * {@link Key}
-     * 
+     *
      * @return optional
      */
     @Nonnull
@@ -44,7 +44,7 @@ public interface EncryptionRequest extends CryptoRequest {
      * <b>Note:</b> It method return opposite value for {@link EncryptionRequest#getKey()} but
      * {@link EncryptionRequest#getKey()} have higher priority for use, so, in case when specified explicitly
      * {@link Key} and keyAlias should be use explicit {@link Key}
-     * 
+     *
      * @return optional
      */
     @Nonnull

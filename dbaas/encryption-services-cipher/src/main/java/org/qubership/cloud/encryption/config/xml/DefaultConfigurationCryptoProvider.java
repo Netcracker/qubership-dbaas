@@ -20,6 +20,7 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;
 import java.security.Key;
@@ -57,12 +58,12 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
     }
 
     @FunctionalInterface
-    private static interface CreateKeystoreConfigFunction {
+    private interface CreateKeystoreConfigFunction {
         LocalKeystoreConfig create(@Nonnull LocalKeystoreConfig keystoreConfig, @Nonnull String keyPassword);
     }
 
     @FunctionalInterface
-    private static interface CreateKeyConfigFunction {
+    private interface CreateKeyConfigFunction {
         KeyConfig create(@Nonnull KeyConfig keyConfig, @Nonnull String keyPassword);
     }
 
@@ -78,7 +79,7 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.qubership.cloud.encryption.config.xml.ConfigurationCryptoProvider#cryptSecureParameters(org.qubership.
      * security.encryption.config.EncryptionConfiguration,
@@ -130,7 +131,7 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.qubership.cloud.encryption.config.xml.ConfigurationCryptoProvider#decryptSecureParameters(org.qubership.
      * security.encryption.config.EncryptionConfiguration,
@@ -141,7 +142,7 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
     public DecryptionResult decryptSecureParameters(@Nonnull EncryptionConfiguration config,
             @Nullable ConfigurationParser parser) {
         final KeystoreSubsystemConfig keystoreSubsystem = config.getKeyStoreSubsystemConfig();
-        final List<KeystoreConfig> keystores = keystoreSubsystem != null 
+        final List<KeystoreConfig> keystores = keystoreSubsystem != null
                 ? keystoreSubsystem.getKeyStores()
                         : Collections.emptyList();
         final List<KeystoreConfig> processKeystore = Lists.newArrayList();
@@ -232,7 +233,7 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
             Cipher cipher = Cipher.getInstance(DEFAULT_ALGORITHM);
             cipher.init(Cipher.ENCRYPT_MODE, key);
 
-            byte[] encrypted = cipher.doFinal(str.getBytes(Charset.forName("UTF-8")));
+            byte[] encrypted = cipher.doFinal(str.getBytes(StandardCharsets.UTF_8));
             byte[] salt = cipher.getIV();
 
             String base64CryptedData = Base64.encodeBase64String(encrypted);
@@ -259,7 +260,7 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
 
                 byte[] decrypted = cipher.doFinal(cryptedData);
 
-                return new String(decrypted, Charset.forName("UTF-8"));
+                return new String(decrypted, StandardCharsets.UTF_8);
             } catch (GeneralSecurityException e) {
                 throw new CryptoException("Data can't be crypted for same configuration", e);
             }

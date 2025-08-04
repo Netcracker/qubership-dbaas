@@ -1,15 +1,7 @@
 package org.qubership.cloud.dbaas.dao.h2;
 
-import org.qubership.cloud.dbaas.dao.jpa.DatabaseDbaasRepositoryImpl;
-import org.qubership.cloud.dbaas.entity.h2.Database;
-import org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
-import jakarta.persistence.EntityManager;
-
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +10,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.qubership.cloud.dbaas.dao.jpa.DatabaseDbaasRepositoryImpl;
+import org.qubership.cloud.dbaas.entity.h2.Database;
+import org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry;
+import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
+import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRepository;
+import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -39,9 +37,6 @@ class H2DatabaseRepositoriesTest {
     @Mock
     private H2DatabaseRegistryRepository h2DatabaseRegistryRepository;
 
-    @Mock
-    private EntityManager entityManager;
-
     @BeforeAll
     static void beforeAll() {
         mockedStatic = mockStatic(QuarkusTransaction.class);
@@ -50,7 +45,7 @@ class H2DatabaseRepositoriesTest {
             ((Runnable) invocationOnMock.getArgument(0)).run();
             return null;
         }).when(txRunner).run(any());
-        doAnswer(invocationOnMock -> ((Callable) invocationOnMock.getArgument(0)).call()).when(txRunner).call(any());
+        doAnswer(invocationOnMock -> ((Callable<?>) invocationOnMock.getArgument(0)).call()).when(txRunner).call(any());
         mockedStatic.when(QuarkusTransaction::requiringNew).thenReturn(txRunner);
     }
 
@@ -120,14 +115,21 @@ class H2DatabaseRepositoriesTest {
         databaseRegistry.setId(UUID.randomUUID());
 
         databaseRegistry.setDatabase(db_1);
-        ArrayList<DatabaseRegistry> databaseRegistries = new ArrayList<>();
-        databaseRegistries.add(databaseRegistry);
-        db_1.setDatabaseRegistry(databaseRegistries);
 
 
         when(databasesRepository.findByIdOptional(id)).thenReturn(Optional.of(db_1.asPgEntity()));
-        when(h2DatabaseRepository.findByIdOptional(id)).thenReturn(Optional.of(db_1));
-        when(h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId())).thenReturn(Optional.of(databaseRegistry));
+        when(h2DatabaseRepository.findByIdOptional(id)).thenAnswer((inv) -> {
+            List<DatabaseRegistry> databaseRegistriesNew = new ArrayList<>();
+            databaseRegistriesNew.add(databaseRegistry);
+            db_1.setDatabaseRegistry(databaseRegistriesNew);
+            return Optional.of(db_1);
+        });
+        when(h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId())).thenAnswer((inv) -> {
+            List<DatabaseRegistry> databaseRegistriesNew = new ArrayList<>();
+            databaseRegistriesNew.add(databaseRegistry);
+            db_1.setDatabaseRegistry(databaseRegistriesNew);
+            return Optional.of(databaseRegistry);
+        });
 
         databaseDbaasRepositoryImpl.reloadH2Cache(id);
 
@@ -160,14 +162,21 @@ class H2DatabaseRepositoriesTest {
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setId(UUID.randomUUID());
         databaseRegistry.setDatabase(db_1);
-        ArrayList<DatabaseRegistry> databaseRegistries = new ArrayList<>();
-        databaseRegistries.add(databaseRegistry);
-        db_1.setDatabaseRegistry(databaseRegistries);
 
         when(databasesRepository.findByIdOptional(id)).thenReturn(Optional.empty());
 
-        when(h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId())).thenReturn(Optional.of(databaseRegistry));
-        when(h2DatabaseRepository.findByIdOptional(id)).thenReturn(Optional.of(db_1));
+        when(h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId())).thenAnswer((inv) -> {
+            List<DatabaseRegistry> databaseRegistriesNew = new ArrayList<>();
+            databaseRegistriesNew.add(databaseRegistry);
+            db_1.setDatabaseRegistry(databaseRegistriesNew);
+            return Optional.of(databaseRegistry);
+        });
+        when(h2DatabaseRepository.findByIdOptional(id)).thenAnswer((inv) -> {
+            List<DatabaseRegistry> databaseRegistriesNew = new ArrayList<>();
+            databaseRegistriesNew.add(databaseRegistry);
+            db_1.setDatabaseRegistry(databaseRegistriesNew);
+            return Optional.of(db_1);
+        });
 
         databaseDbaasRepositoryImpl.reloadH2Cache(id);
 
@@ -181,12 +190,12 @@ class H2DatabaseRepositoriesTest {
         Database db = new Database();
         db.setId(UUID.randomUUID());
 
-        db.setAdapterId("adapter-id-" + UUID.randomUUID().toString());
-        db.setName("name-" + UUID.randomUUID().toString());
-        String namespace = "namespace-" + UUID.randomUUID().toString();
+        db.setAdapterId("adapter-id-" + UUID.randomUUID());
+        db.setName("name-" + UUID.randomUUID());
+        String namespace = "namespace-" + UUID.randomUUID();
         TreeMap<String, Object> classifier = new TreeMap<>();
         classifier.put("namespace", namespace);
-        classifier.put("microserviceName", "microserviceName-" + UUID.randomUUID().toString());
+        classifier.put("microserviceName", "microserviceName-" + UUID.randomUUID());
         if (isServiceDb) {
             classifier.put("isServiceDb", true);
         } else {
@@ -195,16 +204,16 @@ class H2DatabaseRepositoriesTest {
         db.setClassifier(classifier);
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setId(UUID.randomUUID());
-        databaseRegistry.setType("type-" + UUID.randomUUID().toString());
+        databaseRegistry.setType("type-" + UUID.randomUUID());
         databaseRegistry.setNamespace(namespace);
-        db.setDatabaseRegistry(Arrays.asList(databaseRegistry));
-        db.getDatabaseRegistry().get(0).setDatabase(db);
+        db.setDatabaseRegistry(List.of(databaseRegistry));
+        db.getDatabaseRegistry().getFirst().setDatabase(db);
         HashMap<String, Object> connectionProperties = new HashMap<>();
         connectionProperties.put("username", UUID.randomUUID().toString());
         connectionProperties.put("password", UUID.randomUUID().toString());
         connectionProperties.put("encryptedPassword", connectionProperties.get("password"));
 
-        db.setConnectionProperties(Arrays.asList(connectionProperties));
+        db.setConnectionProperties(List.of(connectionProperties));
         return db;
     }
 }
