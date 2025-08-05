@@ -6,6 +6,7 @@ import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import org.qubership.cloud.dbaas.dto.v3.UserEnsureRequestV3;
 import org.qubership.cloud.dbaas.entity.pg.DbResource;
 import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
 import io.vertx.core.impl.NoStackTraceTimeoutException;
 import jakarta.ws.rs.*;
@@ -62,6 +63,12 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @Path("/api/v2/dbaas/adapter/{type}/backups/track/{action}/{track}")
     @Produces(MediaType.APPLICATION_JSON)
     TrackedAction trackBackup(@PathParam("type") String type, @PathParam("action") String action, @PathParam("track") String track);
+
+
+    @GET
+    @Path("/api/v2/dbaas/adapter/{type}/backups/backup/{logicalBackupName}/status")
+    @Produces(MediaType.APPLICATION_JSON)
+    LogicalBackupStatus trackBackupV2(@PathParam("type") String type, @PathParam("logicalBackupName") String logicalBackupName);
 
     @DELETE
     @Path("/api/v2/dbaas/adapter/{type}/backups/{backupId}")

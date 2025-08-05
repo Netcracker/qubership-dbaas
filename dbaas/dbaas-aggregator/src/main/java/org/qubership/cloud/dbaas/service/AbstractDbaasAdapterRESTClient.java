@@ -191,6 +191,10 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
         return backup;
     }
 
+    public String backupV2(List<String> dbNames){
+        return collectBackup(false, null, dbNames).getTrackId();
+    }
+
     protected abstract String deleteBackup(String localId);
 
     @Override
