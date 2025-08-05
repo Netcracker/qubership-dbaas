@@ -3,8 +3,8 @@ LABEL maintainer="qubership"
 
 ARG BASE_PATH=.
 
-COPY --chown=10001:0 $BASE_PATH/dbaas-aggreagtor/target/lib/* /app/lib/
-COPY --chown=10001:0 $BASE_PATH/dbaas-aggreagtor/target/dbaas-aggregator-*-runner.jar /app/dbaas-aggregator.jar
+COPY --chown=10001:0 $BASE_PATH/dbaas-aggregator/target/lib/* /app/lib/
+COPY --chown=10001:0 $BASE_PATH/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar /app/dbaas-aggregator.jar
 EXPOSE 8080
 
 WORKDIR /app
