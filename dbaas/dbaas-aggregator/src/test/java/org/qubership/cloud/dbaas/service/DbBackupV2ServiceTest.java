@@ -72,7 +72,6 @@ class DbBackupV2ServiceTest {
 
         List<Database> registries = getDatabases(dbName, namespace);
 
-
         LogicalBackupStatus logicalBackupStatusSuccess = new LogicalBackupStatus();
         logicalBackupStatusSuccess.setDatabases(constructInnerDbs());
         logicalBackupStatusSuccess.setStatus(Status.SUCCESS);
@@ -242,11 +241,9 @@ class DbBackupV2ServiceTest {
         List<LogicalBackup> logicalBackupFromRepository = logicalBackupRepository.findAll().stream().toList();
         LogicalBackup logicalBackup = logicalBackupFromRepository.getFirst();
 
-
         assertEquals(logicalBackupCount, logicalBackupFromRepository.size());
 
         for (int i = 0; i < logicalBackupFromRepository.size(); i++) {
-
             assertEquals("backup" + logicalBackup.getAdapterId(), logicalBackup.getLogicalBackupName());
             List<String> dbNames = logicalBackups.get(i).getBackupDatabases().stream()
                     .map(BackupDatabase::getName).toList();
@@ -257,7 +254,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void initializeFullBackupStructure_shouldReturnFullBackupStructure(){
+    void initializeFullBackupStructure_shouldReturnFullBackupStructure() {
         //when
         String databaseFirstName = "databaseFirst";
 
@@ -301,7 +298,7 @@ class DbBackupV2ServiceTest {
         LogicalBackup logicalBackupFirst = logicalBackups.stream()
                 .filter(lb -> lb.getBackupDatabases().stream()
                         .anyMatch(backupDb -> databaseFirstName.equals(backupDb.getName())))
-                        .findFirst().orElseThrow();
+                .findFirst().orElseThrow();
         LogicalBackup logicalBackupSecond = logicalBackups.stream()
                 .filter(lb -> lb.getBackupDatabases().stream()
                         .anyMatch(backupDb -> databaseSecondName.equals(backupDb.getName())))
@@ -313,121 +310,83 @@ class DbBackupV2ServiceTest {
         assertEquals(databaseSecondName, logicalBackupSecond.getBackupDatabases().getFirst().getName());
     }
 
-    @Nested
-    class updateAggregatedStatus{
-        @Test
-        void updateAggregatedStatus_shouldReturnProceeding_whenStatusesContainNotStartedProceedingFailSuccess() {
-            //when
-            List<LogicalBackup> logicalBackupList = generateLogicalBackupsWithStatuses(4, Set.of(Status.NOT_STARTED, Status.PROCEEDING, Status.FAIL, Status.SUCCESS));
-            String backupName = "test-backup";
+    @Test
+    void updateAggregatedStatus_shouldReturnProceeding_whenStatusesContainNotStartedProceedingFailSuccess() {
+        //when
+        List<LogicalBackup> logicalBackupList = generateLogicalBackupsWithStatuses(4, Set.of(Status.NOT_STARTED, Status.PROCEEDING, Status.FAIL, Status.SUCCESS));
+        String backupName = "test-backup";
 
-            Backup backup = new Backup();
-            backup.setName(backupName);
-            backup.setLogicalBackups(logicalBackupList);
-            //then
-            dbBackupV2Service.updateAggregatedStatus(backup);
+        Backup backup = new Backup();
+        backup.setName(backupName);
+        backup.setLogicalBackups(logicalBackupList);
+        //then
+        dbBackupV2Service.updateAggregatedStatus(backup);
 
-            //check
-            assertEquals(Status.PROCEEDING, backup.getStatus().getStatus());
-
-        }
-
-        @Test
-        void updateAggregatedStatus_shouldReturnProceeding_whenStatusesContainNotStartedFailSuccess() {
-            //when
-            List<LogicalBackup> logicalBackupList = generateLogicalBackupsWithStatuses(4, Set.of(Status.NOT_STARTED, Status.FAIL, Status.SUCCESS));
-            String backupName = "test-backup";
-
-            Backup backup = new Backup();
-            backup.setName(backupName);
-            backup.setLogicalBackups(logicalBackupList);
-            //then
-            dbBackupV2Service.updateAggregatedStatus(backup);
-
-            //check
-            assertEquals(Status.PROCEEDING, backup.getStatus().getStatus());
-        }
-
-        @Test
-        void updateAggregatedStatus_shouldReturnFail_whenStatusesContainFailSuccess() {
-            //when
-            List<LogicalBackup> logicalBackupList = generateLogicalBackupsWithStatuses(4, Set.of(Status.FAIL, Status.SUCCESS));
-            String backupName = "test-backup";
-
-            Backup backup = new Backup();
-            backup.setName(backupName);
-            backup.setLogicalBackups(logicalBackupList);
-            //then
-            dbBackupV2Service.updateAggregatedStatus(backup);
-
-            //check
-            assertEquals(Status.FAIL, backup.getStatus().getStatus());
-        }
+        //check
+        assertEquals(Status.PROCEEDING, backup.getStatus().getStatus());
 
     }
 
-    @Nested
-    class aggregateStatus{
-        @Test
-        void aggregateStatus_shouldReturnProceeding_whenInputNotStartedProceedingFailSuccess(){
-            //when
-            Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.PROCEEDING, Status.FAIL, Status.SUCCESS);
+    @Test
+    void aggregateStatus_shouldReturnProceeding_whenInputNotStartedProceedingFailSuccess() {
+        //when
+        Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.PROCEEDING, Status.FAIL, Status.SUCCESS);
 
-            //then
-            Status status = dbBackupV2Service.aggregateStatus(statuses);
+        //then
+        Status status = dbBackupV2Service.aggregateStatus(statuses);
 
-            assertNotNull(status);
-            assertEquals(Status.PROCEEDING, status);
-        }
-
-        @Test
-        void aggregateStatus_shouldReturnProceeding_whenInputNotStartedFailSuccess(){
-            //when
-            Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.FAIL, Status.SUCCESS);
-
-            //then
-            Status status = dbBackupV2Service.aggregateStatus(statuses);
-
-            assertNotNull(status);
-            assertEquals(Status.PROCEEDING, status);
-        }
-
-        @Test
-        void aggregateStatus_shouldReturnProceeding_whenInputProceedingFailSuccess(){
-            //when
-            Set<Status> statuses = Set.of(Status.PROCEEDING, Status.FAIL, Status.SUCCESS);
-
-            //then
-            Status status = dbBackupV2Service.aggregateStatus(statuses);
-
-            assertNotNull(status);
-            assertEquals(Status.PROCEEDING, status);
-        }
-
-        @Test
-        void aggregateStatus_shouldReturnProceeding_whenInputFailSuccess(){
-            //when
-            Set<Status> statuses = Set.of(Status.FAIL, Status.SUCCESS);
-
-            //then
-            Status status = dbBackupV2Service.aggregateStatus(statuses);
-
-            assertNotNull(status);
-            assertEquals(Status.FAIL, status);
-        }
-
-        @Test
-        void aggregateStatus_shouldReturnProceeding_whenInputSuccess(){
-            //when
-            Set<Status> statuses = Set.of(Status.SUCCESS);
-
-            //then
-            Status status = dbBackupV2Service.aggregateStatus(statuses);
-
-            assertNotNull(status);
-            assertEquals(Status.SUCCESS, status);
-        }
+        assertNotNull(status);
+        assertEquals(Status.PROCEEDING, status);
     }
+
+    @Test
+    void aggregateStatus_shouldReturnProceeding_whenInputNotStartedFailSuccess() {
+        //when
+        Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.FAIL, Status.SUCCESS);
+
+        //then
+        Status status = dbBackupV2Service.aggregateStatus(statuses);
+
+        assertNotNull(status);
+        assertEquals(Status.PROCEEDING, status);
+    }
+
+    @Test
+    void aggregateStatus_shouldReturnProceeding_whenInputProceedingFailSuccess() {
+        //when
+        Set<Status> statuses = Set.of(Status.PROCEEDING, Status.FAIL, Status.SUCCESS);
+
+        //then
+        Status status = dbBackupV2Service.aggregateStatus(statuses);
+
+        assertNotNull(status);
+        assertEquals(Status.PROCEEDING, status);
+    }
+
+    @Test
+    void aggregateStatus_shouldReturnProceeding_whenInputFailSuccess() {
+        //when
+        Set<Status> statuses = Set.of(Status.FAIL, Status.SUCCESS);
+
+        //then
+        Status status = dbBackupV2Service.aggregateStatus(statuses);
+
+        assertNotNull(status);
+        assertEquals(Status.FAIL, status);
+    }
+
+    @Test
+    void aggregateStatus_shouldReturnProceeding_whenInputSuccess() {
+        //when
+        Set<Status> statuses = Set.of(Status.SUCCESS);
+
+        //then
+        Status status = dbBackupV2Service.aggregateStatus(statuses);
+
+        assertNotNull(status);
+        assertEquals(Status.SUCCESS, status);
+    }
+
 
     private List<LogicalBackup> generateLogicalBackupsWithStatuses(int count, Set<Status> statuses) {
         List<Status> statusList = new ArrayList<>(statuses);
