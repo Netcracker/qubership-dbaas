@@ -105,7 +105,7 @@ public abstract class AbstractDatabase implements Serializable {
     @Convert(converter = ListConverter.class)
     protected List<String> warnings;
 
-    @Schema(description = "This parameter specifies if a control over the database is not carried out by the DbaaS adapter.")
+    @Schema(description = "This parameter specifies if a control over the database is not carried out by the DBaaS adapter.")
     @Column(name = "externally_manageable")
     protected boolean externallyManageable = false;
 

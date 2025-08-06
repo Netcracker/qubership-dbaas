@@ -43,7 +43,7 @@ public class BalancingRulesControllerV3 {
 
     @Operation(summary = "V3. On namespace physDb balancing rule",
             description = "There are no changes in comparison with version 1. " +
-                    "Auto balancing rules allows configure behavior of DbaaS when a physical " +
+                    "Auto balancing rules allows configure behavior of DBaaS when a physical " +
                     "database of some specific type is choosen for new logical database. " +
                     "This rule currently works for new databases only, no migration " +
                     "of logical databases between physical databases is supported yet.")
@@ -113,7 +113,7 @@ public class BalancingRulesControllerV3 {
         description = "Allows getting physical database balancing rules for microservices.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "Gotten on microservice physical database balancing rules"),
-        @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+        @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/rules/onMicroservices")
     @GET

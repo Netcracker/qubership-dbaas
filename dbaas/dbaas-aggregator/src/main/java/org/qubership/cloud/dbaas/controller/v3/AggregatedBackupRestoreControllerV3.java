@@ -57,7 +57,7 @@ public class AggregatedBackupRestoreControllerV3 {
     DbaaSHelper dbaaSHelper;
 
     @Operation(summary = "V3. Restore database",
-            description = "Restores backup for specific only backup id")
+            description = "Restores backup for a specific backup ID")
     @APIResponses({
             @APIResponse(responseCode = "202", description = "Namespace restoration started, return backup id to track status"),
             @APIResponse(responseCode = "400", description = "Selected backup cannot be restored"),
@@ -79,7 +79,7 @@ public class AggregatedBackupRestoreControllerV3 {
             description = "Returns restoration info")
     @APIResponses({
             @APIResponse(responseCode = "404", description = "Selected backup or restoration not found"),
-            @APIResponse(responseCode = "200", description = "Backup validated and can be restored", content = @Content(schema = @Schema(implementation = NamespaceBackup.class)))})
+            @APIResponse(responseCode = "200", description = "Backup is validated and can be restored", content = @Content(schema = @Schema(implementation = NamespaceBackup.class)))})
     @Path("/{backupId}/restorations/{restorationId}")
     @GET
     public Response getRestorationOfBackupInNamespace(@Parameter(description = "Identifier of backup process", required = true)
