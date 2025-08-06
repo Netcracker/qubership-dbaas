@@ -51,14 +51,14 @@ public class BlueGreenControllerV1 {
 
     @Operation(
             summary = "Warmup namespace",
-            description = "The API prepare databases in namespace to work in versioning mode. If database is versioned then will be create full copy." +
+            description = "The API prepares databases in namespace to work in versioning mode. If database is versioned then will be create full copy." +
                     "If database is static will be create only new classifier")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Warmup is already done"),
             @APIResponse(responseCode = "202", description = "Warmup process has started, return trackingId "),
             @APIResponse(responseCode = "400", description = "Incorrect request"),
             @APIResponse(responseCode = "409", description = "Invalid request body"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/warmup")
     @POST
@@ -89,12 +89,12 @@ public class BlueGreenControllerV1 {
             @APIResponse(responseCode = "200", description = "Promote is already done"),
             @APIResponse(responseCode = "400", description = "Incorrect request"),
             @APIResponse(responseCode = "409", description = "Invalid request body"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/promote")
     @POST
     @Transactional
-    public Response promote(@Parameter(description = "BG state to promote", required = true)
+    public Response promote(@Parameter(description = "Blue-Green state to promote", required = true)
                                     BgStateRequest bgStateRequest) {
         log.info("Received request to promote: {}", bgStateRequest);
         blueGreenService.promote(bgStateRequest);
@@ -110,12 +110,12 @@ public class BlueGreenControllerV1 {
             @APIResponse(responseCode = "200", description = "Rollback is already done"),
             @APIResponse(responseCode = "400", description = "Incorrect request"),
             @APIResponse(responseCode = "409", description = "Invalid request body"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/rollback")
     @POST
     @Transactional
-    public Response rollback(@Parameter(description = "BG state to rollback", required = true)
+    public Response rollback(@Parameter(description = "Blue-Green state to rollback", required = true)
                                      BgStateRequest bgStateRequest) {
         log.info("Received request to rollback: {}", bgStateRequest);
         blueGreenService.rollback(bgStateRequest);
@@ -130,8 +130,8 @@ public class BlueGreenControllerV1 {
             summary = "Operation status",
             description = "Get operation status by trackingId")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "return operation status"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "200", description = "Return operation status"),
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/{trackingId}/status")
     @GET
@@ -154,7 +154,7 @@ public class BlueGreenControllerV1 {
             description = "Terminate operation by trackingId")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Terminate operation and return status"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/{trackingId}/terminate")
     @POST
@@ -213,13 +213,13 @@ public class BlueGreenControllerV1 {
     }
 
     @Operation(
-            summary = "Init Bg Domain",
-            description = "Group namespaces into on Blue-green domain")
+            summary = "Init Blue-Green Domain",
+            description = "Group namespaces into one Blue-Green domain")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Blue-green domain successfully registered"),
             @APIResponse(responseCode = "400", description = "Incorrect request"),
             @APIResponse(responseCode = "409", description = "Invalid request body"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/init-domain")
     @POST
@@ -232,13 +232,13 @@ public class BlueGreenControllerV1 {
     }
 
     @Operation(
-            summary = "Commit Bg Domain",
-            description = "Group namespaces into on Blue-green domain")
+            summary = "Commit Blue-Green Domain",
+            description = "Group namespaces into one Blue-Green domain")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Commit operation successfully done"),
             @APIResponse(responseCode = "400", description = "Incorrect request"),
             @APIResponse(responseCode = "409", description = "Invalid request body"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/commit")
     @POST
@@ -324,11 +324,11 @@ public class BlueGreenControllerV1 {
     }
 
     @Operation(
-            summary = "Get all BG domains",
-            description = "Get all registered BG domains")
+            summary = "Get all Blue-Green domains",
+            description = "Get all registered Blue-Green domains")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "All registered BG domains"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "200", description = "All registered Blue-Green domains"),
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/get-domains")
     @GET
@@ -338,11 +338,11 @@ public class BlueGreenControllerV1 {
     }
 
     @Operation(
-            summary = "Get specific BG domain",
-            description = "Get specific registered BG domain by namespace")
+            summary = "Get specific Blue-Green domain",
+            description = "Get specific registered Blue-Green domain by namespace")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Specific registered BG domain"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "200", description = "Specific registered Blue-Green domain"),
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/get-domains/{namespace}")
     @GET
@@ -352,11 +352,11 @@ public class BlueGreenControllerV1 {
     }
 
     @Operation(
-            summary = "List all BG domains",
-            description = "list all registered BG domains")
+            summary = "List all Blue-Green domains",
+            description = "List of registered Blue-Green domains")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "List of registered BG domains"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "200", description = "List of registered Blue-Green domains"),
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/list-domains")
     @GET
@@ -366,14 +366,14 @@ public class BlueGreenControllerV1 {
     }
 
     @Operation(
-            summary = "Delete BG domain",
-            description = "Destroy registered BG domain")
+            summary = "Delete Blue-Green domain",
+            description = "Destroy a registered Blue-Green domain")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Blue-green domain successfully destroyed"),
             @APIResponse(responseCode = "400", description = "Incorrect request"),
-            @APIResponse(responseCode = "404", description = "Bg domain not found"),
+            @APIResponse(responseCode = "404", description = "Blue-Green domain not found"),
             @APIResponse(responseCode = "409", description = "Invalid request body"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/destroy-domain")
     @DELETE

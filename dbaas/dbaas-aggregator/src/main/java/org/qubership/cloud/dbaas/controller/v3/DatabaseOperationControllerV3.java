@@ -94,7 +94,7 @@ public class DatabaseOperationControllerV3 {
     @Operation(summary = "V3. Recreate database with existing classifier. Prohibited for Blue-Green",
             description = "Recreate existing database with same classifier in the same physicalDb or in another. " +
                     "The API can be useful if you want to migrate associated with microservice logical db to another physical database. So, " +
-                    "DbaaS creates a new empty database. After it, you will get a new connection and can perform a migration." +
+                    "DBaaS creates a new empty database. After it, you will get a new connection and can perform a migration." +
                     "Pay attention, each request will produce a new database even if the database was previously recreated. " +
                     "So, if your response contains unsuccessful databases you must leave only these databases in the request. " +
                     "Otherwise successful databases will be recreated again. The previous database is not deleted but is marked as archived.")
@@ -155,7 +155,7 @@ public class DatabaseOperationControllerV3 {
             @APIResponse(responseCode = "401", description = ROLE_IS_NOT_ALLOWED, content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "409", description = "There is a database with provided \"to\" classifier or ", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "404", description = "There is no database with provided \"from\" classifier", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "200", description = "Database classifier was updated successfully", content = @Content(schema = @Schema(implementation = Database.class)))
+            @APIResponse(responseCode = "200", description = "The database classifier was updated successfully", content = @Content(schema = @Schema(implementation = Database.class)))
     })
     @Path("/databases/update-classifier/{type}")
     @PUT
@@ -237,7 +237,7 @@ public class DatabaseOperationControllerV3 {
             @APIResponse(responseCode = "400", description = "Database classifier or new connection properties must not be nil", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "400", description = "New connection properties must contain key 'role'", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "400", description = "Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "400", description = "classifier contains namespace different from namespace in the path", content = @Content(schema = @Schema(implementation = String.class))),
+            @APIResponse(responseCode = "400", description = "The classifier contains a namespace that differs from the one in the path", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "404", description = "there is no existing database with such type and classifier", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "404", description = "Database with classifier does not contain connection properties for role", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "200", description = "Database connection properties were updated successfully", content = @Content(schema = @Schema(implementation = Database.class)))

@@ -94,7 +94,7 @@ public class DeclarativeController {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Return operation status"),
             @APIResponse(responseCode = "404", description = "Not found operation status"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @Path("/status/{trackingId}")
     @GET

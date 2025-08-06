@@ -75,7 +75,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
             @APIResponse(responseCode = "201", description = "Database created", content = @Content(schema = @Schema(implementation = Database.class))),
             @APIResponse(responseCode = "200", description = "Already having such database", content = @Content(schema = @Schema(implementation = Database.class))),
             @APIResponse(responseCode = "202", description = "Database is in process of creation"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")})
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")})
     @PUT
     @RolesAllowed(DB_CLIENT)
     public Response createDatabase(@Parameter(description = "The model for creating the database in the DBaaS", required = true)
@@ -259,7 +259,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     }
 
     @Operation(summary = "V3. External database registration",
-            description = "This API supports registration in DbaaS for any external logical database.")
+            description = "This API supports registration in DBaaS for any external logical database.")
     @APIResponses({
             @APIResponse(responseCode = "500", description = "Internal error"),
             @APIResponse(responseCode = "200",

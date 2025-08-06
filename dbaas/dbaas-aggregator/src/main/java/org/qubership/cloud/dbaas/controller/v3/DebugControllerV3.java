@@ -55,7 +55,7 @@ public class DebugControllerV3 {
 
     @Operation(summary = "V3. Get Dump",
         description = """
-            Retrieves a dump of DbaaS database information, including logical databases, physical databases, declarative configurations, BG domains and balancing rules.
+            Retrieves a dump of DBaaS database information, including logical databases, physical databases, declarative configurations, Blue-Green domains and balancing rules.
             By default, response body is returned as compressed zip file with json file inside.
             However, it is possible to get response body in JSON format instead of file.""")
     @APIResponses({
@@ -87,7 +87,7 @@ public class DebugControllerV3 {
     }
 
     @Operation(summary = "V3. Get lost databases",
-            description = "Returns list of lost databases (databases that registered in DBaaS, but not exists in adapter)")
+            description = "Returns list of lost databases (databases that are registered in DBaaS but do not exist in the adapter)")
     @APIResponse(responseCode = "500", description = "Internal error")
     @APIResponse(responseCode = "200", description = "List of lost databases", content = @Content(schema = @Schema(implementation = DatabaseResponseV3ListCP.class, type = SchemaType.ARRAY)))
     @Path(FIND_LOST_DB_PATH)
@@ -100,7 +100,7 @@ public class DebugControllerV3 {
     }
 
     @Operation(summary = "V3. Get ghost databases",
-            description = "Returns list of ghost databases (databases that exists in adapter, but not registered in DBaaS)")
+            description = "Returns list of ghost databases (databases that exist in adapter, but not registered in DBaaS)")
     @APIResponse(responseCode = "500", description = "Internal error")
     @APIResponse(responseCode = "200", description = "List of ghost databases", content = @Content(schema = @Schema(implementation = GhostDatabasesResponse.class, type = SchemaType.ARRAY)))
     @Path(FIND_GHOST_DB_PATH)

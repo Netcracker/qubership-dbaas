@@ -74,7 +74,7 @@ public class CompositeController {
 
     @Operation(
             summary = "Get all composite structures",
-            description = "Retrieve all composite structures that are registered in DbaaS."
+            description = "Retrieve all composite structures that are registered in DBaaS."
     )
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Successful operation"),
