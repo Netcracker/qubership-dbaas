@@ -13,9 +13,9 @@ import java.util.Map;
 @NoArgsConstructor(force = true)
 @RequiredArgsConstructor
 public class PhysicalDatabaseRegistryRequestV3 {
-    @Schema(required = true, description = "Physical address of DbaaS adapter. The address is used for CRUD operation with logic databases.")
+    @Schema(required = true, description = "Physical address of DBaaS adapter. The address is used for CRUD operation with logic databases.")
     private String adapterAddress;
-    @Schema(required = true, description = "Basic authentication username and password for requests from DbaaS Aggregator to DbaaS adapter.")
+    @Schema(required = true, description = "Basic authentication username and password for requests from DBaaS Aggregator to DBaaS adapter.")
     private HttpBasicCredentials httpBasicCredentials;
     @Schema(description = "Additional information about physical database. It may be a version of database cluster, any labels, and etc.")
     private Map<String, String> labels;

@@ -70,7 +70,7 @@ public class ConfigControllerV1 {
             @APIResponse(responseCode = "200", description = "Operation completed successfully", content = @Content(schema = @Schema(implementation = DeclarativeResponse.class))),
             @APIResponse(responseCode = "202", description = "Asynchronous execution started", content = @Content(schema = @Schema(implementation = DeclarativeResponse.class))),
             @APIResponse(responseCode = "400", description = "Validation error"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS")
     })
     @POST
     @Path("/apply")
@@ -138,7 +138,7 @@ public class ConfigControllerV1 {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Return operation status", content = @Content(schema = @Schema(implementation = DeclarativeResponse.class))),
             @APIResponse(responseCode = "404", description = "Not found operation status"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS")
     })
     @GET
     @Path("/operation/{trackingId}/status")
@@ -162,7 +162,7 @@ public class ConfigControllerV1 {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Return operation status", content = @Content(schema = @Schema(implementation = OperationStatusExtendedResponse.class))),
             @APIResponse(responseCode = "404", description = "Not found operation status"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS.")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS.")
     })
     @GET
     @Path("/operation/{trackingId}/extendedTroubleshootingInfo")
@@ -186,7 +186,7 @@ public class ConfigControllerV1 {
     @APIResponses({
             @APIResponse(responseCode = "204", description = "Operation completed successfully"),
             @APIResponse(responseCode = "404", description = "Incorrect trackingID"),
-            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DbaaS")
+            @APIResponse(responseCode = "500", description = "Unknown error which may be related with internal work of DBaaS")
     })
     @POST
     @Path("/operation/{trackingId}/terminate")
