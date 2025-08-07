@@ -5,6 +5,9 @@ import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
 import java.util.UUID;
 
 @Data
@@ -28,16 +31,15 @@ public class BackupDatabase {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private String classifiers;
-
-    //TODO settings field can be null need to validate
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private String settings;
+    private List<SortedMap<String, Object>> classifiers;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private String users;
+    private Map<String, Object> settings;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private List<User> users;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
@@ -46,4 +48,12 @@ public class BackupDatabase {
     @Column(name = "externally_manageable")
     private boolean externallyManageable;
 
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class User{
+        String name;
+        String role;
+    }
 }
