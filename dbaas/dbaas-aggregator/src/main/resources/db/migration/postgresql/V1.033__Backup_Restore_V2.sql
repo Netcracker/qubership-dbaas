@@ -1,0 +1,63 @@
+create table if not exists v2_backup
+(
+    name varchar primary key,
+    storage_name varchar not null,
+    blob_path varchar not null,
+    external_database_strategy varchar not null,
+    filters jsonb,
+    status jsonb
+);
+
+create table if not exists v2_logical_backup
+(
+    id uuid primary key,
+    logical_backup_name varchar,
+    backup_name varchar references v2_backup(name),
+    adapter_id varchar,
+    type varchar not null,
+    status jsonb
+);
+
+create table if not exists v2_backup_database
+(
+    id uuid primary key,
+    logical_backup_id uuid references v2_logical_backup(id),
+    name varchar,
+    classifiers jsonb not null,
+    settings jsonb,
+    users jsonb not null,
+    resources jsonb,
+    externally_manageable boolean not null
+);
+
+create table if not exists v2_restore
+(
+    name varchar primary key,
+    backup_name varchar references v2_backup(name),
+    storage_name varchar not null,
+    blob_path varchar not null,
+    filters jsonb,
+    mapping jsonb,
+    status jsonb
+);
+
+create table if not exists v2_logical_restore
+(
+    id uuid primary key,
+    logical_restore_name varchar,
+    restore_name varchar references v2_restore(name),
+    adapter_id uuid not null,
+    type varchar not null,
+    status jsonb not null
+);
+
+create table if not exists v2_restore_database
+(
+    id uuid primary key,
+    logical_restore_id uuid references v2_logical_restore(id),
+    backup_db_id uuid references v2_backup_database(id),
+    name varchar,
+    classifiers jsonb not null,
+    users jsonb not null,
+    resources jsonb
+);
