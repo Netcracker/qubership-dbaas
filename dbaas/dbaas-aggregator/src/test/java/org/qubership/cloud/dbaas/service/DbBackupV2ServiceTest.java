@@ -10,7 +10,6 @@ import jakarta.ws.rs.WebApplicationException;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.qubership.cloud.dbaas.entity.pg.Database;
@@ -61,7 +60,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void backupFailTest() {
+    void backup_FailTest() {
         String namespace = "test-namespace";
         String adapterOneName = "1";
         String adapterTwoName = "2";
@@ -154,6 +153,8 @@ class DbBackupV2ServiceTest {
         assertEquals(3, innerDbOneCount);
         assertEquals(3, innerDbLastCount);
 
+
+
         Mockito.verify(adapterOne, times(1)).backupV2(any());
         Mockito.verify(adapterTwo, times(1)).backupV2(any());
 
@@ -217,7 +218,6 @@ class DbBackupV2ServiceTest {
         //when
         int logicalBackupCount = 5;
         List<LogicalBackup> logicalBackups = generateLogicalBackups(logicalBackupCount);
-        String logicalBackupName = "mock-logicalBackupName";
 
         Backup backup = new Backup();
         backup.setLogicalBackups(logicalBackups);
@@ -249,7 +249,6 @@ class DbBackupV2ServiceTest {
                     .map(BackupDatabase::getName).toList();
             Mockito.verify(adapter, times(1))
                     .backupV2(dbNames);
-
         }
     }
 
@@ -265,6 +264,14 @@ class DbBackupV2ServiceTest {
         databaseFirst.setResources(List.of());
         databaseFirst.setExternallyManageable(false);
         databaseFirst.setAdapterId("1");
+        databaseFirst.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierFirst = new TreeMap<>();
+        classifierFirst.put("microserviceName", databaseFirstName);
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setClassifier(classifierFirst);
+        databaseFirst.setDatabaseRegistry(List.of(databaseRegistry));
+        databaseFirst.setSettings(Map.of("key", "value"));
 
         String databaseSecondName = "databaseSecond";
 
@@ -275,6 +282,14 @@ class DbBackupV2ServiceTest {
         databaseSecond.setResources(List.of());
         databaseSecond.setExternallyManageable(false);
         databaseSecond.setAdapterId("2");
+        databaseSecond.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierSecond = new TreeMap<>();
+        classifierSecond.put("microserviceName", databaseSecondName);
+        DatabaseRegistry databaseRegistrySecond = new DatabaseRegistry();
+        databaseRegistrySecond.setClassifier(classifierSecond);
+        databaseSecond.setDatabaseRegistry(List.of(databaseRegistrySecond));
+        databaseSecond.setSettings(Map.of("key", "value"));
 
         List<Database> databaseList = List.of(databaseFirst, databaseSecond);
         String backupName = "test-backup";
@@ -287,7 +302,7 @@ class DbBackupV2ServiceTest {
                 .thenReturn("psql");
 
         //then
-        dbBackupV2Service.initializeFulBackupStructure(databaseList, backupName);
+        dbBackupV2Service.initializeFullBackupStructure(databaseList, backupName);
 
         //check
         Backup backup = backupRepository.findById(backupName);
@@ -308,6 +323,18 @@ class DbBackupV2ServiceTest {
         assertEquals(2, logicalBackups.size());
         assertEquals(databaseFirstName, logicalBackupFirst.getBackupDatabases().getFirst().getName());
         assertEquals(databaseSecondName, logicalBackupSecond.getBackupDatabases().getFirst().getName());
+
+        assertEquals(classifierFirst, logicalBackupFirst.getBackupDatabases().getFirst().getClassifiers().getFirst());
+        assertEquals(classifierSecond, logicalBackupSecond.getBackupDatabases().getFirst().getClassifiers().getFirst());
+
+        BackupDatabase.User user = BackupDatabase.User.builder()
+                .name("user")
+                .role("role")
+                .build();
+
+        assertEquals(user, logicalBackupFirst.getBackupDatabases().getFirst().getUsers().getFirst());
+        assertEquals(databaseFirst.getSettings(), logicalBackupFirst.getBackupDatabases().getFirst().getSettings());
+        assertEquals(databaseSecond.getSettings(), logicalBackupSecond.getBackupDatabases().getFirst().getSettings());
     }
 
     @Test
@@ -440,20 +467,23 @@ class DbBackupV2ServiceTest {
             backupDatabase1.setId(UUID.randomUUID());
             backupDatabase1.setLogicalBackup(logicalBackup);
             backupDatabase1.setName("db1-" + i);
-            backupDatabase1.setClassifiers("{\"env\": \"test\"}");
-            backupDatabase1.setSettings("{}");
-            backupDatabase1.setUsers("{}");
+            backupDatabase1.setSettings(Map.of());
+            backupDatabase1.setClassifiers(List.of());
+            backupDatabase1.setUsers(List.of());
             backupDatabase1.setResources("{}");
             backupDatabase1.setExternallyManageable(false);
+
+
+            backupDatabase1.setClassifiers(List.of());
 
             BackupDatabase backupDatabase2 = new BackupDatabase();
             backupDatabase2.setId(UUID.randomUUID());
             backupDatabase2.setLogicalBackup(logicalBackup);
             backupDatabase2.setName("db2-" + i);
-            backupDatabase2.setClassifiers("{\"env\": \"test\"}");
-            backupDatabase2.setSettings("{}");
-            backupDatabase2.setUsers("{}");
+            backupDatabase2.setSettings(Map.of());
+            backupDatabase2.setUsers(List.of());
             backupDatabase2.setResources("{}");
+            backupDatabase2.setClassifiers(List.of());
             backupDatabase2.setExternallyManageable(false);
 
             logicalBackup.setBackupDatabases(List.of(backupDatabase1, backupDatabase2));

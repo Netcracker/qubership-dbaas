@@ -8,10 +8,13 @@ import lombok.extern.slf4j.Slf4j;
 
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
+import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
+import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
+import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupDatabaseRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
@@ -41,16 +44,27 @@ public class DbBackupV2Service {
 
     @Transactional
     public void backup(String namespace, String backupName) {
-        //get all db by namespace
         List<Database> databasesForBackup = getAllDbByNamespace(namespace);
-        //fill backup tables
-        Backup backup = initializeFulBackupStructure(databasesForBackup, backupName);
+
+        if (databasesForBackup.isEmpty()) {
+            log.error("For the namespace: {}, not found any databases for backup", namespace);
+            throw new BackupExecutionException(URI.create("path"),
+                    "For the namespace: " + namespace + " , not found any databases for backup",
+                    null); //TODO fill correct path
+        }
+        if (backupRepository.findByIdOptional(backupName).isPresent()) {
+            log.error("Backup with name: {} already exist", backupName);
+            throw new DBBackupValidationException(Source.builder().build(),
+                    String.format("Backup with name: '%s' already exist", backupName));
+        }
+
+        Backup backup = initializeFullBackupStructure(databasesForBackup, backupName);
         startBackup(backup);
         waitBackupCompletion(backup);
     }
 
     @Transactional
-    protected Backup initializeFulBackupStructure(List<Database> databasesForBackup, String backupName) {
+    protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, String backupName) {
         Backup backup = new Backup(backupName, "", "", "", null);
 
         List<LogicalBackup> logicalBackups = databasesForBackup.stream()
@@ -76,14 +90,14 @@ public class DbBackupV2Service {
                                     .id(UUID.randomUUID())
                                     .logicalBackup(lb)
                                     .name(DbaasBackupUtils.getDatabaseName(db))
-                                    .classifiers("\"jiphi\"")
-                                    .users(db.getConnectionProperties().toString())
-                                    .settings(db.getSettings().toString())
-                                    .resources(db.getResources().toString())
+                                    .classifiers(db.getDatabaseRegistry().stream()
+                                            .map(AbstractDatabaseRegistry::getClassifier)
+                                            .toList())
+                                    .users(getBackupDatabaseUsers(db.getConnectionProperties()))
+                                    .settings(db.getSettings())
                                     .externallyManageable(db.isExternallyManageable())
                                     .build())
                             .toList());
-
                     return lb;
                 })
                 .toList();
@@ -93,11 +107,19 @@ public class DbBackupV2Service {
         return backup;
     }
 
+    private List<BackupDatabase.User> getBackupDatabaseUsers(List<Map<String, Object>> connectionProperties) {
+        return connectionProperties.stream()
+                .map(entry -> {
+                    String username = (String) entry.get("username");
+                    String role = (String) entry.get("role");
+                    return new BackupDatabase.User(username, role);
+                }).toList();
+    }
+
     @Transactional
     protected void startBackup(Backup backup) {
         Map<LogicalBackup, Future<String>> names = new HashMap<>();
         List<LogicalBackup> logicalBackups = backup.getLogicalBackups();
-
 
         logicalBackups.forEach(logicalBackup -> {
             Future<String> future = executor.submit(startLogicalBackup(logicalBackup));
@@ -125,32 +147,28 @@ public class DbBackupV2Service {
                 .toList();
         String adapterId = logicalBackup.getAdapterId();
         return () -> {
-            String logicalBackupName = null;
-            //TODO for cycle change to FailSafe
-            for (int i = 0; i < 3; i++) {
-                try {
+            RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
+                    .handle(WebApplicationException.class)
+                    .withMaxRetries(2)
+                    .withDelay(Duration.ofSeconds(3))
+                    .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
+                    .onRetry(e -> log.info("Retrying backupV2..."))
+                    .onFailure(e -> log.error("Request limit exceeded for {}", logicalBackup));
+
+            try {
+                return Failsafe.with(retryPolicy).get(() -> {
                     DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-                    logicalBackupName = adapter.backupV2(dbNames);
+                    String result = adapter.backupV2(dbNames);
 
-                    Thread.sleep(3000);
-
-                    if (logicalBackupName != null)
-                        break;
-                    if (i == 2) {
-                        log.error("Request limit is exceeded for {}", logicalBackup);
-                        throw new BackupExecutionException(URI.create("e"), "Time limit exception", new Throwable());
-                        //TODO will be it validate??
+                    if (result == null) {
+                        throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable());
                     }
-                } catch (WebApplicationException e) {
-                    log.error("Appeared some exception during the backup request: {}", e.getMessage());
-                    throw new RuntimeException(e.getMessage());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    log.error("Waiting between attempts is interrupted", e);
-                    break;
-                }
+
+                    return result;
+                });
+            } catch (Exception e) {
+                throw new RuntimeException("Failsafe execution failed", e);
             }
-            return logicalBackupName;
         };
     }
 
@@ -243,10 +261,10 @@ public class DbBackupV2Service {
             statusSet.add(currStatus);
 
             totalBytes += logicalBackupStatus.getDatabases().stream()
+                    .filter(database -> database.getSize() != null)
                     .mapToLong(LogicalBackupStatus.Database::getSize)
                     .sum();
 
-            //TODO validate LogicalBackupStatus.Database::getSize if return null
         }
 
         backup.setStatus(BackupStatus.builder()
