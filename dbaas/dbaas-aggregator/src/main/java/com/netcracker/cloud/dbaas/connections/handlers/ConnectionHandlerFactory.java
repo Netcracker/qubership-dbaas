@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.connections.handlers;
 
-import org.qubership.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.DatabaseType;
 import io.quarkus.arc.All;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;

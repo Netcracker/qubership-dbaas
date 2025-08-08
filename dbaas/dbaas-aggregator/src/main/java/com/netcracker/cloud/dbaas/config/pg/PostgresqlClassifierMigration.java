@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.config.pg;
 
 import com.google.common.base.Strings;
-import org.qubership.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.JdbcUtils;
 import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -18,8 +18,8 @@ import java.util.UUID;
 
 import javax.sql.DataSource;
 
-import static org.qubership.cloud.dbaas.Constants.NAMESPACE;
-import static org.qubership.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.CLASSIFIER;
+import static com.netcracker.cloud.dbaas.Constants.NAMESPACE;
+import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.CLASSIFIER;
 
 @Slf4j
 public class PostgresqlClassifierMigration {

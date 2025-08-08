@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.repositories.dbaas;
 
-import org.qubership.cloud.dbaas.dto.RuleType;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
+import com.netcracker.cloud.dbaas.dto.RuleType;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
 
 import java.util.List;
 import java.util.Optional;

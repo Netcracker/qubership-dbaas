@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.Source;
 
 public class DeclarativeConfigurationValidationException extends ValidationException {
     public DeclarativeConfigurationValidationException(String message, Source source) {

@@ -2,9 +2,9 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import org.qubership.cloud.dbaas.dto.HandshakeResponse;
-import org.qubership.cloud.dbaas.exceptions.AdapterUnavailableException;
-import org.qubership.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.dto.HandshakeResponse;
+import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import com.sun.net.httpserver.HttpServer;
 import io.vertx.mutiny.core.Vertx;
 

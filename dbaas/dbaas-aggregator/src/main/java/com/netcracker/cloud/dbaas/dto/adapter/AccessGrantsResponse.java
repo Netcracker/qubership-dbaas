@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.adapter;
 
-import org.qubership.cloud.dbaas.dto.role.PolicyRole;
-import org.qubership.cloud.dbaas.dto.role.ServiceRole;
+import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
+import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;

@@ -1,19 +1,19 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
-import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserResponse;
-import org.qubership.cloud.dbaas.dto.userrestore.RestoreUsersRequest;
-import org.qubership.cloud.dbaas.dto.v3.UserOperationRequest;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseUser;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.userrestore.SuccessfulRestoreUsersResponse;
-import org.qubership.cloud.dbaas.dto.userrestore.RestoreUsersResponse;
-import org.qubership.cloud.dbaas.exceptions.DbNotFoundException;
-import org.qubership.cloud.dbaas.exceptions.UserDeletionException;
-import org.qubership.cloud.dbaas.exceptions.UserNotFoundException;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.cloud.dbaas.service.UserService;
+import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
+import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserResponse;
+import com.netcracker.cloud.dbaas.dto.userrestore.RestoreUsersRequest;
+import com.netcracker.cloud.dbaas.dto.v3.UserOperationRequest;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.userrestore.SuccessfulRestoreUsersResponse;
+import com.netcracker.cloud.dbaas.dto.userrestore.RestoreUsersResponse;
+import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.UserDeletionException;
+import com.netcracker.cloud.dbaas.exceptions.UserNotFoundException;
+import com.netcracker.cloud.dbaas.service.DBaaService;
+import com.netcracker.cloud.dbaas.service.UserService;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -36,8 +36,8 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.DbaasApiPath.USERS_PATH_V3;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.USERS_PATH_V3;
 import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
 import static jakarta.ws.rs.core.Response.Status.CREATED;
 

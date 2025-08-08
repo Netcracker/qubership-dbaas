@@ -6,7 +6,7 @@ import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
 import org.mockito.Mockito;
-import org.qubership.core.scheduler.po.ProcessOrchestrator;
+import com.netcracker.core.scheduler.po.ProcessOrchestrator;
 
 @Dependent
 public class ProcessOrchestratorConfiguration {

@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.repositories.dbaas.ActionTrackDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.ActionTrackRepository;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.repositories.dbaas.ActionTrackDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.ActionTrackRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;

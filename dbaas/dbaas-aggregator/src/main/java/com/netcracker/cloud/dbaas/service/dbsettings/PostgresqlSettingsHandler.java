@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.service.dbsettings;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.InvalidDbSettingsException;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.InvalidDbSettingsException;
 import jakarta.validation.constraints.NotEmpty;
 
 import org.apache.commons.collections4.MapUtils;

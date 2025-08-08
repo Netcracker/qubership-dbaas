@@ -1,10 +1,10 @@
 package com.netcracker.cloud.encryption.config.xml.build;
 
-import org.qubership.cloud.encryption.config.keystore.type.KeyConfig;
-import org.qubership.cloud.encryption.config.keystore.type.KeyConfigBuilder;
-import org.qubership.cloud.encryption.config.keystore.type.MutableKeyConfig;
-import org.qubership.cloud.encryption.config.xml.pojo.keystore.KeyXmlConf;
-import org.qubership.cloud.encryption.config.xml.pojo.keystore.ObjectFactory;
+import com.netcracker.cloud.encryption.config.keystore.type.KeyConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeyConfigBuilder;
+import com.netcracker.cloud.encryption.config.keystore.type.MutableKeyConfig;
+import com.netcracker.cloud.encryption.config.xml.pojo.keystore.KeyXmlConf;
+import com.netcracker.cloud.encryption.config.xml.pojo.keystore.ObjectFactory;
 
 import javax.annotation.Nonnull;
 

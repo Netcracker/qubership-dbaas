@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.monitoring.indicators.*;
+import com.netcracker.cloud.dbaas.monitoring.indicators.*;
 import io.quarkus.arc.All;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;

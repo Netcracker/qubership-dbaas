@@ -1,11 +1,11 @@
 package com.netcracker.cloud.encryption.cipher.dsl.encrypt;
 
-import org.qubership.cloud.encryption.cipher.CryptoService;
-import org.qubership.cloud.encryption.cipher.EncryptResult;
-import org.qubership.cloud.encryption.cipher.build.CryptoRequestBuilder;
-import org.qubership.cloud.encryption.cipher.build.EncryptionRequestBuilder;
-import org.qubership.cloud.encryption.cipher.build.IEncryptionRequestBuilder;
-import org.qubership.cloud.encryption.cipher.dsl.AbstractChainedCryptoRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.CryptoService;
+import com.netcracker.cloud.encryption.cipher.EncryptResult;
+import com.netcracker.cloud.encryption.cipher.build.CryptoRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.build.EncryptionRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.build.IEncryptionRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.dsl.AbstractChainedCryptoRequestBuilder;
 
 import javax.annotation.Nonnull;
 

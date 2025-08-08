@@ -2,7 +2,7 @@ package com.netcracker.cloud.encryption.cipher.build;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Optional;
-import org.qubership.cloud.encryption.cipher.CryptoRequest;
+import com.netcracker.cloud.encryption.cipher.CryptoRequest;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

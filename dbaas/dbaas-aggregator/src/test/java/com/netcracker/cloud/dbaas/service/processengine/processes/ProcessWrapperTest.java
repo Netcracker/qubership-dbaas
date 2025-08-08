@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.service.processengine.processes;
 
-import org.qubership.cloud.dbaas.service.processengine.tasks.*;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.*;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.service.processengine.Const.*;
+import static com.netcracker.cloud.dbaas.service.processengine.Const.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;

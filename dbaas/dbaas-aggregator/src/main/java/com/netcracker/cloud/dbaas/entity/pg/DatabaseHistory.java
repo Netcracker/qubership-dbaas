@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.converter.ClassifierConverter;
-import org.qubership.cloud.dbaas.converter.DatabaseConverter;
+import com.netcracker.cloud.dbaas.converter.ClassifierConverter;
+import com.netcracker.cloud.dbaas.converter.DatabaseConverter;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;

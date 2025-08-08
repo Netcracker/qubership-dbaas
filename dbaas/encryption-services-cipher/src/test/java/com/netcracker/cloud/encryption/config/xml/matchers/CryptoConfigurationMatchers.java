@@ -1,6 +1,6 @@
 package com.netcracker.cloud.encryption.config.xml.matchers;
 
-import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
+import com.netcracker.cloud.encryption.config.crypto.CryptoSubsystemConfig;
 import org.hamcrest.FeatureMatcher;
 import org.hamcrest.Matcher;
 

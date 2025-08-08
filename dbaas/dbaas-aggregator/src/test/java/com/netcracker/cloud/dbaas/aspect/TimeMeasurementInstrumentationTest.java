@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.aspect;
 
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.integration.profiles.DirtiesMetricsProfile;
-import org.qubership.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.integration.profiles.DirtiesMetricsProfile;
+import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;

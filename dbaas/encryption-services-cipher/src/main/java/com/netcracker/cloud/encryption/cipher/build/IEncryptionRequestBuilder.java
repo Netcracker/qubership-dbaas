@@ -1,6 +1,6 @@
 package com.netcracker.cloud.encryption.cipher.build;
 
-import org.qubership.cloud.encryption.cipher.EncryptionRequest;
+import com.netcracker.cloud.encryption.cipher.EncryptionRequest;
 
 import javax.annotation.Nonnull;
 

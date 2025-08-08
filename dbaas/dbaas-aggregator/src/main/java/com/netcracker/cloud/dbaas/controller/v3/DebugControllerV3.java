@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.dto.v3.DebugLogicalDatabaseV3;
-import org.qubership.cloud.dbaas.dto.v3.DumpResponseV3;
-import org.qubership.cloud.dbaas.dto.v3.GhostDatabasesResponse;
-import org.qubership.cloud.dbaas.dto.v3.LostDatabasesResponse;
-import org.qubership.cloud.dbaas.dto.v3.OverallStatusResponse;
-import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
-import org.qubership.cloud.dbaas.service.DbaaSHelper;
-import org.qubership.cloud.dbaas.service.DebugService;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
+import com.netcracker.cloud.dbaas.dto.v3.DebugLogicalDatabaseV3;
+import com.netcracker.cloud.dbaas.dto.v3.DumpResponseV3;
+import com.netcracker.cloud.dbaas.dto.v3.GhostDatabasesResponse;
+import com.netcracker.cloud.dbaas.dto.v3.LostDatabasesResponse;
+import com.netcracker.cloud.dbaas.dto.v3.OverallStatusResponse;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
+import com.netcracker.cloud.dbaas.service.DbaaSHelper;
+import com.netcracker.cloud.dbaas.service.DebugService;
 import cz.jirutka.rsql.parser.RSQLParserException;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -34,10 +34,10 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.DbaasApiPath.GET_OVERALL_STATUS_PATH;
-import static org.qubership.cloud.dbaas.DbaasApiPath.FIND_GHOST_DB_PATH;
-import static org.qubership.cloud.dbaas.DbaasApiPath.FIND_LOST_DB_PATH;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.GET_OVERALL_STATUS_PATH;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.FIND_GHOST_DB_PATH;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.FIND_LOST_DB_PATH;
 
 @Slf4j
 @Path(DbaasApiPath.DEBUG_INTERNAL_PATH_V3)

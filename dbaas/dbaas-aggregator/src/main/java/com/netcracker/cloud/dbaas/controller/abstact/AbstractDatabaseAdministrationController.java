@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.controller.abstact;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.cloud.dbaas.service.DbaaSHelper;
-import org.qubership.cloud.dbaas.service.ResponseHelper;
-import org.qubership.cloud.dbaas.service.composite.CompositeNamespaceService;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.service.DBaaService;
+import com.netcracker.cloud.dbaas.service.DbaaSHelper;
+import com.netcracker.cloud.dbaas.service.ResponseHelper;
+import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;

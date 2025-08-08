@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto;
 
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import lombok.Data;
 
 import java.util.List;

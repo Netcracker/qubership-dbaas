@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.monitoring;
 
-import org.qubership.cloud.dbaas.monitoring.model.DatabasesInfo;
-import org.qubership.cloud.dbaas.monitoring.model.DatabasesInfoSegment;
-import org.qubership.cloud.dbaas.service.MonitoringService;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfoSegment;
+import com.netcracker.cloud.dbaas.service.MonitoringService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.enterprise.context.ApplicationScoped;

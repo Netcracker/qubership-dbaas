@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
 
-import org.qubership.cloud.dbaas.service.BlueGreenService;
-import org.qubership.core.scheduler.po.DataContext;
+import com.netcracker.cloud.dbaas.service.BlueGreenService;
+import com.netcracker.core.scheduler.po.DataContext;
 import io.quarkus.arc.Arc;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
 
-import static org.qubership.cloud.dbaas.Constants.APPLY_CONFIG_OPERATION;
-import static org.qubership.cloud.dbaas.Constants.WARMUP_OPERATION;
+import static com.netcracker.cloud.dbaas.Constants.APPLY_CONFIG_OPERATION;
+import static com.netcracker.cloud.dbaas.Constants.WARMUP_OPERATION;
 
 @Slf4j
 @ApplicationScoped

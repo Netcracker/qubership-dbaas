@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.service;
 
 import jakarta.annotation.PreDestroy;
-import org.qubership.cloud.dbaas.entity.pg.BgTrack;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
-import org.qubership.core.scheduler.po.ProcessDefinition;
-import org.qubership.core.scheduler.po.ProcessOrchestrator;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.entity.pg.BgTrack;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
+import com.netcracker.core.scheduler.po.ProcessDefinition;
+import com.netcracker.core.scheduler.po.ProcessOrchestrator;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Optional;
 
-import static org.qubership.cloud.dbaas.Constants.WARMUP_OPERATION;
+import static com.netcracker.cloud.dbaas.Constants.WARMUP_OPERATION;
 import static jakarta.transaction.Transactional.TxType.REQUIRES_NEW;
 
 @ApplicationScoped

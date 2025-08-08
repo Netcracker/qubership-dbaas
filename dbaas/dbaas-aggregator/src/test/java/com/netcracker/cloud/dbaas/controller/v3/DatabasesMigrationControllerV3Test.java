@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.API_VERSION;
-import org.qubership.cloud.dbaas.dto.RegisterDatabaseWithUserCreationRequest;
-import org.qubership.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.cloud.dbaas.service.MigrationService;
+import com.netcracker.cloud.dbaas.dto.API_VERSION;
+import com.netcracker.cloud.dbaas.dto.RegisterDatabaseWithUserCreationRequest;
+import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.service.DBaaService;
+import com.netcracker.cloud.dbaas.service.MigrationService;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
@@ -22,8 +22,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.NAMESPACE;
-import static org.qubership.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.NAMESPACE;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
 import static jakarta.ws.rs.core.Response.Status.CONFLICT;

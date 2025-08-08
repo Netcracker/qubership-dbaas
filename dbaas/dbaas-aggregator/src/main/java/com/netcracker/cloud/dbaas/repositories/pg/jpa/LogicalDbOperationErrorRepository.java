@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.repositories.pg.jpa;
 
-import org.qubership.cloud.dbaas.entity.pg.LogicalDbOperationError;
+import com.netcracker.cloud.dbaas.entity.pg.LogicalDbOperationError;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 

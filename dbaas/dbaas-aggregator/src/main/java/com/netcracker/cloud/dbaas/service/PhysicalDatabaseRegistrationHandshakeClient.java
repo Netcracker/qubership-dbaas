@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.HandshakeResponse;
-import org.qubership.cloud.dbaas.exceptions.AdapterUnavailableException;
-import org.qubership.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.dto.HandshakeResponse;
+import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import io.vertx.ext.auth.authentication.UsernamePasswordCredentials;
 import io.vertx.mutiny.core.Vertx;
 import io.vertx.mutiny.ext.web.client.HttpResponse;

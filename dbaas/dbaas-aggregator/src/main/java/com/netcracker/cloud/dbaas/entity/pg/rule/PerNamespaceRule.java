@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.rule;
 
-import org.qubership.cloud.dbaas.dto.RuleType;
+import com.netcracker.cloud.dbaas.dto.RuleType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;

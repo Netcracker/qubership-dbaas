@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.repositories.dbaas;
 
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 
 import java.util.List;
 import java.util.Map;

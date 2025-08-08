@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DbState;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
+import com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DbState;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
@@ -20,7 +20,7 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.config.ServicesConfig.DBAAS_REPOSITORIES_MUTEX;
+import static com.netcracker.cloud.dbaas.config.ServicesConfig.DBAAS_REPOSITORIES_MUTEX;
 import static jakarta.transaction.Transactional.TxType.REQUIRES_NEW;
 
 @Slf4j
@@ -47,7 +47,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         log.debug("Search all logical databases by namespace={}", namespace);
         List<Database> databaseList = doGet(() -> databasesRepository.findByNamespace(namespace), ex -> {
             log.debug("Catch exception = {} while trying to find logical database by namespace in Postgre, go to h2 database", ex.getMessage());
-            return h2DatabaseRepository.findByNamespace(namespace).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
+            return h2DatabaseRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         log.debug("Was found {} logical database in namespace={}", databaseList.size(), namespace);
         return databaseList;
@@ -59,7 +59,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         List<Database> databases = doGet(() -> databasesRepository.findByNamespace(namespace), ex -> {
             log.debug("Catch exception = {} while trying to find internal logical database by namespace in Postgre, go to h2 database",
                     ex.getMessage());
-            return h2DatabaseRepository.findByNamespace(namespace).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
+            return h2DatabaseRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         List<Database> databaseList = databases.stream()
                 .filter(database -> !database.isExternallyManageable())
@@ -74,7 +74,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         List<Database> databases = doGet(() -> databasesRepository.findByNamespaceAndType(namespace, type), ex -> {
             log.debug("Catch exception = {} while trying to find logical database by namespace and type in Postgre, go to h2 database",
                     ex.getMessage());
-            return h2DatabaseRepository.findByNamespaceAndType(namespace, type).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
+            return h2DatabaseRepository.findByNamespaceAndType(namespace, type).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         List<Database> databasesList = databases.stream()
                 .filter(database -> !database.isExternallyManageable())
@@ -92,7 +92,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
             if (!isUseCache) {
                 throw new RuntimeException(ex);
             }
-            return h2DatabaseRepository.findByAdapterIdAndType(phydbid, type).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
+            return h2DatabaseRepository.findByAdapterIdAndType(phydbid, type).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         List<Database> databasesList = databases.stream()
                 .filter(database -> !database.isExternallyManageable())
@@ -105,7 +105,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         log.debug("Search logical databases with state={} and podName={}", state, podName);
         List<Database> databaseList = doGet(() -> databasesRepository.findByDbState_DatabaseStateAndDbState_PodName(state, podName), ex -> {
             log.warn("Catch exception while trying to find logical database by state and podName in Postgresql, go to h2 database", ex);
-            return h2DatabaseRepository.findByDbState_StateAndDbState_PodName(state, podName).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
+            return h2DatabaseRepository.findByDbState_StateAndDbState_PodName(state, podName).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         log.debug("Was found {} logical database with state={} and podName={}", databaseList.size(), state, podName);
         return databaseList;
@@ -116,7 +116,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         log.debug("Search logical databases with state={}", state);
         List<Database> databaseList = doGet(() -> databasesRepository.findByDbState_DatabaseState(state), ex -> {
             log.warn("Catch exception while trying to find logical database by state and podName in Postgresql, go to h2 database", ex);
-            return h2DatabaseRepository.findByDbState_DatabaseState(state).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
+            return h2DatabaseRepository.findByDbState_DatabaseState(state).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         log.debug("Was found {} logical database with state={}", databaseList.size(), state);
         return databaseList;
@@ -139,7 +139,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         return doGet(() -> databasesRepository.findByIdOptional(id), ex -> {
             log.debug("Catch exception = {} while trying to find logical database by id in Postgre, go to h2 database",
                     ex.getMessage());
-            return h2DatabaseRepository.findByIdOptional(id).map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity);
+            return h2DatabaseRepository.findByIdOptional(id).map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity);
         });
     }
 
@@ -150,7 +150,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
                 ex -> {
                     log.debug("Catch exception = {} while trying to find external logical database in Postgre, go to h2 database",
                             ex.getMessage());
-                    return h2DatabaseRepository.findByNamespace(namespace).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
+                    return h2DatabaseRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
                 });
         List<Database> externalDatabases = databases.stream()
                 .filter(Database::isExternallyManageable).collect(Collectors.toList());
@@ -175,7 +175,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         return doGet(() -> databasesRepository.findByNameAndAdapterId(name, adapterId), ex -> {
             log.debug("Catch exception = {} while trying to find logical database by id in Postgre, go to h2 database",
                     ex.getMessage());
-            return h2DatabaseRepository.findByNameAndAdapterId(name, adapterId).map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity);
+            return h2DatabaseRepository.findByNameAndAdapterId(name, adapterId).map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity);
         });
     }
 
@@ -194,7 +194,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
             log.debug("Catch exception = {} while trying to find logical database by namespaces in Postgres, go to h2 database",
                 ex.getMessage());
             return h2DatabaseRepository.findByNamespacesWithOffsetBasedPagination(namespaces, offset, limit).stream()
-                .map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity)
+                .map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity)
                 .toList();
         });
     }
@@ -229,11 +229,11 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     }
 
     private void safeDeleteAndFlushDatabase(UUID databaseId) {
-        Optional<org.qubership.cloud.dbaas.entity.h2.Database> database = h2DatabaseRepository.findByIdOptional(databaseId);
+        Optional<com.netcracker.cloud.dbaas.entity.h2.Database> database = h2DatabaseRepository.findByIdOptional(databaseId);
         if (database.isEmpty()) {
             return;
         }
-        List<org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry> databaseRegistry = database.get().getDatabaseRegistry();
+        List<com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry> databaseRegistry = database.get().getDatabaseRegistry();
         for (DatabaseRegistry registry : databaseRegistry) {
             safeDeleteAndFlushDatabaseRegistry(registry.getId());
         }
@@ -241,13 +241,13 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
 
     @Transactional(REQUIRES_NEW)
     protected void safeDeleteAndFlushDatabaseRegistry(UUID databaseRegistryId) {
-        Optional<org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry> databaseRegistryOptional = h2DatabaseRegistryRepository.findByIdOptional(databaseRegistryId);
+        Optional<com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry> databaseRegistryOptional = h2DatabaseRegistryRepository.findByIdOptional(databaseRegistryId);
         if (databaseRegistryOptional.isEmpty()) {
             return;
         }
         DatabaseRegistry databaseRegistry = databaseRegistryOptional.get();
 
-        org.qubership.cloud.dbaas.entity.h2.Database database = databaseRegistry.getDatabase();
+        com.netcracker.cloud.dbaas.entity.h2.Database database = databaseRegistry.getDatabase();
 
         database.getDatabaseRegistry().remove(databaseRegistry);
         if (database.getDatabaseRegistry().isEmpty()) {

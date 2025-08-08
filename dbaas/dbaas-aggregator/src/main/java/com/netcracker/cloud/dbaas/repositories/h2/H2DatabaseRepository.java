@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.repositories.h2;
 
-import org.qubership.cloud.dbaas.entity.h2.Database;
-import org.qubership.cloud.dbaas.entity.h2.DbState;
+import com.netcracker.cloud.dbaas.entity.h2.Database;
+import com.netcracker.cloud.dbaas.entity.h2.DbState;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 

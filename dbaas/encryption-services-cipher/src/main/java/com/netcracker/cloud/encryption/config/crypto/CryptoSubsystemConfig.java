@@ -14,7 +14,7 @@ public interface CryptoSubsystemConfig {
     Optional<String> getDefaultAlgorithm();
 
     /**
-     * Alias for SecretKey that can be lockup from {@link org.qubership.cloud.encryption.key.KeyStore} and use for
+     * Alias for SecretKey that can be lockup from {@link com.netcracker.cloud.encryption.key.KeyStore} and use for
      * encryption
      *
      * @return optional with key alias

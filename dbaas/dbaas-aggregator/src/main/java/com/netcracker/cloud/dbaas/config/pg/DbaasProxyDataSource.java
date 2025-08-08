@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.config.pg;
 
-import org.qubership.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.JdbcUtils;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.AgroalDataSourceMetrics;
 import io.agroal.api.AgroalPoolInterceptor;
@@ -19,7 +19,7 @@ import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
-import static org.qubership.cloud.dbaas.JdbcUtils.updatePassword;
+import static com.netcracker.cloud.dbaas.JdbcUtils.updatePassword;
 
 @Slf4j
 public class DbaasProxyDataSource implements AgroalDataSource {

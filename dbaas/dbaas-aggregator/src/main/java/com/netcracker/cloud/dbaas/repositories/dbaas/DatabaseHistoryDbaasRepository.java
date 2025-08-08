@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.repositories.dbaas;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseHistory;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseHistory;
 
 public interface DatabaseHistoryDbaasRepository {
 

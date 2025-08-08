@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
-import org.qubership.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
-import org.qubership.cloud.dbaas.rest.BasicAuthFilter;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClient;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientLoggingFilter;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
+import com.netcracker.cloud.dbaas.rest.BasicAuthFilter;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientLoggingFilter;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

@@ -1,28 +1,28 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.DatabaseType;
-import org.qubership.cloud.dbaas.dto.DescribedDatabase;
-import org.qubership.cloud.dbaas.dto.EnsuredUser;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.backup.DeleteResult;
-import org.qubership.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
-import org.qubership.cloud.dbaas.dto.backup.Status;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.entity.pg.DbState;
-import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
-import org.qubership.cloud.dbaas.entity.pg.backup.RestoreResult;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.utils.DbaasBackupUtils;
-import org.qubership.cloud.encryption.cipher.exception.DecryptException;
-import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.dto.DescribedDatabase;
+import com.netcracker.cloud.dbaas.dto.EnsuredUser;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
+import com.netcracker.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.DbState;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
+import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
@@ -44,11 +44,11 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
-import static org.qubership.cloud.dbaas.DbaasApiPath.VERSION_1;
-import static org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup.Status.FAIL;
-import static org.qubership.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.buildMetadata;
-import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_1;
+import static com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup.Status.FAIL;
+import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.buildMetadata;
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
 @ApplicationScoped

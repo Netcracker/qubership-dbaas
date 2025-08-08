@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.backup.Status;
-import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.RestoreResult;
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.exceptions.InteruptedPollingException;
-import org.qubership.cloud.dbaas.repositories.dbaas.ActionTrackDbaasRepository;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.exceptions.InteruptedPollingException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.ActionTrackDbaasRepository;
 import io.vertx.mutiny.core.Vertx;
 import io.vertx.mutiny.ext.web.client.WebClient;
 import io.vertx.mutiny.ext.web.codec.BodyCodec;

@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
-import org.qubership.cloud.dbaas.dto.AdapterDatabaseCreateRequest;
-import org.qubership.cloud.dbaas.dto.CreatedDatabase;
-import org.qubership.cloud.dbaas.dto.DatabaseCreateRequest;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClient;
+import com.netcracker.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
+import com.netcracker.cloud.dbaas.dto.AdapterDatabaseCreateRequest;
+import com.netcracker.cloud.dbaas.dto.CreatedDatabase;
+import com.netcracker.cloud.dbaas.dto.DatabaseCreateRequest;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;

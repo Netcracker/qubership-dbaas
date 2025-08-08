@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.controller.composite;
 
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.composite.CompositeStructureDto;
-import org.qubership.cloud.dbaas.entity.pg.composite.CompositeStructure;
-import org.qubership.cloud.dbaas.exceptions.NamespaceCompositeValidationException;
-import org.qubership.cloud.dbaas.service.composite.CompositeNamespaceService;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
+import com.netcracker.cloud.dbaas.exceptions.NamespaceCompositeValidationException;
+import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
@@ -22,8 +22,8 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 import java.util.Optional;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
 import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 
 @Slf4j

@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.core.error.runtime.ErrorCode;
+import com.netcracker.cloud.core.error.runtime.ErrorCode;
 
 public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_2000(

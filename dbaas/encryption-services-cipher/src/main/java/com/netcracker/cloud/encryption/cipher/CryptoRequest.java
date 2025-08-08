@@ -38,7 +38,7 @@ public interface CryptoRequest {
 
     /**
      * <p>
-     * Unique key alias that can be find in {@link org.qubership.cloud.encryption.key.KeyStore}
+     * Unique key alias that can be find in {@link com.netcracker.cloud.encryption.key.KeyStore}
      * </p>
      * <b>Note:</b> It method return opposite value for {@link CryptoRequest#getKey()} but
      * {@link CryptoRequest#getKey()} have higher priority for use, so, in case when specified explicitly {@link Key}

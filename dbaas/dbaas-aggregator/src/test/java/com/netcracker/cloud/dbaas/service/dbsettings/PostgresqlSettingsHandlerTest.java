@@ -1,16 +1,16 @@
 package com.netcracker.cloud.dbaas.service.dbsettings;
 
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.InvalidDbSettingsException;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.InvalidDbSettingsException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.service.dbsettings.PostgresqlSettingsHandler.DROP_EXTENSIONS;
-import static org.qubership.cloud.dbaas.service.dbsettings.PostgresqlSettingsHandler.PG_EXTENSIONS;
+import static com.netcracker.cloud.dbaas.service.dbsettings.PostgresqlSettingsHandler.DROP_EXTENSIONS;
+import static com.netcracker.cloud.dbaas.service.dbsettings.PostgresqlSettingsHandler.PG_EXTENSIONS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 

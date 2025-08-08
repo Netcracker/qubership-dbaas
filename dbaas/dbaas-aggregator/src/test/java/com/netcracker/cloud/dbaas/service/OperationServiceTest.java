@@ -1,23 +1,23 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.DatabaseType;
-import org.qubership.cloud.dbaas.dto.LinkDatabasesRequest;
-import org.qubership.cloud.dbaas.dto.v3.UpdateHostRequest;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.exceptions.NotFoundException;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.dto.LinkDatabasesRequest;
+import com.netcracker.cloud.dbaas.dto.v3.UpdateHostRequest;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.MICROSERVICE_NAME;
-import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
+import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
+import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;

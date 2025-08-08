@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.dto.HttpBasicCredentials;
-import org.qubership.cloud.dbaas.entity.shared.AbstractExternalAdapterRegistrationEntry;
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractExternalAdapterRegistrationEntry;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import lombok.NoArgsConstructor;
@@ -16,8 +16,8 @@ public class ExternalAdapterRegistrationEntry extends AbstractExternalAdapterReg
         super(adapterId, address, httpBasicCredentials, supportedVersion, apiVersions);
     }
 
-    public org.qubership.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry asH2Entity() {
-        org.qubership.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry copy = new org.qubership.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry();
+    public com.netcracker.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry asH2Entity() {
+        com.netcracker.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry copy = new com.netcracker.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry();
         copy.setAdapterId(this.adapterId);
         copy.setAddress(this.address);
         copy.setHttpBasicCredentials(this.httpBasicCredentials);

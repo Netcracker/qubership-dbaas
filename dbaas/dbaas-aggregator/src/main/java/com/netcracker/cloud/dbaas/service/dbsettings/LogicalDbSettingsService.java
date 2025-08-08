@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.service.dbsettings;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 
@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.service.dbsettings.DefaultDbSettingsHandler.DEFAULT_DB_SETTING_HANDLER_TYPE;
+import static com.netcracker.cloud.dbaas.service.dbsettings.DefaultDbSettingsHandler.DEFAULT_DB_SETTING_HANDLER_TYPE;
 
 @Slf4j
 public class LogicalDbSettingsService {

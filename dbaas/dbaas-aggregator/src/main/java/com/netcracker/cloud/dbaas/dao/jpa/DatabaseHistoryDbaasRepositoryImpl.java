@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseHistory;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseHistoryRepository;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseHistory;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseHistoryRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

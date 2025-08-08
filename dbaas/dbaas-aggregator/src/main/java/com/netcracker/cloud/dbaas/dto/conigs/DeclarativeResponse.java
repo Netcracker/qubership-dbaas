@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.conigs;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import lombok.Data;
 import org.jetbrains.annotations.Nullable;
 

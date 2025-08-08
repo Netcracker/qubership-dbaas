@@ -1,26 +1,26 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
-import org.qubership.cloud.dbaas.dto.backup.Status;
-import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.bluegreen.BgStateRequest;
-import org.qubership.cloud.dbaas.dto.declarative.DatabaseToDeclarativeCreation;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgDomainRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
-import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.BgStateRequest;
+import com.netcracker.cloud.dbaas.dto.declarative.DatabaseToDeclarativeCreation;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgDomainRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
@@ -38,11 +38,11 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.controller.v3.AggregatedBackupAdministrationControllerV3.DBAAS_PATH;
-import static org.qubership.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
-import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
-import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.controller.v3.AggregatedBackupAdministrationControllerV3.DBAAS_PATH;
+import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
+import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @ApplicationScoped
 @Slf4j

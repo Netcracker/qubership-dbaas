@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClient;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.Response;
 

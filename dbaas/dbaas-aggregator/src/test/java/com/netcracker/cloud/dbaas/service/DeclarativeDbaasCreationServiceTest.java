@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.declarative.DatabaseDeclaration;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
-import org.qubership.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
+import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -16,8 +16,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.APPLY_CONFIG_OPERATION;
-import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.*;
+import static com.netcracker.cloud.dbaas.Constants.APPLY_CONFIG_OPERATION;
+import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;

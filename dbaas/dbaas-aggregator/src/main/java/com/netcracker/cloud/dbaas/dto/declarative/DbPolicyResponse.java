@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.declarative;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.qubership.cloud.dbaas.dto.conigs.ApplyConfigResponseComponent;
+import com.netcracker.cloud.dbaas.dto.conigs.ApplyConfigResponseComponent;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

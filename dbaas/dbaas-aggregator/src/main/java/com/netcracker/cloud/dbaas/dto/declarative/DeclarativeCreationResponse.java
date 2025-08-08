@@ -3,8 +3,8 @@ package com.netcracker.cloud.dbaas.dto.declarative;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import org.qubership.cloud.dbaas.serializer.TaskStateSerializer;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.serializer.TaskStateSerializer;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import lombok.Data;
 import org.jetbrains.annotations.Nullable;
 

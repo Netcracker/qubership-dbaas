@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.core.scheduler.po.task.TaskState;
 
 public class BlueGreenStatusUtil {
 

@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.entity.pg.composite.CompositeNamespace;
-import org.qubership.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.CompositeNamespaceRepository;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespace;
+import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.CompositeNamespaceRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;

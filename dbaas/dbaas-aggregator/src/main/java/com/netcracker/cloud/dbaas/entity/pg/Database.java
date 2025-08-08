@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.dto.ConnectionDescription;
-import org.qubership.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
-import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
+import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
+import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -13,7 +13,7 @@ import lombok.ToString;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
+import static com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -125,8 +125,8 @@ public class Database extends AbstractDatabase {
                 '}';
     }
 
-    public org.qubership.cloud.dbaas.entity.h2.Database asH2Entity() {
-        org.qubership.cloud.dbaas.entity.h2.Database copy = new org.qubership.cloud.dbaas.entity.h2.Database();
+    public com.netcracker.cloud.dbaas.entity.h2.Database asH2Entity() {
+        com.netcracker.cloud.dbaas.entity.h2.Database copy = new com.netcracker.cloud.dbaas.entity.h2.Database();
         copy.setId(this.id);
         copy.setOldClassifier(this.oldClassifier);
         copy.setClassifier(this.classifier);

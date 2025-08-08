@@ -2,10 +2,10 @@ package com.netcracker.cloud.encryption.cipher.provider;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
-import org.qubership.cloud.encryption.config.xml.ConfigurationBuildersFactory;
-import org.qubership.cloud.encryption.key.KeyStore;
-import org.qubership.cloud.encryption.key.KeyStoreStub;
+import com.netcracker.cloud.encryption.config.crypto.CryptoSubsystemConfig;
+import com.netcracker.cloud.encryption.config.xml.ConfigurationBuildersFactory;
+import com.netcracker.cloud.encryption.key.KeyStore;
+import com.netcracker.cloud.encryption.key.KeyStoreStub;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;

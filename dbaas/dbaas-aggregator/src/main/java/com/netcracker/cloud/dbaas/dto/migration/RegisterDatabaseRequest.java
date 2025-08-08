@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.migration;
 
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 
-import static org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
+import static com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
 
 @Schema(description = "Request to add database to registration")
 @Data

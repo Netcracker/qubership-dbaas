@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.declarative;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import jakarta.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Data;

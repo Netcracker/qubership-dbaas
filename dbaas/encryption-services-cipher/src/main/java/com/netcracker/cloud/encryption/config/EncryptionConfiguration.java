@@ -1,8 +1,8 @@
 package com.netcracker.cloud.encryption.config;
 
-import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
-import org.qubership.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
-import org.qubership.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
+import com.netcracker.cloud.encryption.config.crypto.CryptoSubsystemConfig;
+import com.netcracker.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
 
 import javax.annotation.Nonnull;
 

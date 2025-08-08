@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.service.processengine.processes;
 
-import org.qubership.cloud.dbaas.service.processengine.tasks.DeleteBackupTask;
-import org.qubership.cloud.dbaas.service.processengine.tasks.NewDatabaseTask;
-import org.qubership.cloud.dbaas.service.processengine.tasks.UpdateBgStateTask;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.DeleteBackupTask;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.NewDatabaseTask;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.UpdateBgStateTask;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;

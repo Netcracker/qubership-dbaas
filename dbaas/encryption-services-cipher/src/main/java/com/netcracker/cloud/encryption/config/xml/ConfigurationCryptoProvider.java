@@ -1,7 +1,7 @@
 package com.netcracker.cloud.encryption.config.xml;
 
-import org.qubership.cloud.encryption.config.ConfigurationParser;
-import org.qubership.cloud.encryption.config.EncryptionConfiguration;
+import com.netcracker.cloud.encryption.config.ConfigurationParser;
+import com.netcracker.cloud.encryption.config.EncryptionConfiguration;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.rsql;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPart;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPartOverrideConfig;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPart;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPartOverrideConfig;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 

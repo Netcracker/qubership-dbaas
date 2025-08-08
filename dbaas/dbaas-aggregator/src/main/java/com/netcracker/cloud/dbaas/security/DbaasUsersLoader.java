@@ -2,8 +2,8 @@ package com.netcracker.cloud.dbaas.security;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.entity.h2.DbaasUser;
-import org.qubership.cloud.dbaas.repositories.h2.H2DbaasUserRepository;
+import com.netcracker.cloud.dbaas.entity.h2.DbaasUser;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DbaasUserRepository;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;

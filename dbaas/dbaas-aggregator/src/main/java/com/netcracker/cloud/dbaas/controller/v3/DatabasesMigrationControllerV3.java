@@ -1,16 +1,16 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.API_VERSION;
-import org.qubership.cloud.dbaas.dto.RegisterDatabaseWithUserCreationRequest;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
-import org.qubership.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
-import org.qubership.cloud.dbaas.exceptions.ErrorCodes;
-import org.qubership.cloud.dbaas.exceptions.InvalidClassifierException;
-import org.qubership.cloud.dbaas.exceptions.RequestValidationException;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.cloud.dbaas.service.MigrationService;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.API_VERSION;
+import com.netcracker.cloud.dbaas.dto.RegisterDatabaseWithUserCreationRequest;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
+import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
+import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
+import com.netcracker.cloud.dbaas.exceptions.InvalidClassifierException;
+import com.netcracker.cloud.dbaas.exceptions.RequestValidationException;
+import com.netcracker.cloud.dbaas.service.DBaaService;
+import com.netcracker.cloud.dbaas.service.MigrationService;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -34,9 +34,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.Constants.MIGRATION_CLIENT;
-import static org.qubership.cloud.dbaas.Constants.NAMESPACE;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.Constants.MIGRATION_CLIENT;
+import static com.netcracker.cloud.dbaas.Constants.NAMESPACE;
 
 @Slf4j
 @Path(DbaasApiPath.DATABASES_MIGRATION_PATH_V3)

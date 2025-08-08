@@ -2,10 +2,10 @@ package com.netcracker.cloud.dbaas.controller.composite;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.composite.CompositeStructureDto;
-import org.qubership.cloud.dbaas.entity.pg.composite.CompositeStructure;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.service.composite.CompositeNamespaceService;
+import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;

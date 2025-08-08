@@ -3,9 +3,9 @@ package com.netcracker.cloud.dbaas.test.data.provider.debug;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.v3.DebugDatabaseDeclarativeConfigV3;
-import org.qubership.cloud.dbaas.dto.v3.DebugLogicalDatabaseV3;
-import org.qubership.cloud.dbaas.entity.dto.DebugLogicalDatabasePersistenceDto;
+import com.netcracker.cloud.dbaas.dto.v3.DebugDatabaseDeclarativeConfigV3;
+import com.netcracker.cloud.dbaas.dto.v3.DebugLogicalDatabaseV3;
+import com.netcracker.cloud.dbaas.entity.dto.DebugLogicalDatabasePersistenceDto;
 
 import java.util.List;
 

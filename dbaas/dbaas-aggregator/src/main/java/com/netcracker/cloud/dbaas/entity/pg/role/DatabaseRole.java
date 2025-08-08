@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.entity.pg.role;
 
-import org.qubership.cloud.dbaas.converter.ListPolicyRole;
-import org.qubership.cloud.dbaas.converter.ListServiceRole;
-import org.qubership.cloud.dbaas.dto.conigs.RolesRegistration;
-import org.qubership.cloud.dbaas.dto.role.PolicyRole;
-import org.qubership.cloud.dbaas.dto.role.ServiceRole;
+import com.netcracker.cloud.dbaas.converter.ListPolicyRole;
+import com.netcracker.cloud.dbaas.converter.ListServiceRole;
+import com.netcracker.cloud.dbaas.dto.conigs.RolesRegistration;
+import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
+import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.Getter;

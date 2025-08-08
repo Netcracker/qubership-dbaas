@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto;
 
-import org.qubership.cloud.dbaas.service.PasswordEncryption;
+import com.netcracker.cloud.dbaas.service.PasswordEncryption;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -10,7 +10,7 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.dto.ConnectionDescription.FieldTypeEnum.PASSWORD;
+import static com.netcracker.cloud.dbaas.dto.ConnectionDescription.FieldTypeEnum.PASSWORD;
 
 @Data
 @AllArgsConstructor

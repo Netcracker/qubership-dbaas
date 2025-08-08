@@ -1,18 +1,18 @@
 package com.netcracker.cloud.dbaas.controller;
 
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.DeleteOrphansRequest;
-import org.qubership.cloud.dbaas.dto.bluegreen.*;
-import org.qubership.cloud.dbaas.entity.pg.BgDomain;
-import org.qubership.cloud.dbaas.entity.pg.BgNamespace;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.BgRequestValidationException;
-import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
-import org.qubership.cloud.dbaas.service.BlueGreenService;
-import org.qubership.cloud.dbaas.service.DbaaSHelper;
-import org.qubership.cloud.dbaas.service.ProcessService;
-import org.qubership.cloud.dbaas.service.processengine.processes.ProcessWrapper;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.DeleteOrphansRequest;
+import com.netcracker.cloud.dbaas.dto.bluegreen.*;
+import com.netcracker.cloud.dbaas.entity.pg.BgDomain;
+import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.BgRequestValidationException;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
+import com.netcracker.cloud.dbaas.service.BlueGreenService;
+import com.netcracker.cloud.dbaas.service.DbaaSHelper;
+import com.netcracker.cloud.dbaas.service.ProcessService;
+import com.netcracker.cloud.dbaas.service.processengine.processes.ProcessWrapper;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
@@ -30,9 +30,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.ACTIVE_STATE;
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.Constants.IDLE_STATE;
+import static com.netcracker.cloud.dbaas.Constants.ACTIVE_STATE;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.Constants.IDLE_STATE;
 
 @Slf4j
 @Path(DbaasApiPath.DBAAS_BLUE_GREEN_PATH_V1)

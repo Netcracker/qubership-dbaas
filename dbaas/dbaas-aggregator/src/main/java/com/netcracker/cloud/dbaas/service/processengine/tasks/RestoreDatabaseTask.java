@@ -1,13 +1,13 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
 
-import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupsRepository;
-import org.qubership.cloud.dbaas.service.BlueGreenService;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.core.scheduler.po.DataContext;
+import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupsRepository;
+import com.netcracker.cloud.dbaas.service.BlueGreenService;
+import com.netcracker.cloud.dbaas.service.DBaaService;
+import com.netcracker.core.scheduler.po.DataContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -15,10 +15,10 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.SCOPE;
-import static org.qubership.cloud.dbaas.Constants.SCOPE_VALUE_TENANT;
-import static org.qubership.cloud.dbaas.Constants.TENANT_ID;
-import static org.qubership.cloud.dbaas.Constants.VERSION_STATE;
+import static com.netcracker.cloud.dbaas.Constants.SCOPE;
+import static com.netcracker.cloud.dbaas.Constants.SCOPE_VALUE_TENANT;
+import static com.netcracker.cloud.dbaas.Constants.TENANT_ID;
+import static com.netcracker.cloud.dbaas.Constants.VERSION_STATE;
 
 @Slf4j
 @ApplicationScoped

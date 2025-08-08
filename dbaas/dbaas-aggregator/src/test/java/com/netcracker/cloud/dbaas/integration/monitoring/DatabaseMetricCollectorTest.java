@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.integration.monitoring;
 
-import org.qubership.cloud.dbaas.monitoring.DatabaseMetricCollector;
-import org.qubership.cloud.dbaas.monitoring.model.DatabaseMonitoringEntryStatus;
-import org.qubership.cloud.dbaas.service.MonitoringService;
+import com.netcracker.cloud.dbaas.monitoring.DatabaseMetricCollector;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabaseMonitoringEntryStatus;
+import com.netcracker.cloud.dbaas.service.MonitoringService;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -15,8 +15,8 @@ import org.mockito.Mockito;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.*;
-import static org.qubership.cloud.dbaas.monitoring.DatabaseMetricCollector.METRIC_NAME;
+import static com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus.*;
+import static com.netcracker.cloud.dbaas.monitoring.DatabaseMetricCollector.METRIC_NAME;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 

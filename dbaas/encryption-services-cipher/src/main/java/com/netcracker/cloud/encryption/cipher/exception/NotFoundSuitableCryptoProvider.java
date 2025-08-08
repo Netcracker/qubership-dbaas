@@ -1,6 +1,6 @@
 package com.netcracker.cloud.encryption.cipher.exception;
 
-import org.qubership.cloud.encryption.cipher.CryptoRequest;
+import com.netcracker.cloud.encryption.cipher.CryptoRequest;
 
 import javax.annotation.Nonnull;
 

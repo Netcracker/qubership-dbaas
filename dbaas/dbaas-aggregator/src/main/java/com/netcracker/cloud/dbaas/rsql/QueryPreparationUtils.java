@@ -2,8 +2,8 @@ package com.netcracker.cloud.dbaas.rsql;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPart;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPartOverrideConfig;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPart;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPartOverrideConfig;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.IOException;

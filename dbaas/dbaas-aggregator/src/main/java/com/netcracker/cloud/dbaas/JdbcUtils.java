@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas;
 
-import org.qubership.cloud.dbaas.monitoring.AgroalDataSourceMetricsBinder;
-import org.qubership.cloud.security.core.utils.tls.TlsUtils;
+import com.netcracker.cloud.dbaas.monitoring.AgroalDataSourceMetricsBinder;
+import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.AgroalConnectionPoolConfiguration;
 import io.agroal.api.configuration.supplier.AgroalConnectionFactoryConfigurationSupplier;

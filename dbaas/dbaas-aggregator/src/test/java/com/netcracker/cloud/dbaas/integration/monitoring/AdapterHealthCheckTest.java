@@ -12,17 +12,17 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.monitoring.AdapterHealthCheck;
-import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
-import org.qubership.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator;
-import org.qubership.cloud.dbaas.monitoring.indicators.HealthCheckResponse;
-import org.qubership.cloud.dbaas.monitoring.indicators.HealthStatus;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
-import org.qubership.cloud.dbaas.service.AdapterActionTrackerClient;
-import org.qubership.cloud.dbaas.service.DbaasAdapter;
-import org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2;
-import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.monitoring.AdapterHealthCheck;
+import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
+import com.netcracker.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator;
+import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse;
+import com.netcracker.cloud.dbaas.monitoring.indicators.HealthStatus;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.service.AdapterActionTrackerClient;
+import com.netcracker.cloud.dbaas.service.DbaasAdapter;
+import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
+import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 
 import java.util.Arrays;
 import java.util.List;
@@ -33,8 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_PROBLEM;
-import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
+import static com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_PROBLEM;
+import static com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
 
 
 @Slf4j

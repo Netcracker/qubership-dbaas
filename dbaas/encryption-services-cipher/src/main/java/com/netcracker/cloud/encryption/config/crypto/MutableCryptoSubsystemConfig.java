@@ -9,7 +9,7 @@ public interface MutableCryptoSubsystemConfig extends CryptoSubsystemConfig {
     void setDefaultAlgorithm(@Nonnull String algorithm);
 
     /**
-     * Alias for SecretKey that can be lockup from {@link org.qubership.cloud.encryption.key.KeyStore} and use for
+     * Alias for SecretKey that can be lockup from {@link com.netcracker.cloud.encryption.key.KeyStore} and use for
      * encryption
      */
     void setDefaultKeyAlias(@Nonnull String keyAlias);

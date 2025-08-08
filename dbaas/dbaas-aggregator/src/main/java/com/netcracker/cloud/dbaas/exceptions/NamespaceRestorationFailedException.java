@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
 import lombok.Getter;
 
 public class NamespaceRestorationFailedException extends Exception {

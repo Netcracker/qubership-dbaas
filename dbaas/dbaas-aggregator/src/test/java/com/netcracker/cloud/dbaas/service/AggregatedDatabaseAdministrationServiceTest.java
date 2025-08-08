@@ -1,16 +1,16 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.CreatedDatabaseV3;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3SingleCP;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.exceptions.NotSupportedServiceRoleException;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3SingleCP;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.NotSupportedServiceRoleException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
 import jakarta.ws.rs.WebApplicationException;
@@ -31,7 +31,7 @@ import org.postgresql.util.PSQLState;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.qubership.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.Constants.*;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static java.util.Collections.singletonList;
 import static org.mockito.ArgumentMatchers.*;

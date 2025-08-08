@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.converter.PhysicalDatabaseRegistryRequestConverter;
-import org.qubership.cloud.dbaas.dto.InstructionType;
-import org.qubership.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
+import com.netcracker.cloud.dbaas.converter.PhysicalDatabaseRegistryRequestConverter;
+import com.netcracker.cloud.dbaas.dto.InstructionType;
+import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;

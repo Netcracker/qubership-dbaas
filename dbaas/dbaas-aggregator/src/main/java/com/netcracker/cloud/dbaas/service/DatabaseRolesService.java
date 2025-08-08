@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.conigs.RolesRegistration;
-import org.qubership.cloud.dbaas.dto.v3.UserRolesServices;
-import org.qubership.cloud.dbaas.entity.pg.role.DatabaseRole;
-import org.qubership.cloud.dbaas.dto.role.PolicyRole;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.role.ServiceRole;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
+import com.netcracker.cloud.dbaas.dto.conigs.RolesRegistration;
+import com.netcracker.cloud.dbaas.dto.v3.UserRolesServices;
+import com.netcracker.cloud.dbaas.entity.pg.role.DatabaseRole;
+import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +18,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2.MICROSERVICE_NAME;
+import static com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2.MICROSERVICE_NAME;
 
 @ApplicationScoped
 @Slf4j

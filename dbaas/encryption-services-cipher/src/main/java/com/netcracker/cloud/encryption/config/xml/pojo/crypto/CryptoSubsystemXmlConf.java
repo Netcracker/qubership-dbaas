@@ -5,7 +5,7 @@ import com.google.common.base.Optional;
 import jakarta.xml.bind.annotation.*;
 import jakarta.xml.bind.annotation.adapters.CollapsedStringAdapter;
 import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-import org.qubership.cloud.encryption.config.crypto.MutableCryptoSubsystemConfig;
+import com.netcracker.cloud.encryption.config.crypto.MutableCryptoSubsystemConfig;
 
 import javax.annotation.Nonnull;
 

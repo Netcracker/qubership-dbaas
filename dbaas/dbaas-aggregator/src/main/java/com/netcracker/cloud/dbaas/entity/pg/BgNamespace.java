@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.entity.pg;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
-import org.qubership.cloud.dbaas.dto.bluegreen.BgStateRequest;
+import com.netcracker.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;

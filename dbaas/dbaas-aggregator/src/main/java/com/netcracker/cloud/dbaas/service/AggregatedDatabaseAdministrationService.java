@@ -1,20 +1,20 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.CreatedDatabaseV3;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3SingleCP;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3SingleCP;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
 import io.quarkus.narayana.jta.QuarkusTransactionException;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -29,7 +29,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.exception.ConstraintViolationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 
 import java.lang.reflect.InvocationTargetException;
 import java.sql.SQLException;
@@ -37,11 +37,11 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.MICROSERVICE_NAME;
-import static org.qubership.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.MICROSERVICE_NAME;
+import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 import static org.postgresql.util.PSQLState.UNIQUE_VIOLATION;
-import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
 @ApplicationScoped

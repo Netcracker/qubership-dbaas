@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
 
-import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.declarative.DatabaseDeclaration;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupsRepository;
-import org.qubership.cloud.dbaas.service.BlueGreenService;
-import org.qubership.core.scheduler.po.DataContext;
+import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupsRepository;
+import com.netcracker.cloud.dbaas.service.BlueGreenService;
+import com.netcracker.core.scheduler.po.DataContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 

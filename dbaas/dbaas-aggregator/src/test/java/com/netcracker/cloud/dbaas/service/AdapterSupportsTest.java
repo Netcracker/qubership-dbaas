@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import jakarta.ws.rs.NotFoundException;
 
 import org.junit.jupiter.api.BeforeEach;

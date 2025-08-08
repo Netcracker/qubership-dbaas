@@ -2,8 +2,8 @@ package com.netcracker.cloud.dbaas.config.pg;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.JdbcUtils;
-import org.qubership.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 

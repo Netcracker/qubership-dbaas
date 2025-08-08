@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.bluegreen;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;

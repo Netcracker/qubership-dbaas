@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.integration.monitoring;
 
-import org.qubership.cloud.dbaas.monitoring.AdaptersMetricCollector;
-import org.qubership.cloud.dbaas.monitoring.model.DatabaseInfo;
-import org.qubership.cloud.dbaas.monitoring.model.DatabasesInfo;
-import org.qubership.cloud.dbaas.monitoring.model.DatabasesInfoSegment;
-import org.qubership.cloud.dbaas.monitoring.model.DatabasesRegistrationInfo;
-import org.qubership.cloud.dbaas.service.MonitoringService;
+import com.netcracker.cloud.dbaas.monitoring.AdaptersMetricCollector;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabaseInfo;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfoSegment;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabasesRegistrationInfo;
+import com.netcracker.cloud.dbaas.service.MonitoringService;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;

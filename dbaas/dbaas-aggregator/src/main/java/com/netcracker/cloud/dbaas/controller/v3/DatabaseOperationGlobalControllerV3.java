@@ -1,13 +1,13 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.dto.v3.UpdateHostRequest;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.ErrorCodes;
-import org.qubership.cloud.dbaas.exceptions.RequestValidationException;
-import org.qubership.cloud.dbaas.service.OperationService;
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
+import com.netcracker.cloud.dbaas.dto.v3.UpdateHostRequest;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
+import com.netcracker.cloud.dbaas.exceptions.RequestValidationException;
+import com.netcracker.cloud.dbaas.service.OperationService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
@@ -29,9 +29,9 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.DbaasApiPath.DATABASE_GLOBAL_OPERATION_PATH_V3;
-import static org.qubership.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.DATABASE_GLOBAL_OPERATION_PATH_V3;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
 import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
 
 @Slf4j

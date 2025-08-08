@@ -1,6 +1,6 @@
 package com.netcracker.cloud.encryption.cipher;
 
-import org.qubership.cloud.encryption.cipher.provider.EncryptedData;
+import com.netcracker.cloud.encryption.cipher.provider.EncryptedData;
 
 import javax.annotation.Nonnull;
 
@@ -34,7 +34,7 @@ public interface EncryptResult {
      * be decrypted only by component that encrypt it(encryption-service).
      *
      * @return not null encrypted text with injected parameters helps during migration
-     * @exception org.qubership.cloud.encryption.cipher.exception.NotAvailableInjectionEncryptParamsException if was
+     * @exception com.netcracker.cloud.encryption.cipher.exception.NotAvailableInjectionEncryptParamsException if was
      *            specified parameters for encrypt that can't be inject
      */
     @Nonnull

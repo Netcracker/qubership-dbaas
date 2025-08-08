@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.repositories.dbaas;
 
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 
 import java.util.List;
 

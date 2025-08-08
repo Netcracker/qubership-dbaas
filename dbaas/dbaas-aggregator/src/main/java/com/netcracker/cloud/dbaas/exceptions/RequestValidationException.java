@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.core.error.runtime.ErrorCode;
-import org.qubership.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.core.error.runtime.ErrorCode;
+import com.netcracker.cloud.dbaas.dto.Source;
 
 public class RequestValidationException extends ValidationException {
     public RequestValidationException(ErrorCode errorCode, String detail, Source source) {

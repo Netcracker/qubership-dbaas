@@ -14,17 +14,17 @@ import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.Test;
 import org.mockito.internal.stubbing.answers.AnswersWithDelay;
 import org.mockito.internal.stubbing.answers.Returns;
-import org.qubership.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
-import org.qubership.cloud.dbaas.dto.backup.Status;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
-import org.qubership.cloud.dbaas.exceptions.NamespaceBackupDeletionFailedException;
-import org.qubership.cloud.dbaas.exceptions.NamespaceRestorationFailedException;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
-import org.qubership.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import com.netcracker.cloud.dbaas.exceptions.NamespaceBackupDeletionFailedException;
+import com.netcracker.cloud.dbaas.exceptions.NamespaceRestorationFailedException;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
+import com.netcracker.cloud.dbaas.service.*;
 
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -37,10 +37,10 @@ import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
-import static org.qubership.cloud.core.error.rest.tmf.TmfErrorResponse.TYPE_V1_0;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
-import static org.qubership.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_2000;
-import static org.qubership.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_4014;
+import static com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse.TYPE_V1_0;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_2000;
+import static com.netcracker.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_4014;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)

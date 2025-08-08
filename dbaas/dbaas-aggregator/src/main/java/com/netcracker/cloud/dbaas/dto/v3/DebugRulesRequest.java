@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.dto.OnMicroserviceRuleRequest;
+import com.netcracker.cloud.dbaas.dto.OnMicroserviceRuleRequest;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;

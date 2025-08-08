@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.controller.error;
 
-import org.qubership.cloud.core.error.runtime.ErrorCodeException;
-import org.qubership.cloud.dbaas.controller.ConfigControllerV1;
+import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
+import com.netcracker.cloud.dbaas.controller.ConfigControllerV1;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
@@ -10,9 +10,9 @@ import jakarta.ws.rs.ext.Provider;
 
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.controller.error.Utils.buildDefaultResponse;
-import static org.qubership.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
-import static org.qubership.cloud.dbaas.dto.conigs.DeclarativeResponse.Condition.VALIDATED;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.buildDefaultResponse;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
+import static com.netcracker.cloud.dbaas.dto.conigs.DeclarativeResponse.Condition.VALIDATED;
 import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
 
 @Provider

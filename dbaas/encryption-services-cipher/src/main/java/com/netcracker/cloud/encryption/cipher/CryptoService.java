@@ -1,9 +1,9 @@
 package com.netcracker.cloud.encryption.cipher;
 
-import org.qubership.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequest;
-import org.qubership.cloud.encryption.cipher.dsl.encrypt.ChainedEncryptionRequest;
-import org.qubership.cloud.encryption.cipher.exception.EncryptException;
-import org.qubership.cloud.encryption.cipher.exception.IllegalCryptoParametersException;
+import com.netcracker.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequest;
+import com.netcracker.cloud.encryption.cipher.dsl.encrypt.ChainedEncryptionRequest;
+import com.netcracker.cloud.encryption.cipher.exception.EncryptException;
+import com.netcracker.cloud.encryption.cipher.exception.IllegalCryptoParametersException;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -79,7 +79,7 @@ public interface CryptoService {
      * @throws NullPointerException if specified data is null
      * @throws IllegalCryptoParametersException parameter can't be initialize correctly for decryption specified text
      *         because for example not available key that was use for encrypt
-     * @throws org.qubership.cloud.encryption.cipher.exception.DecryptException some exception occurs during decrypt
+     * @throws com.netcracker.cloud.encryption.cipher.exception.DecryptException some exception occurs during decrypt
      *         specified data
      */
     @Nonnull
@@ -93,7 +93,7 @@ public interface CryptoService {
      * @throws NullPointerException if specified request is null
      * @throws IllegalCryptoParametersException parameter can't be initialize correctly for decrypt specified text for
      *         example when specified not exists algorithm
-     * @throws org.qubership.cloud.encryption.cipher.exception.DecryptException some exception occurs during decrypt
+     * @throws com.netcracker.cloud.encryption.cipher.exception.DecryptException some exception occurs during decrypt
      *         specified data
      */
     @Nonnull

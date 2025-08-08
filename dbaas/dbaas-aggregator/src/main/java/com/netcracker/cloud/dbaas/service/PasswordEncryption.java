@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.ConnectionDescription;
-import org.qubership.cloud.dbaas.dto.HttpBasicCredentials;
-import org.qubership.cloud.dbaas.dto.Secret;
-import org.qubership.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseUser;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.exceptions.RecordIsCorruptedException;
-import org.qubership.cloud.encryption.cipher.exception.DecryptException;
+import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
+import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
+import com.netcracker.cloud.dbaas.dto.Secret;
+import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.exceptions.RecordIsCorruptedException;
+import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +19,7 @@ import org.apache.commons.collections4.MapUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.dto.ConnectionDescription.FieldTypeEnum.PASSWORD;
+import static com.netcracker.cloud.dbaas.dto.ConnectionDescription.FieldTypeEnum.PASSWORD;
 
 @Slf4j
 @Data

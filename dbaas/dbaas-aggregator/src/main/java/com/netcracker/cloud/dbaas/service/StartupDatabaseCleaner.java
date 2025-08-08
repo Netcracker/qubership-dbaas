@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.PROCESSING;
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.PROCESSING;
 
 @Slf4j
 @ApplicationScoped

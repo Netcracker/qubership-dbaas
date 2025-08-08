@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.serializer;
 
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializerBase;
-import org.qubership.cloud.dbaas.service.BlueGreenStatusUtil;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.service.BlueGreenStatusUtil;
+import com.netcracker.core.scheduler.po.task.TaskState;
 
 public class TaskStateSerializer extends ToStringSerializerBase {
     public TaskStateSerializer() {

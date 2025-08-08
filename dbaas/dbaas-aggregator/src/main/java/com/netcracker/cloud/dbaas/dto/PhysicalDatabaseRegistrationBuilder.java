@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.dto;
 
-import org.qubership.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 
 import java.util.Date;
 import java.util.List;

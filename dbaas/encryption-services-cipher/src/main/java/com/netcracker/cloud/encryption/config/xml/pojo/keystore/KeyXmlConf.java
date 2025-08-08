@@ -3,7 +3,7 @@ package com.netcracker.cloud.encryption.config.xml.pojo.keystore;
 import jakarta.xml.bind.annotation.*;
 import jakarta.xml.bind.annotation.adapters.CollapsedStringAdapter;
 import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-import org.qubership.cloud.encryption.config.keystore.type.MutableKeyConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.MutableKeyConfig;
 
 import javax.annotation.Nonnull;
 

@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

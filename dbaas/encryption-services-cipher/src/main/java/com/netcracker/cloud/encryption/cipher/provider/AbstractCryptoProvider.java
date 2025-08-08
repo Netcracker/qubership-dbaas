@@ -1,7 +1,7 @@
 package com.netcracker.cloud.encryption.cipher.provider;
 
-import org.qubership.cloud.encryption.cipher.CryptoParameter;
-import org.qubership.cloud.encryption.cipher.DecryptResult;
+import com.netcracker.cloud.encryption.cipher.CryptoParameter;
+import com.netcracker.cloud.encryption.cipher.DecryptResult;
 
 import javax.annotation.Nonnull;
 import java.util.Collections;

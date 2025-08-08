@@ -38,7 +38,7 @@ public interface EncryptionRequest extends CryptoRequest {
 
     /**
      * <p>
-     * Unique key alias that can be find in {@link org.qubership.cloud.encryption.key.KeyStore} and should be use
+     * Unique key alias that can be find in {@link com.netcracker.cloud.encryption.key.KeyStore} and should be use
      * encrypt plain text
      * </p>
      * <b>Note:</b> It method return opposite value for {@link EncryptionRequest#getKey()} but

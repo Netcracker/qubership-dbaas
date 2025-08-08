@@ -1,16 +1,16 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.ConnectionPropertiesNotContainRoleException;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.ConnectionPropertiesNotContainRoleException;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.Data;
 import lombok.NonNull;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.NAMESPACE;
-import static org.qubership.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.NAMESPACE;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
 
 
 @Data

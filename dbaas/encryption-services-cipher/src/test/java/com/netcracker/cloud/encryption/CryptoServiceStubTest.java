@@ -1,7 +1,7 @@
 package com.netcracker.cloud.encryption;
 
 import org.junit.jupiter.api.Test;
-import org.qubership.cloud.encryption.cipher.CryptoService;
+import com.netcracker.cloud.encryption.cipher.CryptoService;
 import org.hamcrest.Matchers;
 
 import static org.hamcrest.MatcherAssert.assertThat;

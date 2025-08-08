@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.service.monitoring;
 
-import org.qubership.cloud.dbaas.DatabaseType;
-import org.qubership.cloud.dbaas.connections.handlers.CassandraConnectionHandler;
-import org.qubership.cloud.dbaas.connections.handlers.ConnectionHandler;
-import org.qubership.cloud.dbaas.connections.handlers.ConnectionHandlerFactory;
-import org.qubership.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.connections.handlers.CassandraConnectionHandler;
+import com.netcracker.cloud.dbaas.connections.handlers.ConnectionHandler;
+import com.netcracker.cloud.dbaas.connections.handlers.ConnectionHandlerFactory;
+import com.netcracker.cloud.dbaas.dto.role.Role;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
 
 class ConnectionHandlerFactoryTest {
 

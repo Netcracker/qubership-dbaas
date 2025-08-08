@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseUser;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -13,8 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.Constants.TLS;
-import static org.qubership.cloud.dbaas.Constants.TLS_NOT_STRICT;
+import static com.netcracker.cloud.dbaas.Constants.TLS;
+import static com.netcracker.cloud.dbaas.Constants.TLS_NOT_STRICT;
 
 @Slf4j
 @ApplicationScoped

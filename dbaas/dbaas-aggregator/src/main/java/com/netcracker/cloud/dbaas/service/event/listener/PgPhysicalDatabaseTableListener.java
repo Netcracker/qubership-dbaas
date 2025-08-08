@@ -3,7 +3,7 @@ package com.netcracker.cloud.dbaas.service.event.listener;
 
 import io.agroal.api.AgroalDataSource;
 import lombok.extern.slf4j.Slf4j;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 
 import java.util.UUID;
 

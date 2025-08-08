@@ -2,10 +2,10 @@ package com.netcracker.cloud.encryption.cipher.result;
 
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
-import org.qubership.cloud.encryption.cipher.EncryptResult;
-import org.qubership.cloud.encryption.cipher.provider.EncryptedData;
-import org.qubership.cloud.encryption.cipher.provider.EncryptedDataBuilder;
-import org.qubership.cloud.encryption.key.ImmutableAliasedKey;
+import com.netcracker.cloud.encryption.cipher.EncryptResult;
+import com.netcracker.cloud.encryption.cipher.provider.EncryptedData;
+import com.netcracker.cloud.encryption.cipher.provider.EncryptedDataBuilder;
+import com.netcracker.cloud.encryption.key.ImmutableAliasedKey;
 
 import javax.crypto.KeyGenerator;
 import java.util.Arrays;

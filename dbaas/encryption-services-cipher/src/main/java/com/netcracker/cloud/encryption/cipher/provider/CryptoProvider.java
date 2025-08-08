@@ -1,8 +1,8 @@
 package com.netcracker.cloud.encryption.cipher.provider;
 
-import org.qubership.cloud.encryption.cipher.*;
-import org.qubership.cloud.encryption.cipher.exception.EncryptException;
-import org.qubership.cloud.encryption.cipher.exception.IllegalCryptoParametersException;
+import com.netcracker.cloud.encryption.cipher.*;
+import com.netcracker.cloud.encryption.cipher.exception.EncryptException;
+import com.netcracker.cloud.encryption.cipher.exception.IllegalCryptoParametersException;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -10,8 +10,8 @@ import javax.annotation.concurrent.ThreadSafe;
 import java.util.Set;
 
 /**
- * Provider that process encryption {@link org.qubership.cloud.encryption.cipher.EncryptionRequest} and decryption
- * {@link org.qubership.cloud.encryption.cipher.DecryptResult} Different providers can have different encrypted
+ * Provider that process encryption {@link com.netcracker.cloud.encryption.cipher.EncryptionRequest} and decryption
+ * {@link com.netcracker.cloud.encryption.cipher.DecryptResult} Different providers can have different encrypted
  * template format, and for support many version template need create different templates
  */
 @ThreadSafe
@@ -37,7 +37,7 @@ public interface CryptoProvider {
      * @throws NullPointerException if specified request is null
      * @throws IllegalCryptoParametersException parameter can't be initialize correctly for decrypt specified text for
      *         example when specified not exists algorithm
-     * @throws org.qubership.cloud.encryption.cipher.exception.DecryptException some exception occurs during decrypt
+     * @throws com.netcracker.cloud.encryption.cipher.exception.DecryptException some exception occurs during decrypt
      *         specified data
      */
     @Nonnull

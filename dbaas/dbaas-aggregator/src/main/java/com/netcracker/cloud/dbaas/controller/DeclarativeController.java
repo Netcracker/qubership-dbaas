@@ -2,18 +2,18 @@ package com.netcracker.cloud.dbaas.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.DeclarativeCompositeRequestDTO;
-import org.qubership.cloud.dbaas.dto.RolesRegistrationRequest;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.declarative.*;
-import org.qubership.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
-import org.qubership.cloud.dbaas.service.DatabaseRolesService;
-import org.qubership.cloud.dbaas.service.DeclarativeDbaasCreationService;
-import org.qubership.cloud.dbaas.service.ProcessService;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.DeclarativeCompositeRequestDTO;
+import com.netcracker.cloud.dbaas.dto.RolesRegistrationRequest;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.declarative.*;
+import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
+import com.netcracker.cloud.dbaas.service.DatabaseRolesService;
+import com.netcracker.cloud.dbaas.service.DeclarativeDbaasCreationService;
+import com.netcracker.cloud.dbaas.service.ProcessService;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
@@ -32,11 +32,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.Constants.DATABASE_DECLARATION_CONFIG_TYPE;
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.Constants.DB_POLICY_CONFIG_TYPE;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
-import static org.qubership.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
+import static com.netcracker.cloud.dbaas.Constants.DATABASE_DECLARATION_CONFIG_TYPE;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.Constants.DB_POLICY_CONFIG_TYPE;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
 
 @Path(DbaasApiPath.DBAAS_DECLARATIVE)
 @Produces(MediaType.APPLICATION_JSON)

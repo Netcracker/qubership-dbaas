@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

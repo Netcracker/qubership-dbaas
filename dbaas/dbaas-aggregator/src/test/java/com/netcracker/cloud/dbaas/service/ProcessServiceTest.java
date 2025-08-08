@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.entity.pg.BgTrack;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
-import org.qubership.core.scheduler.po.ProcessDefinition;
-import org.qubership.core.scheduler.po.ProcessOrchestrator;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.entity.pg.BgTrack;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
+import com.netcracker.core.scheduler.po.ProcessDefinition;
+import com.netcracker.core.scheduler.po.ProcessOrchestrator;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
 
@@ -23,7 +23,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
-import static org.qubership.cloud.dbaas.Constants.WARMUP_OPERATION;
+import static com.netcracker.cloud.dbaas.Constants.WARMUP_OPERATION;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)

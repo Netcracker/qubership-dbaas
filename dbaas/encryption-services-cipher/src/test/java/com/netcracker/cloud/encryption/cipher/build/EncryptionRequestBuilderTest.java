@@ -1,7 +1,7 @@
 package com.netcracker.cloud.encryption.cipher.build;
 
 import org.junit.jupiter.api.Test;
-import org.qubership.cloud.encryption.cipher.EncryptionRequest;
+import com.netcracker.cloud.encryption.cipher.EncryptionRequest;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

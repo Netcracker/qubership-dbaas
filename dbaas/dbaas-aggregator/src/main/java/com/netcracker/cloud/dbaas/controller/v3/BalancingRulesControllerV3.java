@@ -1,14 +1,14 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.OnMicroserviceRuleRequest;
-import org.qubership.cloud.dbaas.dto.RuleRegistrationRequest;
-import org.qubership.cloud.dbaas.dto.v3.DebugRulesDbTypeData;
-import org.qubership.cloud.dbaas.dto.v3.DebugRulesRequest;
-import org.qubership.cloud.dbaas.dto.v3.ValidateRulesResponse;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
-import org.qubership.cloud.dbaas.exceptions.OnMicroserviceBalancingRuleException;
-import org.qubership.cloud.dbaas.service.BalancingRulesService;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.OnMicroserviceRuleRequest;
+import com.netcracker.cloud.dbaas.dto.RuleRegistrationRequest;
+import com.netcracker.cloud.dbaas.dto.v3.DebugRulesDbTypeData;
+import com.netcracker.cloud.dbaas.dto.v3.DebugRulesRequest;
+import com.netcracker.cloud.dbaas.dto.v3.ValidateRulesResponse;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
+import com.netcracker.cloud.dbaas.exceptions.OnMicroserviceBalancingRuleException;
+import com.netcracker.cloud.dbaas.service.BalancingRulesService;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
@@ -26,9 +26,9 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.DbaasApiPath.BALANCING_RULES_V3;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.BALANCING_RULES_V3;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
 
 @Slf4j
 @Path(BALANCING_RULES_V3)

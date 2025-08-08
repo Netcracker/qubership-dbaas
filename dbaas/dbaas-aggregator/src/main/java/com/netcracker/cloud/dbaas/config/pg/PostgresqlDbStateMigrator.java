@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.config.pg;
 
-import org.qubership.cloud.dbaas.JdbcUtils;
-import org.qubership.cloud.dbaas.entity.pg.DbState;
+import com.netcracker.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.entity.pg.DbState;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 

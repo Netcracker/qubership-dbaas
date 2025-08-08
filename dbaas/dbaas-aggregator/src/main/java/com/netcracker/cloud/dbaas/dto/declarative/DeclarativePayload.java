@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.declarative;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.qubership.cloud.dbaas.dto.conigs.DeclarativeConfig;
+import com.netcracker.cloud.dbaas.dto.conigs.DeclarativeConfig;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.Data;
 
