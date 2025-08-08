@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller.error;
+package com.netcracker.cloud.dbaas.controller.error;
 
 import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import jakarta.ws.rs.core.Context;

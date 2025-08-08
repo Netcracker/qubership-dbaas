@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.shared;
+package com.netcracker.cloud.dbaas.entity.shared;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;

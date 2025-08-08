@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dao.h2;
+package com.netcracker.cloud.dbaas.dao.h2;
 
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;

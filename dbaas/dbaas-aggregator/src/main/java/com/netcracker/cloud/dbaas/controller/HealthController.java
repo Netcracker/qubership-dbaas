@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller;
+package com.netcracker.cloud.dbaas.controller;
 
 import org.qubership.cloud.dbaas.monitoring.indicators.AggregatedHealthResponse;
 import org.qubership.cloud.dbaas.service.HealthService;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.conigs;
+package com.netcracker.cloud.dbaas.dto.conigs;
 
 public interface ApplyConfigResponseComponent {
 }

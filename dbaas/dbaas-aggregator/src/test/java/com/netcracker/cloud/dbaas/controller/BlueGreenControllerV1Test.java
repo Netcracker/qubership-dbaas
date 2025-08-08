@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller;
+package com.netcracker.cloud.dbaas.controller;
 
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.Response;

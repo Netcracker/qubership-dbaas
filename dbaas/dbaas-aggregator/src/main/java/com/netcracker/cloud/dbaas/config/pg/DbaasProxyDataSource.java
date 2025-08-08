@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.config.pg;
+package com.netcracker.cloud.dbaas.config.pg;
 
 import org.qubership.cloud.dbaas.JdbcUtils;
 import io.agroal.api.AgroalDataSource;

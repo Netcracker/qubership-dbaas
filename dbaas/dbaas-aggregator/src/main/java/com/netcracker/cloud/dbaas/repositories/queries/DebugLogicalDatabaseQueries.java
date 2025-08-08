@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.repositories.queries;
+package com.netcracker.cloud.dbaas.repositories.queries;
 
 public final class DebugLogicalDatabaseQueries {
 
@@ -21,12 +21,12 @@ public final class DebugLogicalDatabaseQueries {
             database_declarative_config.type AS database_declarative_config_type,
             database_declarative_config.name_prefix AS database_declarative_config_name_prefix,
             database_declarative_config.namespace AS database_declarative_config_namespace
-        
+
         FROM database as logical_database
-        
+
         LEFT JOIN external_adapter_registration
             ON external_adapter_registration.adapter_id = logical_database.adapter_id
-        
+
         LEFT JOIN database_declarative_config
             ON logical_database.classifier @> database_declarative_config.classifier
         """;

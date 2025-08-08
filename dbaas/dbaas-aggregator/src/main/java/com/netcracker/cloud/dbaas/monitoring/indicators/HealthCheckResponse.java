@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.monitoring.indicators;
+package com.netcracker.cloud.dbaas.monitoring.indicators;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;

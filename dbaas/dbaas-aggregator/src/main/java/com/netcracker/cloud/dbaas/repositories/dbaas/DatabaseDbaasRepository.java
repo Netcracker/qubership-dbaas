@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.repositories.dbaas;
+package com.netcracker.cloud.dbaas.repositories.dbaas;
 
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.DbState;

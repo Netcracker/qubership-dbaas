@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.key;
+package com.netcracker.cloud.encryption.key;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -10,7 +10,7 @@ import java.util.Set;
 public interface KeyStoreRepository {
     /**
      * Find keystore by unique name in repository
-     * 
+     *
      * @param identity not null unique identity for keystore
      * @return correspond keystore or null if they not found
      */

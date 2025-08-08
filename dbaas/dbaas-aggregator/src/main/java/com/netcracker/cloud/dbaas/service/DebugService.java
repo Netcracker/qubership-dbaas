@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;

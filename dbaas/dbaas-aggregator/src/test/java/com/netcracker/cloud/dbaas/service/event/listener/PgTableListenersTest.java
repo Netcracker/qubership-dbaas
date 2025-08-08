@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.event.listener;
+package com.netcracker.cloud.dbaas.service.event.listener;
 
 import io.agroal.api.AgroalDataSource;
 import org.junit.jupiter.api.AfterEach;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config;
+package com.netcracker.cloud.encryption.config;
 
 import java.io.File;
 import java.io.InputStream;
@@ -8,15 +8,15 @@ import java.io.InputStream;
  */
 public interface ConfigurationParser {
     /**
-     * Load configuration from file. 
-     * @param file configuration file 
+     * Load configuration from file.
+     * @param file configuration file
      * @return configuration instance
      */
     EncryptionConfiguration loadConfiguration(File file);
 
     /**
      * Load configuration from stream.
-     * @param inputStream stream-source of configuration 
+     * @param inputStream stream-source of configuration
      * @return configuration instance
      */
     EncryptionConfiguration loadConfiguration(InputStream inputStream);

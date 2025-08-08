@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.mapper;
+package com.netcracker.cloud.dbaas.mapper;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,7 +47,7 @@ public abstract class DebugLogicalDatabaseMapper {
     @Mapping(source = "databaseDeclarativeConfigNamePrefix", target = "namePrefix")
     @Mapping(source = "databaseDeclarativeConfigNamespace", target = "namespace")
     public abstract DebugDatabaseDeclarativeConfigV3 convertDebugDatabaseDeclarativeConfig(DebugLogicalDatabasePersistenceDto dto);
-    
+
     @AfterMapping
     @SuppressWarnings("unchecked")
     protected void afterMapping(@MappingTarget DebugLogicalDatabaseV3 debugLogicalDatabase,

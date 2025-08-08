@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto;
+package com.netcracker.cloud.dbaas.dto;
 
 import jakarta.ws.rs.core.Response;
 import lombok.AllArgsConstructor;

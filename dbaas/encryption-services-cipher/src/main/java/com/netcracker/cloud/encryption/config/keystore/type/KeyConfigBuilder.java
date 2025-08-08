@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.keystore.type;
+package com.netcracker.cloud.encryption.config.keystore.type;
 
 
 import javax.annotation.Nonnull;
@@ -22,7 +22,7 @@ public interface KeyConfigBuilder {
 
     /**
      * Copy all parameters from given KeyConfig to current one.
-     * 
+     *
      * @param keyConfig non-null KeyConfig instance
      */
     KeyConfigBuilder copyParameters(@Nonnull KeyConfig keyConfig);

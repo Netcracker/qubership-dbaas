@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.repositories.pg.jpa;
+package com.netcracker.cloud.dbaas.repositories.pg.jpa;
 
 import org.qubership.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
@@ -18,9 +18,9 @@ public class BalanceRulesRepositoryPerMicroservice implements PanacheRepositoryB
     @SuppressWarnings("unchecked")
     public Optional<PerMicroserviceRule> findByNamespaceAndMicroserviceAndTypeWithMaxGeneration(String namespace, String microservice, String type) {
         return getEntityManager().createNativeQuery("""
-                        select  * from per_microservice_rule p 
-                        where p.namespace = ?1 and p.microservice = ?2 and p.database_type = ?3 
-                        order by p.generation desc 
+                        select  * from per_microservice_rule p
+                        where p.namespace = ?1 and p.microservice = ?2 and p.database_type = ?3
+                        order by p.generation desc
                         limit 1
                         """, PerMicroserviceRule.class)
                 .setParameter(1, namespace)
@@ -32,8 +32,8 @@ public class BalanceRulesRepositoryPerMicroservice implements PanacheRepositoryB
     @SuppressWarnings("unchecked")
     public List<PerMicroserviceRule> findAllByNamespaceWithMaxGeneration(String namespace) {
         return getEntityManager().createNativeQuery("""
-                select distinct on (p.database_type, p.microservice) * from per_microservice_rule p 
-                where p.namespace = ?1 
+                select distinct on (p.database_type, p.microservice) * from per_microservice_rule p
+                where p.namespace = ?1
                 order by p.database_type, p.microservice, p.generation desc
                 """, PerMicroserviceRule.class).setParameter(1, namespace).getResultList();
     }

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.migration;
+package com.netcracker.cloud.dbaas.dto.migration;
 
 import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
 import jakarta.ws.rs.core.Response;

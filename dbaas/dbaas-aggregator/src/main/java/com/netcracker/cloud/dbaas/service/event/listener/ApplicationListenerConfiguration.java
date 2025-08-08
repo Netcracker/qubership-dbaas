@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.event.listener;
+package com.netcracker.cloud.dbaas.service.event.listener;
 
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;

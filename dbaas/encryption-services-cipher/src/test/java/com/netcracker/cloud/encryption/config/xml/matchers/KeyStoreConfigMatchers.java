@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.xml.matchers;
+package com.netcracker.cloud.encryption.config.xml.matchers;
 
 import org.qubership.cloud.encryption.config.keystore.type.KeyConfig;
 import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;

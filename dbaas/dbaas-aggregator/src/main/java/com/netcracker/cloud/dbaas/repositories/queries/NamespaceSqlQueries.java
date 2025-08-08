@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.repositories.queries;
+package com.netcracker.cloud.dbaas.repositories.queries;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;

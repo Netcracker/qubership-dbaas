@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto;
+package com.netcracker.cloud.dbaas.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import org.qubership.cloud.dbaas.entity.pg.DbResource;

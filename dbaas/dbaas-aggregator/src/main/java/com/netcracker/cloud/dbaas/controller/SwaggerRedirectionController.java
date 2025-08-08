@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller;
+package com.netcracker.cloud.dbaas.controller;
 
 import jakarta.annotation.security.PermitAll;
 import jakarta.ws.rs.GET;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.monitoring.interceptor;
+package com.netcracker.cloud.dbaas.monitoring.interceptor;
 
 import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import io.micrometer.core.instrument.Counter;

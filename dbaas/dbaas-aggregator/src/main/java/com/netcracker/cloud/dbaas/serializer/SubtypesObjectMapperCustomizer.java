@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.serializer;
+package com.netcracker.cloud.dbaas.serializer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.DefaultBaseTypeLimitingValidator;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import jakarta.ws.rs.core.Response;
 import org.jetbrains.annotations.NotNull;

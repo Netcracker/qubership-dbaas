@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.logging;
+package com.netcracker.cloud.dbaas.logging;
 
 import org.qubership.cloud.dbaas.dto.role.Role;
 import org.qubership.cloud.dbaas.entity.pg.Database;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg;
+package com.netcracker.cloud.dbaas.entity.pg;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;

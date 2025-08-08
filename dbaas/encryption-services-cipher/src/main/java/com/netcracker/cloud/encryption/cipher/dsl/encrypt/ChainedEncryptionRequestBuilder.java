@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.dsl.encrypt;
+package com.netcracker.cloud.encryption.cipher.dsl.encrypt;
 
 import org.qubership.cloud.encryption.cipher.CryptoService;
 import org.qubership.cloud.encryption.cipher.EncryptResult;

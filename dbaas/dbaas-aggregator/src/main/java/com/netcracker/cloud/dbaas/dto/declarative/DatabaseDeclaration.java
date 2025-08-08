@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.declarative;
+package com.netcracker.cloud.dbaas.dto.declarative;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.qubership.cloud.dbaas.dto.conigs.DeclarativeConfig;

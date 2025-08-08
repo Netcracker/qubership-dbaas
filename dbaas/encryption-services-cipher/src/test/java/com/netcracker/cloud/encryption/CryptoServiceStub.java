@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption;
+package com.netcracker.cloud.encryption;
 
 import com.google.common.base.Throwables;
 import com.google.common.collect.BiMap;

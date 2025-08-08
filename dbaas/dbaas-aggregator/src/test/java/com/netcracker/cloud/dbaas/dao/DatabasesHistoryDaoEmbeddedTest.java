@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dao;
+package com.netcracker.cloud.dbaas.dao;
 
 
 import org.qubership.cloud.dbaas.entity.pg.Database;

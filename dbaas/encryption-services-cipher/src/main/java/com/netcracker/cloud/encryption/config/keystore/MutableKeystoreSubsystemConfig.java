@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.keystore;
+package com.netcracker.cloud.encryption.config.keystore;
 
 import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;
 
@@ -8,7 +8,7 @@ import java.util.List;
 public interface MutableKeystoreSubsystemConfig extends KeystoreSubsystemConfig {
     /**
      * Register keystore configurations, each configuration should have unique name
-     * 
+     *
      * @param keyStores not null list with keystore configurations
      */
     void setKeyStores(@Nonnull List<? extends KeystoreConfig> keyStores);

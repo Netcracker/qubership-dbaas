@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.qubership.cloud.dbaas.dto.API_VERSION;
 import org.qubership.cloud.dbaas.dto.EnsuredUser;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.xml.pojo.conf;
+package com.netcracker.cloud.encryption.config.xml.pojo.conf;
 
 import jakarta.xml.bind.annotation.XmlRegistry;
 import org.qubership.cloud.encryption.config.xml.pojo.crypto.CryptoConfigFactory;

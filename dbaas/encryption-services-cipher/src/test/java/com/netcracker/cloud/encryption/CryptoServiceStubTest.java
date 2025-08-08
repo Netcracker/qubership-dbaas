@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption;
+package com.netcracker.cloud.encryption;
 
 import org.junit.jupiter.api.Test;
 import org.qubership.cloud.encryption.cipher.CryptoService;

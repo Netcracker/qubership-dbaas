@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas;
+package com.netcracker.cloud.dbaas;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 

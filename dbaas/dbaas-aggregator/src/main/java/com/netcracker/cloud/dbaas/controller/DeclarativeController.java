@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller;
+package com.netcracker.cloud.dbaas.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

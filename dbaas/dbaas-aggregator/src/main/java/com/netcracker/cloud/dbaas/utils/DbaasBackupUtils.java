@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.utils;
+package com.netcracker.cloud.dbaas.utils;
 
 import org.qubership.cloud.dbaas.DatabaseType;
 import org.qubership.cloud.dbaas.entity.pg.Database;

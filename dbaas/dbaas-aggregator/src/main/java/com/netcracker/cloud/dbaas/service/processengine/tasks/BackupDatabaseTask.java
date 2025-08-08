@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.processengine.tasks;
+package com.netcracker.cloud.dbaas.service.processengine.tasks;
 
 import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;

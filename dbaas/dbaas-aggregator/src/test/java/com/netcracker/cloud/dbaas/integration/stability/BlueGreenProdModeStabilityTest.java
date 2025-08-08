@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration.stability;
+package com.netcracker.cloud.dbaas.integration.stability;
 
 import com.google.common.base.Strings;
 import io.quarkus.test.junit.TestProfile;

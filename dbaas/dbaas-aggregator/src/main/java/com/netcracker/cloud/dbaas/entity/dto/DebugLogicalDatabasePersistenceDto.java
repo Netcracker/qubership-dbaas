@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.dto;
+package com.netcracker.cloud.dbaas.entity.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

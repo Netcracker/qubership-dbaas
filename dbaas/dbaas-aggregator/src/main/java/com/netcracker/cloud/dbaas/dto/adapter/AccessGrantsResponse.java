@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.adapter;
+package com.netcracker.cloud.dbaas.dto.adapter;
 
 import org.qubership.cloud.dbaas.dto.role.PolicyRole;
 import org.qubership.cloud.dbaas.dto.role.ServiceRole;

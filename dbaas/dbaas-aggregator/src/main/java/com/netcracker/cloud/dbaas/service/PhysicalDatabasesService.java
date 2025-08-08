@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import com.google.common.collect.Maps;
 import org.qubership.cloud.dbaas.dto.PhysicalDatabaseRegistrationBuilder;

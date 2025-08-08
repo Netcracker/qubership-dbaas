@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.repositories.pg.jpa;
+package com.netcracker.cloud.dbaas.repositories.pg.jpa;
 
 import org.qubership.cloud.dbaas.entity.pg.role.DatabaseRole;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;

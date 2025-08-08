@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.xml.build;
+package com.netcracker.cloud.encryption.config.xml.build;
 
 import org.qubership.cloud.encryption.config.EncryptionConfigBuilder;
 import org.qubership.cloud.encryption.config.EncryptionConfiguration;

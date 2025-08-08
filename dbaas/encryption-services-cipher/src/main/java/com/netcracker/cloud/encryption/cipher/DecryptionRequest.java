@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 import com.google.common.base.Optional;
 
@@ -8,7 +8,7 @@ import java.security.Key;
 public interface DecryptionRequest extends CryptoRequest {
     /**
      * Algorithm that should be apply for decrypt encrypted text
-     * 
+     *
      * @return optional
      */
     @Nonnull
@@ -17,7 +17,7 @@ public interface DecryptionRequest extends CryptoRequest {
 
     /**
      * Key that should be use for decrypt encrypted text
-     * 
+     *
      * @return optional
      */
     @Nonnull

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration.stability;
+package com.netcracker.cloud.dbaas.integration.stability;
 
 import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;

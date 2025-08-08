@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.result;
+package com.netcracker.cloud.encryption.cipher.result;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;

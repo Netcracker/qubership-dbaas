@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.key;
+package com.netcracker.cloud.encryption.key;
 
 import com.google.common.collect.Maps;
 

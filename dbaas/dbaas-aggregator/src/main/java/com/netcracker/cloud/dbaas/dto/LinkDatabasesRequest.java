@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto;
+package com.netcracker.cloud.dbaas.dto;
 
 import lombok.Data;
 import lombok.NonNull;

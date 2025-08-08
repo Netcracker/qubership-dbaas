@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.h2;
+package com.netcracker.cloud.dbaas.entity.h2;
 
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;

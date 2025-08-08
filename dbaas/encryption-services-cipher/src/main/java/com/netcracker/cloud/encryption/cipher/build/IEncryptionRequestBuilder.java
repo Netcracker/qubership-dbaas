@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.build;
+package com.netcracker.cloud.encryption.cipher.build;
 
 import org.qubership.cloud.encryption.cipher.EncryptionRequest;
 
@@ -8,7 +8,7 @@ public interface IEncryptionRequestBuilder extends CryptoRequestBuilder<IEncrypt
     /**
      * <b>Note:</b> target plain text will be decode with use UTF-8 encoding, for especial encoding should be use
      * {@link IEncryptionRequestBuilder#setPlainText(byte[])} method
-     * 
+     *
      * @param plainText not null data that should be encrypted. Like data can be set empty string.
      * @return builder
      * @throws NullPointerException if specified data is null

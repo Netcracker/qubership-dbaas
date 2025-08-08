@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.monitoring.annotation;
+package com.netcracker.cloud.dbaas.monitoring.annotation;
 
 import jakarta.enterprise.util.Nonbinding;
 import jakarta.interceptor.InterceptorBinding;

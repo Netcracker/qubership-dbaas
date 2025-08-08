@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.codec.binary.Base64;

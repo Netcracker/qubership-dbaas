@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config;
+package com.netcracker.cloud.encryption.config;
 
 import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
 import org.qubership.cloud.encryption.config.keystore.KeystoreSubsystemConfig;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.build;
+package com.netcracker.cloud.encryption.cipher.build;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;

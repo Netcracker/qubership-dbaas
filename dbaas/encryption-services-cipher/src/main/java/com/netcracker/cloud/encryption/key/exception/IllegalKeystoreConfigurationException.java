@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.key.exception;
+package com.netcracker.cloud.encryption.key.exception;
 
 @SuppressWarnings("serial")
 public class IllegalKeystoreConfigurationException extends RuntimeException {

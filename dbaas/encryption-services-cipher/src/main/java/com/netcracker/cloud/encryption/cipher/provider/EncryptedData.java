@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.provider;
+package com.netcracker.cloud.encryption.cipher.provider;
 
 import com.google.common.base.Optional;
 import org.qubership.cloud.encryption.key.AliasedKey;
@@ -20,7 +20,7 @@ public interface EncryptedData {
 
     /**
      * Get used in encryption initialized vector(salt)
-     * 
+     *
      * @return optional
      */
     @Nonnull

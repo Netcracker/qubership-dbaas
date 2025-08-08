@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.qubership.cloud.dbaas.entity.pg.BgTrack;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;

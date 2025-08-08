@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 
 import com.google.common.base.Optional;
@@ -20,7 +20,7 @@ public interface EncryptionMetaInfo {
 
     /**
      * Algorithm that was used while encryption
-     * 
+     *
      * @return algorithm name
      */
     @Nonnull
@@ -28,7 +28,7 @@ public interface EncryptionMetaInfo {
 
     /**
      * Key that was used while encryption
-     * 
+     *
      * @return {@link AliasedKey} or {@code null} if key was not found
      */
     @Nullable
@@ -36,7 +36,7 @@ public interface EncryptionMetaInfo {
 
     /**
      * Initialize vector that was used for encryption
-     * 
+     *
      * @return initialize vector as byte array or {@code null} if it was not specified
      */
     @Nullable

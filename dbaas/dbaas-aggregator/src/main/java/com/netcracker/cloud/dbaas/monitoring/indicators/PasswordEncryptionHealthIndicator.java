@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.monitoring.indicators;
+package com.netcracker.cloud.dbaas.monitoring.indicators;
 
 import org.qubership.cloud.dbaas.dto.Secret;
 import org.qubership.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;

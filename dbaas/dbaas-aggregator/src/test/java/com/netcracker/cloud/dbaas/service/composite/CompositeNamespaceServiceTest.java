@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.composite;
+package com.netcracker.cloud.dbaas.service.composite;
 
 import org.qubership.cloud.dbaas.dto.composite.CompositeStructureDto;
 import org.qubership.cloud.dbaas.entity.pg.composite.CompositeNamespace;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 @FunctionalInterface
 public interface FunctionProvidePassword<Database, String> {

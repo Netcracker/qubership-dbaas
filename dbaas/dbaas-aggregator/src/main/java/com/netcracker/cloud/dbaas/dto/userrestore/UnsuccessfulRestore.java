@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.userrestore;
+package com.netcracker.cloud.dbaas.dto.userrestore;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

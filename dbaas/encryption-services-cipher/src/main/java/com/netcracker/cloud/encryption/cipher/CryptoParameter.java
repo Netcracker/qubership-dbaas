@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 import javax.annotation.Nonnull;
 import java.util.EnumSet;
@@ -20,7 +20,7 @@ public enum CryptoParameter {
 
     /**
      * Calculate what parameters was specify explicitly in {@link EncryptionRequest} request.
-     * 
+     *
      * @param request not null request for that need define list set parameters
      * @return not null set with all {@link CryptoParameter} that set explicit in request, if explicit parameters empty
      *         result set will be empty
@@ -32,7 +32,7 @@ public enum CryptoParameter {
 
     /**
      * Calculate what parameters was specify explicitly in {@link DecryptionRequest} request.
-     * 
+     *
      * @param request not null request for that need define list set parameters
      * @return not null set with all {@link CryptoParameter} that set explicit in request, if explicit parameters empty
      *         result set will be empty

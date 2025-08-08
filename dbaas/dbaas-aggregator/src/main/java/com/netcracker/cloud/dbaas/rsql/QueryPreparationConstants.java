@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rsql;
+package com.netcracker.cloud.dbaas.rsql;
 
 import java.util.Map;
 import java.util.Set;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.qubership.cloud.dbaas.dto.RestoreRequest;
 import org.qubership.cloud.dbaas.dto.UpdateSettingsAdapterRequest;

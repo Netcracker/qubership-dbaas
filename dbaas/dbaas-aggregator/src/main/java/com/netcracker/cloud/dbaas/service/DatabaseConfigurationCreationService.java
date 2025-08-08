@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import jakarta.annotation.Nullable;
 import jakarta.enterprise.context.ApplicationScoped;

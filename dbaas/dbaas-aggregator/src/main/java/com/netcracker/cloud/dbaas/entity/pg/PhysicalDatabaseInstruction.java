@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg;
+package com.netcracker.cloud.dbaas.entity.pg;
 
 import org.qubership.cloud.dbaas.converter.PhysicalDatabaseRegistryRequestConverter;
 import org.qubership.cloud.dbaas.dto.InstructionType;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas;
+package com.netcracker.cloud.dbaas;
 
 public class DbaasApiPath {
     public static final String

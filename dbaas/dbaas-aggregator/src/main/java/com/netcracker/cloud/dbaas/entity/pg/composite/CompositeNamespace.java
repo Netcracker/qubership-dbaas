@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg.composite;
+package com.netcracker.cloud.dbaas.entity.pg.composite;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

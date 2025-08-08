@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.config.h2;
+package com.netcracker.cloud.dbaas.config.h2;
 
 import io.quarkus.runtime.StartupEvent;
 import jakarta.annotation.PreDestroy;

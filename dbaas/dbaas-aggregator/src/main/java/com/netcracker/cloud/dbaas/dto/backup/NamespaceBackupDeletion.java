@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.backup;
+package com.netcracker.cloud.dbaas.dto.backup;
 
 import lombok.Data;
 

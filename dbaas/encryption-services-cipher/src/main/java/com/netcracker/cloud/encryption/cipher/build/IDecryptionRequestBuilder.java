@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.build;
+package com.netcracker.cloud.encryption.cipher.build;
 
 import org.qubership.cloud.encryption.cipher.DecryptionRequest;
 
@@ -7,7 +7,7 @@ import javax.annotation.Nonnull;
 public interface IDecryptionRequestBuilder extends CryptoRequestBuilder<IDecryptionRequestBuilder> {
     /**
      * <b>Note:</b> encrypted string represent in base64 encoding
-     * 
+     *
      * @param encryptedText not null text that should be decrypt
      * @return builder
      */
@@ -16,7 +16,7 @@ public interface IDecryptionRequestBuilder extends CryptoRequestBuilder<IDecrypt
 
     /**
      * Byte array already contain raw data without base64 wrapping
-     * 
+     *
      * @param encryptedBytes not null raw byte array that should be decrypted
      * @return builder
      */

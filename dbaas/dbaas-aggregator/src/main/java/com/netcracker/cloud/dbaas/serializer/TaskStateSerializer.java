@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.serializer;
+package com.netcracker.cloud.dbaas.serializer;
 
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializerBase;
 import org.qubership.cloud.dbaas.service.BlueGreenStatusUtil;

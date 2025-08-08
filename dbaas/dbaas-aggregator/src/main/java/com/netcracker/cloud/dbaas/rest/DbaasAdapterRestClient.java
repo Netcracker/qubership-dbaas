@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rest;
+package com.netcracker.cloud.dbaas.rest;
 
 import org.qubership.cloud.dbaas.dto.*;
 import org.qubership.cloud.dbaas.entity.pg.DbResource;

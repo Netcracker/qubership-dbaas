@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller.v3;
+package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.config;
+package com.netcracker.cloud.dbaas.config;
 
 import com.github.kagkarlsson.scheduler.task.Task;
 import io.quarkus.arc.properties.UnlessBuildProperty;

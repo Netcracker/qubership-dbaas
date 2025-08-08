@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.exception;
+package com.netcracker.cloud.encryption.config.exception;
 
 @SuppressWarnings("serial")
 public class IllegalConfiguration extends RuntimeException {

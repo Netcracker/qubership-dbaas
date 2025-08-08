@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rsql.config;
+package com.netcracker.cloud.dbaas.rsql.config;
 
 import org.qubership.cloud.dbaas.rsql.QueryPreparationConstants;
 import org.qubership.cloud.dbaas.rsql.model.QueryPreparationOverrideConfig;
@@ -104,6 +104,6 @@ public final class DebugGetLogicalDatabasesRSQLConfig {
             .supportedSelectorsAndRsqlOperators(SUPPORTED_SELECTORS_AND_RSQL_OPERATORS)
             .selectorsAndGlobalOverrideConfigs(SELECTORS_AND_GLOBAL_OVERRIDE_CONFIGS)
             .build();
-    
+
     private DebugGetLogicalDatabasesRSQLConfig() {}
 }

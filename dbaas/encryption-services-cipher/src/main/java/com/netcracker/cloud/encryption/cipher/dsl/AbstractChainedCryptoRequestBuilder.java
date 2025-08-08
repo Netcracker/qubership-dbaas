@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.dsl;
+package com.netcracker.cloud.encryption.cipher.dsl;
 
 import com.google.common.base.MoreObjects;
 import org.qubership.cloud.encryption.cipher.build.CryptoRequestBuilder;

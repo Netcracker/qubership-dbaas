@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.aspect;
+package com.netcracker.cloud.dbaas.aspect;
 
 public interface TestAspectInterface {
     void firstTestMethod();

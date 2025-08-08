@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller.abstact;
+package com.netcracker.cloud.dbaas.controller.abstact;
 
 import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
 import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;

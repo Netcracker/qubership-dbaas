@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.userrestore;
+package com.netcracker.cloud.dbaas.dto.userrestore;
 
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
