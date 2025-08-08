@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rest;
+package com.netcracker.cloud.dbaas.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.client.ClientRequestContext;

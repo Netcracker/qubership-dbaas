@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.mapper;
+package com.netcracker.cloud.dbaas.mapper;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.qubership.cloud.dbaas.test.data.provider.debug.DebugLogicalDatabaseTestDataProvider;

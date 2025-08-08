@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.conigs;
+package com.netcracker.cloud.dbaas.dto.conigs;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.qubership.cloud.dbaas.dto.role.PolicyRole;

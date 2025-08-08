@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.provider;
+package com.netcracker.cloud.encryption.cipher.provider;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Optional;

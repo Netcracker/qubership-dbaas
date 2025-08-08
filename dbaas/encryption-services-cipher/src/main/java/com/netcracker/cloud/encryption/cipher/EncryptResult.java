@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 import org.qubership.cloud.encryption.cipher.provider.EncryptedData;
 
@@ -16,7 +16,7 @@ public interface EncryptResult {
 
     /**
      * Encode to base 64 encrypted byte array
-     * 
+     *
      * @return not null base64(encryptedByteArray)
      */
     @Nonnull
@@ -32,7 +32,7 @@ public interface EncryptResult {
      * Apply base64 encoding encrypted data and also inject by template algorithm, key alias, and another information
      * that helps decrypt data when was changed default encryption parameters. <b>Note:</b> Text encrypted by it way can
      * be decrypted only by component that encrypt it(encryption-service).
-     * 
+     *
      * @return not null encrypted text with injected parameters helps during migration
      * @exception org.qubership.cloud.encryption.cipher.exception.NotAvailableInjectionEncryptParamsException if was
      *            specified parameters for encrypt that can't be inject

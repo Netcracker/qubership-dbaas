@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg.role;
+package com.netcracker.cloud.dbaas.entity.pg.role;
 
 import org.qubership.cloud.dbaas.converter.ListPolicyRole;
 import org.qubership.cloud.dbaas.converter.ListServiceRole;

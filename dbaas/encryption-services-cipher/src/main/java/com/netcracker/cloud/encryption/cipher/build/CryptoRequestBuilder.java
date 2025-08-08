@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.build;
+package com.netcracker.cloud.encryption.cipher.build;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -9,7 +9,7 @@ import java.security.Key;
 public interface CryptoRequestBuilder<T extends CryptoRequestBuilder> {
     /**
      * Define algorithm that should be apply for encryption / decryption
-     * 
+     *
      * @param algorithmName not null name algorithm name
      * @return builder
      * @throws java.lang.NullPointerException if specified algorithmName is null
@@ -20,7 +20,7 @@ public interface CryptoRequestBuilder<T extends CryptoRequestBuilder> {
 
     /**
      * Define JCA provider that should be use for process request
-     * 
+     *
      * @param providerName not null name prover name
      * @return builder
      * @throws java.lang.NullPointerException if specified algorithmName is null
@@ -32,7 +32,7 @@ public interface CryptoRequestBuilder<T extends CryptoRequestBuilder> {
     /**
      * Define key that should be apply for encryption / decryption. Opposite method
      * {@link CryptoRequestBuilder#setKeyAlias(String)} that more preferable if key stores in global KeyStore
-     * 
+     *
      * @param key not null secret key
      * @return builder
      * @throws NullPointerException if specified key is null
@@ -46,7 +46,7 @@ public interface CryptoRequestBuilder<T extends CryptoRequestBuilder> {
      * Define key alias that should be find in
      * {@link org.qubership.cloud.encryption.key.KeyStore#getKeyByAlias(String)} and use for encryption / decryption
      * it method opposite for use key explicitly {@link CryptoRequestBuilder#setKey(Key)}
-     * 
+     *
      * @param aliasKey not null unique name for key
      * @return builder
      * @see org.qubership.cloud.encryption.key.KeyStore#getKeyByAlias(String)
@@ -56,7 +56,7 @@ public interface CryptoRequestBuilder<T extends CryptoRequestBuilder> {
 
     /**
      * Define InitializedVector for apply encryption/decryption
-     * 
+     *
      * @param vector initialized vector that should be use during encryption/decryption
      * @return builder
      */

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.security;
+package com.netcracker.cloud.dbaas.security;
 
 import lombok.Data;
 

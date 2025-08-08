@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.keystore.type;
+package com.netcracker.cloud.encryption.config.keystore.type;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -19,7 +19,7 @@ public interface LocalKeystoreConfigBuilder extends KeystoreConfigBuilder<LocalK
 
     /**
      * Set Absolute path where locate to keystore file
-     * 
+     *
      * @see java.security.KeyStore
      */
     LocalKeystoreConfigBuilder setLocation(@Nonnull String keyStoreLocation);

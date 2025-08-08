@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration.config;
+package com.netcracker.cloud.dbaas.integration.config;
 
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.monitoring;
+package com.netcracker.cloud.dbaas.service.monitoring;
 
 import org.qubership.cloud.dbaas.DatabaseType;
 import org.qubership.cloud.dbaas.connections.handlers.CassandraConnectionHandler;

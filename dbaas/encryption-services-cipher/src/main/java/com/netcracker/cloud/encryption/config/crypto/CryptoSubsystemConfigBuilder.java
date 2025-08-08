@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.crypto;
+package com.netcracker.cloud.encryption.config.crypto;
 
 import javax.annotation.Nonnull;
 

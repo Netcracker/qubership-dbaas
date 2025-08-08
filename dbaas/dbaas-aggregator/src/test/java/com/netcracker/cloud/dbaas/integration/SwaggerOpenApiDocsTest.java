@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration;
+package com.netcracker.cloud.dbaas.integration;
 
 
 import com.google.gson.Gson;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.provider;
+package com.netcracker.cloud.encryption.cipher.provider;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

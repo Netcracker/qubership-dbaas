@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller.composite;
+package com.netcracker.cloud.dbaas.controller.composite;
 
 import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.composite.CompositeStructureDto;

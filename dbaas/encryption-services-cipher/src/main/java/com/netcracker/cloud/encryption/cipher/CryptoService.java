@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 import org.qubership.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequest;
 import org.qubership.cloud.encryption.cipher.dsl.encrypt.ChainedEncryptionRequest;
@@ -25,7 +25,7 @@ public interface CryptoService {
      * any place please use {@link CryptoService#encrypt(EncryptionRequest)} and
      * {@link EncryptResult#getResultAsByteArray()}
      * </p>
-     * 
+     *
      * @param data not null data that should be encrypted. Like data can be set empty string.
      * @return encrypted text
      * @throws NullPointerException if specified data is null
@@ -45,7 +45,7 @@ public interface CryptoService {
      * place please use {@link CryptoService#encrypt(EncryptionRequest)} and
      * {@link EncryptResult#getResultAsByteArray()}
      * </p>
-     * 
+     *
      * @param data not null byte array that should be encrypted
      * @return encrypted text
      * @throws NullPointerException if specified data is null
@@ -58,7 +58,7 @@ public interface CryptoService {
 
     /**
      * Encrypt data with parameters like algorithm, key, and so on that define inside {@link EncryptionRequest}
-     * 
+     *
      * @param request not null request contains all required parameters
      * @return encrypted text
      * @throws NullPointerException if specified request is null
@@ -73,7 +73,7 @@ public interface CryptoService {
      * Decrypt data with read required parameters from string data <b>Note:</b> by it method available decrypt only data
      * encrypted via {@link CryptoService#encrypt(String)} or {@link CryptoService#encrypt(byte[])} or
      * {@link EncryptResult#getResultAsEncryptionServiceTemplate()}
-     * 
+     *
      * @param data data in template that define {@link CryptoService}, it template contain
      * @return not null decrypted result that can be convert to text
      * @throws NullPointerException if specified data is null
@@ -87,7 +87,7 @@ public interface CryptoService {
 
     /**
      * Decrypt data with parameters like algorithm, key, and so on that define inside {@link DecryptionRequest}
-     * 
+     *
      * @param request not null request contains all required parameters
      * @return decrypted result
      * @throws NullPointerException if specified request is null
@@ -101,7 +101,7 @@ public interface CryptoService {
 
     /**
      * DSL that allow encrypttext by easy way. Example usage:
-     * 
+     *
      * <pre>
      * {
      *     &#64;code
@@ -120,7 +120,7 @@ public interface CryptoService {
      *     assert plainText.equals(decryptedText);
      * }
      * </pre>
-     * 
+     *
      * @return dsl builder
      */
     @Nonnull
@@ -128,7 +128,7 @@ public interface CryptoService {
 
     /**
      * DSL that allow decrypt text by easy way. Example usage:
-     * 
+     *
      * <pre>
      * {
      *     &#64;code
@@ -147,7 +147,7 @@ public interface CryptoService {
      *     assert plainText.equals(decryptedText);
      * }
      * </pre>
-     * 
+     *
      * @return dsl builder
      */
     @Nonnull
@@ -156,7 +156,7 @@ public interface CryptoService {
     /**
      * Get information about encrypted text if it was obtained using template
      * {@link EncryptResult#getResultAsEncryptionServiceTemplate()}
-     * 
+     *
      * @param encryptedData encrypted text that was built according with template
      * @return {@link EncryptionMetaInfo} with corresponding data or {@code null} if given text doesn't match any known
      *         template

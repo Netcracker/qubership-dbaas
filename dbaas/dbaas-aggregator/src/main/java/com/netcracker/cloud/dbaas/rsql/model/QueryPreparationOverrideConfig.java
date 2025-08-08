@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rsql.model;
+package com.netcracker.cloud.dbaas.rsql.model;
 
 import lombok.Builder;
 import lombok.Data;

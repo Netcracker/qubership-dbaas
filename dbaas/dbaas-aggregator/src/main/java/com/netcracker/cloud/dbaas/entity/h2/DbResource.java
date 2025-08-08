@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.h2;
+package com.netcracker.cloud.dbaas.entity.h2;
 
 import org.qubership.cloud.dbaas.entity.shared.AbstractDbResource;
 import jakarta.persistence.Entity;
@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 public class DbResource extends AbstractDbResource {
-    
+
     public org.qubership.cloud.dbaas.entity.pg.DbResource asPgEntity() {
         org.qubership.cloud.dbaas.entity.pg.DbResource copy = new org.qubership.cloud.dbaas.entity.pg.DbResource(this.kind, this.name);
         copy.setId(this.id);

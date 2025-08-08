@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.bluegreen;
+package com.netcracker.cloud.dbaas.dto.bluegreen;
 
 import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import jakarta.annotation.Nullable;

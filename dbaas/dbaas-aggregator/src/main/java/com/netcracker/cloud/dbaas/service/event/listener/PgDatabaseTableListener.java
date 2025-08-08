@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.event.listener;
+package com.netcracker.cloud.dbaas.service.event.listener;
 
 import io.agroal.api.AgroalDataSource;
 import lombok.extern.slf4j.Slf4j;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 import com.google.common.collect.Lists;
 import org.qubership.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequest;

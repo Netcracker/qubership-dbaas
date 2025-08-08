@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.declarative;
+package com.netcracker.cloud.dbaas.dto.declarative;
 
 import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import jakarta.annotation.Nullable;

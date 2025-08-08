@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto;
+package com.netcracker.cloud.dbaas.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.qubership.cloud.dbaas.dto.conigs.RolesRegistration;

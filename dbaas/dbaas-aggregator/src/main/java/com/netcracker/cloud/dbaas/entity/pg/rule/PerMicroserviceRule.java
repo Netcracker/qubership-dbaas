@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg.rule;
+package com.netcracker.cloud.dbaas.entity.pg.rule;
 
 import org.qubership.cloud.dbaas.converter.ListRuleOnMicroserviceConverter;
 import org.qubership.cloud.dbaas.dto.RuleOnMicroservice;

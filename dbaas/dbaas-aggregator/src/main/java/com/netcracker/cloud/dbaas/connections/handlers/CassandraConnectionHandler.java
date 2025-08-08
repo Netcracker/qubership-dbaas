@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.connections.handlers;
+package com.netcracker.cloud.dbaas.connections.handlers;
 
 import org.qubership.cloud.dbaas.DatabaseType;
 import org.qubership.cloud.dbaas.dto.role.Role;

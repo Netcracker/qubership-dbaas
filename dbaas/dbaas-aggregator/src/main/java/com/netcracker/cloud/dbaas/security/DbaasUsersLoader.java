@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.security;
+package com.netcracker.cloud.dbaas.security;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;

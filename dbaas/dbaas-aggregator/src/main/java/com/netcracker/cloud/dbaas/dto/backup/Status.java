@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.backup;
+package com.netcracker.cloud.dbaas.dto.backup;
 
 public enum Status {
     SUCCESS, PROCEEDING, FAIL //do not change the order, max by ordinal used to aggregate

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.exceptions;
+package com.netcracker.cloud.dbaas.exceptions;
 
 public class RecordIsCorruptedException extends RuntimeException {
     public RecordIsCorruptedException(String message) {

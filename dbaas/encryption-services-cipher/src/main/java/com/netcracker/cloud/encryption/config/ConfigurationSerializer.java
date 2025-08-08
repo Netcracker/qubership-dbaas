@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config;
+package com.netcracker.cloud.encryption.config;
 
 import java.io.File;
 import java.io.OutputStream;
@@ -13,7 +13,7 @@ public interface ConfigurationSerializer {
      * @param config configuration instance
      */
     void saveConfiguration(File file, EncryptionConfiguration config);
-    
+
     /**
      * Save configuration to stream.
      * @param outputStream stream to store configuration

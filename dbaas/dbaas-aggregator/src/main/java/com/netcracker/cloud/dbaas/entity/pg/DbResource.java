@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg;
+package com.netcracker.cloud.dbaas.entity.pg;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDbResource;

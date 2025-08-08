@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.xml.pojo.crypto;
+package com.netcracker.cloud.encryption.config.xml.pojo.crypto;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Optional;

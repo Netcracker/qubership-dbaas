@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto;
+package com.netcracker.cloud.dbaas.dto;
 
 import org.qubership.cloud.dbaas.dto.v3.PhysicalDatabaseRegistrationResponseDTOV3;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.dsl;
+package com.netcracker.cloud.encryption.cipher.dsl;
 
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -13,7 +13,7 @@ import java.security.Key;
 public interface ChainedCryptoRequest<T extends ChainedCryptoRequest> {
     /**
      * Define algorithm that should be apply for encryption / decryption
-     * 
+     *
      * @param algorithmName not null name algorithm name
      * @return builder
      * @throws java.lang.NullPointerException if specified algorithmName is null
@@ -24,7 +24,7 @@ public interface ChainedCryptoRequest<T extends ChainedCryptoRequest> {
 
     /**
      * Define JCA provider that should be use for encryption / decryption
-     * 
+     *
      * @param providerName not null name provider name
      * @return builder
      * @throws java.lang.NullPointerException if specified providerName is null
@@ -36,7 +36,7 @@ public interface ChainedCryptoRequest<T extends ChainedCryptoRequest> {
     /**
      * Define key that should be apply for encryption / decryption. Opposite method
      * {@link ChainedCryptoRequest#keyAlias(String)} that more preferable if key stores in global KeyStore
-     * 
+     *
      * @param key not null secret key
      * @return builder
      * @throws NullPointerException if specified key is null
@@ -50,7 +50,7 @@ public interface ChainedCryptoRequest<T extends ChainedCryptoRequest> {
      * Define key alias that should be find in
      * {@link org.qubership.cloud.encryption.key.KeyStore#getKeyByAlias(String)} and use for encryption / decryption
      * it method opposite for use key explicitly {@link ChainedCryptoRequest#key(Key)}
-     * 
+     *
      * @param aliasKey not null unique name for key
      * @return builder
      * @see org.qubership.cloud.encryption.key.KeyStore#getKeyByAlias(String)
@@ -60,7 +60,7 @@ public interface ChainedCryptoRequest<T extends ChainedCryptoRequest> {
 
     /**
      * Define initialized vector(salt) for encrypt/decrypt
-     * 
+     *
      * @param vector not null byte array
      * @return builder
      */

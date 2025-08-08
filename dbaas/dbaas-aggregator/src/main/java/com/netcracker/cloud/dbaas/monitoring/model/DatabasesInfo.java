@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.monitoring.model;
+package com.netcracker.cloud.dbaas.monitoring.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

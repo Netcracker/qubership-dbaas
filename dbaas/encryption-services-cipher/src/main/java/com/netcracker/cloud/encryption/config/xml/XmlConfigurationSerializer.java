@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.xml;
+package com.netcracker.cloud.encryption.config.xml;
 
 import com.google.common.base.Preconditions;
 import com.google.common.io.Resources;

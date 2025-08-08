@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg.backup;
+package com.netcracker.cloud.dbaas.entity.pg.backup;
 
 import org.qubership.cloud.dbaas.converter.ListConverter;
 import org.qubership.cloud.dbaas.converter.ListDatabaseConverter;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration.monitoring;
+package com.netcracker.cloud.dbaas.integration.monitoring;
 
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.config;
+package com.netcracker.cloud.dbaas.config;
 
 import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.service.*;

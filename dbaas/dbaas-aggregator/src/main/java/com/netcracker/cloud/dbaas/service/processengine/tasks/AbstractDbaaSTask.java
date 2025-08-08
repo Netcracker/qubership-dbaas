@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.processengine.tasks;
+package com.netcracker.cloud.dbaas.service.processengine.tasks;
 
 import com.github.kagkarlsson.scheduler.task.ExecutionContext;
 import com.github.kagkarlsson.scheduler.task.TaskInstance;

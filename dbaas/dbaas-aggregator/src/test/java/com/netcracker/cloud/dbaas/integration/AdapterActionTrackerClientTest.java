@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration;
+package com.netcracker.cloud.dbaas.integration;
 
 import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;

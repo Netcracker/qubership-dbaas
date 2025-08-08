@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.result;
+package com.netcracker.cloud.encryption.cipher.result;
 
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;

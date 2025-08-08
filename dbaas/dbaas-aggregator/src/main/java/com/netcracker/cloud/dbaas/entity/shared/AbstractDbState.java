@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.shared;
+package com.netcracker.cloud.dbaas.entity.shared;
 
 import jakarta.persistence.*;
 import lombok.Data;

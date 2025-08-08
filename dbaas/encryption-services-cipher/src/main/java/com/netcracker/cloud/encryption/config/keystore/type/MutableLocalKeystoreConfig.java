@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.keystore.type;
+package com.netcracker.cloud.encryption.config.keystore.type;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -7,7 +7,7 @@ import java.util.List;
 public interface MutableLocalKeystoreConfig extends LocalKeystoreConfig {
     /**
      * Set Absolute path where locate to keystore file
-     * 
+     *
      * @see java.security.KeyStore
      */
     void setLocation(@Nonnull String keyStoreLocation);
@@ -24,7 +24,7 @@ public interface MutableLocalKeystoreConfig extends LocalKeystoreConfig {
 
     /**
      * Set keystore actuality
-     * 
+     *
      * @param deprecated set {@code true} if keystore is deprecated and should not be used, {@code false} otherwise
      */
     void setDeprecated(boolean deprecated);

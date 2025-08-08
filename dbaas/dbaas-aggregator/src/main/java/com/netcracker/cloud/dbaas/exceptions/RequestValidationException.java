@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.exceptions;
+package com.netcracker.cloud.dbaas.exceptions;
 
 import org.qubership.cloud.core.error.runtime.ErrorCode;
 import org.qubership.cloud.dbaas.dto.Source;

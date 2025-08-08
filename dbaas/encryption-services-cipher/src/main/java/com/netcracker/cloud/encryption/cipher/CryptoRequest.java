@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher;
+package com.netcracker.cloud.encryption.cipher;
 
 import com.google.common.base.Optional;
 
@@ -8,7 +8,7 @@ import java.security.Key;
 public interface CryptoRequest {
     /**
      * Algorithm that should be apply for encryption or decription
-     * 
+     *
      * @return optional
      */
     @Nonnull
@@ -16,7 +16,7 @@ public interface CryptoRequest {
 
     /**
      * JCA Provider that should be use for encrypt or decrypt
-     * 
+     *
      * @return optional
      */
     @Nonnull
@@ -30,7 +30,7 @@ public interface CryptoRequest {
      * <b>Note:</b> It method return opposite value for {@link CryptoRequest#getKeyAlias()} and current method have
      * higher priority for use, so, in case when specified explicitly {@link Key} and keyAlias should be use explicit
      * {@link Key}
-     * 
+     *
      * @return optional
      */
     @Nonnull
@@ -43,7 +43,7 @@ public interface CryptoRequest {
      * <b>Note:</b> It method return opposite value for {@link CryptoRequest#getKey()} but
      * {@link CryptoRequest#getKey()} have higher priority for use, so, in case when specified explicitly {@link Key}
      * and keyAlias should be use explicit {@link Key}
-     * 
+     *
      * @return optional
      */
     @Nonnull
@@ -51,7 +51,7 @@ public interface CryptoRequest {
 
     /**
      * Initialized vector(salt) that should be use during encrypt/decrypt
-     * 
+     *
      * @return optional
      */
     @Nonnull

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.aspect;
+package com.netcracker.cloud.dbaas.aspect;
 
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.integration.profiles.DirtiesMetricsProfile;

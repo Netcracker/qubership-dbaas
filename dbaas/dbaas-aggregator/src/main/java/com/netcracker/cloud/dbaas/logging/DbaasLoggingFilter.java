@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.logging;
+package com.netcracker.cloud.dbaas.logging;
 
 import io.quarkus.logging.LoggingFilter;
 

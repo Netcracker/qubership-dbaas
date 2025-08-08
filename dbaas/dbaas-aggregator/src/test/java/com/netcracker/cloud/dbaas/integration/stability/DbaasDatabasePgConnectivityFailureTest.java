@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration.stability;
+package com.netcracker.cloud.dbaas.integration.stability;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

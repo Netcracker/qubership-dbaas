@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller.v3;
+package com.netcracker.cloud.dbaas.controller.v3;
 
 import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;

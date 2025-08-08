@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rsql.model;
+package com.netcracker.cloud.dbaas.rsql.model;
 
 import lombok.Data;
 import org.apache.commons.collections4.MapUtils;

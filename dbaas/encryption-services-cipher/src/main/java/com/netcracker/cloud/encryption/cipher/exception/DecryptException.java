@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.exception;
+package com.netcracker.cloud.encryption.cipher.exception;
 
 @SuppressWarnings("serial")
 public class DecryptException extends CryptoException {

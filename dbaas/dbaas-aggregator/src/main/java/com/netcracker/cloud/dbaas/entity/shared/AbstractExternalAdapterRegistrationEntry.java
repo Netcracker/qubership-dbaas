@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.shared;
+package com.netcracker.cloud.dbaas.entity.shared;
 
 import org.qubership.cloud.dbaas.converter.ApiVersionConverter;
 import org.qubership.cloud.dbaas.converter.HttpBasicCredentialsConverter;

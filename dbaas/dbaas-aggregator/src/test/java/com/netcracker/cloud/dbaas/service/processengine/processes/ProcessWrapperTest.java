@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.processengine.processes;
+package com.netcracker.cloud.dbaas.service.processengine.processes;
 
 import org.qubership.cloud.dbaas.service.processengine.tasks.*;
 import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;

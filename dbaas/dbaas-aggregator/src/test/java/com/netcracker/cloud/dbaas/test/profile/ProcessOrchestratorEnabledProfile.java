@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.test.profile;
+package com.netcracker.cloud.dbaas.test.profile;
 
 import io.quarkus.test.junit.QuarkusTestProfile;
 import lombok.NoArgsConstructor;

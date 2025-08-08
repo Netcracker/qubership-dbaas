@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.aspect;
+package com.netcracker.cloud.dbaas.aspect;
 
 import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import jakarta.enterprise.context.ApplicationScoped;

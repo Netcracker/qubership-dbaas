@@ -1,5 +1,5 @@
 
-package org.qubership.cloud.encryption.config.xml.pojo.keystore;
+package com.netcracker.cloud.encryption.config.xml.pojo.keystore;
 
 import com.google.common.collect.Lists;
 import jakarta.xml.bind.annotation.*;

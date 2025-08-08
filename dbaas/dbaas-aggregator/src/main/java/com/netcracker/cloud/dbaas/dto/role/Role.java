@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.role;
+package com.netcracker.cloud.dbaas.dto.role;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 

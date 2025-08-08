@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto;
+package com.netcracker.cloud.dbaas.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.qubership.cloud.dbaas.converter.ListRuleOnMicroserviceConverter;

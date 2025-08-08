@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas;
+package com.netcracker.cloud.dbaas;
 
 import org.qubership.cloud.dbaas.monitoring.AgroalDataSourceMetricsBinder;
 import org.qubership.cloud.security.core.utils.tls.TlsUtils;

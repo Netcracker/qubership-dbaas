@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.bluegreen;
+package com.netcracker.cloud.dbaas.dto.bluegreen;
 
 import jakarta.annotation.Nullable;
 import lombok.AllArgsConstructor;

@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.controller.error;
+package com.netcracker.cloud.dbaas.controller.error;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.annotation.Priority;

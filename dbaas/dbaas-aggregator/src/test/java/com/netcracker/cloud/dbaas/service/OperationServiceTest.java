@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.qubership.cloud.dbaas.DatabaseType;
 import org.qubership.cloud.dbaas.dto.LinkDatabasesRequest;

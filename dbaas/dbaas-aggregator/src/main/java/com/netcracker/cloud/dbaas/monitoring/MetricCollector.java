@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.monitoring;
+package com.netcracker.cloud.dbaas.monitoring;
 
 import io.quarkus.arc.properties.IfBuildProperty;
 import io.quarkus.scheduler.Scheduled;

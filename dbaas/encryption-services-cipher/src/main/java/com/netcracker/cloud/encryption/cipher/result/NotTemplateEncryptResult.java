@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.cipher.result;
+package com.netcracker.cloud.encryption.cipher.result;
 
 
 import org.qubership.cloud.encryption.cipher.provider.EncryptedData;

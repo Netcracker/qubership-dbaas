@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.crypto;
+package com.netcracker.cloud.encryption.config.crypto;
 
 import javax.annotation.Nonnull;
 
@@ -16,7 +16,7 @@ public interface MutableCryptoSubsystemConfig extends CryptoSubsystemConfig {
 
     /**
      * Unique identity by that can be find in keystore subsystem correspond KeyStore
-     * 
+     *
      * @see CryptoSubsystemConfig#getDefaultKeyAlias()
      */
     void setKeyStoreName(@Nonnull String keyStoreName);

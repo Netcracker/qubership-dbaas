@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.mock;
+package com.netcracker.cloud.dbaas.mock;
 
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;

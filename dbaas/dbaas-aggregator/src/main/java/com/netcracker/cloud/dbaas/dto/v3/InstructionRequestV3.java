@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.v3;
+package com.netcracker.cloud.dbaas.dto.v3;
 
 
 import org.qubership.cloud.dbaas.converter.ListConverter;

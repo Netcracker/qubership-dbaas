@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.keystore;
+package com.netcracker.cloud.encryption.config.keystore;
 
 import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;
 
@@ -21,7 +21,7 @@ public interface KeystoreSubsystemConfigBuilder<T extends KeystoreSubsystemConfi
 
     /**
      * Register keystore configurations, each configuration should have unique name
-     * 
+     *
      * @param keyStores not null list with keystore configurations
      * @return builder
      */
@@ -30,7 +30,7 @@ public interface KeystoreSubsystemConfigBuilder<T extends KeystoreSubsystemConfi
 
     /**
      * KeyStoreConfig that that be use like default keystore
-     * 
+     *
      * @return builder
      */
     @Nonnull

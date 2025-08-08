@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service.processengine;
+package com.netcracker.cloud.dbaas.service.processengine;
 
 public class Const {
     public static final String

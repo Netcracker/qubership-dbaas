@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.qubership.cloud.dbaas.dto.HttpBasicCredentials;
 import org.qubership.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
@@ -38,7 +38,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PhysicalDatabasesServiceTest {
-    
+
     private static final String TEST_USERNAME = "test-username";
     private static final String TEST_PASSWORD = "test-password";
     private static final String TEST_ADAPTER_ID = "test-adapter-id";
@@ -69,7 +69,7 @@ class PhysicalDatabasesServiceTest {
 
     @InjectMocks
     private PhysicalDatabasesService physicalDatabasesService;
-    
+
     @Test
     void testPhysicalDatabaseCache() {
         PhysicalDatabase physicalDatabaseMock = new PhysicalDatabase();

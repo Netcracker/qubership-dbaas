@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.composite;
+package com.netcracker.cloud.dbaas.dto.composite;
 
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.Data;

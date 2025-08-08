@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.role;
+package com.netcracker.cloud.dbaas.dto.role;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

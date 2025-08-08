@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.qubership.core.scheduler.po.task.TaskState;
 import org.junit.jupiter.api.Assertions;

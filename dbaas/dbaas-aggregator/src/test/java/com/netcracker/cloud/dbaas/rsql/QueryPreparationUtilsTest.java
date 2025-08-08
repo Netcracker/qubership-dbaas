@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rsql;
+package com.netcracker.cloud.dbaas.rsql;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPart;

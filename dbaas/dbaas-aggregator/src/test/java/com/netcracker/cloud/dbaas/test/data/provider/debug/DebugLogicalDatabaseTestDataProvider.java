@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.test.data.provider.debug;
+package com.netcracker.cloud.dbaas.test.data.provider.debug;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;

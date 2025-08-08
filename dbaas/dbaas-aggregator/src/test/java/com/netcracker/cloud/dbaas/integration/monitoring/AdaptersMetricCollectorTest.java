@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration.monitoring;
+package com.netcracker.cloud.dbaas.integration.monitoring;
 
 import org.qubership.cloud.dbaas.monitoring.AdaptersMetricCollector;
 import org.qubership.cloud.dbaas.monitoring.model.DatabaseInfo;

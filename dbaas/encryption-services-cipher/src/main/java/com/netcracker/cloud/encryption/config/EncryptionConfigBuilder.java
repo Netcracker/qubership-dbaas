@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config;
+package com.netcracker.cloud.encryption.config;
 
 import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
 import org.qubership.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
@@ -8,7 +8,7 @@ import javax.annotation.Nonnull;
 public interface EncryptionConfigBuilder<T extends EncryptionConfigBuilder<T>> {
     /**
      * Build configuration instance with specified parameters
-     * 
+     *
      * @return build instance
      */
     @Nonnull
@@ -16,7 +16,7 @@ public interface EncryptionConfigBuilder<T extends EncryptionConfigBuilder<T>> {
 
     /**
      * Copy parameters from already build configuration
-     * 
+     *
      * @param config not null config for copy
      * @return builder
      */

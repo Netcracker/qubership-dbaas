@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.test.config;
+package com.netcracker.cloud.dbaas.test.config;
 
 import io.quarkus.arc.properties.UnlessBuildProperty;
 import io.quarkus.runtime.Startup;

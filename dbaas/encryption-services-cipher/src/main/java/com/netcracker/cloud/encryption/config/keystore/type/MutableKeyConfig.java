@@ -1,4 +1,4 @@
-package org.qubership.cloud.encryption.config.keystore.type;
+package com.netcracker.cloud.encryption.config.keystore.type;
 
 import javax.annotation.Nonnull;
 

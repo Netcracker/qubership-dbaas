@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import org.qubership.cloud.dbaas.dto.LinkDatabasesRequest;
 import org.qubership.cloud.dbaas.dto.v3.UpdateHostRequest;

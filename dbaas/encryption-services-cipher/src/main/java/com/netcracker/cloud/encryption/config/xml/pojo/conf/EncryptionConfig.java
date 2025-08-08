@@ -1,5 +1,5 @@
 
-package org.qubership.cloud.encryption.config.xml.pojo.conf;
+package com.netcracker.cloud.encryption.config.xml.pojo.conf;
 
 import com.google.common.base.MoreObjects;
 import jakarta.xml.bind.annotation.*;

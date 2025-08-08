@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
 import com.cronutils.utils.Preconditions;
 import org.qubership.cloud.context.propagation.core.ContextManager;

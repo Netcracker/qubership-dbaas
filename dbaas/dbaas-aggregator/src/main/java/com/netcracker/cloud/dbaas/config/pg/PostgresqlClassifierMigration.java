@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.config.pg;
+package com.netcracker.cloud.dbaas.config.pg;
 
 import com.google.common.base.Strings;
 import org.qubership.cloud.dbaas.JdbcUtils;

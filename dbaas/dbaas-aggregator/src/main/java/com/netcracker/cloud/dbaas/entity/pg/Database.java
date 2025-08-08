@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.entity.pg;
+package com.netcracker.cloud.dbaas.entity.pg;
 
 import org.qubership.cloud.dbaas.dto.ConnectionDescription;
 import org.qubership.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;

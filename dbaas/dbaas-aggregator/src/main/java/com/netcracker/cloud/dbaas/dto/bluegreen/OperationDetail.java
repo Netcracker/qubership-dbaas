@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.dto.bluegreen;
+package com.netcracker.cloud.dbaas.dto.bluegreen;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;

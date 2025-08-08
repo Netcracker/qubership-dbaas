@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.integration;
+package com.netcracker.cloud.dbaas.integration;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;

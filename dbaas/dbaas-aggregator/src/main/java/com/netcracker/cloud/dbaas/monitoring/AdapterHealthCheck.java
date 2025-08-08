@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.monitoring;
+package com.netcracker.cloud.dbaas.monitoring;
 
 import org.qubership.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator;
 import org.qubership.cloud.dbaas.monitoring.indicators.HealthCheckResponse;

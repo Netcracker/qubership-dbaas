@@ -1,5 +1,5 @@
 
-package org.qubership.cloud.encryption.config.xml.pojo.keystore;
+package com.netcracker.cloud.encryption.config.xml.pojo.keystore;
 
 import jakarta.xml.bind.annotation.XmlRegistry;
 
