@@ -18,29 +18,29 @@
         <flyway.version>11.10.0</flyway.version>
         <sonar.coverage.exclusions>
             src/main/java/db/migration/postgresql/**/*,
-            src/main/java/org/qubership/cloud/dbaas/dto/**/*,
-            src/main/java/org/qubership/cloud/dbaas/converter/**/*,
-            src/main/java/org/qubership/cloud/dbaas/service/processengine/**/*,
-            src/main/java/org/qubership/cloud/dbaas/config/UndertowConfig.java,
+            src/main/java/com/netcracker/cloud/dbaas/dto/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/converter/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/service/processengine/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/config/UndertowConfig.java,
             <!--TODO remove after implemetation-->
-            src/main/java/org/qubership/cloud/dbaas/controller/ConfigControllerV1.java,
-            src/main/java/org/qubership/cloud/dbaas/config/pg/**,
-            src/main/java/org/qubership/cloud/dbaas/monitoring/model/**/*,
-            src/main/java/org/qubership/cloud/dbaas/controller/ApiVersionController.java
+            src/main/java/com/netcracker/cloud/dbaas/controller/ConfigControllerV1.java,
+            src/main/java/com/netcracker/cloud/dbaas/config/pg/**,
+            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/controller/ApiVersionController.java
         </sonar.coverage.exclusions>
         <sonar.cpd.exclusions>
             src/main/java/db/migration/postgresql/**/*,
-            src/main/java/org/qubership/cloud/dbaas/entity/**/*,
-            src/main/java/org/qubership/cloud/dbaas/dto/**/*,
-            src/main/java/org/qubership/cloud/dbaas/converter/**/*,
-            src/main/java/org/qubership/cloud/dbaas/exceptions/**/*,
-            src/main/java/org/qubership/cloud/dbaas/service/processengine/**/*,
-            src/main/java/org/qubership/cloud/dbaas/config/UndertowConfig.java,
+            src/main/java/com/netcracker/cloud/dbaas/entity/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/dto/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/converter/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/exceptions/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/service/processengine/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/config/UndertowConfig.java,
             <!--TODO remove after implemetation-->
-            src/main/java/org/qubership/cloud/dbaas/controller/ConfigControllerV1.java,
-            src/main/java/org/qubership/cloud/dbaas/config/pg/**,
-            src/main/java/org/qubership/cloud/dbaas/monitoring/model/**/*,
-            src/main/java/org/qubership/cloud/dbaas/controller/ApiVersionController.java
+            src/main/java/com/netcracker/cloud/dbaas/controller/ConfigControllerV1.java,
+            src/main/java/com/netcracker/cloud/dbaas/config/pg/**,
+            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/controller/ApiVersionController.java
         </sonar.cpd.exclusions>
     </properties>
 
