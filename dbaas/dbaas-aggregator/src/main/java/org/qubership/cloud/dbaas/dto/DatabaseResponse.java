@@ -70,7 +70,7 @@ public class DatabaseResponse {
     @Schema(description = "List of warning messages.")
     private List<String> warnings;
 
-    @Schema(description = "This parameter specifies if a control over the database is not carried out by the DbaaS adapter")
+    @Schema(description = "This parameter specifies if a control over the database is not carried out by the DBaaS adapter")
     private boolean externallyManageable = false;
 
     @Schema(description = "The list of roles which are related to this logical database. The external security service (e.g. DBaaA Agent) can perform a verification process on this field.")

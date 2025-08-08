@@ -42,7 +42,7 @@ public class MicroserviceBasedController {
     @Operation(summary = "V3. Get actual access grants for microservice databases",
             description = "The API allows to get actual access grants of microservice databases.")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Access grants was successfully found", content = @Content(schema = @Schema(implementation = AccessGrantsResponse.class))),
+            @APIResponse(responseCode = "200", description = "Access grants were successfully found", content = @Content(schema = @Schema(implementation = AccessGrantsResponse.class))),
             @APIResponse(responseCode = "404", description = "Access grants for service's databases was not founded", content = @Content(schema = @Schema(implementation = String.class))),
     })
     @GET

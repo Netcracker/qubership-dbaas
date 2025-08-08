@@ -36,7 +36,7 @@ public abstract class DatabaseResponseV3 {
     @Schema(required = true, description = "Name of database. It may be generated or, if name was specified in the request, then it will be specified.")
     private String name;
 
-    @Schema(description = "This parameter specifies if a control over the database is not carried out by the DbaaS adapter")
+    @Schema(description = "This parameter specifies if a control over the database is not carried out by the DBaaS adapter")
     private boolean externallyManageable = false;
 
     @Schema(description = "Time to create a database.")

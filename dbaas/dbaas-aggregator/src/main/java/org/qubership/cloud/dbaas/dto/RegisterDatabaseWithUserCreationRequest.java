@@ -23,7 +23,7 @@ public class RegisterDatabaseWithUserCreationRequest {
     @NotNull
     private String name;
 
-    @Schema(description = "This parameter specifies if the DbaaS should except this database from backup/restore procedure. " +
+    @Schema(description = "This parameter specifies if the DBaaS should except this database from backup/restore procedure. " +
             "The parameter cannot be modified and it is installed only once during registration request.")
     private Boolean backupDisabled = false;
 
