@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.rest;
+package org.qubership.cloud.dbaas.security.filters;
 
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.client.ClientRequestContext;

@@ -14,6 +14,7 @@ import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposit
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
+import org.qubership.cloud.dbaas.security.validators.NamespaceValidator;
 import org.qubership.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
 import io.quarkus.narayana.jta.QuarkusTransactionException;
 import jakarta.annotation.PostConstruct;
@@ -472,7 +473,6 @@ public class AggregatedDatabaseAdministrationService {
     }
 
     public static class AggregatedDatabaseAdministrationUtils {
-
         public static boolean isUniqueViolation(Exception ex) {
             Throwable subException = ex;
             String sqlState = null;
@@ -492,9 +492,15 @@ public class AggregatedDatabaseAdministrationService {
             return createResponseDatabaseCreated(new DatabaseResponseV3SingleCP(databaseRegistry, physicalDatabaseId, role));
         }
 
-        public static boolean isClassifierCorrect(Map<String, Object> classifier) {
-            if (classifier != null && classifier.containsKey(MICROSERVICE_NAME) && classifier.containsKey(NAMESPACE)) {
-                return Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_SERVICE) || (Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT) && classifier.containsKey(TENANT_ID));
+        public static boolean isClassifierCorrect(Map<String, Object> classifier, NamespaceValidator namespaceValidator) {
+            if (!(classifier != null && classifier.containsKey(MICROSERVICE_NAME) && classifier.containsKey(NAMESPACE))) {
+                return false;
+            }
+            if (!(Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_SERVICE) || (Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT) && classifier.containsKey(TENANT_ID)))) {
+                return false;
+            }
+            if (namespaceValidator.checkNamespaceFromClassifier(classifier)) {
+                return true;
             }
             return false;
         }

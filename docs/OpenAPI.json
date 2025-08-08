@@ -6736,6 +6736,14 @@
           }
         }
       }
+    },
+    "securitySchemes": {
+      "SecurityScheme": {
+        "type": "http",
+        "description": "Authentication",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
     }
   }
 }

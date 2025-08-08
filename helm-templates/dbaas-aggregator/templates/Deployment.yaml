@@ -33,6 +33,13 @@ spec:
             -   name: dbaas-security-configuration-volume
                 secret:
                     secretName: 'dbaas-security-configuration-secret'
+            -   name: netcracker-token
+                projected:
+                  sources:
+                      - serviceAccountToken:
+                          path: token
+                          audience: netcracker
+                          expirationSeconds: 60
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
@@ -56,6 +63,8 @@ spec:
                 -   name: dbaas-security-configuration-volume
                     mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
                     readOnly: true
+                -   name: netcracker-token
+                    mountPath: /var/run/secrets/tokens/netcracker
             {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
                 -   name: tmp
                     mountPath: /tmp

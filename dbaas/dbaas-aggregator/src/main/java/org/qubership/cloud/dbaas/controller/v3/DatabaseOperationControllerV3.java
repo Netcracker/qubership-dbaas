@@ -11,6 +11,7 @@ import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
 import org.qubership.cloud.dbaas.exceptions.*;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import org.qubership.cloud.dbaas.security.validators.NamespaceValidator;
 import org.qubership.cloud.dbaas.service.*;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -57,6 +58,8 @@ public class DatabaseOperationControllerV3 {
     OperationService operationService;
     @Inject
     EncryptionServiceProvider encryptionServiceProvider;
+    @Inject
+    NamespaceValidator namespaceValidator;
 
     @Operation(summary = "V3. Change user password",
             description = "The API changes password of a user that is related to the specified database. A password will be changed to a random value." +
@@ -76,6 +79,11 @@ public class DatabaseOperationControllerV3 {
                                        @Parameter(description = "Project namespace in which the databases are used")
                                        @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Received request on changed password with request body {} and namespace {}", passwordChangeRequest, namespace);
+
+        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(passwordChangeRequest.getClassifier(), namespaceValidator)) {
+            throw InvalidClassifierException.withDefaultMsg(passwordChangeRequest.getClassifier());
+        }
+
         if (passwordChangeRequest == null || StringUtils.isEmpty(passwordChangeRequest.getType())) {
             throw new PasswordChangeValidationException("The request body is empty or database type is not specified", Source.builder()
                     .pointer(passwordChangeRequest == null ? "/" : "/type").build());
@@ -128,6 +136,10 @@ public class DatabaseOperationControllerV3 {
         RecreateDatabaseResponse response = new RecreateDatabaseResponse();
         for (RecreateDatabaseRequest recreateDbRequest : recreateDatabasesRequests) {
             try {
+                if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(recreateDbRequest.getClassifier(), namespaceValidator)) {
+                    throw InvalidClassifierException.withDefaultMsg(recreateDbRequest.getClassifier());
+                }
+
                 Optional<DatabaseRegistry> existedDbRegisty = getDatabase(namespace, recreateDbRequest);
                 DatabaseRegistry newDb = dBaaService.recreateDatabase(existedDbRegisty.orElseThrow(), recreateDbRequest.getPhysicalDatabaseId());
                 log.info("logical database with classifier {} and type {} was successfully recreated in physiacalDb id {}",
@@ -334,8 +346,14 @@ public class DatabaseOperationControllerV3 {
     }
 
     private boolean isUpdateConnectionRequestBodyValid(UpdateConnectionPropertiesRequest updateConnectionPropertiesRequest) {
-        return MapUtils.isEmpty(updateConnectionPropertiesRequest.getClassifier()) ||
-                MapUtils.isEmpty(updateConnectionPropertiesRequest.getConnectionProperties());
+        if(MapUtils.isEmpty(updateConnectionPropertiesRequest.getClassifier()) ||
+                MapUtils.isEmpty(updateConnectionPropertiesRequest.getConnectionProperties())) {
+            return true;
+        };
+        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(updateConnectionPropertiesRequest.getClassifier(), namespaceValidator)) {
+            throw InvalidClassifierException.withDefaultMsg(updateConnectionPropertiesRequest.getClassifier());
+        }
+        return false;
     }
 
     private boolean isDatabaseContainsConnectionPropertiesForRole(String role, List<Map<String, Object>> databaseProperties) {
@@ -346,10 +364,13 @@ public class DatabaseOperationControllerV3 {
         if (classifier == null) {
             return false;
         }
-        if (classifier.containsKey(NAMESPACE)) {
-            return Objects.equals(classifier.get(NAMESPACE), namespace);
+        if (!(classifier.containsKey(NAMESPACE) && Objects.equals(classifier.get(NAMESPACE), namespace))) {
+            return false;
         }
-        return false;
+        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(classifier, namespaceValidator)) {
+            throw InvalidClassifierException.withDefaultMsg(classifier);
+        }
+        return true;
     }
 
     private List<ValidationException> validateRecreateDbRequest(String namespace, List<RecreateDatabaseRequest> recreateDatabasesRequests) {

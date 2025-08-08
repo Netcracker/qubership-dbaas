@@ -2,7 +2,7 @@ package org.qubership.cloud.dbaas.service;
 
 import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
 import org.qubership.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
-import org.qubership.cloud.dbaas.rest.BasicAuthFilter;
+import org.qubership.cloud.dbaas.security.filters.BasicAuthFilter;
 import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClient;
 import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientLoggingFilter;
 import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;

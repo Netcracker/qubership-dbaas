@@ -10,8 +10,11 @@ import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.userrestore.SuccessfulRestoreUsersResponse;
 import org.qubership.cloud.dbaas.dto.userrestore.RestoreUsersResponse;
 import org.qubership.cloud.dbaas.exceptions.DbNotFoundException;
+import org.qubership.cloud.dbaas.exceptions.InvalidClassifierException;
 import org.qubership.cloud.dbaas.exceptions.UserDeletionException;
 import org.qubership.cloud.dbaas.exceptions.UserNotFoundException;
+import org.qubership.cloud.dbaas.security.validators.NamespaceValidator;
+import org.qubership.cloud.dbaas.service.AggregatedDatabaseAdministrationService;
 import org.qubership.cloud.dbaas.service.DBaaService;
 import org.qubership.cloud.dbaas.service.UserService;
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -55,6 +58,9 @@ public class DatabaseUsersControllerV3 {
     @Inject
     private UserService userService;
 
+    @Inject
+    NamespaceValidator namespaceValidator;
+
     @Operation(summary = "V3. Get or create user",
             description = "The API allows to get or create specific user for database.")
     @APIResponses({
@@ -68,6 +74,11 @@ public class DatabaseUsersControllerV3 {
     public Response getOrCreateUser(@Parameter(description = "Contains classifier and information about user", required = true)
                                             GetOrCreateUserRequest getOrCreateUserRequest) {
         log.info("Get request to get or create database user. Request body {}", getOrCreateUserRequest);
+
+        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(getOrCreateUserRequest.getClassifier(), namespaceValidator)) {
+            throw InvalidClassifierException.withDefaultMsg(getOrCreateUserRequest.getClassifier());
+        }
+
         DatabaseRegistry foundDb = dBaaService.findDatabaseByClassifierAndType(getOrCreateUserRequest.getClassifier(), getOrCreateUserRequest.getType(), true);
         if (foundDb == null) {
             log.error("Database with classifier={} is not found.", getOrCreateUserRequest.getClassifier());
@@ -118,6 +129,7 @@ public class DatabaseUsersControllerV3 {
     public Response deleteUser(@Parameter(description = "Contains userId or classifier, logicalUserId and type field for user identification.", required = true)
                                        UserOperationRequest deleteUserRequest) {
         log.info("Get request to delete database user. Request body {}", deleteUserRequest);
+
         if (!isUserOperationRequestValid(deleteUserRequest)) {
             log.error("Request body is not valid." +
                     "Delete user request must contains 'userId' field or 'classifier', 'logicalUserId' and 'type' fields.");
@@ -147,6 +159,7 @@ public class DatabaseUsersControllerV3 {
     public Response rotateUserPassword(@Parameter(description = "Contains userId or classifier, logicalUserId and type field for user identification.", required = true)
                                                UserOperationRequest rotateUserPasswordRequest) {
         log.info("Get request to rotate password for database user. Request body {}", rotateUserPasswordRequest);
+
         if (!isUserOperationRequestValid(rotateUserPasswordRequest)) {
             log.error("Request body is not valid." +
                     "Rotate password user request must contains 'userId' field or 'classifier', 'logicalUserId' and 'type' fields.");
@@ -174,6 +187,11 @@ public class DatabaseUsersControllerV3 {
     public Response restoreUser(@Parameter(description = "Contains classifier, user role and physical database type", required = true)
                                              RestoreUsersRequest restoreUsersRequest) {
         log.info("Get request to restore users");
+
+        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(restoreUsersRequest.getClassifier(), namespaceValidator)) {
+            throw InvalidClassifierException.withDefaultMsg(restoreUsersRequest.getClassifier());
+        }
+
         RestoreUsersResponse restoreUsersResponse = userService.restoreUsers(restoreUsersRequest);
         if (!restoreUsersResponse.getUnsuccessfully().isEmpty()) {
             return Response.serverError().entity(restoreUsersResponse).build();
@@ -185,9 +203,15 @@ public class DatabaseUsersControllerV3 {
         if (StringUtils.hasLength(request.getUserId())) {
             return true;
         }
-        return StringUtils.hasLength(request.getUserId())
+        if (!(StringUtils.hasLength(request.getUserId())
                 || !ObjectUtils.isEmpty(request.getClassifier())
-                || StringUtils.hasLength(request.getType());
+                || StringUtils.hasLength(request.getType()))) {
+            return false;
+        }
+        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(request.getClassifier(), namespaceValidator)) {
+            throw InvalidClassifierException.withDefaultMsg(request.getClassifier());
+        }
+        return true;
     }
 }
 
