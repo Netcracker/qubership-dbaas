@@ -34,7 +34,7 @@ jobs:
     needs: create-tag
     uses: ./.github/workflows/maven-build.yaml
     with:
-      ref: v${{ github.event.inputs.version }}
+      ref: "refs/tags/v${{ github.event.inputs.version }}"
       dry-run: ${{ github.event.inputs.dry-run }}
 
   cleanup-on-dry-run:
