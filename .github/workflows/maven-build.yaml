@@ -25,11 +25,11 @@ jobs:
       actor: ${{ github.actor }}
       upload-artifact: true
       ref: ${{ inputs.ref }}
-      dry-run: ${{ inputs.dry-run }}
+      dry-run: ${{ inputs.dry-run || false }}
 
   docker-build:
     needs: [mvn]
     uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@feature/java-service-workflow
     with:
-      dry-run: ${{ inputs.dry-run }}
+      dry-run: ${{ inputs.dry-run || false }}
       ref: ${{ inputs.ref }}
