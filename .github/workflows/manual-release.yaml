@@ -32,10 +32,9 @@ jobs:
 
   build-and-publish:
     needs: create-tag
-    uses: ./.github/workflows/docker-build-publish.yaml
+    uses: ./.github/workflows/maven-build.yaml
     with:
       ref: v${{ github.event.inputs.version }}
-      docker-tags: v${{ github.event.inputs.version }}
       dry-run: ${{ github.event.inputs.dry-run == 'true' }}
 
   cleanup-on-dry-run:

@@ -5,6 +5,17 @@ on:
   push:
   pull_request:
     types: [ opened, synchronize, reopened ]
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        type: string
+        description: 'Git ref to checkout'
+      dry-run:
+        required: false
+        type: boolean
+        default: false
+        description: 'Whether to perform a dry run'
 
 jobs:
   mvn:
@@ -13,9 +24,11 @@ jobs:
       event-name: ${{ github.event_name }}
       actor: ${{ github.actor }}
       upload-artifact: true
+      ref: ${{ inputs.ref }}
 
   docker-build:
-      needs: [mvn]
-      uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@feature/java-service-workflow
-      with:
-        dry-run: false
+    needs: [mvn]
+    uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@feature/java-service-workflow
+    with:
+      dry-run: ${{ inputs.dry-run == 'true' }}
+      ref: ${{ inputs.ref }}
