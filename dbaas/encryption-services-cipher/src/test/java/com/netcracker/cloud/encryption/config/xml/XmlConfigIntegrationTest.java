@@ -70,7 +70,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testEncryptionSubsystemLoadsCorrect() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         assertThat("When correct xml contain encryption subsystem after unmarshar they should exists like java object",
@@ -79,7 +79,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testEncryptionSubSystem_parsAlgorithm() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         assertThat("Algorithm should be pars from xml as is without any validation that they exists",
@@ -89,7 +89,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testEncryptionSubSystem_parsKeyAlias() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         assertThat(
@@ -100,7 +100,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testEncryptionSubSystem_parsKeyStoreName() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-crypto-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -172,7 +172,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testKeyStoreLoadsCorrect() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
         System.out.println(encryptionConfiguration);
         assertThat("When correct xml contain encryption subsystem after unmarshar they should exists like java object",
@@ -181,7 +181,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testKeyStore_defaultKeystoreExists() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -192,7 +192,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testKeyStore_defaultKeystoreParsCorrect() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -204,7 +204,7 @@ class XmlConfigIntegrationTest {
     @Test
     void testKeyStore_whenDefaultKeystoreNotSpecifyExplicitUseFirstKeyStore() throws Exception {
         File cfg = getResource(
-                "/org/qubership/security/encryption/config/xml/filled-keystore-subsystem-without-default-keystore.xml");
+                "/com/netcracker/security/encryption/config/xml/filled-keystore-subsystem-without-default-keystore.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -216,7 +216,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testKeyStoreFilled_listKeyStoreConfigNotEmpty() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -228,7 +228,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_parsePathCorrect() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -243,7 +243,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_parseTypeCorrect() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -256,7 +256,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_parsePasswordCorrect() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -269,7 +269,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_parseIsDeprecatedCorrect() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -282,7 +282,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_keysNotEmpty() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -295,7 +295,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_keyAliasParsedCorrectly() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -309,7 +309,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_keyIsNotDeprecatedByDefault() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -323,7 +323,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_keyDeprecatedParsedCorrectly() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -337,7 +337,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_keyPasswordParsedCorrectly() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -351,7 +351,7 @@ class XmlConfigIntegrationTest {
 
     @Test
     void testLocalKeyStoreConfig_keyEmptyPasswordParsedCorrectly() throws Exception {
-        File cfg = getResource("/org/qubership/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
+        File cfg = getResource("/com/netcracker/security/encryption/config/xml/full-filled-keystore-subsystem.xml");
         EncryptionConfiguration encryptionConfiguration = xmlConfigurationAdapter.loadConfiguration(cfg);
 
         System.out.println(encryptionConfiguration);
@@ -501,7 +501,7 @@ class XmlConfigIntegrationTest {
     @Test
     void testBeforeParseXmlTheyShouldBeValidateByXSD() throws Exception {
         File cfg =
-                getResource("/org/qubership/security/encryption/config/xml/configuration-without-required-node.xml");
+                getResource("/com/netcracker/security/encryption/config/xml/configuration-without-required-node.xml");
 
         assertThrows(
                 IllegalConfiguration.class,
@@ -551,7 +551,7 @@ class XmlConfigIntegrationTest {
     void testNotEncryptedSecureDataByLoadingEncryptsAndStoreToXml() throws Exception {
         String plainTextPassword = "qwerty";
         File cfgFile = getResource(
-                "/org/qubership/security/encryption/config/xml/filled-keystore-subsystem-without-default-keystore.xml");
+                "/com/netcracker/security/encryption/config/xml/filled-keystore-subsystem-without-default-keystore.xml");
 
         assertTrue(Files.asCharSource(cfgFile, StandardCharsets.UTF_8).read().contains(plainTextPassword));
 
