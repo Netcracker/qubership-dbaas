@@ -2,9 +2,9 @@ package com.netcracker.cloud.dbaas.mapper;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.v3.DebugDatabaseDeclarativeConfigV3;
-import org.qubership.cloud.dbaas.dto.v3.DebugLogicalDatabaseV3;
-import org.qubership.cloud.dbaas.entity.dto.DebugLogicalDatabasePersistenceDto;
+import com.netcracker.cloud.dbaas.dto.v3.DebugDatabaseDeclarativeConfigV3;
+import com.netcracker.cloud.dbaas.dto.v3.DebugLogicalDatabaseV3;
+import com.netcracker.cloud.dbaas.entity.dto.DebugLogicalDatabasePersistenceDto;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.mapstruct.AfterMapping;

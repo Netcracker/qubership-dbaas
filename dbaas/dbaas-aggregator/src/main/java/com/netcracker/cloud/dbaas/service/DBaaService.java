@@ -1,17 +1,17 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.cronutils.utils.Preconditions;
-import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.dto.*;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.*;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
-import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.*;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -39,10 +39,10 @@ import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.DbaasApiPath.VERSION_1;
-import static org.qubership.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
-import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_1;
+import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
 @ApplicationScoped

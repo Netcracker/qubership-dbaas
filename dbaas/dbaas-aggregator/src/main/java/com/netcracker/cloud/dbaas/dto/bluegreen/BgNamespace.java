@@ -13,7 +13,7 @@ public class BgNamespace {
     private Date updateTime;
     private UUID bgDomain;
 
-    public BgNamespace(org.qubership.cloud.dbaas.entity.pg.BgNamespace bgNamespace) {
+    public BgNamespace(com.netcracker.cloud.dbaas.entity.pg.BgNamespace bgNamespace) {
         this.namespace = bgNamespace.getNamespace();
         this.state = bgNamespace.getState();
         this.version = bgNamespace.getVersion();

@@ -2,10 +2,10 @@ package com.netcracker.cloud.encryption.key;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Strings;
-import org.qubership.cloud.encryption.config.keystore.type.EnvironmentKeystoreConfig;
-import org.qubership.cloud.encryption.config.keystore.type.KeyConfig;
-import org.qubership.cloud.encryption.config.xml.pojo.keystore.KeyXmlConf;
-import org.qubership.cloud.encryption.key.exception.IllegalKeystoreConfigurationException;
+import com.netcracker.cloud.encryption.config.keystore.type.EnvironmentKeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeyConfig;
+import com.netcracker.cloud.encryption.config.xml.pojo.keystore.KeyXmlConf;
+import com.netcracker.cloud.encryption.key.exception.IllegalKeystoreConfigurationException;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

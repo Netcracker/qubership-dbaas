@@ -3,11 +3,11 @@ package com.netcracker.cloud.encryption.config.xml.pojo.conf;
 
 import com.google.common.base.MoreObjects;
 import jakarta.xml.bind.annotation.*;
-import org.qubership.cloud.encryption.config.MutableEncryptionConfiguration;
-import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
-import org.qubership.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
-import org.qubership.cloud.encryption.config.xml.pojo.crypto.CryptoSubsystemXmlConf;
-import org.qubership.cloud.encryption.config.xml.pojo.keystore.KeyStoreSubsystemXmlConf;
+import com.netcracker.cloud.encryption.config.MutableEncryptionConfiguration;
+import com.netcracker.cloud.encryption.config.crypto.CryptoSubsystemConfig;
+import com.netcracker.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
+import com.netcracker.cloud.encryption.config.xml.pojo.crypto.CryptoSubsystemXmlConf;
+import com.netcracker.cloud.encryption.config.xml.pojo.keystore.KeyStoreSubsystemXmlConf;
 
 import javax.annotation.Nonnull;
 

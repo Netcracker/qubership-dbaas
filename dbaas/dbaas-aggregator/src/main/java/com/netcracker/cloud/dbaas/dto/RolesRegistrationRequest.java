@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.qubership.cloud.dbaas.dto.conigs.RolesRegistration;
+import com.netcracker.cloud.dbaas.dto.conigs.RolesRegistration;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NonNull;

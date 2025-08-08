@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.Source;
 import jakarta.ws.rs.core.Response;
 
-import static org.qubership.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_4040;
+import static com.netcracker.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_4040;
 
 public class BgNamespaceNotEmptyException extends ValidationException {
     public BgNamespaceNotEmptyException(String detail) {

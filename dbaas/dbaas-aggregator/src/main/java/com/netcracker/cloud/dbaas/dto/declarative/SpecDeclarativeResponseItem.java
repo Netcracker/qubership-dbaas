@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.dto.declarative;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.qubership.cloud.dbaas.dto.conigs.ApplyConfigResponseComponent;
+import com.netcracker.cloud.dbaas.dto.conigs.ApplyConfigResponseComponent;
 import lombok.Data;
 
 import java.util.SortedMap;

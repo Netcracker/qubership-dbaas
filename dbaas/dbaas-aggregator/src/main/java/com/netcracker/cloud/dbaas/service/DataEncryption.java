@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.Secret;
+import com.netcracker.cloud.dbaas.dto.Secret;
 
 public interface DataEncryption {
 

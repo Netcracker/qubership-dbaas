@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.AllArgsConstructor;

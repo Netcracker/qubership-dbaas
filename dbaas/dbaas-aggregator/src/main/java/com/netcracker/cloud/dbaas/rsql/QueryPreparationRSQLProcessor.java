@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.rsql;
 
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparation;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationOverrideConfig;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPart;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparation;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationOverrideConfig;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPart;
 import cz.jirutka.rsql.parser.RSQLParser;
 import cz.jirutka.rsql.parser.RSQLParserException;
 import lombok.RequiredArgsConstructor;

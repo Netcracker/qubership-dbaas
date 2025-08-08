@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.monitoring.interceptor;
 
-import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
+import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.interceptor.AroundInvoke;

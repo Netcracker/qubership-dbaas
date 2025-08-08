@@ -1,6 +1,6 @@
 package com.netcracker.cloud.encryption.config.keystore;
 
-import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeystoreConfig;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

@@ -41,19 +41,19 @@ public interface ChainedCryptoRequest<T extends ChainedCryptoRequest> {
      * @return builder
      * @throws NullPointerException if specified key is null
      * @see SecretKey
-     * @see org.qubership.cloud.encryption.key.KeyStore
+     * @see com.netcracker.cloud.encryption.key.KeyStore
      */
     @Nonnull
     T key(@Nonnull Key key);
 
     /**
      * Define key alias that should be find in
-     * {@link org.qubership.cloud.encryption.key.KeyStore#getKeyByAlias(String)} and use for encryption / decryption
+     * {@link com.netcracker.cloud.encryption.key.KeyStore#getKeyByAlias(String)} and use for encryption / decryption
      * it method opposite for use key explicitly {@link ChainedCryptoRequest#key(Key)}
      *
      * @param aliasKey not null unique name for key
      * @return builder
-     * @see org.qubership.cloud.encryption.key.KeyStore#getKeyByAlias(String)
+     * @see com.netcracker.cloud.encryption.key.KeyStore#getKeyByAlias(String)
      */
     @Nonnull
     T keyAlias(@Nonnull String aliasKey);

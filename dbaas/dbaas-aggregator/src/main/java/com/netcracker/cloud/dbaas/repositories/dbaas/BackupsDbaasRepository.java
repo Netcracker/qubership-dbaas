@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.repositories.dbaas;
 
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import jakarta.persistence.EntityManager;
 
 import java.util.List;

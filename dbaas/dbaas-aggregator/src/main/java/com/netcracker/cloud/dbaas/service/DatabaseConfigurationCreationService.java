@@ -8,26 +8,26 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
-import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
-import org.qubership.cloud.dbaas.entity.pg.BgNamespace;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
-import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.cloud.dbaas.service.processengine.processes.AllDatabasesCreationProcess;
-import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
-import org.qubership.core.scheduler.po.DataContext;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.service.processengine.processes.AllDatabasesCreationProcess;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import com.netcracker.core.scheduler.po.DataContext;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
-import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @ApplicationScoped
 @Slf4j

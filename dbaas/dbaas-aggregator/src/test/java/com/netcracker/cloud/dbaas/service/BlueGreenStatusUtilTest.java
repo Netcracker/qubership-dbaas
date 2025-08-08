@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import static org.qubership.cloud.dbaas.service.BlueGreenStatusUtil.*;
+import static com.netcracker.cloud.dbaas.service.BlueGreenStatusUtil.*;
 
 class BlueGreenStatusUtilTest {
 

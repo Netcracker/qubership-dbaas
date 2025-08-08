@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.jboss.resteasy.plugins.providers.jackson._private.JacksonLogger;
 
-import static org.qubership.cloud.dbaas.controller.error.Utils.WARNING_MESSAGE;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.WARNING_MESSAGE;
 import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
 
 @Slf4j

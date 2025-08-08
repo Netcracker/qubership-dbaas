@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.entity.pg.role.DatabaseRole;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRoleRepository;
+import com.netcracker.cloud.dbaas.entity.pg.role.DatabaseRole;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRoleRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;

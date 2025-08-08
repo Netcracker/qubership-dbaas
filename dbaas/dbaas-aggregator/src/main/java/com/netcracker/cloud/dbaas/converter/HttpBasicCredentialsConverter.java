@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.converter;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.HttpBasicCredentials;
+import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
 
 import jakarta.persistence.AttributeConverter;
 import java.io.IOException;

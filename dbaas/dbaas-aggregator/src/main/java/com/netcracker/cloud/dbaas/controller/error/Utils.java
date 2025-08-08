@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.controller.error;
 
-import org.qubership.cloud.core.error.rest.tmf.TmfError;
-import org.qubership.cloud.core.error.rest.tmf.TmfErrorResponse;
-import org.qubership.cloud.core.error.runtime.ErrorCodeException;
+import com.netcracker.cloud.core.error.rest.tmf.TmfError;
+import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
+import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import lombok.AccessLevel;
@@ -13,7 +13,7 @@ import java.net.URI;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import static org.qubership.cloud.core.error.rest.tmf.TmfErrorResponse.TYPE_V1_0;
+import static com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse.TYPE_V1_0;
 import static jakarta.ws.rs.core.Response.Status.Family.SERVER_ERROR;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

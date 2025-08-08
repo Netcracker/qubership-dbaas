@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupsRepository;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupsRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;

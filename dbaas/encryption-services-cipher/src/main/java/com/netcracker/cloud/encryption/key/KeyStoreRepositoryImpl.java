@@ -2,10 +2,10 @@ package com.netcracker.cloud.encryption.key;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
-import org.qubership.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
-import org.qubership.cloud.encryption.config.keystore.type.EnvironmentKeystoreConfig;
-import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;
-import org.qubership.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.EnvironmentKeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

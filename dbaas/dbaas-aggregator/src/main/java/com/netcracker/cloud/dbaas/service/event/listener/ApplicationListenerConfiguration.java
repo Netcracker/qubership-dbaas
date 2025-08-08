@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.service.event.listener;
 
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import io.agroal.api.AgroalDataSource;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;

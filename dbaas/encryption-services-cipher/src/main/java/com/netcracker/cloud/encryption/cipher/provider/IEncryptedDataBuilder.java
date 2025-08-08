@@ -1,6 +1,6 @@
 package com.netcracker.cloud.encryption.cipher.provider;
 
-import org.qubership.cloud.encryption.key.AliasedKey;
+import com.netcracker.cloud.encryption.key.AliasedKey;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

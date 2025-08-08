@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.mapper;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import org.qubership.cloud.dbaas.test.data.provider.debug.DebugLogicalDatabaseTestDataProvider;
+import com.netcracker.cloud.dbaas.test.data.provider.debug.DebugLogicalDatabaseTestDataProvider;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;

@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.core.error.runtime.ErrorCodeException;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import lombok.Getter;
 
 import java.util.UUID;

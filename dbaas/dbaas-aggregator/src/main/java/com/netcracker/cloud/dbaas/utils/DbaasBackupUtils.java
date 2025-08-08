@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.utils;
 
-import org.qubership.cloud.dbaas.DatabaseType;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;

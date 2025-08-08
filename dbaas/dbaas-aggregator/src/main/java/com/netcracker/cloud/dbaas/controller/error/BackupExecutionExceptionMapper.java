@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.controller.error;
 
-import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
+import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
@@ -8,9 +8,9 @@ import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 import lombok.CustomLog;
 
-import static org.qubership.cloud.dbaas.controller.error.Utils.WARNING_MESSAGE;
-import static org.qubership.cloud.dbaas.controller.error.Utils.buildResponse;
-import static org.qubership.cloud.dbaas.controller.error.Utils.tmfResponseBuilder;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.WARNING_MESSAGE;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.buildResponse;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.tmfResponseBuilder;
 
 @CustomLog
 @Provider

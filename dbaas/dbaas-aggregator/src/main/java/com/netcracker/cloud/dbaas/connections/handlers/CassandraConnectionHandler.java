@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.connections.handlers;
 
-import org.qubership.cloud.dbaas.DatabaseType;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils;
+import com.netcracker.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import org.apache.commons.lang3.StringUtils;

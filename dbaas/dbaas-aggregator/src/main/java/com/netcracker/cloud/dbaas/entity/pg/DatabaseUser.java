@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.converter.ConnectionDescriptionConverter;
-import org.qubership.cloud.dbaas.converter.MapConverter;
-import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
-import org.qubership.cloud.dbaas.dto.ConnectionDescription;
+import com.netcracker.cloud.dbaas.converter.ConnectionDescriptionConverter;
+import com.netcracker.cloud.dbaas.converter.MapConverter;
+import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
+import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;

@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.dto.adapter.AccessGrantsResponse;
-import org.qubership.cloud.dbaas.dto.v3.ErrorMessage;
-import org.qubership.cloud.dbaas.entity.pg.role.DatabaseRole;
-import org.qubership.cloud.dbaas.service.DatabaseRolesService;
+import com.netcracker.cloud.dbaas.dto.adapter.AccessGrantsResponse;
+import com.netcracker.cloud.dbaas.dto.v3.ErrorMessage;
+import com.netcracker.cloud.dbaas.entity.pg.role.DatabaseRole;
+import com.netcracker.cloud.dbaas.service.DatabaseRolesService;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -23,10 +23,10 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Optional;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.DbaasApiPath.ACCESS_GRANTS_SUBPATH_V3;
-import static org.qubership.cloud.dbaas.DbaasApiPath.DATABASE_OPERATION_PATH_V3;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.ACCESS_GRANTS_SUBPATH_V3;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.DATABASE_OPERATION_PATH_V3;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
 
 @Slf4j
 @Tag(name = "Microservice controller v3",

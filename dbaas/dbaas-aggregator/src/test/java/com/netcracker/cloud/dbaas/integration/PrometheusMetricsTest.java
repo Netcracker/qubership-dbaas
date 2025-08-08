@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.integration;
 
-import org.qubership.cloud.dbaas.dto.PrometheusMetric;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.dto.PrometheusMetric;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;

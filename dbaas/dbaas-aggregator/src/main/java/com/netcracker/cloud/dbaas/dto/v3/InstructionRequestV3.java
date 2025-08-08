@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
 
-import org.qubership.cloud.dbaas.converter.ListConverter;
+import com.netcracker.cloud.dbaas.converter.ListConverter;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.*;
 

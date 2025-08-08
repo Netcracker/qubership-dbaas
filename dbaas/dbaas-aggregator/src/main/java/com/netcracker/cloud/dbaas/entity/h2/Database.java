@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.h2;
 
-import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -13,7 +13,7 @@ import org.hibernate.collection.spi.PersistentBag;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
+import static com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -74,8 +74,8 @@ public class Database extends AbstractDatabase {
                 '}';
     }
 
-    private org.qubership.cloud.dbaas.entity.pg.Database asPgEntityBase() {
-        org.qubership.cloud.dbaas.entity.pg.Database copy = new org.qubership.cloud.dbaas.entity.pg.Database();
+    private com.netcracker.cloud.dbaas.entity.pg.Database asPgEntityBase() {
+        com.netcracker.cloud.dbaas.entity.pg.Database copy = new com.netcracker.cloud.dbaas.entity.pg.Database();
         copy.setId(this.id);
         copy.setOldClassifier(this.oldClassifier);
         copy.setClassifier(this.classifier);
@@ -101,14 +101,14 @@ public class Database extends AbstractDatabase {
         return copy;
     }
 
-    public org.qubership.cloud.dbaas.entity.pg.Database asPgEntity() {
-        org.qubership.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
+    public com.netcracker.cloud.dbaas.entity.pg.Database asPgEntity() {
+        com.netcracker.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
         copy.setDatabaseRegistry(new PersistentBag(null, this.databaseRegistry.stream().map(dr -> dr.asPgEntity(copy)).toList()));
         return copy;
     }
 
-    public org.qubership.cloud.dbaas.entity.pg.Database asPgEntity(org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry clone) {
-        org.qubership.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
+    public com.netcracker.cloud.dbaas.entity.pg.Database asPgEntity(com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry clone) {
+        com.netcracker.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
         copy.setDatabaseRegistry(new PersistentBag(null, this.databaseRegistry.stream().map(dr -> {
             if (dr.getId().equals(clone.getId())) {
                 return clone;

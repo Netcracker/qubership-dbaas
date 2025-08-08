@@ -1,14 +1,14 @@
 package com.netcracker.cloud.dbaas.integration;
 
-import org.qubership.cloud.dbaas.dto.backup.Status;
-import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.RestoreResult;
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.repositories.dbaas.ActionTrackDbaasRepository;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
-import org.qubership.cloud.dbaas.service.AdapterActionTrackerClient;
-import org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.repositories.dbaas.ActionTrackDbaasRepository;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.service.AdapterActionTrackerClient;
+import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;

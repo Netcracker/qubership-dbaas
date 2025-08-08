@@ -1,8 +1,8 @@
 package com.netcracker.cloud.encryption.cipher;
 
 import org.junit.jupiter.api.Test;
-import org.qubership.cloud.encryption.cipher.build.DecryptionRequestBuilder;
-import org.qubership.cloud.encryption.cipher.build.EncryptionRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.build.DecryptionRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.build.EncryptionRequestBuilder;
 import org.hamcrest.Matchers;
 
 import javax.crypto.KeyGenerator;

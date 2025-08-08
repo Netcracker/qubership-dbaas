@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.dto;
 
-import org.qubership.cloud.dbaas.converter.ListConverter;
-import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import com.netcracker.cloud.dbaas.converter.ListConverter;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.annotation.Nonnull;
 import jakarta.persistence.Convert;

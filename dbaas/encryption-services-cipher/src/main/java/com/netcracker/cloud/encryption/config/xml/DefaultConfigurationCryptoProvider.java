@@ -3,13 +3,13 @@ package com.netcracker.cloud.encryption.config.xml;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
-import org.qubership.cloud.encryption.cipher.exception.CryptoException;
-import org.qubership.cloud.encryption.config.ConfigurationParser;
-import org.qubership.cloud.encryption.config.EncryptionConfiguration;
-import org.qubership.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
-import org.qubership.cloud.encryption.config.keystore.type.KeyConfig;
-import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;
-import org.qubership.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
+import com.netcracker.cloud.encryption.cipher.exception.CryptoException;
+import com.netcracker.cloud.encryption.config.ConfigurationParser;
+import com.netcracker.cloud.encryption.config.EncryptionConfiguration;
+import com.netcracker.cloud.encryption.config.keystore.KeystoreSubsystemConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeyConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
 import org.apache.commons.codec.binary.Base64;
 
 import javax.annotation.Nonnull;
@@ -81,9 +81,9 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
      * (non-Javadoc)
      *
      * @see
-     * org.qubership.cloud.encryption.config.xml.ConfigurationCryptoProvider#cryptSecureParameters(org.qubership.
+     * com.netcracker.cloud.encryption.config.xml.ConfigurationCryptoProvider#cryptSecureParameters(com.netcracker.
      * security.encryption.config.EncryptionConfiguration,
-     * org.qubership.cloud.encryption.config.xml.XmlConfigurationParser)
+     * com.netcracker.cloud.encryption.config.xml.XmlConfigurationParser)
      */
     @SuppressWarnings("unchecked")
     @Override
@@ -133,9 +133,9 @@ public class DefaultConfigurationCryptoProvider implements ConfigurationCryptoPr
      * (non-Javadoc)
      *
      * @see
-     * org.qubership.cloud.encryption.config.xml.ConfigurationCryptoProvider#decryptSecureParameters(org.qubership.
+     * com.netcracker.cloud.encryption.config.xml.ConfigurationCryptoProvider#decryptSecureParameters(com.netcracker.
      * security.encryption.config.EncryptionConfiguration,
-     * org.qubership.cloud.encryption.config.xml.XmlConfigurationParser)
+     * com.netcracker.cloud.encryption.config.xml.XmlConfigurationParser)
      */
     @SuppressWarnings("unchecked")
     @Override

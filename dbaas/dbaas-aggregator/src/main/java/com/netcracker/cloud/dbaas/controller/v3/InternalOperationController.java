@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.v3.RestorePasswordRequest;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.cloud.dbaas.service.DbaasAdapter;
-import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.v3.RestorePasswordRequest;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.service.DBaaService;
+import com.netcracker.cloud.dbaas.service.DbaasAdapter;
+import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
 
 @Slf4j
 @Path(DbaasApiPath.INTERNAL_PHYSICAL_DATABASES_PATH)

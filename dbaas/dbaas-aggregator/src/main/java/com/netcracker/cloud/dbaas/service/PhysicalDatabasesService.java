@@ -1,22 +1,22 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.google.common.collect.Maps;
-import org.qubership.cloud.dbaas.dto.PhysicalDatabaseRegistrationBuilder;
-import org.qubership.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
-import org.qubership.cloud.dbaas.dto.v3.Metadata;
-import org.qubership.cloud.dbaas.dto.v3.PhysicalDatabaseRegistrationResponseDTOV3;
-import org.qubership.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.exceptions.AdapterUnavailableException;
-import org.qubership.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
-import org.qubership.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
-import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.dto.PhysicalDatabaseRegistrationBuilder;
+import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.dto.v3.Metadata;
+import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistrationResponseDTOV3;
+import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import jakarta.annotation.Nullable;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.qubership.cloud.dbaas.DbaasApiPath.VERSION_2;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
 
 @ApplicationScoped
 @Slf4j

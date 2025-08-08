@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.shared;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import org.qubership.cloud.dbaas.converter.ListConverter;
-import org.qubership.cloud.dbaas.converter.MapConverter;
+import com.netcracker.cloud.dbaas.converter.ListConverter;
+import com.netcracker.cloud.dbaas.converter.MapConverter;
 import jakarta.persistence.*;
 import lombok.Data;
 

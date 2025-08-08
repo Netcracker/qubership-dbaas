@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.RolesRegistrationRequest;
-import org.qubership.cloud.dbaas.entity.pg.role.DatabaseRole;
-import org.qubership.cloud.dbaas.dto.role.PolicyRole;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.role.ServiceRole;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
+import com.netcracker.cloud.dbaas.dto.RolesRegistrationRequest;
+import com.netcracker.cloud.dbaas.entity.pg.role.DatabaseRole;
+import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,7 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2.MICROSERVICE_NAME;
+import static com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2.MICROSERVICE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 

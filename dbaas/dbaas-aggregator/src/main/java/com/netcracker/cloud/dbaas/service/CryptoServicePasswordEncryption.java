@@ -1,16 +1,16 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.Secret;
-import org.qubership.cloud.encryption.cipher.CryptoService;
-import org.qubership.cloud.encryption.cipher.CryptoServiceImpl;
-import org.qubership.cloud.encryption.cipher.provider.CryptoProvider;
-import org.qubership.cloud.encryption.cipher.provider.V2CryptoProvider;
-import org.qubership.cloud.encryption.config.keystore.type.DefaultEnvironmentKeystoreConfig;
-import org.qubership.cloud.encryption.config.xml.pojo.crypto.CryptoSubsystemXmlConf;
-import org.qubership.cloud.encryption.config.xml.pojo.keystore.KeyStoreSubsystemXmlConf;
-import org.qubership.cloud.encryption.key.EnvironmentKeyStore;
-import org.qubership.cloud.encryption.key.KeyStoreRepository;
-import org.qubership.cloud.encryption.key.KeyStoreRepositoryImpl;
+import com.netcracker.cloud.dbaas.dto.Secret;
+import com.netcracker.cloud.encryption.cipher.CryptoService;
+import com.netcracker.cloud.encryption.cipher.CryptoServiceImpl;
+import com.netcracker.cloud.encryption.cipher.provider.CryptoProvider;
+import com.netcracker.cloud.encryption.cipher.provider.V2CryptoProvider;
+import com.netcracker.cloud.encryption.config.keystore.type.DefaultEnvironmentKeystoreConfig;
+import com.netcracker.cloud.encryption.config.xml.pojo.crypto.CryptoSubsystemXmlConf;
+import com.netcracker.cloud.encryption.config.xml.pojo.keystore.KeyStoreSubsystemXmlConf;
+import com.netcracker.cloud.encryption.key.EnvironmentKeyStore;
+import com.netcracker.cloud.encryption.key.KeyStoreRepository;
+import com.netcracker.cloud.encryption.key.KeyStoreRepositoryImpl;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -22,7 +22,7 @@ public class CryptoServicePasswordEncryption implements DataEncryption {
     /**
      * Regexp to check that the data has been encrypted by V2CryptoProvider
      *
-     * @see org.qubership.cloud.encryption.cipher.provider.V2CryptoProvider
+     * @see com.netcracker.cloud.encryption.cipher.provider.V2CryptoProvider
      */
     private static final Pattern TEMPLATE_REGEXP = Pattern.compile(
             "^\\{v2c\\}(\\{(?<algorithm>[^\\{\\}]*)\\}){1}(\\{(?<keyAlias>[^\\{\\}]*)\\}){1}(\\{(?<iv>[a-zA-Z0-9\\=\\/\\+]+)\\}){0,1}(\\{(?<cryptData>[a-zA-Z0-9\\=\\/\\+]+)\\}){1}$");

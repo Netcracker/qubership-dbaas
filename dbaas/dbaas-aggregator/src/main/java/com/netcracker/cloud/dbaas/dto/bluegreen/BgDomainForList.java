@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.bluegreen;
 
-import org.qubership.cloud.dbaas.entity.pg.BgDomain;
-import org.qubership.cloud.dbaas.entity.pg.BgNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.BgDomain;
+import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
 import lombok.Data;
 
 import java.util.List;

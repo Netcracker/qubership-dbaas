@@ -12,7 +12,7 @@ public class ProcessOrchestratorEnabledProfile implements QuarkusTestProfile {
     public Map<String, String> getConfigOverrides() {
         Map<String, String> properties = new HashMap<>();
         properties.put("dbaas.process-orchestrator.enabled", "true");
-        properties.put("quarkus.log.category.\"org.qubership.cloud.dbaas.service.processengine.tasks\".level", "debug");
+        properties.put("quarkus.log.category.\"com.netcracker.cloud.dbaas.service.processengine.tasks\".level", "debug");
         return properties;
     }
 }

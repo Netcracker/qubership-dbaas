@@ -1,14 +1,14 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.declarative.DatabaseDeclaration;
-import org.qubership.cloud.dbaas.dto.declarative.DatabaseToDeclarativeCreation;
-import org.qubership.cloud.dbaas.entity.pg.BgNamespace;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
-import org.qubership.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
+import com.netcracker.cloud.dbaas.dto.declarative.DatabaseToDeclarativeCreation;
+import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
@@ -17,8 +17,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.*;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.*;
 
 @ApplicationScoped
 @Slf4j

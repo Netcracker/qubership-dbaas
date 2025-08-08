@@ -2,7 +2,7 @@ package db.migration.postgresql;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.JdbcUtils;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -16,8 +16,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.DUPLICATED_DATABASE;
-import static org.qubership.cloud.dbaas.Constants.V3_TRANSFORMATION;
+import static com.netcracker.cloud.dbaas.Constants.DUPLICATED_DATABASE;
+import static com.netcracker.cloud.dbaas.Constants.V3_TRANSFORMATION;
 
 @Slf4j
 public class V1_013__RepairConnectionProperties extends BaseJavaMigration {

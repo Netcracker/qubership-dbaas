@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.rest;
 
-import org.qubership.cloud.dbaas.dto.*;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
+import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import io.vertx.core.impl.NoStackTraceTimeoutException;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;

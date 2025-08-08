@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
+import static com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ConnectionPropertiesUtilsTest {

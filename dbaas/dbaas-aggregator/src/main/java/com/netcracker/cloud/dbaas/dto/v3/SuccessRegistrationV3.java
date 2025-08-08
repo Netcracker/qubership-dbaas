@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.*;
 

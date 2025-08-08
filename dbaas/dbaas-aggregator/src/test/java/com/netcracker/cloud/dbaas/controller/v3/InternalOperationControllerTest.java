@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.dto.v3.RestorePasswordRequest;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.service.DBaaService;
-import org.qubership.cloud.dbaas.service.DbaasAdapter;
-import org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2;
-import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
+import com.netcracker.cloud.dbaas.dto.v3.RestorePasswordRequest;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.service.DBaaService;
+import com.netcracker.cloud.dbaas.service.DbaasAdapter;
+import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
+import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;

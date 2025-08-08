@@ -1,16 +1,16 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.v3.*;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabaseInstruction;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.service.InstructionService;
-import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.v3.*;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabaseInstruction;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.service.InstructionService;
+import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -31,8 +31,8 @@ import java.net.URI;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
 import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
 import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
 import static jakarta.ws.rs.core.Response.Status.NOT_ACCEPTABLE;

@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.entity.shared.AbstractDbState;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import lombok.NoArgsConstructor;
@@ -28,8 +28,8 @@ public class DbState extends AbstractDbState {
         super(dbState);
     }
 
-    public org.qubership.cloud.dbaas.entity.h2.DbState asH2Entity() {
-        org.qubership.cloud.dbaas.entity.h2.DbState clone = new org.qubership.cloud.dbaas.entity.h2.DbState();
+    public com.netcracker.cloud.dbaas.entity.h2.DbState asH2Entity() {
+        com.netcracker.cloud.dbaas.entity.h2.DbState clone = new com.netcracker.cloud.dbaas.entity.h2.DbState();
         clone.setId(this.id);
         clone.setState(this.state);
         clone.setDatabaseState(this.databaseState);

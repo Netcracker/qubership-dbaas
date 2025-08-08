@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.dao.h2;
 
-import org.qubership.cloud.dbaas.dao.jpa.DatabaseRegistryDbaasRepositoryImpl;
-import org.qubership.cloud.dbaas.entity.h2.Database;
-import org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
+import com.netcracker.cloud.dbaas.dao.jpa.DatabaseRegistryDbaasRepositoryImpl;
+import com.netcracker.cloud.dbaas.entity.h2.Database;
+import com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
 

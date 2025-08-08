@@ -2,10 +2,10 @@ package com.netcracker.cloud.encryption.key;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
-import org.qubership.cloud.encryption.cipher.exception.BadKeyPasswordException;
-import org.qubership.cloud.encryption.config.keystore.type.KeyConfig;
-import org.qubership.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
-import org.qubership.cloud.encryption.key.exception.IllegalKeystoreConfigurationException;
+import com.netcracker.cloud.encryption.cipher.exception.BadKeyPasswordException;
+import com.netcracker.cloud.encryption.config.keystore.type.KeyConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
+import com.netcracker.cloud.encryption.key.exception.IllegalKeystoreConfigurationException;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.annotation.Nonnull;

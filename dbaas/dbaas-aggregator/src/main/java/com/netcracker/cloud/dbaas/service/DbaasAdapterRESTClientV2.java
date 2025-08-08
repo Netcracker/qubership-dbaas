@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.*;
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
-import org.qubership.cloud.dbaas.dto.v3.CreatedDatabaseV3;
-import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
-import org.qubership.cloud.dbaas.dto.v3.UserEnsureRequestV3;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
-import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
+import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
+import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import jakarta.ws.rs.core.Response;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.qubership.cloud.dbaas.DbaasApiPath.VERSION_2;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
 
 
 @EqualsAndHashCode(callSuper = true)

@@ -1,9 +1,9 @@
 package com.netcracker.cloud.encryption.config.xml.build;
 
-import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfig;
-import org.qubership.cloud.encryption.config.crypto.CryptoSubsystemConfigBuilder;
-import org.qubership.cloud.encryption.config.crypto.MutableCryptoSubsystemConfig;
-import org.qubership.cloud.encryption.config.xml.pojo.crypto.ObjectFactory;
+import com.netcracker.cloud.encryption.config.crypto.CryptoSubsystemConfig;
+import com.netcracker.cloud.encryption.config.crypto.CryptoSubsystemConfigBuilder;
+import com.netcracker.cloud.encryption.config.crypto.MutableCryptoSubsystemConfig;
+import com.netcracker.cloud.encryption.config.xml.pojo.crypto.ObjectFactory;
 
 import javax.annotation.Nonnull;
 

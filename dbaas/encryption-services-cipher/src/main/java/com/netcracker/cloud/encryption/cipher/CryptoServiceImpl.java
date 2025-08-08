@@ -1,12 +1,12 @@
 package com.netcracker.cloud.encryption.cipher;
 
 import com.google.common.collect.Lists;
-import org.qubership.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequest;
-import org.qubership.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequestBuilder;
-import org.qubership.cloud.encryption.cipher.dsl.encrypt.ChainedEncryptionRequest;
-import org.qubership.cloud.encryption.cipher.dsl.encrypt.ChainedEncryptionRequestBuilder;
-import org.qubership.cloud.encryption.cipher.exception.NotFoundSuitableCryptoProvider;
-import org.qubership.cloud.encryption.cipher.provider.CryptoProvider;
+import com.netcracker.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequest;
+import com.netcracker.cloud.encryption.cipher.dsl.decrypt.ChainedDecryptionRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.dsl.encrypt.ChainedEncryptionRequest;
+import com.netcracker.cloud.encryption.cipher.dsl.encrypt.ChainedEncryptionRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.exception.NotFoundSuitableCryptoProvider;
+import com.netcracker.cloud.encryption.cipher.provider.CryptoProvider;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

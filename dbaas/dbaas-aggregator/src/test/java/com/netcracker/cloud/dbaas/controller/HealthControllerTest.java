@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.controller;
 
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.monitoring.indicators.AggregatedHealthResponse;
-import org.qubership.cloud.dbaas.monitoring.indicators.HealthStatus;
-import org.qubership.cloud.dbaas.service.HealthService;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.monitoring.indicators.AggregatedHealthResponse;
+import com.netcracker.cloud.dbaas.monitoring.indicators.HealthStatus;
+import com.netcracker.cloud.dbaas.service.HealthService;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;

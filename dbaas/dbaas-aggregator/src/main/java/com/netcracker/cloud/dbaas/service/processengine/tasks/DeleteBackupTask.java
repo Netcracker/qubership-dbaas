@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
 
-import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
-import org.qubership.cloud.dbaas.service.BlueGreenService;
-import org.qubership.core.scheduler.po.DataContext;
+import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.service.BlueGreenService;
+import com.netcracker.core.scheduler.po.DataContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;

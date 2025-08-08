@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClient;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 

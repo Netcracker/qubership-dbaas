@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.dto.declarative;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

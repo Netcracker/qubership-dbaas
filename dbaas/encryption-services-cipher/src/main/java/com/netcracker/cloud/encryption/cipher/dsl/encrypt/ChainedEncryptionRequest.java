@@ -1,7 +1,7 @@
 package com.netcracker.cloud.encryption.cipher.dsl.encrypt;
 
-import org.qubership.cloud.encryption.cipher.EncryptResult;
-import org.qubership.cloud.encryption.cipher.dsl.ChainedCryptoRequest;
+import com.netcracker.cloud.encryption.cipher.EncryptResult;
+import com.netcracker.cloud.encryption.cipher.dsl.ChainedCryptoRequest;
 
 import javax.annotation.Nonnull;
 

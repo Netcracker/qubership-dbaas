@@ -1,17 +1,17 @@
 package com.netcracker.cloud.encryption.cipher.provider;
 
 import com.google.common.base.Preconditions;
-import org.qubership.cloud.encryption.cipher.CryptoRequest;
-import org.qubership.cloud.encryption.cipher.DecryptionRequest;
-import org.qubership.cloud.encryption.cipher.EncryptionRequest;
-import org.qubership.cloud.encryption.cipher.exception.DecryptException;
-import org.qubership.cloud.encryption.cipher.exception.EncryptException;
-import org.qubership.cloud.encryption.cipher.exception.IllegalCryptoParametersException;
-import org.qubership.cloud.encryption.cipher.exception.NotExistsSecurityKey;
-import org.qubership.cloud.encryption.key.AliasedKey;
-import org.qubership.cloud.encryption.key.ImmutableAliasedKey;
-import org.qubership.cloud.encryption.key.KeyStore;
-import org.qubership.cloud.encryption.key.KeyStoreRepository;
+import com.netcracker.cloud.encryption.cipher.CryptoRequest;
+import com.netcracker.cloud.encryption.cipher.DecryptionRequest;
+import com.netcracker.cloud.encryption.cipher.EncryptionRequest;
+import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
+import com.netcracker.cloud.encryption.cipher.exception.EncryptException;
+import com.netcracker.cloud.encryption.cipher.exception.IllegalCryptoParametersException;
+import com.netcracker.cloud.encryption.cipher.exception.NotExistsSecurityKey;
+import com.netcracker.cloud.encryption.key.AliasedKey;
+import com.netcracker.cloud.encryption.key.ImmutableAliasedKey;
+import com.netcracker.cloud.encryption.key.KeyStore;
+import com.netcracker.cloud.encryption.key.KeyStoreRepository;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

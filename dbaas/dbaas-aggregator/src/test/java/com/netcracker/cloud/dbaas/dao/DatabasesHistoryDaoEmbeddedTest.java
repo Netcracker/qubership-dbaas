@@ -1,12 +1,12 @@
 package com.netcracker.cloud.dbaas.dao;
 
 
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseHistory;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseHistoryRepository;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseHistory;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseHistoryRepository;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;

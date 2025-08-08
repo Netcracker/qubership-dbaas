@@ -2,8 +2,8 @@ package com.netcracker.cloud.encryption.cipher.result;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
-import org.qubership.cloud.encryption.cipher.EncryptResult;
-import org.qubership.cloud.encryption.cipher.provider.EncryptedData;
+import com.netcracker.cloud.encryption.cipher.EncryptResult;
+import com.netcracker.cloud.encryption.cipher.provider.EncryptedData;
 import org.apache.commons.codec.binary.Base64;
 
 import javax.annotation.Nonnull;

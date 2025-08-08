@@ -1,13 +1,13 @@
 package com.netcracker.cloud.dbaas.integration;
 
-import org.qubership.cloud.dbaas.dto.DescribedDatabase;
-import org.qubership.cloud.dbaas.dto.backup.Status;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
-import org.qubership.cloud.dbaas.service.AdapterActionTrackerClient;
-import org.qubership.cloud.dbaas.service.DbaasAdapterRESTClientV2;
+import com.netcracker.cloud.dbaas.dto.DescribedDatabase;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.service.AdapterActionTrackerClient;
+import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
@@ -18,8 +18,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.entity.shared.AbstractDbResource.DATABASE_KIND;
-import static org.qubership.cloud.dbaas.entity.shared.AbstractDbResource.USER_KIND;
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbResource.DATABASE_KIND;
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbResource.USER_KIND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.*;

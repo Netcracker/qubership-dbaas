@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto;
 
-import org.qubership.cloud.dbaas.dto.declarative.DeclarativeDatabaseCreationRequest;
+import com.netcracker.cloud.dbaas.dto.declarative.DeclarativeDatabaseCreationRequest;
 import lombok.Data;
 
 @Data

@@ -2,17 +2,17 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import org.qubership.cloud.dbaas.dto.API_VERSION;
-import org.qubership.cloud.dbaas.dto.EnsuredUser;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
-import org.qubership.cloud.dbaas.exceptions.DbNotFoundException;
-import org.qubership.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
+import com.netcracker.cloud.dbaas.dto.API_VERSION;
+import com.netcracker.cloud.dbaas.dto.EnsuredUser;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
+import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
@@ -24,7 +24,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
+import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 
 @ApplicationScoped
 @Slf4j

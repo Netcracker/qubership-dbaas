@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.service.dbsettings;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

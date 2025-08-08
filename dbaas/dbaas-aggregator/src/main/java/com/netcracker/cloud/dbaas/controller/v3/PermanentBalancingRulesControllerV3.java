@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDTO;
-import org.qubership.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDeleteDTO;
-import org.qubership.cloud.dbaas.service.BalancingRulesService;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDTO;
+import com.netcracker.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDeleteDTO;
+import com.netcracker.cloud.dbaas.service.BalancingRulesService;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
@@ -20,9 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.Constants.DB_EDITOR;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.Constants.DB_EDITOR;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
 
 @Slf4j
 @Path(DbaasApiPath.PERMANENT_BALANCING_RULES_V3)

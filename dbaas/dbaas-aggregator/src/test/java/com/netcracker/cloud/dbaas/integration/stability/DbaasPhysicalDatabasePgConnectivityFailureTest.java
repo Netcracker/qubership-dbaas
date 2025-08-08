@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.integration.stability;
 
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;

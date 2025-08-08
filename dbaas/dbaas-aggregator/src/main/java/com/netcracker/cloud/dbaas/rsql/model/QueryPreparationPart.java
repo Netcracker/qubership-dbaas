@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.rsql.model;
 
-import org.qubership.cloud.dbaas.rsql.QueryPreparationConstants;
-import org.qubership.cloud.dbaas.rsql.QueryPreparationUtils;
+import com.netcracker.cloud.dbaas.rsql.QueryPreparationConstants;
+import com.netcracker.cloud.dbaas.rsql.QueryPreparationUtils;
 import lombok.Data;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.text.StringSubstitutor;

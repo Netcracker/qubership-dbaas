@@ -1,17 +1,17 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.dto.ConnectionDescription;
-import org.qubership.cloud.dbaas.dto.CreatedDatabase;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
+import com.netcracker.cloud.dbaas.dto.CreatedDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.dto.role.Role;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
-import static org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
 
 @Data
 @NoArgsConstructor

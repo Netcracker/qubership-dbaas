@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
-import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
-import org.qubership.cloud.dbaas.exceptions.BackupRestorationNotFoundException;
-import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteBackupOperationException;
-import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
-import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
-import org.qubership.cloud.dbaas.service.DBBackupsService;
-import org.qubership.cloud.dbaas.service.DbaaSHelper;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.BackupRestorationNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteBackupOperationException;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
+import com.netcracker.cloud.dbaas.service.DBBackupsService;
+import com.netcracker.cloud.dbaas.service.DbaaSHelper;
 import org.apache.commons.collections4.CollectionUtils;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
@@ -33,8 +33,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.qubership.cloud.dbaas.Constants.BACKUP_MANAGER;
-import static org.qubership.cloud.dbaas.DbaasApiPath.BACKUPS_BULK_PATH_V3;
+import static com.netcracker.cloud.dbaas.Constants.BACKUP_MANAGER;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.BACKUPS_BULK_PATH_V3;
 
 @Slf4j
 @Path(BACKUPS_BULK_PATH_V3)

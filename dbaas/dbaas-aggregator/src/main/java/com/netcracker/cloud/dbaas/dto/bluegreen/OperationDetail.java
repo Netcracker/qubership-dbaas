@@ -2,8 +2,8 @@ package com.netcracker.cloud.dbaas.dto.bluegreen;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import org.qubership.cloud.dbaas.serializer.TaskStateSerializer;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.serializer.TaskStateSerializer;
+import com.netcracker.core.scheduler.po.task.TaskState;
 import lombok.Builder;
 import lombok.Data;
 

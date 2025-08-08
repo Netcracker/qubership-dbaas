@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.*;
 

@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.connections.handlers.ConnectionHandlerFactory;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
-import org.qubership.cloud.dbaas.monitoring.model.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.connections.handlers.ConnectionHandlerFactory;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
+import com.netcracker.cloud.dbaas.monitoring.model.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.MICROSERVICE_NAME;
+import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
 
 @ApplicationScoped
 @Slf4j

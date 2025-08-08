@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.dao.h2;
 
-import org.qubership.cloud.dbaas.dao.jpa.PhysicalDatabaseDbaasRepositoryImpl;
-import org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase;
-import org.qubership.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
+import com.netcracker.cloud.dbaas.dao.jpa.PhysicalDatabaseDbaasRepositoryImpl;
+import com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
 

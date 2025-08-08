@@ -4,7 +4,7 @@ import com.google.common.base.MoreObjects;
 import jakarta.xml.bind.annotation.*;
 import jakarta.xml.bind.annotation.adapters.CollapsedStringAdapter;
 import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-import org.qubership.cloud.encryption.config.keystore.type.MutableEnvironmentKeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.MutableEnvironmentKeystoreConfig;
 
 
 /**

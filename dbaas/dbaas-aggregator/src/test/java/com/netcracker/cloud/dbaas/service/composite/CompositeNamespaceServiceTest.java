@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.service.composite;
 
-import org.qubership.cloud.dbaas.dto.composite.CompositeStructureDto;
-import org.qubership.cloud.dbaas.entity.pg.composite.CompositeNamespace;
-import org.qubership.cloud.dbaas.entity.pg.composite.CompositeStructure;
-import org.qubership.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
+import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
+import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

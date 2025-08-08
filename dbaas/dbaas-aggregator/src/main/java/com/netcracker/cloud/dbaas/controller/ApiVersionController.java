@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.controller;
 
-import org.qubership.cloud.dbaas.DbaasApiPath;
-import org.qubership.cloud.dbaas.dto.ApiVersionInfo;
+import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.dto.ApiVersionInfo;
 import jakarta.annotation.security.PermitAll;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;

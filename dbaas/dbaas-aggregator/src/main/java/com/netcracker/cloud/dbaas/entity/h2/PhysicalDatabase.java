@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.h2;
 
-import org.qubership.cloud.dbaas.entity.shared.AbstractPhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractPhysicalDatabase;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -13,8 +13,8 @@ public class PhysicalDatabase extends AbstractPhysicalDatabase {
     @JoinColumn(name = "adapter_external_adapter_id")
     private ExternalAdapterRegistrationEntry adapter;
 
-    public org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase asPgEntity() {
-        org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase copy = new org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase();
+    public com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase asPgEntity() {
+        com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase copy = new com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase();
         copy.setId(this.id);
         copy.setPhysicalDatabaseIdentifier(this.physicalDatabaseIdentifier);
         copy.setGlobal(this.global);

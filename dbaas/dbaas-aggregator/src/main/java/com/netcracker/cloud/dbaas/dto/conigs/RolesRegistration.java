@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.dto.conigs;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.qubership.cloud.dbaas.dto.role.PolicyRole;
-import org.qubership.cloud.dbaas.dto.role.ServiceRole;
+import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
+import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.Data;
 

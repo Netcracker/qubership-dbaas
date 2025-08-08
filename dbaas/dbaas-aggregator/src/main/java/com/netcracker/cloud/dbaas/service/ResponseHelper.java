@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.controller;
 
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
 import io.quarkus.test.junit.QuarkusTest;

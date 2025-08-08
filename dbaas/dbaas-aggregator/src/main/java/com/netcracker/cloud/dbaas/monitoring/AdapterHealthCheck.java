@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.monitoring;
 
-import org.qubership.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator;
-import org.qubership.cloud.dbaas.monitoring.indicators.HealthCheckResponse;
-import org.qubership.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
-import org.qubership.cloud.dbaas.service.DbaasAdapter;
-import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
+import com.netcracker.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator;
+import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse;
+import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
+import com.netcracker.cloud.dbaas.service.DbaasAdapter;
+import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.quarkus.arc.properties.IfBuildProperty;
@@ -15,8 +15,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 import java.util.function.Supplier;
 
-import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
-import static org.qubership.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator.ADAPTERS_HEALTH_CHECK_NAME;
+import static com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
+import static com.netcracker.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator.ADAPTERS_HEALTH_CHECK_NAME;
 
 @Slf4j
 @ApplicationScoped

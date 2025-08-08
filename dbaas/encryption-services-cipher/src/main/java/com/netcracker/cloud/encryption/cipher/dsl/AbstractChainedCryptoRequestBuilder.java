@@ -1,7 +1,7 @@
 package com.netcracker.cloud.encryption.cipher.dsl;
 
 import com.google.common.base.MoreObjects;
-import org.qubership.cloud.encryption.cipher.build.CryptoRequestBuilder;
+import com.netcracker.cloud.encryption.cipher.build.CryptoRequestBuilder;
 
 import javax.annotation.Nonnull;
 import java.security.Key;

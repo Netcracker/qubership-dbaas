@@ -1,18 +1,18 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
-import org.qubership.cloud.dbaas.dto.ClassifierWithRolesRequest;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.*;
-import org.qubership.cloud.dbaas.entity.pg.BgDomain;
-import org.qubership.cloud.dbaas.entity.pg.BgNamespace;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.NotFoundException;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.monitoring.model.DatabasesInfo;
-import org.qubership.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
+import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.*;
+import com.netcracker.cloud.dbaas.entity.pg.BgDomain;
+import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
+import com.netcracker.cloud.dbaas.service.*;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -33,9 +33,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.DbaasApiPath.*;
-import static org.qubership.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.*;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
+import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.*;
 
 @Slf4j
 @Path(DATABASES_PATH_V3)

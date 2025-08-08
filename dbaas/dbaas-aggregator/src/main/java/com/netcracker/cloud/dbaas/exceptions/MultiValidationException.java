@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.core.error.runtime.MultiCauseException;
+import com.netcracker.cloud.core.error.runtime.MultiCauseException;
 
 import java.util.List;
 import java.util.stream.Collectors;

@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.API_VERSION;
-import org.qubership.cloud.dbaas.dto.EnsuredUser;
-import org.qubership.cloud.dbaas.dto.HttpBasicCredentials;
-import org.qubership.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.dto.API_VERSION;
+import com.netcracker.cloud.dbaas.dto.EnsuredUser;
+import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
+import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
+import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.core.Response;
 
@@ -21,9 +21,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
-import static org.qubership.cloud.dbaas.DbaasApiPath.VERSION_2;
-import static org.qubership.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
+import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;

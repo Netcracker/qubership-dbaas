@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.config.pg;
 
-import org.qubership.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.JdbcUtils;
 import io.agroal.api.AgroalDataSource;
 
 import org.junit.jupiter.api.Assertions;
@@ -16,7 +16,7 @@ import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
-import static org.qubership.cloud.dbaas.config.pg.DbaasProxyDataSource.SQL_STATE_INVALID_CREDENTIALS;
+import static com.netcracker.cloud.dbaas.config.pg.DbaasProxyDataSource.SQL_STATE_INVALID_CREDENTIALS;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)

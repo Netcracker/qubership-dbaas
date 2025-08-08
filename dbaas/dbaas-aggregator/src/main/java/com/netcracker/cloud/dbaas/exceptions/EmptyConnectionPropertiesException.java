@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.core.error.runtime.ErrorCodeException;
+import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
 
 
 public class EmptyConnectionPropertiesException extends ErrorCodeException {

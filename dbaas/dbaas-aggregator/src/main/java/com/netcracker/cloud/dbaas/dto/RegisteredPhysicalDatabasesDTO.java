@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto;
 
-import org.qubership.cloud.dbaas.dto.v3.PhysicalDatabaseRegistrationResponseDTOV3;
+import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistrationResponseDTOV3;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.Data;
 

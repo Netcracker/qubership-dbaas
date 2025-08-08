@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 
-import org.qubership.cloud.dbaas.dto.role.ServiceRole;
-import org.qubership.cloud.dbaas.entity.pg.role.DatabaseRole;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.service.DatabaseRolesService;
+import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
+import com.netcracker.cloud.dbaas.entity.pg.role.DatabaseRole;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.service.DatabaseRolesService;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
@@ -17,8 +17,8 @@ import org.mockito.Mockito;
 import java.util.List;
 import java.util.Optional;
 
-import static org.qubership.cloud.dbaas.DbaasApiPath.ACCESS_GRANTS_SUBPATH_V3;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.ACCESS_GRANTS_SUBPATH_V3;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 import static jakarta.ws.rs.core.Response.Status.OK;

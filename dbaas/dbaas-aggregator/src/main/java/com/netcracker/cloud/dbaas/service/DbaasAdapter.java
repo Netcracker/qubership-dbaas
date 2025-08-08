@@ -1,19 +1,19 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
-import org.qubership.cloud.dbaas.dto.CreatedDatabase;
-import org.qubership.cloud.dbaas.dto.DescribedDatabase;
-import org.qubership.cloud.dbaas.dto.EnsuredUser;
-import org.qubership.cloud.dbaas.dto.backup.DeleteResult;
-import org.qubership.cloud.dbaas.dto.v3.CreatedDatabaseV3;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
-import org.qubership.cloud.dbaas.entity.pg.backup.RestoreResult;
-import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.exceptions.InteruptedPollingException;
-import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
+import com.netcracker.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
+import com.netcracker.cloud.dbaas.dto.CreatedDatabase;
+import com.netcracker.cloud.dbaas.dto.DescribedDatabase;
+import com.netcracker.cloud.dbaas.dto.EnsuredUser;
+import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
+import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.exceptions.InteruptedPollingException;
+import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import jakarta.ws.rs.core.Response;
 
 import java.util.Collection;

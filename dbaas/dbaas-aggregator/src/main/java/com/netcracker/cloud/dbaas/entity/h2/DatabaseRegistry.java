@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.h2;
 
-import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -46,8 +46,8 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
         return Objects.hash(getId(), getDatabase(), getTimeDbCreation(), getClassifier(), getNamespace(), getType());
     }
 
-    public org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry asPgEntity() {
-        org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry clone = new org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry();
+    public com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry asPgEntity() {
+        com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry clone = new com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry();
         clone.setId(this.id);
         clone.setDatabase(this.database.asPgEntity(clone));
         clone.setTimeDbCreation(this.timeDbCreation);
@@ -57,8 +57,8 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
         return clone;
     }
 
-    public org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry asPgEntity(org.qubership.cloud.dbaas.entity.pg.Database copy) {
-        org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry clone = new org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry();
+    public com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry asPgEntity(com.netcracker.cloud.dbaas.entity.pg.Database copy) {
+        com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry clone = new com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry();
         clone.setId(this.id);
         clone.setDatabase(copy);
         clone.setTimeDbCreation(this.timeDbCreation);
@@ -69,6 +69,6 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
     }
 
     private interface IgnoredDelegates {
-        org.qubership.cloud.dbaas.entity.pg.Database asPgEntity();
+        com.netcracker.cloud.dbaas.entity.pg.Database asPgEntity();
     }
 }

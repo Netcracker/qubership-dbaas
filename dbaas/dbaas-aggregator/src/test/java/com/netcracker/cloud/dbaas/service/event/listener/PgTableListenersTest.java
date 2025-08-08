@@ -10,9 +10,9 @@ import org.mockito.MockitoAnnotations;
 import org.postgresql.PGNotification;
 import org.postgresql.jdbc.PgConnection;
 import org.postgresql.util.PSQLException;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -25,7 +25,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
-import static org.qubership.cloud.dbaas.mock.MockedQuarkusTransactionRunnableWrapper.withStaticMocks;
+import static com.netcracker.cloud.dbaas.mock.MockedQuarkusTransactionRunnableWrapper.withStaticMocks;
 
 class PgTableListenersTest {
 

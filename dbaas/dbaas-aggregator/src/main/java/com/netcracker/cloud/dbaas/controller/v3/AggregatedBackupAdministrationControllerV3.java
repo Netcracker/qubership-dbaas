@@ -1,18 +1,18 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.dto.NamespaceBackupDTO;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceBackup;
-import org.qubership.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
-import org.qubership.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
-import org.qubership.cloud.dbaas.service.AsyncOperations;
-import org.qubership.cloud.dbaas.service.DBBackupsService;
-import org.qubership.cloud.dbaas.service.DbaasAdapter;
-import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.dto.NamespaceBackupDTO;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
+import com.netcracker.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
+import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
+import com.netcracker.cloud.dbaas.service.AsyncOperations;
+import com.netcracker.cloud.dbaas.service.DBBackupsService;
+import com.netcracker.cloud.dbaas.service.DbaasAdapter;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -44,11 +44,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.BACKUP_MANAGER;
-import static org.qubership.cloud.dbaas.DbaasApiPath.BACKUPS_PATH_V3;
-import static org.qubership.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
-import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+import static com.netcracker.cloud.dbaas.Constants.BACKUP_MANAGER;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.BACKUPS_PATH_V3;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
 @Path(BACKUPS_PATH_V3)

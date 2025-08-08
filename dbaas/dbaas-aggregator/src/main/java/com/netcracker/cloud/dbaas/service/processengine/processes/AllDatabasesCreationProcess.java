@@ -1,16 +1,16 @@
 package com.netcracker.cloud.dbaas.service.processengine.processes;
 
-import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
-import org.qubership.cloud.dbaas.service.processengine.tasks.*;
-import org.qubership.core.scheduler.po.ProcessDefinition;
-import org.qubership.core.scheduler.po.task.NamedTask;
+import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.*;
+import com.netcracker.core.scheduler.po.ProcessDefinition;
+import com.netcracker.core.scheduler.po.task.NamedTask;
 
 import java.io.Serializable;
 import java.util.List;
 
-import static org.qubership.cloud.dbaas.service.processengine.Const.*;
+import static com.netcracker.cloud.dbaas.service.processengine.Const.*;
 
 
 public class AllDatabasesCreationProcess extends ProcessDefinition implements Serializable {

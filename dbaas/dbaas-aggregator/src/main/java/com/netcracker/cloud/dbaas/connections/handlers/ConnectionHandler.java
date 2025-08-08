@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.connections.handlers;
 
-import org.qubership.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.DatabaseType;
 
 import java.util.List;
 import java.util.Map;

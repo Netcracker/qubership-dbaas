@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -63,8 +63,8 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
         return Objects.hash(getId(), getDatabase(), getTimeDbCreation(), getClassifier(), getNamespace(), getType());
     }
 
-    public org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry asH2Entity(org.qubership.cloud.dbaas.entity.h2.Database db) {
-        org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry copy = new org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry();
+    public com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry asH2Entity(com.netcracker.cloud.dbaas.entity.h2.Database db) {
+        com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry copy = new com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry();
         copy.setId(this.id);
         copy.setTimeDbCreation(this.timeDbCreation);
         copy.setClassifier(this.classifier);
@@ -75,6 +75,6 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
     }
 
     private interface IgnoredDelegates {
-        org.qubership.cloud.dbaas.entity.pg.Database asH2Entity(org.qubership.cloud.dbaas.entity.h2.Database db);
+        com.netcracker.cloud.dbaas.entity.pg.Database asH2Entity(com.netcracker.cloud.dbaas.entity.h2.Database db);
     }
 }

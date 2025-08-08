@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.controller.error;
 
-import org.qubership.cloud.core.error.runtime.ErrorCodeException;
-import org.qubership.cloud.dbaas.exceptions.MultiValidationException;
+import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
+import com.netcracker.cloud.dbaas.exceptions.MultiValidationException;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
@@ -11,9 +11,9 @@ import lombok.CustomLog;
 
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.controller.error.Utils.buildResponse;
-import static org.qubership.cloud.dbaas.controller.error.Utils.tmfErrorBuilder;
-import static org.qubership.cloud.dbaas.controller.error.Utils.tmfResponseBuilder;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.buildResponse;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.tmfErrorBuilder;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.tmfResponseBuilder;
 
 @CustomLog
 @Provider

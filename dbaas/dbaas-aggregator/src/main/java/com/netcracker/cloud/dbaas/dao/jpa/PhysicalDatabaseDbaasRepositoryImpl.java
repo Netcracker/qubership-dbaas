@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
@@ -34,7 +34,7 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
     public Stream<PhysicalDatabase> findByType(String type) {
         List<PhysicalDatabase> databaseList = doGet(() -> physicalDatabasesRepository.findByType(type), ex -> {
             log.warn("Catch exception = {} while trying to find physical databases by type in Postgre, go to h2 database", ex.getMessage());
-            return h2PhysicalDatabaseRepository.findByType(type).stream().map(org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
+            return h2PhysicalDatabaseRepository.findByType(type).stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
         log.debug("founded by type={} physical databases = {}", type, databaseList);
         return databaseList.stream();
@@ -43,7 +43,7 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
     public PhysicalDatabase findByPhysicalDatabaseIdentifier(String physicalDatabaseIdentifier) {
         return doGet(() -> physicalDatabasesRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseIdentifier), ex -> {
             log.warn("Catch exception = {} while trying to find physical databases by identifier in Postgre, go to h2 database", ex.getMessage());
-            return h2PhysicalDatabaseRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseIdentifier).map(org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
+            return h2PhysicalDatabaseRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseIdentifier).map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
         });
     }
 
@@ -62,28 +62,28 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
         return doGet(() -> physicalDatabasesRepository.findByAdapterAddress(adapterAddress), ex -> {
             log.warn("Catch exception = {} while trying to find physical databases by adapter address in Postgre, go to h2 database", ex.getMessage());
 
-            return h2PhysicalDatabaseRepository.findByAdapterAddress(adapterAddress).map(org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
+            return h2PhysicalDatabaseRepository.findByAdapterAddress(adapterAddress).map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
         });
     }
 
     public List<PhysicalDatabase> findByAdapterHost(String adapterHost) {
         return doGet(() -> physicalDatabasesRepository.findByAdapterAddressHost(adapterHost), ex -> {
             log.warn("Catch exception = {} while trying to find physical databases by adapter host in Postgres, go to h2 database", ex.getMessage());
-            return h2PhysicalDatabaseRepository.findByAdapterAddressHost(adapterHost).stream().map(org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
+            return h2PhysicalDatabaseRepository.findByAdapterAddressHost(adapterHost).stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
     }
 
     public List<PhysicalDatabase> findAll() {
         return doGet(() -> physicalDatabasesRepository.listAll(), ex -> {
             log.warn("Catch exception = {} while trying to find all physical databases in Postgre, go to h2 database", ex.getMessage());
-            return h2PhysicalDatabaseRepository.listAll().stream().map(org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
+            return h2PhysicalDatabaseRepository.listAll().stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
     }
 
     public PhysicalDatabase findByAdapterId(String adapterId) {
         return doGet(() -> physicalDatabasesRepository.findByAdapterId(adapterId), ex -> {
             log.warn("Catch exception = {} while trying to find physical database by adapterId in Postgre, go to h2 database", ex.getMessage());
-            return h2PhysicalDatabaseRepository.findByAdapterId(adapterId).map(org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
+            return h2PhysicalDatabaseRepository.findByAdapterId(adapterId).map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
         });
     }
 
@@ -91,7 +91,7 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
     public Optional<PhysicalDatabase> findGlobalByType(String type) {
         List<PhysicalDatabase> globals = doGet(() -> physicalDatabasesRepository.findByTypeAndGlobal(type, true), ex -> {
             log.warn("Catch exception = {} while trying to find physical database by type in Postgre, go to h2 database", ex.getMessage());
-            return h2PhysicalDatabaseRepository.findByTypeAndGlobal(type, true).stream().map(org.qubership.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
+            return h2PhysicalDatabaseRepository.findByTypeAndGlobal(type, true).stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
         return globals == null || globals.isEmpty()
                 ? Optional.empty()

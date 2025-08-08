@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg.backup;
 
-import org.qubership.cloud.dbaas.converter.ListConverter;
-import org.qubership.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.converter.ListConverter;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.Data;
 import lombok.NoArgsConstructor;

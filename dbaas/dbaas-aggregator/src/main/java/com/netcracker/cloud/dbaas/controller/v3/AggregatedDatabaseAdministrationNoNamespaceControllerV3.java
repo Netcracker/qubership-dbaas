@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -25,9 +25,9 @@ import org.jboss.resteasy.annotations.Separator;
 import java.util.List;
 import java.util.Set;
 
-import static org.qubership.cloud.dbaas.Constants.DB_CLIENT;
-import static org.qubership.cloud.dbaas.Constants.NAMESPACE_CLEANER;
-import static org.qubership.cloud.dbaas.DbaasApiPath.*;
+import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
+import static com.netcracker.cloud.dbaas.Constants.NAMESPACE_CLEANER;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
 
 @Slf4j
 @Path(DATABASES_WITHOUT_NAMESPACE_PATH_V3)

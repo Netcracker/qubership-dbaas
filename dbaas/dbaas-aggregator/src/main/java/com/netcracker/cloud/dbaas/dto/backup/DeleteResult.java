@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backup;
 
-import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 

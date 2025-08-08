@@ -1,14 +1,14 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.connections.handlers.CassandraConnectionHandler;
-import org.qubership.cloud.dbaas.connections.handlers.ConnectionHandlerFactory;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
-import org.qubership.cloud.dbaas.monitoring.model.DatabaseMonitoringEntryStatus;
-import org.qubership.cloud.dbaas.monitoring.model.DatabasesInfo;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.connections.handlers.CassandraConnectionHandler;
+import com.netcracker.cloud.dbaas.connections.handlers.ConnectionHandlerFactory;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabaseMonitoringEntryStatus;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import lombok.extern.slf4j.Slf4j;
 
 import org.junit.jupiter.api.Assertions;
@@ -22,8 +22,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
-import static org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;

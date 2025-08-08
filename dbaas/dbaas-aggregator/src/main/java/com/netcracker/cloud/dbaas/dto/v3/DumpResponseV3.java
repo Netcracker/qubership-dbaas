@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.entity.pg.BgDomain;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.BgDomain;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

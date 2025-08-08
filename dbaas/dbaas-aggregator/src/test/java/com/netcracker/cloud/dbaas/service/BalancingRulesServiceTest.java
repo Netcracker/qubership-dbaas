@@ -1,21 +1,21 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import org.qubership.cloud.dbaas.converter.ListRuleOnMicroserviceConverter;
-import org.qubership.cloud.dbaas.dto.*;
-import org.qubership.cloud.dbaas.dto.v3.DebugRulesDbTypeData;
-import org.qubership.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDTO;
-import org.qubership.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDeleteDTO;
-import org.qubership.cloud.dbaas.dto.v3.ValidateRulesResponse;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
-import org.qubership.cloud.dbaas.exceptions.InvalidMicroserviceRuleSizeException;
-import org.qubership.cloud.dbaas.exceptions.OnMicroserviceBalancingRuleDuplicateException;
-import org.qubership.cloud.dbaas.exceptions.OnMicroserviceBalancingRuleException;
-import org.qubership.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.converter.ListRuleOnMicroserviceConverter;
+import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.dto.v3.DebugRulesDbTypeData;
+import com.netcracker.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDTO;
+import com.netcracker.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDeleteDTO;
+import com.netcracker.cloud.dbaas.dto.v3.ValidateRulesResponse;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
+import com.netcracker.cloud.dbaas.exceptions.InvalidMicroserviceRuleSizeException;
+import com.netcracker.cloud.dbaas.exceptions.OnMicroserviceBalancingRuleDuplicateException;
+import com.netcracker.cloud.dbaas.exceptions.OnMicroserviceBalancingRuleException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import lombok.extern.slf4j.Slf4j;
 
 import org.junit.jupiter.api.Assertions;
@@ -29,8 +29,8 @@ import org.mockito.stubbing.Answer;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.service.BalancingRulesService.PER_NAMESPACE;
-import static org.qubership.cloud.dbaas.service.BalancingRulesService.PHYSICAL_DATABASE_IDENTIFIER;
+import static com.netcracker.cloud.dbaas.service.BalancingRulesService.PER_NAMESPACE;
+import static com.netcracker.cloud.dbaas.service.BalancingRulesService.PHYSICAL_DATABASE_IDENTIFIER;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.ArgumentMatchers.any;

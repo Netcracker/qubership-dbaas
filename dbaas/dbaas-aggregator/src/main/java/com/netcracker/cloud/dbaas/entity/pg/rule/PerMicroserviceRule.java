@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg.rule;
 
-import org.qubership.cloud.dbaas.converter.ListRuleOnMicroserviceConverter;
-import org.qubership.cloud.dbaas.dto.RuleOnMicroservice;
+import com.netcracker.cloud.dbaas.converter.ListRuleOnMicroserviceConverter;
+import com.netcracker.cloud.dbaas.dto.RuleOnMicroservice;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;

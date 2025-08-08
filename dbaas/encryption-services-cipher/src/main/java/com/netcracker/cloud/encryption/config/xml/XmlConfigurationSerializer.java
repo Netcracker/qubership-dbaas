@@ -6,13 +6,13 @@ import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBException;
 import jakarta.xml.bind.Marshaller;
 import jakarta.xml.bind.Unmarshaller;
-import org.qubership.cloud.encryption.config.ConfigurationParser;
-import org.qubership.cloud.encryption.config.ConfigurationSerializer;
-import org.qubership.cloud.encryption.config.EncryptionConfiguration;
-import org.qubership.cloud.encryption.config.exception.IllegalConfiguration;
-import org.qubership.cloud.encryption.config.xml.pojo.conf.EncryptionConfig;
-import org.qubership.cloud.encryption.config.xml.pojo.crypto.CryptoSubsystemXmlConf;
-import org.qubership.cloud.encryption.config.xml.pojo.keystore.*;
+import com.netcracker.cloud.encryption.config.ConfigurationParser;
+import com.netcracker.cloud.encryption.config.ConfigurationSerializer;
+import com.netcracker.cloud.encryption.config.EncryptionConfiguration;
+import com.netcracker.cloud.encryption.config.exception.IllegalConfiguration;
+import com.netcracker.cloud.encryption.config.xml.pojo.conf.EncryptionConfig;
+import com.netcracker.cloud.encryption.config.xml.pojo.crypto.CryptoSubsystemXmlConf;
+import com.netcracker.cloud.encryption.config.xml.pojo.keystore.*;
 import org.xml.sax.SAXException;
 
 import javax.annotation.Nonnull;
@@ -36,7 +36,7 @@ public class XmlConfigurationSerializer implements ConfigurationParser, Configur
     }
 
     /* (non-Javadoc)
-     * @see org.qubership.cloud.encryption.config.xml.ConfiguratoinParser#loadConfiguration(java.io.File)
+     * @see com.netcracker.cloud.encryption.config.xml.ConfiguratoinParser#loadConfiguration(java.io.File)
      */
     @Override
     @Nonnull
@@ -89,7 +89,7 @@ public class XmlConfigurationSerializer implements ConfigurationParser, Configur
     }
 
     /* (non-Javadoc)
-     * @see org.qubership.cloud.encryption.config.xml.ConfiguratoinParser#saveConfiguration(java.io.File, org.qubership.cloud.encryption.config.EncryptionConfiguration)
+     * @see com.netcracker.cloud.encryption.config.xml.ConfiguratoinParser#saveConfiguration(java.io.File, com.netcracker.cloud.encryption.config.EncryptionConfiguration)
      */
     @Override
     public void saveConfiguration(@Nonnull File file, @Nonnull EncryptionConfiguration config) {

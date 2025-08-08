@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import org.qubership.cloud.core.error.runtime.ErrorCodeException;
+import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
 
-import static org.qubership.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_4039;
+import static com.netcracker.cloud.dbaas.exceptions.ErrorCodes.CORE_DBAAS_4039;
 
 public class BgDomainNotFoundException extends ErrorCodeException {
     public BgDomainNotFoundException(String detail) {

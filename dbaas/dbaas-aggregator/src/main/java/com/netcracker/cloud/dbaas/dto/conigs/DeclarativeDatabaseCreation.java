@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.conigs;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.qubership.cloud.dbaas.dto.declarative.DatabaseDeclaration;
+import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

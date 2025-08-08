@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.controller;
 
-import org.qubership.cloud.dbaas.monitoring.indicators.AggregatedHealthResponse;
-import org.qubership.cloud.dbaas.service.HealthService;
+import com.netcracker.cloud.dbaas.monitoring.indicators.AggregatedHealthResponse;
+import com.netcracker.cloud.dbaas.service.HealthService;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -9,8 +9,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 
-import static org.qubership.cloud.dbaas.monitoring.indicators.HealthStatus.PROBLEM;
-import static org.qubership.cloud.dbaas.monitoring.indicators.HealthStatus.UP;
+import static com.netcracker.cloud.dbaas.monitoring.indicators.HealthStatus.PROBLEM;
+import static com.netcracker.cloud.dbaas.monitoring.indicators.HealthStatus.UP;
 
 @Path("/")
 @PermitAll

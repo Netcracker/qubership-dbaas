@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import org.qubership.cloud.dbaas.dto.RuleType;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
-import org.qubership.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
-import org.qubership.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BalanceRulesRepositoryPerMicroservice;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BalancingRulesRepository;
+import com.netcracker.cloud.dbaas.dto.RuleType;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
+import com.netcracker.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
+import com.netcracker.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BalanceRulesRepositoryPerMicroservice;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BalancingRulesRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;

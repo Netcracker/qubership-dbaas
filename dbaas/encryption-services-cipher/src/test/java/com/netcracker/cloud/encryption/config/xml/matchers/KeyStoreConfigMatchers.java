@@ -1,8 +1,8 @@
 package com.netcracker.cloud.encryption.config.xml.matchers;
 
-import org.qubership.cloud.encryption.config.keystore.type.KeyConfig;
-import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;
-import org.qubership.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeyConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.LocalKeystoreConfig;
 import org.hamcrest.FeatureMatcher;
 import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;

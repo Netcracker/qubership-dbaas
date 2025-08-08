@@ -1,14 +1,14 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.exceptions.NotExistingConnectionPropertiesException;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.exceptions.NotExistingConnectionPropertiesException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
-import static org.qubership.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 
 @Slf4j
 public class ConnectionPropertiesUtils {

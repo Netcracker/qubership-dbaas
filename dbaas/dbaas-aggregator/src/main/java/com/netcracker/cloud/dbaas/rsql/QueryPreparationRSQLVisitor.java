@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.rsql;
 
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparation;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPart;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparation;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPart;
 import cz.jirutka.rsql.parser.ast.AndNode;
 import cz.jirutka.rsql.parser.ast.ComparisonNode;
 import cz.jirutka.rsql.parser.ast.LogicalNode;

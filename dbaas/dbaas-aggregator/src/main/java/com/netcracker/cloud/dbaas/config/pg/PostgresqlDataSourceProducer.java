@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.config.pg;
 
 import org.flywaydb.core.api.exception.FlywayValidateException;
-import org.qubership.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.JdbcUtils;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.narayana.NarayanaTransactionIntegration;
 import io.quarkus.agroal.runtime.*;

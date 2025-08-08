@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.rsql.config;
 
-import org.qubership.cloud.dbaas.rsql.QueryPreparationConstants;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationOverrideConfig;
-import org.qubership.cloud.dbaas.rsql.model.QueryPreparationPartOverrideConfig;
+import com.netcracker.cloud.dbaas.rsql.QueryPreparationConstants;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationOverrideConfig;
+import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPartOverrideConfig;
 
 import java.util.Map;
 import java.util.Set;

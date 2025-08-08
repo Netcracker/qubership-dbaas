@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import org.qubership.cloud.dbaas.converter.MapConverter;
-import org.qubership.cloud.dbaas.dto.declarative.DatabaseDeclaration;
+import com.netcracker.cloud.dbaas.converter.MapConverter;
+import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -10,7 +10,7 @@ import org.hibernate.type.SqlTypes;
 import java.io.Serializable;
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.Constants.*;
 
 @Data
 @Entity

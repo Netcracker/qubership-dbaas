@@ -10,12 +10,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.qubership.cloud.dbaas.dao.jpa.DatabaseDbaasRepositoryImpl;
-import org.qubership.cloud.dbaas.entity.h2.Database;
-import org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
+import com.netcracker.cloud.dbaas.dao.jpa.DatabaseDbaasRepositoryImpl;
+import com.netcracker.cloud.dbaas.entity.h2.Database;
+import com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 
 import java.util.*;
 import java.util.concurrent.Callable;

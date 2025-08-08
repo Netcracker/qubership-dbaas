@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.monitoring.indicators;
 
-import org.qubership.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
+import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.PersistenceException;

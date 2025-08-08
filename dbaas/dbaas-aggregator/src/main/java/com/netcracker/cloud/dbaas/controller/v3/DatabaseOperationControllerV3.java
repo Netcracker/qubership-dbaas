@@ -1,17 +1,17 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import org.qubership.cloud.dbaas.dto.*;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3;
-import org.qubership.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
-import org.qubership.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
-import org.qubership.cloud.dbaas.dto.v3.UpdateClassifierRequestV3;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.exceptions.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
+import com.netcracker.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
+import com.netcracker.cloud.dbaas.dto.v3.UpdateClassifierRequestV3;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.service.*;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -33,10 +33,10 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.DbaasApiPath.DATABASE_OPERATION_PATH_V3;
-import static org.qubership.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
-import static org.qubership.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.ROLE_IS_NOT_ALLOWED;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.DATABASE_OPERATION_PATH_V3;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
+import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.ROLE_IS_NOT_ALLOWED;
 
 @Slf4j
 @Path(DATABASE_OPERATION_PATH_V3)

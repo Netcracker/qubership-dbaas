@@ -3,23 +3,23 @@ package com.netcracker.cloud.dbaas.service;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.qubership.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
-import org.qubership.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.core.scheduler.po.DataContext;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
+import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.core.scheduler.po.DataContext;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
-import static org.qubership.cloud.dbaas.service.DatabaseRolesServiceTest.POSTGRESQL_TYPE;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
+import static com.netcracker.cloud.dbaas.service.DatabaseRolesServiceTest.POSTGRESQL_TYPE;
 
 class DatabaseConfigurationCreationServiceTest {
     DBaaService dBaaService;

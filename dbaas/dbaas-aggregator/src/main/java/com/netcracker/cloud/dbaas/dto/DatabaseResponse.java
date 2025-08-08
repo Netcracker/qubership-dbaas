@@ -1,18 +1,18 @@
 package com.netcracker.cloud.dbaas.dto;
 
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.exceptions.EmptyConnectionPropertiesException;
-import org.qubership.cloud.dbaas.service.ConnectionPropertiesUtils;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.exceptions.EmptyConnectionPropertiesException;
+import com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.V3_TRANSFORMATION;
+import static com.netcracker.cloud.dbaas.Constants.V3_TRANSFORMATION;
 
 /**
  * <p>A class that is used as database response model. It contains only those fields,

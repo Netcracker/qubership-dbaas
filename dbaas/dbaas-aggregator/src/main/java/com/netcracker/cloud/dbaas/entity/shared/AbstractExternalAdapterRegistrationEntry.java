@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.entity.shared;
 
-import org.qubership.cloud.dbaas.converter.ApiVersionConverter;
-import org.qubership.cloud.dbaas.converter.HttpBasicCredentialsConverter;
-import org.qubership.cloud.dbaas.dto.HttpBasicCredentials;
-import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.converter.ApiVersionConverter;
+import com.netcracker.cloud.dbaas.converter.HttpBasicCredentialsConverter;
+import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;

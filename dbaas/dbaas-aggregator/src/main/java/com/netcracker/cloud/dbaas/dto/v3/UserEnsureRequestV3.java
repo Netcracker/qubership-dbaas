@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
-import org.qubership.cloud.dbaas.dto.UserEnsureRequest;
+import com.netcracker.cloud.dbaas.dto.UserEnsureRequest;
 import lombok.*;
 
 @EqualsAndHashCode(callSuper = true)

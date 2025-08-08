@@ -2,16 +2,16 @@ package com.netcracker.cloud.dbaas.integration.stability;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.DbResource;
-import org.qubership.cloud.dbaas.entity.pg.DbState;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.DbState;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static org.awaitility.Awaitility.await;
 
 @QuarkusTest
@@ -73,9 +73,9 @@ class DbaasDatabaseRegistryStabilityTest {
         await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId()).isPresent());
         Optional<DatabaseRegistry> pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
-        Optional<org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry> h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
+        Optional<com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry> h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
         Assertions.assertEquals(objectMapper.writeValueAsString(pgDatabase.get()), objectMapper.writeValueAsString(h2Database.get()));
-        Optional<org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry> h2UnsavedDatabase = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistryToSave.getClassifier(), databaseRegistryToSave.getType());
+        Optional<com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry> h2UnsavedDatabase = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistryToSave.getClassifier(), databaseRegistryToSave.getType());
         Assertions.assertTrue(h2UnsavedDatabase.isEmpty());
 
         databaseRegistryRepository.persist(databaseRegistryToSave);
@@ -83,7 +83,7 @@ class DbaasDatabaseRegistryStabilityTest {
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(databaseRegistryToSave.getId()).isPresent());
 
         Optional<DatabaseRegistry> pgSavedDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistryToSave.getClassifier(), databaseRegistryToSave.getType());
-        Optional<org.qubership.cloud.dbaas.entity.h2.DatabaseRegistry> h2SavedDatabase = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistryToSave.getClassifier(), databaseRegistryToSave.getType());
+        Optional<com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry> h2SavedDatabase = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistryToSave.getClassifier(), databaseRegistryToSave.getType());
         Assertions.assertTrue(h2SavedDatabase.isPresent());
         Assertions.assertEquals(objectMapper.writeValueAsString(pgSavedDatabase.get()), objectMapper.writeValueAsString(h2SavedDatabase.get()));
     }

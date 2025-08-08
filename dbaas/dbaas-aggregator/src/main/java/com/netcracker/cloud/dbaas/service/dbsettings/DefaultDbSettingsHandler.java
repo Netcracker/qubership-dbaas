@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.service.dbsettings;
 
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
-import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import org.qubership.cloud.dbaas.service.DbaasAdapter;
-import org.qubership.cloud.dbaas.service.PhysicalDatabasesService;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.service.DbaasAdapter;
+import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 

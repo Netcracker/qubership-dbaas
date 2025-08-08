@@ -1,8 +1,8 @@
 package com.netcracker.cloud.dbaas.monitoring.indicators;
 
-import org.qubership.cloud.dbaas.dto.Secret;
-import org.qubership.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
-import org.qubership.cloud.dbaas.service.DataEncryption;
+import com.netcracker.cloud.dbaas.dto.Secret;
+import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
+import com.netcracker.cloud.dbaas.service.DataEncryption;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;

@@ -6,8 +6,8 @@ import com.google.common.collect.Lists;
 import jakarta.xml.bind.annotation.*;
 import jakarta.xml.bind.annotation.adapters.CollapsedStringAdapter;
 import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-import org.qubership.cloud.encryption.config.keystore.MutableKeystoreSubsystemConfig;
-import org.qubership.cloud.encryption.config.keystore.type.KeystoreConfig;
+import com.netcracker.cloud.encryption.config.keystore.MutableKeystoreSubsystemConfig;
+import com.netcracker.cloud.encryption.config.keystore.type.KeystoreConfig;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

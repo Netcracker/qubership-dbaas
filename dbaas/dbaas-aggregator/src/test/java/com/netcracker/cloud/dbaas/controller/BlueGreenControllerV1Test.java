@@ -11,22 +11,22 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.qubership.cloud.dbaas.dto.bluegreen.*;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.entity.pg.BgNamespace;
-import org.qubership.cloud.dbaas.exceptions.BgRequestValidationException;
-import org.qubership.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
-import org.qubership.cloud.dbaas.service.BlueGreenService;
-import org.qubership.cloud.dbaas.service.DbaaSHelper;
-import org.qubership.cloud.dbaas.service.ProcessService;
-import org.qubership.cloud.dbaas.service.processengine.tasks.BackupDatabaseTask;
-import org.qubership.cloud.dbaas.service.processengine.tasks.DeleteBackupTask;
-import org.qubership.cloud.dbaas.service.processengine.tasks.NewDatabaseTask;
-import org.qubership.cloud.dbaas.service.processengine.tasks.RestoreDatabaseTask;
-import org.qubership.core.scheduler.po.DataContext;
-import org.qubership.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.qubership.core.scheduler.po.model.pojo.TaskInstanceImpl;
-import org.qubership.core.scheduler.po.task.TaskState;
+import com.netcracker.cloud.dbaas.dto.bluegreen.*;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
+import com.netcracker.cloud.dbaas.exceptions.BgRequestValidationException;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
+import com.netcracker.cloud.dbaas.service.BlueGreenService;
+import com.netcracker.cloud.dbaas.service.DbaaSHelper;
+import com.netcracker.cloud.dbaas.service.ProcessService;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.BackupDatabaseTask;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.DeleteBackupTask;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.NewDatabaseTask;
+import com.netcracker.cloud.dbaas.service.processengine.tasks.RestoreDatabaseTask;
+import com.netcracker.core.scheduler.po.DataContext;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
+import com.netcracker.core.scheduler.po.task.TaskState;
 
 import java.util.*;
 
@@ -34,8 +34,8 @@ import static jakarta.ws.rs.core.Response.Status.ACCEPTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
-import static org.qubership.cloud.dbaas.Constants.*;
-import static org.qubership.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
 
 @SuppressWarnings("resource")
 @ExtendWith(MockitoExtension.class)

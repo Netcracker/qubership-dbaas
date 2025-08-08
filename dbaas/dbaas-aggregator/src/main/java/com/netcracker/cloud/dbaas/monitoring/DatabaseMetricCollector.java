@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.monitoring;
 
-import org.qubership.cloud.dbaas.monitoring.model.DatabaseMonitoringEntryStatus;
-import org.qubership.cloud.dbaas.service.MonitoringService;
+import com.netcracker.cloud.dbaas.monitoring.model.DatabaseMonitoringEntryStatus;
+import com.netcracker.cloud.dbaas.service.MonitoringService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;

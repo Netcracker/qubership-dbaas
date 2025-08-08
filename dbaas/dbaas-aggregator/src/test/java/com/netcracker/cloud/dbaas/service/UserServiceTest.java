@@ -1,15 +1,15 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.qubership.cloud.dbaas.dto.EnsuredUser;
-import org.qubership.cloud.dbaas.dto.role.Role;
-import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
-import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserResponse;
-import org.qubership.cloud.dbaas.dto.userrestore.RestoreUsersRequest;
-import org.qubership.cloud.dbaas.dto.v3.UserOperationRequest;
-import org.qubership.cloud.dbaas.entity.pg.*;
-import org.qubership.cloud.dbaas.exceptions.DbNotFoundException;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
+import com.netcracker.cloud.dbaas.dto.EnsuredUser;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
+import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserResponse;
+import com.netcracker.cloud.dbaas.dto.userrestore.RestoreUsersRequest;
+import com.netcracker.cloud.dbaas.dto.v3.UserOperationRequest;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
 import lombok.extern.slf4j.Slf4j;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.qubership.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;

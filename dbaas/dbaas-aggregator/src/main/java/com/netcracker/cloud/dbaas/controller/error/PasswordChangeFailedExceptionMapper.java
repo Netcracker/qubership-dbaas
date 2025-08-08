@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.controller.error;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.exceptions.PasswordChangeFailedException;
+import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
@@ -13,9 +13,9 @@ import lombok.CustomLog;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.qubership.cloud.dbaas.controller.error.Utils.WARNING_MESSAGE;
-import static org.qubership.cloud.dbaas.controller.error.Utils.buildResponse;
-import static org.qubership.cloud.dbaas.controller.error.Utils.tmfResponseBuilder;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.WARNING_MESSAGE;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.buildResponse;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.tmfResponseBuilder;
 
 @CustomLog
 @Provider

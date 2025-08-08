@@ -1,8 +1,8 @@
 package com.netcracker.cloud.encryption.config.xml.pojo.conf;
 
 import jakarta.xml.bind.annotation.XmlRegistry;
-import org.qubership.cloud.encryption.config.xml.pojo.crypto.CryptoConfigFactory;
-import org.qubership.cloud.encryption.config.xml.pojo.keystore.KeystoreConfigFactory;
+import com.netcracker.cloud.encryption.config.xml.pojo.crypto.CryptoConfigFactory;
+import com.netcracker.cloud.encryption.config.xml.pojo.keystore.KeystoreConfigFactory;
 
 
 /**
@@ -31,10 +31,10 @@ public class ObjectFactory implements RootConfigFactory {
     }
 
     private KeystoreConfigFactory getKeystoreConfigFactory() {
-        return new org.qubership.cloud.encryption.config.xml.pojo.keystore.ObjectFactory();
+        return new com.netcracker.cloud.encryption.config.xml.pojo.keystore.ObjectFactory();
     }
 
     private CryptoConfigFactory getCryptoConfigFactory() {
-        return new org.qubership.cloud.encryption.config.xml.pojo.crypto.ObjectFactory();
+        return new com.netcracker.cloud.encryption.config.xml.pojo.crypto.ObjectFactory();
     }
 }
