@@ -25,6 +25,7 @@ jobs:
       actor: ${{ github.actor }}
       upload-artifact: true
       ref: ${{ inputs.ref }}
+      dry-run: ${{ inputs.dry-run == 'true' }}
 
   docker-build:
     needs: [mvn]
