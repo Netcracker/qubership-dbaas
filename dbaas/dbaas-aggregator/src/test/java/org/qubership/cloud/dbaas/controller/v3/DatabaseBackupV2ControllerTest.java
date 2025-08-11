@@ -36,7 +36,7 @@ class DatabaseBackupV2ControllerTest {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .body(dto)
-                .when().post()
+                .when().post("/operation/backup")
                 .then()
                 .statusCode(200);
 
