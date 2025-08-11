@@ -11,6 +11,10 @@
       "description": "Providing API version info"
     },
     {
+      "name": "Backup \u0026 Restore",
+      "description": "Backup \u0026 Restore operations for DBaaS"
+    },
+    {
       "name": "Backups administration",
       "description": "Allows to get list of available backups, trigger backup collector and restore some specific backup. All backup management is per namespace."
     },
@@ -64,6 +68,537 @@
             "description": "Current APi version and supported API versions"
           }
         }
+      }
+    },
+    "/api/backups/v1/backup/{backupName}": {
+      "post": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Get backup details",
+        "description": "Retrieve details about a specific backup operation",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "description": "Unique identifier of the backup",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Delete backup",
+        "description": "Delete the backup operation",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "description": "Unique identifier of the backup",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Backup deleted successfully"
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/backup/{backupName}/metadata": {
+      "get": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Get backup metadata",
+        "description": "Retrieve metadata about a completed backup",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "description": "Unique identifier of the backup",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup metadata retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupMetadataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/backup/{backupName}/status": {
+      "get": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Get backup status",
+        "description": "Retrieve the current status of a backup operation",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "description": "Unique identifier of the backup",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/operation/backup": {
+      "post": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Not Authorized"
+          },
+          "403": {
+            "description": "Not Allowed"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/operation/uploadMetadata": {
+      "post": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Upload backup metadata",
+        "description": "Metadata upload done",
+        "requestBody": {
+          "description": "Backup metadata",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Backup metadata uploaded successfully"
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served"
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/restore/{backupName}": {
+      "post": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Restore from backup",
+        "description": "Initiate a database restore operation from an existing backup. This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress. Operation is not idempotent",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "description": "Unique identifier of the backup",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Restore request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Restore operation completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Restore operation initiated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served"
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/restore/{restoreName}": {
+      "get": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Get restore details",
+        "description": "Retrieve details about a specific restore operation",
+        "parameters": [
+          {
+            "name": "restoreName",
+            "in": "path",
+            "description": "Unique identifier of the restore operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restore details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Delete restore",
+        "description": "Delete a restore operation",
+        "parameters": [
+          {
+            "name": "restoreName",
+            "in": "path",
+            "description": "Unique identifier of the restore operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Restore operation deleted successfully"
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/restore/{restoreName}/retry": {
+      "post": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Retry restore",
+        "description": "Retry a failed restore operation",
+        "parameters": [
+          {
+            "name": "restoreName",
+            "in": "path",
+            "description": "Unique identifier of the restore operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restore operation retried successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Restore retry accepted and is being processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/restore/{restoreName}/status": {
+      "get": {
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "summary": "Get restore status",
+        "description": "Retrieve the current status of a restore operation",
+        "parameters": [
+          {
+            "name": "restoreName",
+            "in": "path",
+            "description": "Unique identifier of the restore operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restore status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": []
+          }
+        ]
       }
     },
     "/api/bluegreen/v1/operation/commit": {
@@ -3934,6 +4469,72 @@
           }
         }
       },
+      "BackupDto": {
+        "required": [
+          "namespace",
+          "backupName"
+        ],
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "backupName": {
+            "type": "string"
+          }
+        }
+      },
+      "BackupMetadataRequest": {
+        "description": "Backup metadata to be stored",
+        "required": [
+          "metadata"
+        ],
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "description": "Backup metadata"
+          }
+        }
+      },
+      "BackupMetadataResponse": {
+        "description": "Backup metadata information",
+        "required": [
+          "metadata"
+        ],
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "description": "Backup metadata"
+          }
+        }
+      },
+      "BackupResponse": {
+        "description": "Response containing backup operation details",
+        "required": [
+          "backupName"
+        ],
+        "type": "object",
+        "properties": {
+          "backupName": {
+            "description": "Unique identifier of the backup",
+            "type": "string",
+            "example": "before-prod-update-20251013T1345-G5s8"
+          }
+        }
+      },
+      "BackupStatusResponse": {
+        "description": "Current status of a backup operation",
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "description": "Current state of the backup operation",
+            "type": "string"
+          }
+        }
+      },
       "BgDomain": {
         "type": "object",
         "properties": {
@@ -6255,6 +6856,34 @@
           }
         }
       },
+      "RestoreRequest": {
+        "description": "Request to restore a database from a backup",
+        "required": [
+          "restoreName"
+        ],
+        "type": "object",
+        "properties": {
+          "restoreName": {
+            "description": "Unique identifier for the restore operation",
+            "type": "string",
+            "example": "restore-before-prod-update-20251203T1020-4t6S"
+          }
+        }
+      },
+      "RestoreResponse": {
+        "description": "Response containing the restore operation details",
+        "required": [
+          "restoreName"
+        ],
+        "type": "object",
+        "properties": {
+          "restoreName": {
+            "description": "Unique identifier of the restore operation",
+            "type": "string",
+            "example": "restore-before-prod-update-20251203T1020-4t6S"
+          }
+        }
+      },
       "RestoreResult": {
         "type": "object",
         "properties": {
@@ -6288,6 +6917,19 @@
             "additionalProperties": {
               "type": "string"
             }
+          }
+        }
+      },
+      "RestoreStatusResponse": {
+        "description": "Current status of a restore operation",
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "description": "Current state of the restore operation",
+            "type": "string"
           }
         }
       },
