@@ -39,6 +39,20 @@ public class DatabaseBackupV2Controller {
         this.dbBackupV2Service = dbBackupV2Service;
     }
 
+    @Operation(summary = "Initiate database backup",
+            description = "Starts an asynchronous backup operation for the specified databases."
+                    + " Returns immediately with a backup identifier that can be used to track progress.")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Backup operation completed successfully",
+                    content = @Content(schema = @Schema(implementation = BackupOperationResponse.class))),
+            @APIResponse(responseCode = "202", description = "Backup operation initiated successfully",
+                    content = @Content(schema = @Schema(implementation = BackupOperationResponse.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served"),
+            @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
+            @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+    })
     @Path("/operation/backup")
     @POST
     public Response getBackupByNamespace(@Parameter(required = true) @Valid BackupDto backupDto) {

@@ -262,6 +262,8 @@
         "tags": [
           "Backup \u0026 Restore"
         ],
+        "summary": "Initiate database backup",
+        "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup identifier that can be used to track progress.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -273,13 +275,39 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Backup operation completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupOperationResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Backup operation initiated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served"
           },
           "401": {
-            "description": "Not Authorized"
+            "description": "Authentication is required and has failed or has not been provided"
           },
           "403": {
-            "description": "Not Allowed"
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found"
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server"
           }
         },
         "security": [
@@ -337,7 +365,7 @@
           "Backup \u0026 Restore"
         ],
         "summary": "Restore from backup",
-        "description": "Initiate a database restore operation from an existing backup. This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress. Operation is not idempotent",
+        "description": "Initiate a database restore operation from an existing backup.This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress.Operation is not idempotent",
         "parameters": [
           {
             "name": "backupName",
@@ -4505,6 +4533,19 @@
         "properties": {
           "metadata": {
             "description": "Backup metadata"
+          }
+        }
+      },
+      "BackupOperationResponse": {
+        "description": "Response containing backup operation details",
+        "required": [
+          "backupName"
+        ],
+        "type": "object",
+        "properties": {
+          "backupName": {
+            "description": "Unique identifier of the backup",
+            "type": "string"
           }
         }
       },
