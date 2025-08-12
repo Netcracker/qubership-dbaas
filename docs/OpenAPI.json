@@ -4525,24 +4525,46 @@
       "BackupMetadataRequest": {
         "description": "Backup metadata to be stored",
         "required": [
-          "metadata"
+          "metadata",
+          "controlSum"
         ],
         "type": "object",
         "properties": {
           "metadata": {
-            "description": "Backup metadata"
+            "description": "Backup metadata",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackupResponse"
+              }
+            ]
+          },
+          "controlSum": {
+            "description": "Control sum of the metadata",
+            "type": "string"
           }
         }
       },
       "BackupMetadataResponse": {
         "description": "Backup metadata information",
         "required": [
-          "metadata"
+          "metadata",
+          "controlSum"
         ],
         "type": "object",
         "properties": {
           "metadata": {
-            "description": "Backup metadata"
+            "description": "Backup metadata",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackupResponse"
+              }
+            ]
+          },
+          "controlSum": {
+            "description": "Control sum of the metadata",
+            "type": "string"
           }
         }
       },
@@ -4568,10 +4590,62 @@
           }
         }
       },
+      "BackupRequest": {
+        "description": "Request to create a database backup",
+        "required": [
+          "backupName",
+          "storageName",
+          "blobPath"
+        ],
+        "type": "object",
+        "properties": {
+          "backupName": {
+            "description": "Unique name for the backup",
+            "type": "string",
+            "example": "before-prod-update-20251013T1345-G5s8"
+          },
+          "storageName": {
+            "description": "Identifier of the storage backend",
+            "type": "string",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "description": "Path in the storage where backup will be stored",
+            "type": "string",
+            "example": "/backups/before-prod-update-20251013T1345-G5s8/logical/dbaas/"
+          },
+          "filterCriteria": {
+            "description": "Filter criteria",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FilterCriteria"
+              }
+            ]
+          },
+          "externalDatabaseStrategy": {
+            "description": "How to handle external databases during backup",
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ExternalDatabaseStrategy"
+              }
+            ],
+            "example": "fail"
+          },
+          "ignoreNotBackupableDatabases": {
+            "description": "Whether external databases were skipped during the backup",
+            "type": "boolean",
+            "example": false
+          }
+        }
+      },
       "BackupResponse": {
         "description": "Response containing backup operation details",
         "required": [
-          "backupName"
+          "backupName",
+          "storageName",
+          "blobPath"
         ],
         "type": "object",
         "properties": {
@@ -4579,8 +4653,63 @@
             "description": "Unique identifier of the backup",
             "type": "string",
             "example": "before-prod-update-20251013T1345-G5s8"
+          },
+          "storageName": {
+            "description": "Name of the storage backend containing the backup",
+            "type": "string",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "description": "Path to the backup file in the storage",
+            "type": "string",
+            "example": "/backups"
+          },
+          "externalDatabaseStrategy": {
+            "description": "How to handle external databases during backup",
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ExternalDatabaseStrategy"
+              }
+            ],
+            "example": "fail"
+          },
+          "ignoreNotBackupableDatabases": {
+            "description": "Whether external databases were skipped during the backup",
+            "type": "boolean",
+            "example": false
+          },
+          "filterCriteria": {
+            "description": "Filter criteria",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FilterCriteria"
+              }
+            ]
+          },
+          "status": {
+            "description": "Status of the backup operation",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "logicalBackups": {
+            "description": "List of logical backups",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalBackup"
+            }
           }
         }
+      },
+      "BackupStatus": {
+        "enum": [
+          "PENDING",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "FAILED"
+        ],
+        "type": "string"
       },
       "BackupStatusResponse": {
         "description": "Current status of a backup operation",
@@ -4591,7 +4720,35 @@
         "properties": {
           "status": {
             "description": "Current state of the backup operation",
-            "type": "string"
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackupStatus"
+              }
+            ]
+          },
+          "total": {
+            "format": "int32",
+            "description": "Total number of databases being backed up",
+            "type": "integer",
+            "example": 5
+          },
+          "completed": {
+            "format": "int32",
+            "description": "Number of databases successfully backed up",
+            "type": "integer",
+            "example": 3
+          },
+          "size": {
+            "format": "int32",
+            "description": "Total size of the backup in bytes",
+            "type": "integer",
+            "example": 1073741824
+          },
+          "errorMessage": {
+            "description": "Error details if the backup failed",
+            "type": "string",
+            "example": "Failed to connect to database"
           }
         }
       },
@@ -5022,6 +5179,13 @@
           }
         }
       },
+      "DatabaseKind": {
+        "enum": [
+          "CONFIGURATION",
+          "TRANSACTIONAL"
+        ],
+        "type": "string"
+      },
       "DatabaseRegistry": {
         "required": [
           "classifier",
@@ -5320,6 +5484,16 @@
           "DELETING_FAILED",
           "ARCHIVED",
           "ORPHAN"
+        ],
+        "type": "string"
+      },
+      "DatabaseType": {
+        "enum": [
+          "POSTGRESQL",
+          "ARANGODB",
+          "CLICKHOUSE",
+          "MONGODB",
+          "CASSANDRA"
         ],
         "type": "string"
       },
@@ -5755,6 +5929,14 @@
           }
         }
       },
+      "ExternalDatabaseStrategy": {
+        "enum": [
+          "FAIL",
+          "SKIP",
+          "INCLUDE"
+        ],
+        "type": "string"
+      },
       "FailureRegistrationV3": {
         "description": "Errors during the migration process",
         "required": [
@@ -5786,6 +5968,70 @@
           "PASSWORD"
         ],
         "type": "string"
+      },
+      "Filter": {
+        "description": "Single filter criteria for backup and restore operations",
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "description": "Filter by Kubernetes namespaces",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "microserviceName": {
+            "description": "Filter by microservice names",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "databaseType": {
+            "description": "Filter by database types",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseType"
+            }
+          },
+          "databaseKind": {
+            "description": "Filter by database kinds",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseKind"
+            }
+          }
+        }
+      },
+      "FilterCriteria": {
+        "description": "Group of filters for backup and restore operations. Filters are applied in the following order:\n\n1. `filter`: Apply the filter to the databases.\n2. `include`: Include databases that match any of the filters in the list.\n3. `exclude`: Exclude databases that match any of the filters in the list.",
+        "required": [
+          "filter"
+        ],
+        "type": "object",
+        "properties": {
+          "filter": {
+            "description": "Apply the filter to the remaining databases",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            }
+          },
+          "include": {
+            "description": "Include databases that match any of the filters in the list",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            }
+          },
+          "exclude": {
+            "description": "Exclude databases that match any of the filters in the list",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            }
+          }
+        }
       },
       "GetOrCreateUserRequest": {
         "required": [
@@ -5942,6 +6188,90 @@
           "targetNamespace": {
             "description": "Namespace, to which databases will be linked",
             "type": "string"
+          }
+        }
+      },
+      "LogicalBackup": {
+        "description": "Logical backup details",
+        "required": [
+          "id",
+          "adapterId",
+          "type",
+          "status",
+          "logicalBackupDatabases"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the logical backup",
+            "type": "string",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "adapterId": {
+            "description": "Unique identifier of the adapter",
+            "type": "string",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "type": {
+            "description": "Type of the adapter",
+            "type": "string"
+          },
+          "status": {
+            "description": "Status of the logical backup",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "logicalBackupDatabases": {
+            "description": "List of logical backup databases",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalBackupDatabase"
+            }
+          }
+        }
+      },
+      "LogicalBackupDatabase": {
+        "description": "Logical database backup details",
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the logical backup",
+            "type": "string",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "name": {
+            "description": "Name of the database",
+            "type": "string",
+            "example": "mydb"
+          },
+          "classifiers": {
+            "description": "List of database classifiers",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "settings": {
+            "description": "List of database settings",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "users": {
+            "description": "List of database users",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "resources": {
+            "description": "List of database resources",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "externallyManaged": {
+            "description": "Whether the database is externally managed",
+            "type": "boolean",
+            "example": false
           }
         }
       },
