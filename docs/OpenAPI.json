@@ -264,6 +264,16 @@
         ],
         "summary": "Initiate database backup",
         "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup identifier that can be used to track progress.",
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4546,6 +4556,15 @@
           "backupName": {
             "description": "Unique identifier of the backup",
             "type": "string"
+          },
+          "dryRun": {
+            "description": "Response containing backup operation details",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackupResponse"
+              }
+            ]
           }
         }
       },

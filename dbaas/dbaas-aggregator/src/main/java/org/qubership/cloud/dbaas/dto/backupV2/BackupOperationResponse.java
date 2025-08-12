@@ -10,4 +10,6 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 public class BackupOperationResponse {
     @Schema(description = "Unique identifier of the backup", required = true)
     private String backupName;
+    @Schema(description = "Response containing backup operation details")
+    private BackupResponse dryRun;
 }
