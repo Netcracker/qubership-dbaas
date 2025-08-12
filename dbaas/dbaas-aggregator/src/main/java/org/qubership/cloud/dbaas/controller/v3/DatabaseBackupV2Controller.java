@@ -55,7 +55,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/operation/backup")
     @POST
-    public Response getBackupByNamespace(@Parameter(required = true) @Valid BackupDto backupDto) {
+    public Response getBackupByNamespace(@Parameter(required = true) @Valid BackupDto backupDto, @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         if (validBackupDtoInput(backupDto))
             dbBackupV2Service.backup(backupDto.getNamespace(), backupDto.getBackupName());
         return Response.ok().build();
