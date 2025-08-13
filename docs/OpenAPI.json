@@ -4625,12 +4625,12 @@
           },
           "externalDatabaseStrategy": {
             "description": "How to handle external databases during backup",
-            "type": "string",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ExternalDatabaseStrategy"
-              }
+            "enum": [
+              "FAIL",
+              "SKIP",
+              "INCLUDE"
             ],
+            "type": "object",
             "example": "fail"
           },
           "ignoreNotBackupableDatabases": {
@@ -4666,12 +4666,12 @@
           },
           "externalDatabaseStrategy": {
             "description": "How to handle external databases during backup",
-            "type": "string",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ExternalDatabaseStrategy"
-              }
+            "enum": [
+              "FAIL",
+              "SKIP",
+              "INCLUDE"
             ],
+            "type": "object",
             "example": "fail"
           },
           "ignoreNotBackupableDatabases": {
@@ -4702,15 +4702,6 @@
           }
         }
       },
-      "BackupStatus": {
-        "enum": [
-          "PENDING",
-          "IN_PROGRESS",
-          "COMPLETED",
-          "FAILED"
-        ],
-        "type": "string"
-      },
       "BackupStatusResponse": {
         "description": "Current status of a backup operation",
         "required": [
@@ -4720,12 +4711,13 @@
         "properties": {
           "status": {
             "description": "Current state of the backup operation",
-            "type": "string",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BackupStatus"
-              }
-            ]
+            "enum": [
+              "PENDING",
+              "IN_PROGRESS",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "type": "object"
           },
           "total": {
             "format": "int32",
@@ -5179,13 +5171,6 @@
           }
         }
       },
-      "DatabaseKind": {
-        "enum": [
-          "CONFIGURATION",
-          "TRANSACTIONAL"
-        ],
-        "type": "string"
-      },
       "DatabaseRegistry": {
         "required": [
           "classifier",
@@ -5484,16 +5469,6 @@
           "DELETING_FAILED",
           "ARCHIVED",
           "ORPHAN"
-        ],
-        "type": "string"
-      },
-      "DatabaseType": {
-        "enum": [
-          "POSTGRESQL",
-          "ARANGODB",
-          "CLICKHOUSE",
-          "MONGODB",
-          "CASSANDRA"
         ],
         "type": "string"
       },
@@ -5929,14 +5904,6 @@
           }
         }
       },
-      "ExternalDatabaseStrategy": {
-        "enum": [
-          "FAIL",
-          "SKIP",
-          "INCLUDE"
-        ],
-        "type": "string"
-      },
       "FailureRegistrationV3": {
         "description": "Errors during the migration process",
         "required": [
@@ -5991,14 +5958,25 @@
             "description": "Filter by database types",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabaseType"
+              "enum": [
+                "POSTGRESQL",
+                "ARANGODB",
+                "CLICKHOUSE",
+                "MONGODB",
+                "CASSANDRA"
+              ],
+              "type": "string"
             }
           },
           "databaseKind": {
             "description": "Filter by database kinds",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabaseKind"
+              "enum": [
+                "CONFIGURATION",
+                "TRANSACTIONAL"
+              ],
+              "type": "string"
             }
           }
         }
@@ -6272,6 +6250,111 @@
             "description": "Whether the database is externally managed",
             "type": "boolean",
             "example": false
+          }
+        }
+      },
+      "LogicalRestore": {
+        "description": "Logical restore details",
+        "required": [
+          "id",
+          "adapterId",
+          "type",
+          "logicalRestoreDatabases"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the logical restore",
+            "type": "string",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "adapterId": {
+            "description": "Unique identifier of the adapter",
+            "type": "string",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "type": {
+            "description": "Type of the adapter",
+            "type": "string",
+            "example": "postgres"
+          },
+          "status": {
+            "description": "Status of the logical restore (arbitrary key-value pairs)",
+            "type": "object",
+            "additionalProperties": {},
+            "example": {
+              "phase": "running",
+              "progress": 50
+            }
+          },
+          "logicalRestoreDatabases": {
+            "description": "List of logical restore databases",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalRestoreDatabase"
+            }
+          }
+        }
+      },
+      "LogicalRestoreDatabase": {
+        "description": "Logical database restore details",
+        "required": [
+          "id",
+          "logicalBackupId",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the logical restore",
+            "type": "string",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "logicalBackupId": {
+            "description": "Unique identifier of the logical backup",
+            "type": "string",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "name": {
+            "description": "Name of the database",
+            "type": "string",
+            "example": "mydb"
+          },
+          "classifier": {
+            "description": "Database classifier",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "users": {
+            "description": "List of database users",
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "Mapping": {
+        "description": "Defines how source database configurations map to target configurations during restore",
+        "type": "object",
+        "properties": {
+          "namespaces": {
+            "description": "Mapping of source namespace to target namespace",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "source-namespace": "target-namespace"
+            }
+          },
+          "tenants": {
+            "description": "Mapping of source tenant to target tenant",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "source-tenant": "target-tenant"
+            }
           }
         }
       },
@@ -7249,7 +7332,9 @@
       "RestoreRequest": {
         "description": "Request to restore a database from a backup",
         "required": [
-          "restoreName"
+          "restoreName",
+          "storageName",
+          "blobPath"
         ],
         "type": "object",
         "properties": {
@@ -7257,6 +7342,34 @@
             "description": "Unique identifier for the restore operation",
             "type": "string",
             "example": "restore-before-prod-update-20251203T1020-4t6S"
+          },
+          "storageName": {
+            "description": "Name of the storage backend containing the backup",
+            "type": "string",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "description": "Path to the backup file in the storage",
+            "type": "string",
+            "example": "/backups"
+          },
+          "filterCriteria": {
+            "description": "Filter criteria",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FilterCriteria"
+              }
+            ]
+          },
+          "mapping": {
+            "description": "Mapping to use for the restore operation",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Mapping"
+              }
+            ]
           }
         }
       },
@@ -7268,9 +7381,58 @@
         "type": "object",
         "properties": {
           "restoreName": {
-            "description": "Unique identifier of the restore operation",
+            "description": "Unique identifier for the restore operation",
             "type": "string",
             "example": "restore-before-prod-update-20251203T1020-4t6S"
+          },
+          "backupName": {
+            "description": "Unique identifier of the backup name",
+            "type": "string",
+            "example": "before-prod-update-20251013T1345-G5s8"
+          },
+          "storageName": {
+            "description": "Name of the storage backend containing the backup",
+            "type": "string",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "description": "Path to the backup file in the storage",
+            "type": "string",
+            "example": "/backups"
+          },
+          "filterCriteria": {
+            "description": "Criteria used to filter restore operations",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FilterCriteria"
+              }
+            ]
+          },
+          "mapping": {
+            "description": "Mapping configuration for the restore",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Mapping"
+              }
+            ]
+          },
+          "status": {
+            "description": "Status of the restore operation (arbitrary key-value pairs)",
+            "type": "object",
+            "additionalProperties": {},
+            "example": {
+              "phase": "completed",
+              "duration": "5m"
+            }
+          },
+          "logicalRestores": {
+            "description": "List of logical restores",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalRestore"
+            }
           }
         }
       },
@@ -7319,7 +7481,32 @@
         "properties": {
           "status": {
             "description": "Current state of the restore operation",
-            "type": "string"
+            "enum": [
+              "PENDING",
+              "IN_PROGRESS",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "type": "object"
+          },
+          "total": {
+            "format": "int32",
+            "description": "Total number of databases to be restored",
+            "minimum": 0,
+            "type": "integer",
+            "example": 5
+          },
+          "completed": {
+            "format": "int32",
+            "description": "Number of databases successfully restored",
+            "minimum": 0,
+            "type": "integer",
+            "example": 3
+          },
+          "errorMessage": {
+            "description": "Error details if the restore failed",
+            "type": "string",
+            "example": "Insufficient permissions to create database"
           }
         }
       },

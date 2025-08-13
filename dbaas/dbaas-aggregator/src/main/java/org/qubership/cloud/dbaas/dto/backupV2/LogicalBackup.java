@@ -2,6 +2,7 @@ package org.qubership.cloud.dbaas.dto.backupV2;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
@@ -19,6 +20,9 @@ public class LogicalBackup {
     private String type;
     @Schema(description = "Status of the logical backup", required = true)
     private Map<String, Object> status;
-    @Schema(description = "List of logical backup databases", required = true)
+    @Schema(
+            description = "List of logical backup databases",
+            required = true
+    )
     private List<LogicalBackupDatabase> logicalBackupDatabases;
 }
