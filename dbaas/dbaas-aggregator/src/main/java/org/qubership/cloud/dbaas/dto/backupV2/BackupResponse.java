@@ -2,6 +2,7 @@ package org.qubership.cloud.dbaas.dto.backupV2;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
@@ -17,15 +18,23 @@ public class BackupResponse {
     private String storageName;
     @Schema(description = "Path to the backup file in the storage", example = "/backups", required = true)
     private String blobPath;
-    @Schema(description = "How to handle external databases during backup", example = "fail")
+    @Schema(
+            description = "How to handle external databases during backup",
+            example = "fail",
+            implementation = ExternalDatabaseStrategy.class
+    )
     private ExternalDatabaseStrategy externalDatabaseStrategy;
     @Schema(description = "Whether external databases were skipped during the backup", example = "false")
     private boolean ignoreNotBackupableDatabases;
-    @Schema(description = "Filter criteria")
+    @Schema(
+            description = "Filter criteria"
+    )
     private FilterCriteria filterCriteria;
     @Schema(description = "Status of the backup operation")
     private Map<String, Object> status;
-    @Schema(description = "List of logical backups")
+    @Schema(
+            description = "List of logical backups"
+    )
     private List<LogicalBackup> logicalBackups;
 
 }

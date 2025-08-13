@@ -8,7 +8,10 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @NoArgsConstructor
 @Schema(description = "Current status of a backup operation")
 public class BackupStatusResponse {
-    @Schema(description = "Current state of the backup operation", required = true)
+    @Schema(
+            description = "Current state of the backup operation",
+            required = true,
+            implementation = BackupStatus.class)
     private BackupStatus status;
     @Schema(description = "Total number of databases being backed up", example = "5")
     private int total;
