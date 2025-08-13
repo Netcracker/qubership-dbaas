@@ -2,6 +2,7 @@ package org.qubership.cloud.dbaas.dto.backupV2;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
@@ -14,10 +15,17 @@ import java.util.List;
         "2. `include`: Include databases that match any of the filters in the list.\n" +
         "3. `exclude`: Exclude databases that match any of the filters in the list.")
 public class FilterCriteria {
-    @Schema(description = "Apply the filter to the remaining databases", required = true)
+    @Schema(
+            description = "Apply the filter to the remaining databases",
+            required = true
+    )
     private List<Filter> filter;
-    @Schema(description = "Include databases that match any of the filters in the list")
+    @Schema(
+            description = "Include databases that match any of the filters in the list"
+    )
     private List<Filter> include;
-    @Schema(description = "Exclude databases that match any of the filters in the list")
+    @Schema(
+            description = "Exclude databases that match any of the filters in the list"
+    )
     private List<Filter> exclude;
 }

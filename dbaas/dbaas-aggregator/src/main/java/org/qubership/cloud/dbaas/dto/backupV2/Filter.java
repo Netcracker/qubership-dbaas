@@ -2,6 +2,7 @@ package org.qubership.cloud.dbaas.dto.backupV2;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
@@ -14,8 +15,16 @@ public class Filter {
     private List<String> namespace;
     @Schema(description = "Filter by microservice names")
     private List<String> microserviceName;
-    @Schema(description = "Filter by database types")
+    @Schema(
+            description = "Filter by database types",
+            implementation = DatabaseType.class,
+            type = SchemaType.ARRAY
+    )
     private List<DatabaseType> databaseType;
-    @Schema(description = "Filter by database kinds")
+    @Schema(
+            description = "Filter by database kinds",
+            implementation = DatabaseKind.class,
+            type = SchemaType.ARRAY
+    )
     private List<DatabaseKind> databaseKind;
 }

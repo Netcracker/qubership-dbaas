@@ -8,7 +8,29 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @AllArgsConstructor
 @Schema(description = "Current status of a restore operation")
 public class RestoreStatusResponse {
-    //TODO replace with enum
-    @Schema(description = "Current state of the restore operation", required = true)
-    private String status;
+    @Schema(
+            description = "Current state of the restore operation",
+            required = true,
+            implementation = RestoreStatus.class)
+    private RestoreStatus status;
+
+    @Schema(
+            description = "Total number of databases to be restored",
+            example = "5",
+            minimum = "0"
+    )
+    private Integer total;
+
+    @Schema(
+            description = "Number of databases successfully restored",
+            example = "3",
+            minimum = "0"
+    )
+    private Integer completed;
+
+    @Schema(
+            description = "Error details if the restore failed",
+            example = "Insufficient permissions to create database"
+    )
+    private String errorMessage;
 }
