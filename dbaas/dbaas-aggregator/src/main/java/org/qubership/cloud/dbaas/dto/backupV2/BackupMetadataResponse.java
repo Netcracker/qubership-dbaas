@@ -9,5 +9,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @Schema(description = "Backup metadata information")
 public class BackupMetadataResponse {
     @Schema(description = "Backup metadata", required = true)
-    private Object metadata;
+    private BackupResponse metadata;
+    @Schema(description = "Control sum of the metadata", required = true)
+    private String controlSum;
 }
