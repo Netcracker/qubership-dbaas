@@ -68,7 +68,7 @@ public class DbBackupV2Service {
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
-        Backup backup = new Backup(backupRequest.getBackupName(), "", "", backupRequest.getExternalDatabaseStrategy(), null);
+        Backup backup = new Backup(backupRequest.getBackupName(), "", "", backupRequest.getExternalDatabaseStrategy(), null); //TODO fill backup class properly
 
         List<LogicalBackup> logicalBackups = databasesForBackup.stream()
                 .collect(Collectors.groupingBy(AbstractDatabase::getAdapterId))

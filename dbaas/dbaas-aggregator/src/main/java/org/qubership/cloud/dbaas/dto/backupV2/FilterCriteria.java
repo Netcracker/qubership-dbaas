@@ -2,7 +2,6 @@ package org.qubership.cloud.dbaas.dto.backupV2;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
