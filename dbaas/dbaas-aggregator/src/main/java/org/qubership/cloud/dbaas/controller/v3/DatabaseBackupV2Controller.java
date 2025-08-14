@@ -2,7 +2,6 @@ package org.qubership.cloud.dbaas.controller.v3;
 
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
-import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -17,8 +16,12 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.backupV2.*;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.Backup;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.BackupStatus;
+import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.exceptions.ErrorCodes;
 import org.qubership.cloud.dbaas.exceptions.RequestValidationException;
+import org.qubership.cloud.dbaas.mapper.BackupV2Mapper;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
 
 import static org.qubership.cloud.dbaas.Constants.BACKUP_MANAGER;
@@ -33,10 +36,12 @@ import static org.qubership.cloud.dbaas.DbaasApiPath.BACKUP_PATH_V1;
 public class DatabaseBackupV2Controller {
 
     private final DbBackupV2Service dbBackupV2Service;
+    private final BackupV2Mapper backupV2Mapper;
 
     @Inject
-    public DatabaseBackupV2Controller(DbBackupV2Service dbBackupV2Service) {
+    public DatabaseBackupV2Controller(DbBackupV2Service dbBackupV2Service, BackupV2Mapper backupV2Mapper) {
         this.dbBackupV2Service = dbBackupV2Service;
+        this.backupV2Mapper = backupV2Mapper;
     }
 
     @Operation(summary = "Initiate database backup",
@@ -55,9 +60,9 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/operation/backup")
     @POST
-    public Response getBackupByNamespace(@Parameter(required = true) @Valid BackupDto backupDto, @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        if (validBackupDtoInput(backupDto))
-            dbBackupV2Service.backup(backupDto.getNamespace(), backupDto.getBackupName());
+    public Response initiateBackup(@RequestBody(description = "Backup request", required = true) BackupRequest backupRequest, @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
+        validateBackupRequest(backupRequest);
+        dbBackupV2Service.backup(backupRequest); //TODO handle filters correctly
         return Response.ok().build();
     }
 
@@ -72,7 +77,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/backup/{backupName}")
     @POST
-    public Response getBackup(@Parameter(description = "Unique identifier of the backup" , required = true) @PathParam("backupName") String backupName) {
+    public Response getBackup(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
         return Response.ok().build();
     }
 
@@ -102,7 +107,10 @@ public class DatabaseBackupV2Controller {
     @Path("/backup/{backupName}/status")
     @GET
     public Response getBackupStatus(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
-        return Response.ok().build();
+        validateBackupName(backupName);
+        BackupStatus backupStatus = dbBackupV2Service.getCurrentStatus(backupName);
+        BackupStatusResponse backupStatusResponse = backupV2Mapper.toBackupStatusResponse(backupStatus);
+        return Response.ok(backupStatusResponse).build();
     }
 
     @Operation(summary = "Get backup metadata", description = "Retrieve metadata about a completed backup")
@@ -117,7 +125,10 @@ public class DatabaseBackupV2Controller {
     @Path("/backup/{backupName}/metadata")
     @GET
     public Response getBackupMetadata(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
-        return Response.ok().build();
+        validateBackupName(backupName);
+        Backup backup = dbBackupV2Service.getBackupMetadata(backupName);
+        BackupMetadataResponse backupMetadataResponse = backupV2Mapper.toBackupMetadataResponse(backup);
+        return Response.ok(backupMetadataResponse).build();
     }
 
     @Operation(summary = "Upload backup metadata", description = "Metadata upload done")
@@ -166,7 +177,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}")
     @GET
-    public Response getRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName")  String restoreName) {
+    public Response getRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
         return Response.ok().build();
     }
 
@@ -180,7 +191,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}")
     @DELETE
-    public Response deleteRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName")  String restoreName) {
+    public Response deleteRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
         return Response.noContent().build();
     }
 
@@ -195,7 +206,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}/status")
     @GET
-    public Response getRestoreStatus(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName")  String restoreName) {
+    public Response getRestoreStatus(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
         return Response.ok().build();
     }
 
@@ -212,19 +223,25 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}/retry")
     @POST
-    public Response retryRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName")  String restoreName) {
+    public Response retryRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
         return Response.ok().build();
     }
 
-    private boolean validBackupDtoInput(BackupDto backupDto) {
-        if (backupDto != null) {
-            if (backupDto.getBackupName() == null || backupDto.getNamespace() == null)
+    private void validateBackupRequest(BackupRequest backupRequest) {
+        //TODO need to build granular validation
+        if (backupRequest != null) {
+            if (backupRequest.getBackupName() == null)
                 throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043,
                         ErrorCodes.CORE_DBAAS_4043.getDetail("backup name or namespace"), Source.builder().pointer("/" + "backup name or namespace").build());
         } else
             throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043,
                     ErrorCodes.CORE_DBAAS_4043.getDetail("dto"), Source.builder().pointer("/" + "backupDto").build());
 
-        return true;
     }
+
+    private void validateBackupName(String backupName) {
+        if (backupName == null || backupName.isBlank())
+            throw new DBBackupValidationException(Source.builder().build(), "backup name null or blank.");
+    }
+
 }

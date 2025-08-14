@@ -3,18 +3,23 @@ package org.qubership.cloud.dbaas.service;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.mockito.InjectSpy;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
+import org.qubership.cloud.dbaas.dto.backupV2.ExternalDatabaseStrategyDto;
+import org.qubership.cloud.dbaas.dto.backupV2.Filter;
+import org.qubership.cloud.dbaas.dto.backupV2.FilterCriteria;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
+import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
+import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupDatabaseRepository;
@@ -22,9 +27,14 @@ import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.LogicalBackupRepository;
 
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @Slf4j
@@ -38,7 +48,7 @@ class DbBackupV2ServiceTest {
     @Inject
     private BackupRepository backupRepository;
 
-    @InjectSpy
+    @Inject
     private LogicalBackupRepository logicalBackupRepository;
 
     @InjectMock
@@ -51,16 +61,21 @@ class DbBackupV2ServiceTest {
     private DbBackupV2Service dbBackupV2Service;
 
 
+    @BeforeAll
+    static void globalSetUp() {
+        DbBackupV2Service.TRACK_DELAY_MS = 0;
+    }
+
     @AfterEach
-    @Transactional
-    void setUp(){
+    void setUp() {
         backupDatabaseRepository.deleteAll();
         logicalBackupRepository.deleteAll();
         backupRepository.deleteAll();
     }
 
+
     @Test
-    void backup_FailTest() {
+    void backup_shouldWorkCorrectly_FailStatusTest() {
         String namespace = "test-namespace";
         String adapterOneName = "1";
         String adapterTwoName = "2";
@@ -69,25 +84,27 @@ class DbBackupV2ServiceTest {
         String logicalBackupNameTwo = "logicalBackupName2";
         String backupName = "backup123";
 
+        BackupRequest backupRequest = createBackupRequest(backupName, namespace);
+
         List<Database> registries = getDatabases(dbName, namespace);
 
         LogicalBackupStatus logicalBackupStatusSuccess = new LogicalBackupStatus();
         logicalBackupStatusSuccess.setDatabases(constructInnerDbs());
-        logicalBackupStatusSuccess.setStatus(Status.SUCCESS);
+        logicalBackupStatusSuccess.setStatus(Status.COMPLETED);
 
         LogicalBackupStatus logicalBackupStatusFail = new LogicalBackupStatus();
         logicalBackupStatusFail.setDatabases(constructInnerDbs());
-        logicalBackupStatusFail.setStatus(Status.FAIL);
+        logicalBackupStatusFail.setStatus(Status.FAILED);
 
         LogicalBackupStatus logicalBackupStatusProceeding = new LogicalBackupStatus();
         logicalBackupStatusProceeding.setDatabases(constructInnerDbs());
         logicalBackupStatusProceeding.getDatabases().getFirst().setDuration("1");
-        logicalBackupStatusProceeding.setStatus(Status.PROCEEDING);
+        logicalBackupStatusProceeding.setStatus(Status.IN_PROGRESS);
 
         LogicalBackupStatus logicalBackupStatusProceeding2 = new LogicalBackupStatus();
         logicalBackupStatusProceeding2.setDatabases(constructInnerDbs());
         logicalBackupStatusProceeding2.getDatabases().getFirst().setDuration("2");
-        logicalBackupStatusProceeding2.setStatus(Status.PROCEEDING);
+        logicalBackupStatusProceeding2.setStatus(Status.IN_PROGRESS);
 
         DbaasAdapter adapterOne = mock(DbaasAdapter.class);
         DbaasAdapter adapterTwo = mock(DbaasAdapter.class);
@@ -100,8 +117,8 @@ class DbBackupV2ServiceTest {
         when(physicalDatabasesService.getAdapterById(adapterTwoName))
                 .thenReturn(adapterTwo);
 
-        when(adapterOne.type()).thenReturn("PGSQL");
-        when(adapterTwo.type()).thenReturn("MONGODB");
+        when(adapterOne.type()).thenReturn("postgresql");
+        when(adapterTwo.type()).thenReturn("mongodb");
 
         when(adapterOne.backupV2(any()))
                 .thenReturn(logicalBackupNameOne);
@@ -118,7 +135,7 @@ class DbBackupV2ServiceTest {
         log.info(logicalBackupStatusSuccess.toString());
         log.info(logicalBackupStatusFail.toString());
 
-        dbBackupV2Service.backup(namespace, backupName);
+        dbBackupV2Service.backup(backupRequest);
 
         List<LogicalBackup> logicalBackups = logicalBackupRepository.getByBackupName(backupName);
 
@@ -139,7 +156,7 @@ class DbBackupV2ServiceTest {
 
         Backup backup = backupRepository.findById(backupName);
 
-        assertEquals(Status.FAIL, backup.getStatus().getStatus());
+        assertEquals(Status.FAILED, backup.getStatus().getStatus());
         assertEquals(6, backup.getStatus().getSize());
 
         List<BackupDatabase> backupDatabaseList = backupDatabaseRepository.findAll().stream().toList();
@@ -153,8 +170,6 @@ class DbBackupV2ServiceTest {
         assertEquals(3, innerDbOneCount);
         assertEquals(3, innerDbLastCount);
 
-
-
         Mockito.verify(adapterOne, times(1)).backupV2(any());
         Mockito.verify(adapterTwo, times(1)).backupV2(any());
 
@@ -163,12 +178,38 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void backup_mustThrowException_whenTrackBackupReturnException(){
+    void backup_shouldReturnBadRequest_namespaceReturnEmptyList() {
+        BackupRequest backupRequest = createBackupRequest("test-backup", "test-namespace");
+        assertThrows(BackupExecutionException.class, () ->
+                dbBackupV2Service.backup(backupRequest));
+    }
+
+    @Test
+    void backup__backupNameAlreadyExist() {
+        String namespace = "test-namespace";
+        String backupName = "test-backup";
+
+        BackupRequest backupRequest = createBackupRequest(backupName, namespace);
+
+        Backup backup = createBackup(backupName, List.of());
+        backupRepository.save(backup);
+
+        when(dbBackupV2Service.getAllDbByNamespace(namespace))
+                .thenReturn(List.of(new Database()));
+
+        assertThrows(DBBackupValidationException.class, () ->
+                dbBackupV2Service.backup(backupRequest));
+    }
+
+    @Test
+    void backup_mustThrowException_whenTrackBackupReturnException() {
         String namespace = "test-namespace";
         String adapterId = "1";
         String logicalBackupName = "logicalBackupName1";
         String backupName = "backup123";
         String dbName = "db-name";
+
+        BackupRequest backupRequest = createBackupRequest(backupName, namespace);
 
         Database database = new Database();
         database.setAdapterId(adapterId);
@@ -193,20 +234,17 @@ class DbBackupV2ServiceTest {
                 .thenReturn(adapterOne);
 
         when(adapterOne.type()).thenReturn("PGSQL");
-
         when(adapterOne.backupV2(any()))
                 .thenReturn(logicalBackupName);
-
         when(adapterOne.trackBackupV2(eq(logicalBackupName)))
                 .thenThrow(new WebApplicationException("Timeout"));
 
-        dbBackupV2Service.backup(namespace, backupName);
+        dbBackupV2Service.backup(backupRequest);
 
         List<LogicalBackup> logicalBackups = logicalBackupRepository.getByBackupName(backupName);
-
         LogicalBackup logicalBackupFirst = logicalBackups.getFirst();
 
-        assertEquals(Status.FAIL, logicalBackupFirst.getStatus().getStatus());
+        assertEquals(Status.FAILED, logicalBackupFirst.getStatus().getStatus());
         assertTrue(logicalBackupFirst.getStatus().getErrorMessage().contains("Timeout"));
 
         Mockito.verify(adapterOne, times(1)).backupV2(any());
@@ -219,8 +257,7 @@ class DbBackupV2ServiceTest {
         int logicalBackupCount = 5;
         List<LogicalBackup> logicalBackups = generateLogicalBackups(logicalBackupCount);
 
-        Backup backup = new Backup();
-        backup.setLogicalBackups(logicalBackups);
+        Backup backup = createBackup("name", logicalBackups);
 
         DbaasAdapter adapter = mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(any()))
@@ -294,6 +331,8 @@ class DbBackupV2ServiceTest {
         List<Database> databaseList = List.of(databaseFirst, databaseSecond);
         String backupName = "test-backup";
 
+        BackupRequest backupRequest = createBackupRequest(backupName, "namespace");
+
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
 
         when(physicalDatabasesService.getAdapterById(any()))
@@ -302,7 +341,7 @@ class DbBackupV2ServiceTest {
                 .thenReturn("psql");
 
         //then
-        dbBackupV2Service.initializeFullBackupStructure(databaseList, backupName);
+        dbBackupV2Service.initializeFullBackupStructure(databaseList, backupRequest);
 
         //check
         Backup backup = backupRepository.findById(backupName);
@@ -338,105 +377,207 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void updateAggregatedStatus_shouldReturnProceeding_whenStatusesContainNotStartedProceedingFailSuccess() {
-        //when
-        List<LogicalBackup> logicalBackupList = generateLogicalBackupsWithStatuses(4, Set.of(Status.NOT_STARTED, Status.PROCEEDING, Status.FAIL, Status.SUCCESS));
-        String backupName = "test-backup";
+    void updateAggregatedStatus_shouldReturnProceeding_containAllStatuses() {
+        String logicalBackupName = "mock-logical-backup-name";
+        String adapterId = "some-adapter-id";
 
-        Backup backup = new Backup();
-        backup.setName(backupName);
-        backup.setLogicalBackups(logicalBackupList);
-        //then
+        LogicalBackupStatus.Database db1 = LogicalBackupStatus.Database.builder()
+                .databaseName("db1")
+                .status(Status.COMPLETED)
+                .size(1)
+                .duration("1")
+                .path("somepath")
+                .build();
+
+        LogicalBackupStatus.Database db2 = LogicalBackupStatus.Database.builder()
+                .databaseName("db2")
+                .status(Status.FAILED)
+                .size(1)
+                .duration("1")
+                .errorMessage("errorMessage")
+                .path("somepath")
+                .build();
+
+        LogicalBackupStatus.Database db3 = LogicalBackupStatus.Database.builder()
+                .databaseName("db3")
+                .status(Status.IN_PROGRESS)
+                .size(1)
+                .duration("1")
+                .path("somepath")
+                .build();
+
+        LogicalBackupStatus logicalBackupStatus = LogicalBackupStatus.builder()
+                .status(Status.PENDING)
+                .errorMessage("errorMessage")
+                .databases(List.of(db1, db2, db3))
+                .build();
+
+        LogicalBackup logicalBackup = new LogicalBackup();
+        logicalBackup.setLogicalBackupName(logicalBackupName);
+        logicalBackup.setAdapterId(adapterId);
+        logicalBackup.setStatus(logicalBackupStatus);
+        logicalBackup.setBackupDatabases(List.of(BackupDatabase.builder().id(UUID.randomUUID()).build()));
+
+        LogicalBackup logicalBackup1 = new LogicalBackup();
+        logicalBackup1.setLogicalBackupName(logicalBackupName);
+        logicalBackup1.setStatus(logicalBackupStatus);
+        logicalBackup1.setBackupDatabases(List.of(BackupDatabase.builder().id(UUID.randomUUID()).build()));
+
+        Backup backup = createBackup("name", List.of(logicalBackup, logicalBackup1));
+
         dbBackupV2Service.updateAggregatedStatus(backup);
 
+        BackupStatus backupStatus = backup.getStatus();
         //check
-        assertEquals(Status.PROCEEDING, backup.getStatus().getStatus());
+        assertEquals(Status.PENDING, backupStatus.getStatus());
+        assertEquals(2, backupStatus.getTotal());
+        assertEquals(2, backupStatus.getCompleted());
+        assertEquals(6, backupStatus.getSize());
 
     }
 
     @Test
-    void aggregateStatus_shouldReturnProceeding_whenInputNotStartedProceedingFailSuccess() {
-        //when
-        Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.PROCEEDING, Status.FAIL, Status.SUCCESS);
-
-        //then
+    void aggregateStatus_shouldReturnProceeding_whenContainAllStatuses() {
+        Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.PENDING, Status.IN_PROGRESS, Status.FAILED, Status.COMPLETED);
         Status status = dbBackupV2Service.aggregateStatus(statuses);
 
         assertNotNull(status);
-        assertEquals(Status.PROCEEDING, status);
+        assertEquals(Status.IN_PROGRESS, status);
+    }
+
+    @Test
+    void aggregateStatus_shouldReturnProceeding_whenInputPendingFailSuccess() {
+        Set<Status> statuses = Set.of(Status.PENDING, Status.FAILED, Status.COMPLETED);
+        Status status = dbBackupV2Service.aggregateStatus(statuses);
+
+        assertNotNull(status);
+        assertEquals(Status.IN_PROGRESS, status);
+    }
+
+    @Test
+    void aggregateStatus_shouldReturnProceeding_whenInputInProgressFailSuccess() {
+        Set<Status> statuses = Set.of(Status.IN_PROGRESS, Status.FAILED, Status.COMPLETED);
+        Status status = dbBackupV2Service.aggregateStatus(statuses);
+
+        assertNotNull(status);
+        assertEquals(Status.IN_PROGRESS, status);
     }
 
     @Test
     void aggregateStatus_shouldReturnProceeding_whenInputNotStartedFailSuccess() {
-        //when
-        Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.FAIL, Status.SUCCESS);
-
-        //then
+        Set<Status> statuses = Set.of(Status.NOT_STARTED, Status.FAILED, Status.COMPLETED);
         Status status = dbBackupV2Service.aggregateStatus(statuses);
 
         assertNotNull(status);
-        assertEquals(Status.PROCEEDING, status);
-    }
-
-    @Test
-    void aggregateStatus_shouldReturnProceeding_whenInputProceedingFailSuccess() {
-        //when
-        Set<Status> statuses = Set.of(Status.PROCEEDING, Status.FAIL, Status.SUCCESS);
-
-        //then
-        Status status = dbBackupV2Service.aggregateStatus(statuses);
-
-        assertNotNull(status);
-        assertEquals(Status.PROCEEDING, status);
+        assertEquals(Status.IN_PROGRESS, status);
     }
 
     @Test
     void aggregateStatus_shouldReturnProceeding_whenInputFailSuccess() {
-        //when
-        Set<Status> statuses = Set.of(Status.FAIL, Status.SUCCESS);
-
-        //then
+        Set<Status> statuses = Set.of(Status.FAILED, Status.COMPLETED);
         Status status = dbBackupV2Service.aggregateStatus(statuses);
 
         assertNotNull(status);
-        assertEquals(Status.FAIL, status);
+        assertEquals(Status.FAILED, status);
     }
 
     @Test
     void aggregateStatus_shouldReturnProceeding_whenInputSuccess() {
-        //when
-        Set<Status> statuses = Set.of(Status.SUCCESS);
-
-        //then
+        Set<Status> statuses = Set.of(Status.COMPLETED);
         Status status = dbBackupV2Service.aggregateStatus(statuses);
 
         assertNotNull(status);
-        assertEquals(Status.SUCCESS, status);
+        assertEquals(Status.COMPLETED, status);
     }
 
+    @Test
+    void trackStatus_DuringOngoingBackup_statusExists() throws InterruptedException {
+        String namespace = "test-namespace";
+        String adapterId = "1";
+        String backupName = "backup123";
+        String logicalBackupName = "logicalBackupName1";
 
-    private List<LogicalBackup> generateLogicalBackupsWithStatuses(int count, Set<Status> statuses) {
-        List<Status> statusList = new ArrayList<>(statuses);
-        List<LogicalBackup> logicalBackups = new ArrayList<>();
+        BackupRequest backupRequest = createBackupRequest(backupName, namespace);
 
-        for (int i = 0; i < count; i++) {
-            Status currentStatus = statusList.get(i % statusList.size());
+        SortedMap<String, Object> sortedMap = new TreeMap<>();
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setClassifier(sortedMap);
 
-            LogicalBackup logicalBackup = LogicalBackup.builder()
-                    .id(UUID.randomUUID())
-                    .status(LogicalBackupStatus.builder()
-                            .status(currentStatus)
-                            .databases(List.of(LogicalBackupStatus.Database.builder()
-                                    .databaseName("db-" + i)
-                                    .size(1)
-                                    .build()))
-                            .build())
-                    .build();
+        Database database = new Database();
+        database.setName("db1");
+        database.setAdapterId(adapterId);
+        database.setDatabaseRegistry(List.of(databaseRegistry));
+        database.setConnectionProperties(List.of(Map.of()));
 
-            logicalBackups.add(logicalBackup);
-        }
 
-        return logicalBackups;
+        List<Database> databases = List.of(database);
+        when(databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace))
+                .thenReturn(databases);
+
+        DbaasAdapter adapter = mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(adapter);
+        when(adapter.type()).thenReturn("postgresql");
+        when(adapter.backupV2(any())).thenReturn(logicalBackupName);
+
+        LogicalBackupStatus inProgressStatus = new LogicalBackupStatus();
+        inProgressStatus.setStatus(Status.IN_PROGRESS);
+        inProgressStatus.setDatabases(List.of(
+                new LogicalBackupStatus.Database("db1",
+                        Status.IN_PROGRESS,
+                        1, null,
+                        null,
+                        null)));
+
+        LogicalBackupStatus successStatus = new LogicalBackupStatus();
+        successStatus.setStatus(Status.COMPLETED);
+        successStatus.setDatabases(List.of(
+                new LogicalBackupStatus.Database("db1",
+                        Status.COMPLETED,
+                        1, null,
+                        null,
+                        null)));
+
+        CountDownLatch trackStarted = new CountDownLatch(1);
+        CountDownLatch continueTrack = new CountDownLatch(1);
+        CountDownLatch inProgressStarted = new CountDownLatch(1);
+        CountDownLatch continueInProgress = new CountDownLatch(1);
+
+        when(adapter.trackBackupV2(logicalBackupName))
+                .thenAnswer(invocation -> {
+                    trackStarted.countDown();
+                    continueTrack.await();
+                    return inProgressStatus;
+                })
+                .thenAnswer(invocation -> {
+                    inProgressStarted.countDown();
+                    continueInProgress.await();
+                    return successStatus;
+                });
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.submit(() -> dbBackupV2Service.backup(backupRequest));
+
+        trackStarted.await();
+
+        BackupStatus expectedNotStarted = dbBackupV2Service.getCurrentStatus(backupName);
+        assertEquals(Status.NOT_STARTED, expectedNotStarted.getStatus());
+
+        continueTrack.countDown();
+        inProgressStarted.await();
+
+        BackupStatus expectedProceeding = dbBackupV2Service.getCurrentStatus(backupName);
+        assertEquals(Status.IN_PROGRESS, expectedProceeding.getStatus());
+
+        continueInProgress.countDown();
+
+        executor.shutdown();
+        executor.awaitTermination(3, TimeUnit.SECONDS);
+
+        Backup byId = backupRepository.findById(backupName);
+        assertEquals(Status.COMPLETED, byId.getStatus().getStatus());
+
+        BackupStatus expectedSuccess = dbBackupV2Service.getCurrentStatus(backupName);
+        assertEquals(Status.COMPLETED, expectedSuccess.getStatus());
     }
 
     private List<LogicalBackup> generateLogicalBackups(int count) {
@@ -445,7 +586,6 @@ class DbBackupV2ServiceTest {
         for (int i = 0; i < count; i++) {
 
             LogicalBackup logicalBackup = new LogicalBackup();
-            logicalBackup.setId(UUID.randomUUID());
             logicalBackup.setLogicalBackupName(null);
             logicalBackup.setAdapterId(String.valueOf(i));
             logicalBackup.setType("test-type");
@@ -464,25 +604,23 @@ class DbBackupV2ServiceTest {
             logicalBackup.setStatus(status);
 
             BackupDatabase backupDatabase1 = new BackupDatabase();
-            backupDatabase1.setId(UUID.randomUUID());
             backupDatabase1.setLogicalBackup(logicalBackup);
             backupDatabase1.setName("db1-" + i);
             backupDatabase1.setSettings(Map.of());
             backupDatabase1.setClassifiers(List.of());
             backupDatabase1.setUsers(List.of());
-            backupDatabase1.setResources("{}");
+            backupDatabase1.setResources(Map.of());
             backupDatabase1.setExternallyManageable(false);
 
 
             backupDatabase1.setClassifiers(List.of());
 
             BackupDatabase backupDatabase2 = new BackupDatabase();
-            backupDatabase2.setId(UUID.randomUUID());
             backupDatabase2.setLogicalBackup(logicalBackup);
             backupDatabase2.setName("db2-" + i);
             backupDatabase2.setSettings(Map.of());
             backupDatabase2.setUsers(List.of());
-            backupDatabase2.setResources("{}");
+            backupDatabase2.setResources(Map.of());
             backupDatabase2.setClassifiers(List.of());
             backupDatabase2.setExternallyManageable(false);
 
@@ -524,10 +662,36 @@ class DbBackupV2ServiceTest {
             LogicalBackupStatus.Database innerDb = LogicalBackupStatus.Database.builder()
                     .databaseName(UUID.randomUUID().toString())
                     .size(1)
-                    .status(Status.SUCCESS)
+                    .status(Status.COMPLETED)
                     .build();
             list.add(innerDb);
         }
         return list;
+    }
+
+    private static Backup createBackup(String name, List<LogicalBackup> logicalBackups) {
+        Backup backup = new Backup();
+        backup.setName(name);
+        backup.setLogicalBackups(logicalBackups);
+        backup.setStatus(BackupStatus.builder().build());
+        backup.setFilters("\"er\"");
+        backup.setBlobPath("path");
+        backup.setStorageName("storagename");
+        backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        return backup;
+    }
+
+    private static BackupRequest createBackupRequest(String backupName, String namespace) {
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        BackupRequest dto = new BackupRequest();
+        dto.setFilterCriteria(filterCriteria);
+        dto.setBackupName(backupName);
+        dto.setExternalDatabaseStrategyDto(ExternalDatabaseStrategyDto.FAIL);
+        return dto;
     }
 }
