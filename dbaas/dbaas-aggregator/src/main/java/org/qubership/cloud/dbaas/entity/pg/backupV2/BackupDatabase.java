@@ -1,7 +1,11 @@
 package org.qubership.cloud.dbaas.entity.pg.backupV2;
 
 import jakarta.persistence.*;
-import lombok.*;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -13,14 +17,13 @@ import java.util.UUID;
 @Data
 @Builder
 @AllArgsConstructor
-@RequiredArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity(name = "backup_database")
 @Table(name = "v2_backup_database")
 public class BackupDatabase {
 
     @Id
-    @NonNull
+    @GeneratedValue
     private UUID id;
 
     @ManyToOne
@@ -29,6 +32,7 @@ public class BackupDatabase {
 
     private String name;
 
+    @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private List<SortedMap<String, Object>> classifiers;
@@ -37,14 +41,16 @@ public class BackupDatabase {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> settings;
 
+    @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private List<User> users;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private String resources;
+    private Map<String, Object> resources;
 
+    @NotNull
     @Column(name = "externally_manageable")
     private boolean externallyManageable;
 
@@ -52,7 +58,7 @@ public class BackupDatabase {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class User{
+    public static class User {
         String name;
         String role;
     }
