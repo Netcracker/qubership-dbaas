@@ -3,6 +3,7 @@ package org.qubership.cloud.dbaas.dto.backupV2;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.ExternalDatabaseStrategy;
 
 @Data
 @NoArgsConstructor
@@ -21,8 +22,8 @@ public class BackupRequest {
     @Schema(
             description = "How to handle external databases during backup",
             example = "fail",
-            implementation = ExternalDatabaseStrategyDto.class)
-    private ExternalDatabaseStrategyDto externalDatabaseStrategyDto;
+            implementation = ExternalDatabaseStrategy.class)
+    private ExternalDatabaseStrategy externalDatabaseStrategy;
     @Schema(description = "Whether external databases were skipped during the backup", example = "false")
     private boolean ignoreNotBackupableDatabases;
 }
