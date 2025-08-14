@@ -12,7 +12,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
-import org.qubership.cloud.dbaas.dto.backupV2.ExternalDatabaseStrategyDto;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupStatusResponse;
 import org.qubership.cloud.dbaas.dto.backupV2.Filter;
 import org.qubership.cloud.dbaas.dto.backupV2.FilterCriteria;
 import org.qubership.cloud.dbaas.entity.pg.Database;
@@ -559,13 +559,13 @@ class DbBackupV2ServiceTest {
 
         trackStarted.await();
 
-        BackupStatus expectedNotStarted = dbBackupV2Service.getCurrentStatus(backupName);
+        BackupStatusResponse expectedNotStarted = dbBackupV2Service.getCurrentStatus(backupName);
         assertEquals(Status.NOT_STARTED, expectedNotStarted.getStatus());
 
         continueTrack.countDown();
         inProgressStarted.await();
 
-        BackupStatus expectedProceeding = dbBackupV2Service.getCurrentStatus(backupName);
+        BackupStatusResponse expectedProceeding = dbBackupV2Service.getCurrentStatus(backupName);
         assertEquals(Status.IN_PROGRESS, expectedProceeding.getStatus());
 
         continueInProgress.countDown();
@@ -576,7 +576,7 @@ class DbBackupV2ServiceTest {
         Backup byId = backupRepository.findById(backupName);
         assertEquals(Status.COMPLETED, byId.getStatus().getStatus());
 
-        BackupStatus expectedSuccess = dbBackupV2Service.getCurrentStatus(backupName);
+        BackupStatusResponse expectedSuccess = dbBackupV2Service.getCurrentStatus(backupName);
         assertEquals(Status.COMPLETED, expectedSuccess.getStatus());
     }
 
@@ -691,7 +691,7 @@ class DbBackupV2ServiceTest {
         BackupRequest dto = new BackupRequest();
         dto.setFilterCriteria(filterCriteria);
         dto.setBackupName(backupName);
-        dto.setExternalDatabaseStrategyDto(ExternalDatabaseStrategyDto.FAIL);
+        dto.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
         return dto;
     }
 }
