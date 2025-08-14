@@ -13,8 +13,8 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class LogicalBackupStatusDto {
-    private String status;
+public class LogicalBackupStatusResponse {
+    private Status status;
     private String errorMessage;
     private LocalDateTime creationTime;
     private LocalDateTime completionTime;
@@ -24,7 +24,7 @@ public class LogicalBackupStatusDto {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class Database{
+    public static class Database {
         private String databaseName;
         private Status status;
         private Integer size;

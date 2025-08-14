@@ -2,9 +2,13 @@ package org.qubership.cloud.dbaas.mapper;
 
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.qubership.cloud.dbaas.dto.backupV2.*;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupMetadataResponse;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupResponse;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupStatusResponse;
+import org.qubership.cloud.dbaas.dto.backupV2.LogicalBackupResponse;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.Backup;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.BackupStatus;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackup;
 
 
 @Mapper
@@ -22,8 +26,5 @@ public interface BackupV2Mapper {
         return response;
     }
 
-    LogicalBackupDto toLogicalBackupDto(LogicalBackup logicalBackup);
-
-    ExternalDatabaseStrategy toExternalDatabaseStrategy(ExternalDatabaseStrategyDto dto);
-
+    LogicalBackupResponse toLogicalBackupResponse(LogicalBackup logicalBackup);
 }
