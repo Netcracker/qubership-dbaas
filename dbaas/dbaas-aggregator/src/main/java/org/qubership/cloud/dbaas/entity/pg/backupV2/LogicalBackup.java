@@ -20,7 +20,7 @@ import java.util.UUID;
 public class LogicalBackup {
 
     @Id
-    @NonNull
+    @GeneratedValue
     @Schema(description = "A unique identifier of the logical backup process.", required = true)
     private UUID id;
 
@@ -43,7 +43,7 @@ public class LogicalBackup {
     private LogicalBackupStatus status;
 
     @ToString.Exclude
-    @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupDatabase> backupDatabases;
 
     @Override
