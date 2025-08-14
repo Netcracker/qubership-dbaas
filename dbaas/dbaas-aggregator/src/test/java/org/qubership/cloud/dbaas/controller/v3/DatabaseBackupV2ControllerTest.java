@@ -10,11 +10,9 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
-import org.qubership.cloud.dbaas.dto.backupV2.ExternalDatabaseStrategyDto;
-import org.qubership.cloud.dbaas.dto.backupV2.Filter;
-import org.qubership.cloud.dbaas.dto.backupV2.FilterCriteria;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
+import org.qubership.cloud.dbaas.dto.backupV2.*;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.ExternalDatabaseStrategy;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.Status;
 import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
@@ -57,26 +55,23 @@ class DatabaseBackupV2ControllerTest {
     void getBackupStatus_validBackupNameCase() {
         String backupName = "test-backup-name";
 
-        Status expectedResult = Status.COMPLETED;
-
-        BackupStatus expected = BackupStatus.builder()
-                .status(expectedResult)
-                .total(0)
-                .completed(0)
-                .errorMessage(null)
-                .size(0L)
-                .build();
+        BackupStatusResponse expected = new BackupStatusResponse();
+        expected.setStatus(Status.COMPLETED);
+        expected.setTotal(0);
+        expected.setCompleted(0);
+        expected.setErrorMessage(null);
+        expected.setSize(0L);
 
         when(dbBackupV2Service.getCurrentStatus(backupName))
                 .thenReturn(expected);
 
-        BackupStatus result = given().auth().preemptive().basic("backup_manager", "backup_manager")
+        BackupStatusResponse result = given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .pathParam("backupName", backupName)
                 .when().get("/backup/{backupName}/status")
                 .then()
                 .statusCode(OK.getStatusCode())
-                .extract().as(BackupStatus.class);
+                .extract().as(BackupStatusResponse.class);
 
         Assertions.assertEquals(expected, result);
 
@@ -94,7 +89,6 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", equalTo("Invalid database backup request. backup name null or blank."));
-
     }
 
     @Test
@@ -119,62 +113,71 @@ class DatabaseBackupV2ControllerTest {
         SortedMap<String, Object> sortedMap = new TreeMap<>();
         sortedMap.put("key", "value");
 
-        BackupDatabase backupDatabase = BackupDatabase.builder()
-                .id(UUID.randomUUID())
-                .name("db1")
-                .classifiers(List.of(sortedMap))
-                .settings(Map.of("settings-key", Map.of("field1", "value1", "field2", 123)))
-                .users(List.of(BackupDatabase.User.builder()
+
+        BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
+                UUID.randomUUID(),
+                "db1",
+                List.of(sortedMap),
+                Map.of("settings-key", Map.of("field1", "value1", "field2", 123)),
+                List.of(BackupDatabaseResponse.User.builder()
                         .role("role")
                         .name("name")
-                        .build()))
-                .resources(Map.of("key", "value"))
-                .externallyManageable(true)
-                .build();
+                        .build()),
+                Map.of("key", "value"),
+                true
+        );
 
-        LogicalBackupStatus logicalBackupStatus = LogicalBackupStatus.builder()
-                .status(Status.COMPLETED)
-                .errorMessage(null)
-                .databases(List.of(LogicalBackupStatus.Database.builder()
+        LogicalBackupStatusResponse logicalBackupStatusResponse = new LogicalBackupStatusResponse(
+                Status.COMPLETED,
+                null,
+                null,
+                null,
+                List.of(LogicalBackupStatusResponse.Database.builder()
                         .databaseName("db1")
+                        .status(Status.COMPLETED)
                         .path("path")
                         .errorMessage(null)
                         .duration(null)
                         .size(1)
-                        .status(Status.COMPLETED)
-                        .build()))
-                .build();
+                        .build())
+        );
 
-        LogicalBackup logicalBackup = LogicalBackup.builder()
-                .id(UUID.randomUUID())
-                .logicalBackupName("name")
-                .adapterId("1")
-                .type("type")
-                .status(logicalBackupStatus)
-                .backupDatabases(List.of(backupDatabase))
-                .build();
+        LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+                "adapterId",
+                "type",
+                logicalBackupStatusResponse,
+                List.of(backupDatabaseResponse)
+        );
 
-        backupDatabase.setLogicalBackup(logicalBackup);
+        BackupStatusResponse backupStatusResponse = new BackupStatusResponse();
+        backupStatusResponse.setStatus(Status.COMPLETED);
+        backupStatusResponse.setErrorMessage(null);
+        backupStatusResponse.setTotal(1);
+        backupStatusResponse.setCompleted(1);
+        backupStatusResponse.setSize(1L);
 
-        BackupStatus backupStatus = BackupStatus.builder()
-                .status(Status.COMPLETED)
-                .errorMessage(null)
-                .total(1)
-                .completed(1)
-                .size(1L)
-                .build();
+        Filter filter = new Filter();
+        filter.setNamespace(List.of("namespace"));
 
-        Backup backup = new Backup();
-        backup.setName(backupName);
-        backup.setStorageName("storage");
-        backup.setBlobPath("blobPath");
-        backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
-        backup.setFilters("null");
-        backup.setStatus(backupStatus);
-        backup.setLogicalBackups(List.of(logicalBackup));
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        BackupResponse backupResponse = new BackupResponse();
+        backupResponse.setBackupName(backupName);
+        backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
+        backupResponse.setStorageName("storageNam");
+        backupResponse.setStatus(backupStatusResponse);
+        backupResponse.setBlobPath("blobPath");
+        backupResponse.setIgnoreNotBackupableDatabases(false);
+        backupResponse.setFilterCriteria(filterCriteria);
+        backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+
+        BackupMetadataResponse backupMetadataResponse = new BackupMetadataResponse();
+        backupMetadataResponse.setMetadata(backupResponse);
+        backupMetadataResponse.setControlSum("");
 
         when(dbBackupV2Service.getBackupMetadata(backupName))
-                .thenReturn(backup);
+                .thenReturn(backupMetadataResponse);
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
@@ -196,7 +199,7 @@ class DatabaseBackupV2ControllerTest {
         BackupRequest dto = new BackupRequest();
         dto.setFilterCriteria(filterCriteria);
         dto.setBackupName(backupName);
-        dto.setExternalDatabaseStrategyDto(ExternalDatabaseStrategyDto.FAIL);
+        dto.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
 
         return dto;
     }

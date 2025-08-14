@@ -2,6 +2,7 @@ package org.qubership.cloud.dbaas.controller.v3;
 
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -16,12 +17,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.backupV2.*;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.Backup;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.BackupStatus;
 import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.exceptions.ErrorCodes;
 import org.qubership.cloud.dbaas.exceptions.RequestValidationException;
-import org.qubership.cloud.dbaas.mapper.BackupV2Mapper;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
 
 import static org.qubership.cloud.dbaas.Constants.BACKUP_MANAGER;
@@ -36,12 +34,10 @@ import static org.qubership.cloud.dbaas.DbaasApiPath.BACKUP_PATH_V1;
 public class DatabaseBackupV2Controller {
 
     private final DbBackupV2Service dbBackupV2Service;
-    private final BackupV2Mapper backupV2Mapper;
 
     @Inject
-    public DatabaseBackupV2Controller(DbBackupV2Service dbBackupV2Service, BackupV2Mapper backupV2Mapper) {
+    public DatabaseBackupV2Controller(DbBackupV2Service dbBackupV2Service) {
         this.dbBackupV2Service = dbBackupV2Service;
-        this.backupV2Mapper = backupV2Mapper;
     }
 
     @Operation(summary = "Initiate database backup",
@@ -108,8 +104,7 @@ public class DatabaseBackupV2Controller {
     @GET
     public Response getBackupStatus(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
         validateBackupName(backupName);
-        BackupStatus backupStatus = dbBackupV2Service.getCurrentStatus(backupName);
-        BackupStatusResponse backupStatusResponse = backupV2Mapper.toBackupStatusResponse(backupStatus);
+        BackupStatusResponse backupStatusResponse = dbBackupV2Service.getCurrentStatus(backupName);
         return Response.ok(backupStatusResponse).build();
     }
 
@@ -126,9 +121,7 @@ public class DatabaseBackupV2Controller {
     @GET
     public Response getBackupMetadata(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
         validateBackupName(backupName);
-        Backup backup = dbBackupV2Service.getBackupMetadata(backupName);
-        BackupMetadataResponse backupMetadataResponse = backupV2Mapper.toBackupMetadataResponse(backup);
-        return Response.ok(backupMetadataResponse).build();
+        return Response.ok(dbBackupV2Service.getBackupMetadata(backupName)).build();
     }
 
     @Operation(summary = "Upload backup metadata", description = "Metadata upload done")

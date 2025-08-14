@@ -7,7 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.qubership.cloud.dbaas.dto.Source;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupMetadataResponse;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupStatusResponse;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
@@ -66,8 +68,7 @@ public class DbBackupV2Service {
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
-        ExternalDatabaseStrategy externalDatabaseStrategy = mapper.toExternalDatabaseStrategy(backupRequest.getExternalDatabaseStrategyDto());
-        Backup backup = new Backup(backupRequest.getBackupName(), "", "", externalDatabaseStrategy, null);
+        Backup backup = new Backup(backupRequest.getBackupName(), "", "", backupRequest.getExternalDatabaseStrategy(), null);
 
         List<LogicalBackup> logicalBackups = databasesForBackup.stream()
                 .collect(Collectors.groupingBy(AbstractDatabase::getAdapterId))
@@ -303,10 +304,11 @@ public class DbBackupV2Service {
         return Status.COMPLETED;
     }
 
-    public BackupStatus getCurrentStatus(String backupName) {
-        return backupRepository.findByIdOptional(backupName)
+    public BackupStatusResponse getCurrentStatus(String backupName) {
+        BackupStatus backupStatus = backupRepository.findByIdOptional(backupName)
                 .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()))
                 .getStatus();
+        return mapper.toBackupStatusResponse(backupStatus);
     }
 
     protected List<Database> getAllDbByNamespace(String namespace) {
@@ -314,8 +316,10 @@ public class DbBackupV2Service {
     }
 
 
-    public Backup getBackupMetadata(String backupName) {
-        return backupRepository.findByIdOptional(backupName)
+    public BackupMetadataResponse getBackupMetadata(String backupName) {
+        Backup backup = backupRepository.findByIdOptional(backupName)
                 .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()));
+
+        return mapper.toBackupMetadataResponse(backup);
     }
 }
