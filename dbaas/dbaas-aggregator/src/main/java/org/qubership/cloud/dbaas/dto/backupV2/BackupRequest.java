@@ -21,8 +21,8 @@ public class BackupRequest {
     @Schema(
             description = "How to handle external databases during backup",
             example = "fail",
-            implementation = ExternalDatabaseStrategy.class)
-    private ExternalDatabaseStrategy externalDatabaseStrategy;
+            implementation = ExternalDatabaseStrategyDto.class)
+    private ExternalDatabaseStrategyDto externalDatabaseStrategyDto;
     @Schema(description = "Whether external databases were skipped during the backup", example = "false")
     private boolean ignoreNotBackupableDatabases;
 }

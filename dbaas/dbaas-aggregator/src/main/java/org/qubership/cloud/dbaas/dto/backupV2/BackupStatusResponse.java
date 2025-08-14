@@ -11,8 +11,8 @@ public class BackupStatusResponse {
     @Schema(
             description = "Current state of the backup operation",
             required = true,
-            implementation = BackupStatus.class)
-    private BackupStatus status;
+            implementation = BackupStatusDto.class)
+    private BackupStatusDto status;
     @Schema(description = "Total number of databases being backed up", example = "5")
     private int total;
     @Schema(description = "Number of databases successfully backed up", example = "3")
