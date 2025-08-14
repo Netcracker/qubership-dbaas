@@ -1,24 +1,23 @@
 package org.qubership.cloud.dbaas.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.qubership.cloud.dbaas.dto.Source;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
+import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
+import org.qubership.cloud.dbaas.mapper.BackupV2Mapper;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupDatabaseRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.LogicalBackupRepository;
 import org.qubership.cloud.dbaas.utils.DbaasBackupUtils;
 
 import java.net.URI;
@@ -32,40 +31,43 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 public class DbBackupV2Service {
 
-    private final BackupRepository backupRepository;
-    private final LogicalBackupRepository logicalBackupRepository;
-    private final PhysicalDatabasesService physicalDatabasesService;
-    private final BackupDatabaseRepository backupDatabaseRepository;
-    private final DatabaseDbaasRepository databaseDbaasRepository;
-    private final ExecutorService executor = Executors.newFixedThreadPool(20);
-
     private final static RetryPolicy<Object> OPERATION_STATUS_RETRY_POLICY = new RetryPolicy<>()
             .withMaxRetries(2).withDelay(Duration.ofSeconds(1));
+    protected static int TRACK_DELAY_MS = 3000;
 
-    @Transactional
-    public void backup(String namespace, String backupName) {
+    private final BackupRepository backupRepository;
+    private final PhysicalDatabasesService physicalDatabasesService;
+    private final DatabaseDbaasRepository databaseDbaasRepository;
+    private final BackupV2Mapper mapper;
+    private final ExecutorService executor = Executors.newFixedThreadPool(20);
+
+
+    public void backup(BackupRequest backupRequest) {
+        String backupName = backupRequest.getBackupName();
+        String namespace = backupRequest.getFilterCriteria().getFilter().getFirst().getNamespace().getFirst();
+
+        log.info("Start backup processing for backup: {}", backupName);
+
         List<Database> databasesForBackup = getAllDbByNamespace(namespace);
-
         if (databasesForBackup.isEmpty()) {
-            log.error("For the namespace: {}, not found any databases for backup", namespace);
+            log.warn("Namespace {} doesn't contain any databases for backup", namespace);
             throw new BackupExecutionException(URI.create("path"),
-                    "For the namespace: " + namespace + " , not found any databases for backup",
+                    String.format("Namespace %s doesn't contain any databases for backup", namespace),
                     null); //TODO fill correct path
         }
         if (backupRepository.findByIdOptional(backupName).isPresent()) {
-            log.error("Backup with name: {} already exist", backupName);
+            log.error("Backup with name {} already exists", backupName);
             throw new DBBackupValidationException(Source.builder().build(),
-                    String.format("Backup with name: '%s' already exist", backupName));
+                    String.format("Backup with name %s already exists", backupName));
         }
-
-        Backup backup = initializeFullBackupStructure(databasesForBackup, backupName);
+        Backup backup = initializeFullBackupStructure(databasesForBackup, backupRequest);
         startBackup(backup);
         waitBackupCompletion(backup);
     }
 
-    @Transactional
-    protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, String backupName) {
-        Backup backup = new Backup(backupName, "", "", "", null);
+    protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
+        ExternalDatabaseStrategy externalDatabaseStrategy = mapper.toExternalDatabaseStrategy(backupRequest.getExternalDatabaseStrategyDto());
+        Backup backup = new Backup(backupRequest.getBackupName(), "", "", externalDatabaseStrategy, null);
 
         List<LogicalBackup> logicalBackups = databasesForBackup.stream()
                 .collect(Collectors.groupingBy(AbstractDatabase::getAdapterId))
@@ -77,7 +79,6 @@ public class DbBackupV2Service {
                     DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
 
                     LogicalBackup lb = LogicalBackup.builder()
-                            .id(UUID.randomUUID())
                             .backup(backup)
                             .adapterId(adapterId)
                             .type(adapter.type())
@@ -87,7 +88,6 @@ public class DbBackupV2Service {
 
                     lb.getBackupDatabases().addAll(databases.stream()
                             .map(db -> BackupDatabase.builder()
-                                    .id(UUID.randomUUID())
                                     .logicalBackup(lb)
                                     .name(DbaasBackupUtils.getDatabaseName(db))
                                     .classifiers(db.getDatabaseRegistry().stream()
@@ -103,7 +103,8 @@ public class DbBackupV2Service {
                 .toList();
 
         backup.setLogicalBackups(logicalBackups);
-        backupRepository.persist(backup);
+        updateAggregatedStatus(backup);
+        backupRepository.save(backup);
         return backup;
     }
 
@@ -116,7 +117,6 @@ public class DbBackupV2Service {
                 }).toList();
     }
 
-    @Transactional
     protected void startBackup(Backup backup) {
         Map<LogicalBackup, Future<String>> names = new HashMap<>();
         List<LogicalBackup> logicalBackups = backup.getLogicalBackups();
@@ -132,13 +132,13 @@ public class DbBackupV2Service {
                 logicalbackup.setLogicalBackupName(logicalBackupName);
             } catch (InterruptedException | ExecutionException e) {
                 LogicalBackupStatus logicalBackupStatus = LogicalBackupStatus.builder()
-                        .status(Status.FAIL)
+                        .status(Status.FAILED)
                         .errorMessage(e.getCause().getMessage())
                         .build();
                 logicalbackup.setStatus(logicalBackupStatus);
             }
         });
-        logicalBackupRepository.persist(logicalBackups);
+        backupRepository.save(backup);
     }
 
     protected Callable<String> startLogicalBackup(LogicalBackup logicalBackup) {
@@ -161,9 +161,8 @@ public class DbBackupV2Service {
                     String result = adapter.backupV2(dbNames);
 
                     if (result == null) {
-                        throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable());
+                        throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable()); //TODO correct path
                     }
-
                     return result;
                 });
             } catch (Exception e) {
@@ -181,7 +180,7 @@ public class DbBackupV2Service {
 
         while (!notFinishedLogicalBackups.isEmpty() && currAttempt <= maxAttempts) {
             try {
-                Thread.sleep(3000);
+                Thread.sleep(TRACK_DELAY_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("Waiting between attempts is interrupted", e);
@@ -190,7 +189,7 @@ public class DbBackupV2Service {
 
             List<LogicalBackup> logicalBackupsToAggregate = fetchAndUpdateStatuses(notFinishedLogicalBackups);
             updateAggregatedStatus(backup);
-            backupRepository.persist(backup);
+            backupRepository.save(backup);
 
             notFinishedLogicalBackups = filterBackupTasks(logicalBackupsToAggregate);
             currAttempt++;
@@ -198,11 +197,11 @@ public class DbBackupV2Service {
 
         if (!notFinishedLogicalBackups.isEmpty()) {
             notFinishedLogicalBackups.forEach(logicalBackup -> {
-                logicalBackup.getStatus().setStatus(Status.FAIL);
+                logicalBackup.getStatus().setStatus(Status.FAILED);
                 logicalBackup.getStatus().setErrorMessage("Timeout");
             });
             updateAggregatedStatus(backup);
-            backupRepository.persist(backup);
+            backupRepository.save(backup);
         }
     }
 
@@ -211,7 +210,7 @@ public class DbBackupV2Service {
         return backupsToTrack.stream()
                 .filter(backup -> {
                     Status status = backup.getStatus().getStatus();
-                    return status == Status.NOT_STARTED || status == Status.PROCEEDING;
+                    return status == Status.NOT_STARTED || status == Status.IN_PROGRESS;
                 })
                 .toList();
     }
@@ -236,7 +235,7 @@ public class DbBackupV2Service {
                 LogicalBackupStatus logicalBackupStatus = entry.getValue().get();
                 logicalBackup.setStatus(logicalBackupStatus);
             } catch (InterruptedException | ExecutionException e) {
-                logicalBackup.getStatus().setStatus(Status.FAIL);
+                logicalBackup.getStatus().setStatus(Status.FAILED);
                 logicalBackup.getStatus().setErrorMessage(e.getCause().getMessage());
             }
             return logicalBackup;
@@ -253,8 +252,11 @@ public class DbBackupV2Service {
 
         log.info("List of logicalBackupStatusList: {}", logicalBackupStatusList);
 
+        int totalDbCount = logicalBackuplist.stream().mapToInt(lb -> lb.getBackupDatabases().size()).sum();
+
         Set<Status> statusSet = new HashSet<>();
         long totalBytes = 0;
+        int countCompletedDb = 0;
 
         for (LogicalBackupStatus logicalBackupStatus : logicalBackupStatusList) {
             Status currStatus = logicalBackupStatus.getStatus();
@@ -265,30 +267,55 @@ public class DbBackupV2Service {
                     .mapToLong(LogicalBackupStatus.Database::getSize)
                     .sum();
 
+            countCompletedDb += (int) logicalBackupStatus.getDatabases().stream()
+                    .filter(db -> Status.COMPLETED.equals(db.getStatus()))
+                    .count();
         }
 
         backup.setStatus(BackupStatus.builder()
                 .status(aggregateStatus(statusSet))
                 .size(totalBytes)
+                .total(totalDbCount)
+                .completed(countCompletedDb)
                 .build());
-        //TODO fill fully backupStatus.class
+        //TODO fill errorMsg of aggregated backupStatus
     }
 
     protected Status aggregateStatus(Set<Status> statusSet) {
         if (statusSet.contains(Status.NOT_STARTED) && statusSet.size() == 1)
             return Status.NOT_STARTED;
-        else if (statusSet.contains(Status.NOT_STARTED) && statusSet.size() > 1)
-            return Status.PROCEEDING;
-        else if (statusSet.contains(Status.PROCEEDING))
-            return Status.PROCEEDING;
-        else if (statusSet.contains(Status.FAIL))
-            return Status.FAIL;
-        else
-            return Status.SUCCESS;
+
+        if (statusSet.contains(Status.PENDING) && statusSet.size() == 1)
+            return Status.PENDING;
+
+        if (statusSet.contains(Status.NOT_STARTED) && statusSet.size() > 1)
+            return Status.IN_PROGRESS;
+
+        if (statusSet.contains(Status.IN_PROGRESS))
+            return Status.IN_PROGRESS;
+
+        if (statusSet.contains(Status.PENDING) && statusSet.size() > 1)
+            return Status.IN_PROGRESS;
+
+        if (statusSet.contains(Status.FAILED))
+            return Status.FAILED;
+
+        return Status.COMPLETED;
     }
 
-    private List<Database> getAllDbByNamespace(String namespace) {
+    public BackupStatus getCurrentStatus(String backupName) {
+        return backupRepository.findByIdOptional(backupName)
+                .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()))
+                .getStatus();
+    }
+
+    protected List<Database> getAllDbByNamespace(String namespace) {
         return databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace);
     }
 
+
+    public Backup getBackupMetadata(String backupName) {
+        return backupRepository.findByIdOptional(backupName)
+                .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()));
+    }
 }
