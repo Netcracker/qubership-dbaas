@@ -21,7 +21,7 @@ import java.util.*;
 
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
-import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.*;
 import static org.mockito.Mockito.*;
 
 @QuarkusTest
@@ -49,7 +49,27 @@ class DatabaseBackupV2ControllerTest {
 
         verify(dbBackupV2Service, times(1)).backup(backupRequest);
     }
-    //TODO write test for bad cases for initiateBackup method
+
+    @Test
+    void initiateBackup_invalidDto() {
+        BackupRequest invalidBackupRequest = new BackupRequest();
+        invalidBackupRequest.setBlobPath("BlobPath");
+        invalidBackupRequest.setStorageName("storage name");
+        invalidBackupRequest.setIgnoreNotBackupableDatabases(false);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .body(invalidBackupRequest)
+                .when().post("/operation/backup")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", allOf(
+                        containsString("backupName: must not be blank"),
+                        containsString("externalDatabaseStrategy: must not be null")
+                ));
+
+        verify(dbBackupV2Service, times(0)).backup(any());
+    }
 
     @Test
     void getBackupStatus_validBackupNameCase() {
@@ -88,7 +108,7 @@ class DatabaseBackupV2ControllerTest {
                 .when().get("/backup/{backupName}/status")
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
-                .body("message", equalTo("Invalid database backup request. backup name null or blank."));
+                .body("message", equalTo("backupName: must not be blank"));
     }
 
     @Test
@@ -200,7 +220,9 @@ class DatabaseBackupV2ControllerTest {
         dto.setFilterCriteria(filterCriteria);
         dto.setBackupName(backupName);
         dto.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
-
+        dto.setBlobPath("path");
+        dto.setIgnoreNotBackupableDatabases(true);
+        dto.setStorageName("e");
         return dto;
     }
 }
