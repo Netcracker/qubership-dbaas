@@ -1,17 +1,13 @@
 package org.qubership.cloud.dbaas.dto.backupV2;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.Status;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
-@Builder
-@NoArgsConstructor
 @AllArgsConstructor
 public class LogicalBackupStatusResponse {
     private Status status;
@@ -21,8 +17,6 @@ public class LogicalBackupStatusResponse {
     private List<Database> databases;
 
     @Data
-    @Builder
-    @NoArgsConstructor
     @AllArgsConstructor
     public static class Database {
         private String databaseName;

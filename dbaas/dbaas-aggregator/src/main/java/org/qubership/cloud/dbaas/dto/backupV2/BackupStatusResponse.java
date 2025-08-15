@@ -1,5 +1,6 @@
 package org.qubership.cloud.dbaas.dto.backupV2;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -7,6 +8,7 @@ import org.qubership.cloud.dbaas.entity.pg.backupV2.Status;
 
 @Data
 @NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "Current status of a backup operation")
 public class BackupStatusResponse {
     @Schema(
