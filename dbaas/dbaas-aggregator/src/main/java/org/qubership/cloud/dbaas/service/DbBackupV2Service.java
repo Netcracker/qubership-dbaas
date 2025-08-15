@@ -8,6 +8,7 @@ import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.qubership.cloud.context.propagation.core.ContextManager;
 import org.qubership.cloud.dbaas.dto.Source;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupMetadataRequest;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupMetadataResponse;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupStatusResponse;
@@ -75,7 +76,7 @@ public class DbBackupV2Service {
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
-        Backup backup = new Backup(backupRequest.getBackupName(), "", "", backupRequest.getExternalDatabaseStrategy(), null); //TODO fill backup class properly
+        Backup backup = new Backup(backupRequest.getBackupName(), backupRequest.getStorageName(), backupRequest.getBlobPath(), backupRequest.getExternalDatabaseStrategy(), null); //TODO fill backup class properly
 
         List<LogicalBackup> logicalBackups = databasesForBackup.stream()
                 .collect(Collectors.groupingBy(AbstractDatabase::getAdapterId))
@@ -336,5 +337,16 @@ public class DbBackupV2Service {
                 .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()));
 
         return mapper.toBackupMetadataResponse(backup);
+    }
+
+    public void uploadBackupMetadata(BackupMetadataRequest backupMetadataRequest) {
+        Backup backup = mapper.toBackup(backupMetadataRequest);
+
+        backup.getLogicalBackups().forEach(lb -> {
+            if (lb.getAdapterId() != null)
+                lb.setAdapterId(null);
+        });
+        //TODO case if backup exists
+        backupRepository.save(backup);
     }
 }

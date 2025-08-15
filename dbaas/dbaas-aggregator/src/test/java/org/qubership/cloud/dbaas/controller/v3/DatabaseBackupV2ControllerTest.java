@@ -17,12 +17,16 @@ import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static org.hamcrest.Matchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
@@ -135,7 +139,6 @@ class DatabaseBackupV2ControllerTest {
 
 
         BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
-                UUID.randomUUID(),
                 "db1",
                 List.of(sortedMap),
                 Map.of("settings-key", Map.of("field1", "value1", "field2", 123)),
@@ -152,17 +155,17 @@ class DatabaseBackupV2ControllerTest {
                 null,
                 null,
                 null,
-                List.of(LogicalBackupStatusResponse.Database.builder()
-                        .databaseName("db1")
-                        .status(Status.COMPLETED)
-                        .path("path")
-                        .errorMessage(null)
-                        .duration(null)
-                        .size(1)
-                        .build())
+                List.of(new LogicalBackupStatusResponse.Database(
+                        "db1",
+                        Status.COMPLETED,
+                        1,
+                        "duration",
+                        "path",
+                        null))
         );
 
         LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+                "logicalBackupName",
                 "adapterId",
                 "type",
                 logicalBackupStatusResponse,
@@ -208,6 +211,26 @@ class DatabaseBackupV2ControllerTest {
                 .extract().response().prettyPrint();
     }
 
+    @Test
+    void uploadMetadata_invalidRequest(){
+        BackupResponse backupResponse = new BackupResponse();
+        BackupMetadataRequest backupMetadataRequest = new BackupMetadataRequest();
+        backupMetadataRequest.setMetadata(backupResponse);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .body(backupMetadataRequest)
+                .when().post("/operation/uploadMetadata")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", allOf(
+                        containsString("storageName: must not be blank"),
+                        containsString("externalDatabaseStrategy: must not be null"),
+                        containsString("backupName: must not be blank"),
+                        containsString("blobPath: must not be blank"))
+                );
+
+    }
 
     public static BackupRequest createBackupRequest(String namespace, String backupName) {
         Filter filter = new Filter();

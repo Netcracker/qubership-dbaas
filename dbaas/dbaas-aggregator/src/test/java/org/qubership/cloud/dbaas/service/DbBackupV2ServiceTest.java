@@ -11,10 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupStatusResponse;
-import org.qubership.cloud.dbaas.dto.backupV2.Filter;
-import org.qubership.cloud.dbaas.dto.backupV2.FilterCriteria;
+import org.qubership.cloud.dbaas.dto.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
@@ -580,6 +577,101 @@ class DbBackupV2ServiceTest {
         assertEquals(Status.COMPLETED, expectedSuccess.getStatus());
     }
 
+
+    @Test
+    void uploadBackupMetadata() {
+        //when
+        String namespace = "namespace";
+        String backupName = "backupName";
+
+        SortedMap<String, Object> sortedMap = new TreeMap<>();
+        sortedMap.put("key-first", Map.of("inner-key", "inner-value"));
+        sortedMap.put("key-second", Map.of("inner-key", "inner-value"));
+
+        BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
+                "backup-database",
+                List.of(sortedMap),
+                Map.of("settings-key", "settings-value"),
+                List.of(BackupDatabaseResponse.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()),
+                Map.of("key", "value"),
+                true
+        );
+
+        LogicalBackupStatusResponse logicalBackupStatusResponse = new LogicalBackupStatusResponse(
+                Status.COMPLETED,
+                null,
+                null,
+                null,
+                List.of(new LogicalBackupStatusResponse.Database(
+                        "db1",
+                        Status.COMPLETED,
+                        1,
+                        "duration",
+                        "path",
+                        null
+                ))
+        );
+
+        LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+                "logicalBackupName",
+                "adapterID",
+                "type",
+                logicalBackupStatusResponse,
+                List.of(backupDatabaseResponse)
+        );
+
+        BackupStatusResponse backupStatusResponse = new BackupStatusResponse(
+                Status.COMPLETED,
+                1,
+                1,
+                1L,
+                null
+        );
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        BackupResponse backupResponse = new BackupResponse();
+        backupResponse.setBackupName(backupName);
+        backupResponse.setStatus(backupStatusResponse);
+        backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
+        backupResponse.setBlobPath("BlobPath");
+        backupResponse.setStorageName("storageName");
+        backupResponse.setFilterCriteria(filterCriteria);
+        backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        backupResponse.setIgnoreNotBackupableDatabases(true);
+
+        BackupMetadataRequest backupMetadataRequest = new BackupMetadataRequest();
+        backupMetadataRequest.setMetadata(backupResponse);
+        backupMetadataRequest.setControlSum("");
+
+        dbBackupV2Service.uploadBackupMetadata(backupMetadataRequest);
+
+        Backup backup = backupRepository.findById(backupName);
+        assertEquals(backup.getName(), backupResponse.getBackupName());
+        assertEquals(backup.getStorageName(), backupResponse.getStorageName());
+        assertEquals(backup.getBlobPath(), backupResponse.getBlobPath());
+        assertEquals(backup.getExternalDatabaseStrategy(), backupResponse.getExternalDatabaseStrategy());
+
+
+        LogicalBackup logicalBackup = backup.getLogicalBackups().getFirst();
+
+        assertEquals(logicalBackup.getLogicalBackupName(), logicalBackupResponse.getLogicalBackupName());
+        assertNull(logicalBackup.getAdapterId());
+        assertEquals(logicalBackup.getType(), logicalBackupResponse.getType());
+
+        BackupDatabase backupDatabase = logicalBackup.getBackupDatabases().getFirst();
+        assertEquals(backupDatabase.getName(), backupDatabaseResponse.getName());
+        assertEquals(backupDatabase.getSettings(), backupDatabaseResponse.getSettings());
+        assertEquals(backupDatabase.getResources(), backupDatabaseResponse.getResources());
+    }
+
     private List<LogicalBackup> generateLogicalBackups(int count) {
         List<LogicalBackup> logicalBackups = new ArrayList<>();
 
@@ -692,6 +784,8 @@ class DbBackupV2ServiceTest {
         dto.setFilterCriteria(filterCriteria);
         dto.setBackupName(backupName);
         dto.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
+        dto.setBlobPath("blobPath");
+        dto.setStorageName("storageName");
         return dto;
     }
 }
