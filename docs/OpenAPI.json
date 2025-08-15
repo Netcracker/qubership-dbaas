@@ -173,6 +173,7 @@
             "description": "Unique identifier of the backup",
             "required": true,
             "schema": {
+              "pattern": "\\S",
               "type": "string"
             }
           }
@@ -222,6 +223,7 @@
             "description": "Unique identifier of the backup",
             "required": true,
             "schema": {
+              "pattern": "\\S",
               "type": "string"
             }
           }
@@ -275,13 +277,15 @@
           }
         ],
         "requestBody": {
+          "description": "Backup request",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BackupDto"
+                "$ref": "#/components/schemas/BackupRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -383,6 +387,7 @@
             "description": "Unique identifier of the backup",
             "required": true,
             "schema": {
+              "pattern": "\\S",
               "type": "string"
             }
           }
@@ -2488,7 +2493,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database"
+                  "$ref": "#/components/schemas/Database1"
                 }
               }
             }
@@ -2566,7 +2571,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database"
+                  "$ref": "#/components/schemas/Database1"
                 }
               }
             }
@@ -3489,7 +3494,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database"
+                  "$ref": "#/components/schemas/Database1"
                 }
               }
             }
@@ -3499,7 +3504,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database"
+                  "$ref": "#/components/schemas/Database1"
                 }
               }
             }
@@ -3581,7 +3586,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Database"
+                    "$ref": "#/components/schemas/Database1"
                   }
                 }
               }
@@ -3690,7 +3695,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database"
+                  "$ref": "#/components/schemas/Database1"
                 }
               }
             }
@@ -3700,7 +3705,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database"
+                  "$ref": "#/components/schemas/Database1"
                 }
               }
             }
@@ -4507,18 +4512,58 @@
           }
         }
       },
-      "BackupDto": {
+      "BackupDatabaseResponse": {
+        "description": "Logical database backup details",
         "required": [
-          "namespace",
-          "backupName"
+          "id",
+          "name"
         ],
         "type": "object",
         "properties": {
-          "namespace": {
-            "type": "string"
+          "id": {
+            "description": "Unique identifier of the logical backup",
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UUID"
+              }
+            ],
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
           },
-          "backupName": {
-            "type": "string"
+          "name": {
+            "description": "Name of the database",
+            "type": "string",
+            "example": "mydb"
+          },
+          "classifiers": {
+            "description": "List of database classifiers",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "settings": {
+            "description": "List of database settings",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "users": {
+            "description": "List of database users",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          },
+          "resources": {
+            "description": "List of database resources",
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "externallyManaged": {
+            "description": "Whether the database is externally managed",
+            "type": "boolean",
+            "example": false
           }
         }
       },
@@ -4595,22 +4640,27 @@
         "required": [
           "backupName",
           "storageName",
-          "blobPath"
+          "blobPath",
+          "externalDatabaseStrategy",
+          "ignoreNotBackupableDatabases"
         ],
         "type": "object",
         "properties": {
           "backupName": {
             "description": "Unique name for the backup",
+            "pattern": "\\S",
             "type": "string",
             "example": "before-prod-update-20251013T1345-G5s8"
           },
           "storageName": {
             "description": "Identifier of the storage backend",
+            "pattern": "\\S",
             "type": "string",
             "example": "s3-backend"
           },
           "blobPath": {
             "description": "Path in the storage where backup will be stored",
+            "pattern": "\\S",
             "type": "string",
             "example": "/backups/before-prod-update-20251013T1345-G5s8/logical/dbaas/"
           },
@@ -4691,13 +4741,17 @@
           "status": {
             "description": "Status of the backup operation",
             "type": "object",
-            "additionalProperties": {}
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BackupStatusResponse"
+              }
+            ]
           },
           "logicalBackups": {
             "description": "List of logical backups",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LogicalBackup"
+              "$ref": "#/components/schemas/LogicalBackupResponse"
             }
           }
         }
@@ -4712,10 +4766,11 @@
           "status": {
             "description": "Current state of the backup operation",
             "enum": [
+              "NOT_STARTED",
               "PENDING",
               "IN_PROGRESS",
-              "COMPLETED",
-              "FAILED"
+              "FAILED",
+              "COMPLETED"
             ],
             "type": "object"
           },
@@ -4732,7 +4787,7 @@
             "example": 3
           },
           "size": {
-            "format": "int32",
+            "format": "int64",
             "description": "Total size of the backup in bytes",
             "type": "integer",
             "example": 1073741824
@@ -4887,6 +4942,30 @@
         }
       },
       "Database": {
+        "type": "object",
+        "properties": {
+          "databaseName": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "size": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "duration": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          }
+        }
+      },
+      "Database1": {
         "required": [
           "oldClassifier",
           "classifier",
@@ -5483,7 +5562,7 @@
             "type": "string",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Status1"
+                "$ref": "#/components/schemas/Status2"
               }
             ]
           },
@@ -5766,7 +5845,7 @@
             "$ref": "#/components/schemas/DatabasesBackup"
           },
           "status": {
-            "$ref": "#/components/schemas/Status1"
+            "$ref": "#/components/schemas/Status2"
           },
           "adapterId": {
             "type": "string"
@@ -5796,7 +5875,7 @@
           "logicalDatabases": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Database"
+              "$ref": "#/components/schemas/Database1"
             }
           },
           "physicalDatabases": {
@@ -6169,22 +6248,21 @@
           }
         }
       },
-      "LogicalBackup": {
+      "LocalDateTime": {
+        "format": "date-time",
+        "type": "string",
+        "example": "2022-03-10T12:15:50"
+      },
+      "LogicalBackupResponse": {
         "description": "Logical backup details",
         "required": [
-          "id",
           "adapterId",
           "type",
           "status",
-          "logicalBackupDatabases"
+          "backupDatabases"
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "description": "Unique identifier of the logical backup",
-            "type": "string",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
-          },
           "adapterId": {
             "description": "Unique identifier of the adapter",
             "type": "string",
@@ -6197,59 +6275,41 @@
           "status": {
             "description": "Status of the logical backup",
             "type": "object",
-            "additionalProperties": {}
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LogicalBackupStatusResponse"
+              }
+            ]
           },
-          "logicalBackupDatabases": {
+          "backupDatabases": {
             "description": "List of logical backup databases",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LogicalBackupDatabase"
+              "$ref": "#/components/schemas/BackupDatabaseResponse"
             }
           }
         }
       },
-      "LogicalBackupDatabase": {
-        "description": "Logical database backup details",
-        "required": [
-          "id",
-          "name"
-        ],
+      "LogicalBackupStatusResponse": {
         "type": "object",
         "properties": {
-          "id": {
-            "description": "Unique identifier of the logical backup",
-            "type": "string",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          "status": {
+            "$ref": "#/components/schemas/Status"
           },
-          "name": {
-            "description": "Name of the database",
-            "type": "string",
-            "example": "mydb"
+          "errorMessage": {
+            "type": "string"
           },
-          "classifiers": {
-            "description": "List of database classifiers",
-            "type": "object",
-            "additionalProperties": {}
+          "creationTime": {
+            "$ref": "#/components/schemas/LocalDateTime"
           },
-          "settings": {
-            "description": "List of database settings",
-            "type": "object",
-            "additionalProperties": {}
+          "completionTime": {
+            "$ref": "#/components/schemas/LocalDateTime"
           },
-          "users": {
-            "description": "List of database users",
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "resources": {
-            "description": "List of database resources",
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "externallyManaged": {
-            "description": "Whether the database is externally managed",
-            "type": "boolean",
-            "example": false
+          "databases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Database"
+            }
           }
         }
       },
@@ -6474,7 +6534,7 @@
             "description": "List of backup databases.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Database"
+              "$ref": "#/components/schemas/Database1"
             }
           },
           "databaseRegistries": {
@@ -6505,7 +6565,7 @@
             "type": "string",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Status"
+                "$ref": "#/components/schemas/Status1"
               }
             ]
           }
@@ -6535,7 +6595,7 @@
           "databases": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Database"
+              "$ref": "#/components/schemas/Database1"
             }
           },
           "databaseRegistries": {
@@ -6554,7 +6614,7 @@
             "$ref": "#/components/schemas/Date"
           },
           "status": {
-            "$ref": "#/components/schemas/Status"
+            "$ref": "#/components/schemas/Status1"
           }
         }
       },
@@ -6574,7 +6634,7 @@
             }
           },
           "status": {
-            "$ref": "#/components/schemas/Status1"
+            "$ref": "#/components/schemas/Status2"
           }
         }
       },
@@ -6597,7 +6657,7 @@
             }
           },
           "status": {
-            "$ref": "#/components/schemas/Status1"
+            "$ref": "#/components/schemas/Status2"
           }
         }
       },
@@ -7456,7 +7516,7 @@
             "type": "string",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Status1"
+                "$ref": "#/components/schemas/Status2"
               }
             ]
           },
@@ -7682,6 +7742,16 @@
       },
       "Status": {
         "enum": [
+          "NOT_STARTED",
+          "PENDING",
+          "IN_PROGRESS",
+          "FAILED",
+          "COMPLETED"
+        ],
+        "type": "string"
+      },
+      "Status1": {
+        "enum": [
           "FAIL",
           "ACTIVE",
           "PROCEEDING",
@@ -7691,7 +7761,7 @@
         ],
         "type": "string"
       },
-      "Status1": {
+      "Status2": {
         "enum": [
           "SUCCESS",
           "PROCEEDING",
@@ -7907,6 +7977,17 @@
             "description": "New version of all database settings to apply to the database. Must consist of all settings the target database must incorporate after this update request will be executed.",
             "type": "object",
             "additionalProperties": {}
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
           }
         }
       },
