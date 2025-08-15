@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
+import org.qubership.cloud.context.propagation.core.ContextManager;
 import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupMetadataResponse;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
@@ -21,12 +22,18 @@ import org.qubership.cloud.dbaas.mapper.BackupV2Mapper;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import org.qubership.cloud.dbaas.utils.DbaasBackupUtils;
+import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 
 import java.net.URI;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
+
+import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
 @ApplicationScoped
@@ -122,8 +129,14 @@ public class DbBackupV2Service {
         Map<LogicalBackup, Future<String>> names = new HashMap<>();
         List<LogicalBackup> logicalBackups = backup.getLogicalBackups();
 
+        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
+
         logicalBackups.forEach(logicalBackup -> {
-            Future<String> future = executor.submit(startLogicalBackup(logicalBackup));
+            ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+            Future<String> future = executor.submit(() -> {
+                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                return startLogicalBackup(logicalBackup);
+            });
             names.put(logicalBackup, future);
         });
 
@@ -142,34 +155,33 @@ public class DbBackupV2Service {
         backupRepository.save(backup);
     }
 
-    protected Callable<String> startLogicalBackup(LogicalBackup logicalBackup) {
+    protected String startLogicalBackup(LogicalBackup logicalBackup) {
         List<String> dbNames = logicalBackup.getStatus().getDatabases().stream()
                 .map(LogicalBackupStatus.Database::getDatabaseName)
                 .toList();
         String adapterId = logicalBackup.getAdapterId();
-        return () -> {
-            RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
-                    .handle(WebApplicationException.class)
-                    .withMaxRetries(2)
-                    .withDelay(Duration.ofSeconds(3))
-                    .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
-                    .onRetry(e -> log.info("Retrying backupV2..."))
-                    .onFailure(e -> log.error("Request limit exceeded for {}", logicalBackup));
 
-            try {
-                return Failsafe.with(retryPolicy).get(() -> {
-                    DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-                    String result = adapter.backupV2(dbNames);
+        RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
+                .handle(WebApplicationException.class)
+                .withMaxRetries(2)
+                .withDelay(Duration.ofSeconds(3))
+                .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
+                .onRetry(e -> log.info("Retrying backupV2..."))
+                .onFailure(e -> log.error("Request limit exceeded for {}", logicalBackup));
 
-                    if (result == null) {
-                        throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable()); //TODO correct path
-                    }
-                    return result;
-                });
-            } catch (Exception e) {
-                throw new RuntimeException("Failsafe execution failed", e);
-            }
-        };
+        try {
+            return Failsafe.with(retryPolicy).get(() -> {
+                DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+                String result = adapter.backupV2(dbNames);
+
+                if (result == null) {
+                    throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable()); //TODO correct path
+                }
+                return result;
+            });
+        } catch (Exception e) {
+            throw new RuntimeException("Failsafe execution failed", e);
+        }
     }
 
     protected void waitBackupCompletion(Backup backup) {
@@ -218,15 +230,18 @@ public class DbBackupV2Service {
 
     private List<LogicalBackup> fetchAndUpdateStatuses(List<LogicalBackup> logicalBackupList) {
         Map<LogicalBackup, Future<LogicalBackupStatus>> statuses = new HashMap<>();
+        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
         logicalBackupList
                 .forEach(logicalBackup -> {
-                    Future<LogicalBackupStatus> future = executor.submit(() ->
-                            Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
-                                        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
-                                        return adapter.trackBackupV2(logicalBackup.getLogicalBackupName());
-                                    }
-                            ));
+                    Future<LogicalBackupStatus> future = executor.submit(() -> {
+                        ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                        return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
+                                    DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
+                                    return adapter.trackBackupV2(logicalBackup.getLogicalBackupName());
+                                }
+                        );
+                    });
                     statuses.put(logicalBackup, future);
                 });
 
