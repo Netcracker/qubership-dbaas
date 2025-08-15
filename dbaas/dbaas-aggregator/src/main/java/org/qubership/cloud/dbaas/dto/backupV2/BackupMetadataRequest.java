@@ -1,5 +1,7 @@
 package org.qubership.cloud.dbaas.dto.backupV2;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -12,6 +14,8 @@ public class BackupMetadataRequest {
             description = "Backup metadata",
             required = true
     )
+    @Valid
+    @NotNull
     private BackupResponse metadata;
     @Schema(description = "Control sum of the metadata", required = true)
     private String controlSum;
