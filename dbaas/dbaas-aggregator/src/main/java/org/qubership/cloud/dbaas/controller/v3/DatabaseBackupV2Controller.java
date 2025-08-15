@@ -132,7 +132,8 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/operation/uploadMetadata")
     @POST
-    public Response uploadMetadata(@RequestBody(description = "Backup metadata", required = true) BackupMetadataRequest backupMetadataRequest) {
+    public Response uploadMetadata(@RequestBody(description = "Backup metadata", required = true) @Valid BackupMetadataRequest backupMetadataRequest) {
+        dbBackupV2Service.uploadBackupMetadata(backupMetadataRequest);
         return Response.ok().build();
     }
 
