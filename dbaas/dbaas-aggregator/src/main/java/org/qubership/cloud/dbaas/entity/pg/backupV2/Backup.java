@@ -18,7 +18,6 @@ public class Backup {
 
     @Id
     @NotNull
-    @Schema(description = "A unique identifier of the backup process. Backup process is associated with this name.", required = true)
     private String name;
 
     @NotNull
