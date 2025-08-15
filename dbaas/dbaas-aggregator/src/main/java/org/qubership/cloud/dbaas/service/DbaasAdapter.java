@@ -12,6 +12,7 @@ import org.qubership.cloud.dbaas.entity.pg.DbResource;
 import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import org.qubership.cloud.dbaas.entity.pg.backup.RestoreResult;
 import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
 import org.qubership.cloud.dbaas.exceptions.InteruptedPollingException;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
 import jakarta.ws.rs.core.Response;
@@ -30,11 +31,15 @@ public interface DbaasAdapter {
 
     DatabasesBackup backup(List<String> databases, Boolean allowEviction) throws InteruptedPollingException;
 
+    String backupV2(List<String> dbNames);
+
     DeleteResult delete(DatabasesBackup backup);
 
     boolean validate(DatabasesBackup backup);
 
     TrackedAction trackBackup(String action, String trackId);
+
+    LogicalBackupStatus trackBackupV2(String logicalBackupName);
 
     String type();
 
