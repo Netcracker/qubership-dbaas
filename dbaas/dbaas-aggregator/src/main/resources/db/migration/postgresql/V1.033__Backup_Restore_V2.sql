@@ -1,4 +1,4 @@
-create table if not exists v2_backup
+create table v2_backup
 (
     name varchar primary key,
     storage_name varchar not null,
@@ -8,7 +8,7 @@ create table if not exists v2_backup
     status jsonb
 );
 
-create table if not exists v2_logical_backup
+create table v2_logical_backup
 (
     id uuid primary key,
     logical_backup_name varchar,
@@ -18,7 +18,7 @@ create table if not exists v2_logical_backup
     status jsonb
 );
 
-create table if not exists v2_backup_database
+create table v2_backup_database
 (
     id uuid primary key,
     logical_backup_id uuid references v2_logical_backup(id),
@@ -30,7 +30,7 @@ create table if not exists v2_backup_database
     externally_manageable boolean not null
 );
 
-create table if not exists v2_restore
+create table v2_restore
 (
     name varchar primary key,
     backup_name varchar references v2_backup(name),
@@ -41,7 +41,7 @@ create table if not exists v2_restore
     status jsonb
 );
 
-create table if not exists v2_logical_restore
+create table v2_logical_restore
 (
     id uuid primary key,
     logical_restore_name varchar,
@@ -51,7 +51,7 @@ create table if not exists v2_logical_restore
     status jsonb not null
 );
 
-create table if not exists v2_restore_database
+create table v2_restore_database
 (
     id uuid primary key,
     logical_restore_id uuid references v2_logical_restore(id),
