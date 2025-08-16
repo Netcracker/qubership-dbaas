@@ -11,6 +11,7 @@ import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasReposito
 import org.qubership.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
+import org.qubership.cloud.dbaas.security.validators.NamespaceValidator;
 import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;

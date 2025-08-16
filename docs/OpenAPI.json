@@ -4005,11 +4005,13 @@
       },
       "ClassifierWithRolesRequest": {
         "required": [
-          "classifier",
-          "originService"
+          "classifier"
         ],
         "type": "object",
         "properties": {
+          "securityContext": {
+            "$ref": "#/components/schemas/SecurityContext"
+          },
           "classifier": {
             "description": "Database composite identify key. See details in https://perch.qubership.org/display/CLOUDCORE/DbaaS+Database+Classifier",
             "type": "object",
@@ -4276,8 +4278,7 @@
       "DatabaseCreateRequestV3": {
         "description": "V3 Request model for adding database to DBaaS",
         "required": [
-          "type",
-          "originService"
+          "type"
         ],
         "type": "object",
         "properties": {
@@ -5995,6 +5996,14 @@
           }
         }
       },
+      "Principal": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "RecreateDatabaseRequest": {
         "description": "Request model for recreate existing database. The database will have the same settings and classifier as original",
         "required": [
@@ -6402,6 +6411,20 @@
         ],
         "type": "string"
       },
+      "SecurityContext": {
+        "type": "object",
+        "properties": {
+          "userPrincipal": {
+            "$ref": "#/components/schemas/Principal"
+          },
+          "secure": {
+            "type": "boolean"
+          },
+          "authenticationScheme": {
+            "type": "string"
+          }
+        }
+      },
       "ServiceRole": {
         "type": "object",
         "properties": {
@@ -6735,6 +6758,14 @@
             }
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "SecurityScheme": {
+        "type": "http",
+        "description": "Authentication",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
       }
     }
   }
