@@ -16,6 +16,7 @@ import org.qubership.cloud.dbaas.entity.pg.backupV2.Status;
 import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
+import org.qubership.cloud.dbaas.utils.DigestUtil;
 
 import java.util.List;
 import java.util.Map;
@@ -134,6 +135,7 @@ class DatabaseBackupV2ControllerTest {
     @Test
     void getBackupMetadata() {
         String backupName = "backupName";
+        String storageName = "storageName";
         SortedMap<String, Object> sortedMap = new TreeMap<>();
         sortedMap.put("key", "value");
 
@@ -188,19 +190,17 @@ class DatabaseBackupV2ControllerTest {
         BackupResponse backupResponse = new BackupResponse();
         backupResponse.setBackupName(backupName);
         backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
-        backupResponse.setStorageName("storageNam");
+        backupResponse.setStorageName(storageName);
         backupResponse.setStatus(backupStatusResponse);
         backupResponse.setBlobPath("blobPath");
         backupResponse.setIgnoreNotBackupableDatabases(false);
         backupResponse.setFilterCriteria(filterCriteria);
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
 
-        BackupMetadataResponse backupMetadataResponse = new BackupMetadataResponse();
-        backupMetadataResponse.setMetadata(backupResponse);
-        backupMetadataResponse.setControlSum("f7xCZThvTAnxNmW+Ybhq8jgTAaQQs941qy4GKXvphyw=");
-
         when(dbBackupV2Service.getBackupMetadata(backupName))
-                .thenReturn(backupMetadataResponse);
+                .thenReturn(backupResponse);
+
+        String expectedDigest = DigestUtil.calculateDigest(backupResponse);
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
@@ -208,18 +208,19 @@ class DatabaseBackupV2ControllerTest {
                 .when().get("/backup/{backupName}/metadata")
                 .then()
                 .statusCode(OK.getStatusCode())
+                .header("Digest", equalTo(expectedDigest))
+                .body("backupName", equalTo(backupName))
+                .body("storageName", equalTo(storageName))
                 .extract().response().prettyPrint();
     }
 
     @Test
     void uploadMetadata_invalidRequest() {
         BackupResponse backupResponse = new BackupResponse();
-        BackupMetadataRequest backupMetadataRequest = new BackupMetadataRequest();
-        backupMetadataRequest.setMetadata(backupResponse);
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
-                .body(backupMetadataRequest)
+                .body(backupResponse)
                 .when().post("/operation/uploadMetadata")
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())

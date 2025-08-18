@@ -9,6 +9,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.headers.Header;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
@@ -18,6 +20,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.qubership.cloud.dbaas.dto.backupV2.*;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
+import org.qubership.cloud.dbaas.utils.DigestUtil;
 
 import static org.qubership.cloud.dbaas.Constants.BACKUP_MANAGER;
 import static org.qubership.cloud.dbaas.DbaasApiPath.BACKUP_PATH_V1;
@@ -108,7 +111,15 @@ public class DatabaseBackupV2Controller {
     @Operation(summary = "Get backup metadata", description = "Retrieve metadata about a completed backup")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Backup metadata retrieved successfully",
-                    content = @Content(schema = @Schema(implementation = BackupMetadataResponse.class))),
+                    headers = {
+                            @Header(
+                                    name = "Digest",
+                                    description = "Digest header with SHA-256 checksum of the response body",
+                                    schema = @Schema(type = SchemaType.STRING, example = "sha-256=abc123...")
+                            )
+                    },
+                    content = @Content(schema = @Schema(implementation = BackupResponse.class))
+            ),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
@@ -119,7 +130,11 @@ public class DatabaseBackupV2Controller {
     public Response getBackupMetadata(@Parameter(description = "Unique identifier of the backup", required = true)
                                       @PathParam("backupName")
                                       @NotBlank String backupName) {
-        return Response.ok(dbBackupV2Service.getBackupMetadata(backupName)).build();
+        BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
+        String digestHeader = DigestUtil.calculateDigest(response);
+        return Response.ok(response)
+                .header("Digest", digestHeader)
+                .build();
     }
 
     @Operation(summary = "Upload backup metadata", description = "Metadata upload done")
@@ -132,8 +147,8 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/operation/uploadMetadata")
     @POST
-    public Response uploadMetadata(@RequestBody(description = "Backup metadata", required = true) @Valid BackupMetadataRequest backupMetadataRequest) {
-        dbBackupV2Service.uploadBackupMetadata(backupMetadataRequest);
+    public Response uploadMetadata(@RequestBody(description = "Backup metadata", required = true) @Valid BackupResponse backupResponse) {
+        dbBackupV2Service.uploadBackupMetadata(backupResponse);
         return Response.ok().build();
     }
 
