@@ -8,9 +8,8 @@ import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.qubership.cloud.context.propagation.core.ContextManager;
 import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupMetadataRequest;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupMetadataResponse;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
+import org.qubership.cloud.dbaas.dto.backupV2.BackupResponse;
 import org.qubership.cloud.dbaas.dto.backupV2.BackupStatusResponse;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
@@ -332,15 +331,15 @@ public class DbBackupV2Service {
     }
 
 
-    public BackupMetadataResponse getBackupMetadata(String backupName) {
+    public BackupResponse getBackupMetadata(String backupName) {
         Backup backup = backupRepository.findByIdOptional(backupName)
                 .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()));
 
-        return mapper.toBackupMetadataResponse(backup);
+        return mapper.toBackupResponse(backup);
     }
 
-    public void uploadBackupMetadata(BackupMetadataRequest backupMetadataRequest) {
-        Backup backup = mapper.toBackup(backupMetadataRequest);
+    public void uploadBackupMetadata(BackupResponse backupResponse) {
+        Backup backup = mapper.toBackup(backupResponse);
 
         backup.getLogicalBackups().forEach(lb -> {
             if (lb.getAdapterId() != null)

@@ -181,10 +181,20 @@
         "responses": {
           "200": {
             "description": "Backup metadata retrieved successfully",
+            "headers": {
+              "Digest": {
+                "description": "Digest header with SHA-256 checksum of the response body",
+                "style": "simple",
+                "schema": {
+                  "type": "string",
+                  "example": "sha-256\u003dabc123..."
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BackupMetadataResponse"
+                  "$ref": "#/components/schemas/BackupResponse"
                 }
               }
             }
@@ -343,7 +353,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BackupMetadataRequest"
+                "$ref": "#/components/schemas/BackupResponse"
               }
             }
           },
@@ -4515,21 +4525,10 @@
       "BackupDatabaseResponse": {
         "description": "Logical database backup details",
         "required": [
-          "id",
           "name"
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "description": "Unique identifier of the logical backup",
-            "type": "string",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/UUID"
-              }
-            ],
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
-          },
           "name": {
             "description": "Name of the database",
             "type": "string",
@@ -4564,52 +4563,6 @@
             "description": "Whether the database is externally managed",
             "type": "boolean",
             "example": false
-          }
-        }
-      },
-      "BackupMetadataRequest": {
-        "description": "Backup metadata to be stored",
-        "required": [
-          "metadata",
-          "controlSum"
-        ],
-        "type": "object",
-        "properties": {
-          "metadata": {
-            "description": "Backup metadata",
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BackupResponse"
-              }
-            ]
-          },
-          "controlSum": {
-            "description": "Control sum of the metadata",
-            "type": "string"
-          }
-        }
-      },
-      "BackupMetadataResponse": {
-        "description": "Backup metadata information",
-        "required": [
-          "metadata",
-          "controlSum"
-        ],
-        "type": "object",
-        "properties": {
-          "metadata": {
-            "description": "Backup metadata",
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BackupResponse"
-              }
-            ]
-          },
-          "controlSum": {
-            "description": "Control sum of the metadata",
-            "type": "string"
           }
         }
       },
@@ -4695,22 +4648,27 @@
         "required": [
           "backupName",
           "storageName",
-          "blobPath"
+          "blobPath",
+          "externalDatabaseStrategy",
+          "ignoreNotBackupableDatabases"
         ],
         "type": "object",
         "properties": {
           "backupName": {
             "description": "Unique identifier of the backup",
+            "pattern": "\\S",
             "type": "string",
             "example": "before-prod-update-20251013T1345-G5s8"
           },
           "storageName": {
             "description": "Name of the storage backend containing the backup",
+            "pattern": "\\S",
             "type": "string",
             "example": "s3-backend"
           },
           "blobPath": {
             "description": "Path to the backup file in the storage",
+            "pattern": "\\S",
             "type": "string",
             "example": "/backups"
           },
@@ -6256,6 +6214,7 @@
       "LogicalBackupResponse": {
         "description": "Logical backup details",
         "required": [
+          "logicalBackupName",
           "adapterId",
           "type",
           "status",
@@ -6263,6 +6222,10 @@
         ],
         "type": "object",
         "properties": {
+          "logicalBackupName": {
+            "description": "Name of the logical backup in adapter",
+            "type": "string"
+          },
           "adapterId": {
             "description": "Unique identifier of the adapter",
             "type": "string",

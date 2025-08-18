@@ -50,4 +50,6 @@ public class BackupResponse {
             description = "List of logical backups"
     )
     private List<LogicalBackupResponse> logicalBackups;
+
+    //TODO need granular validation for fields
 }

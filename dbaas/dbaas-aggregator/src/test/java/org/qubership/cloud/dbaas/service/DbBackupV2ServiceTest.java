@@ -587,27 +587,23 @@ class DbBackupV2ServiceTest {
 
         backupRepository.save(backup);
 
-        BackupMetadataResponse response = dbBackupV2Service.getBackupMetadata(backupName);
+        BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
 
         assertNotNull(response);
-        assertNotNull(response.getMetadata());
-        assertEquals("f7xCZThvTAnxNmW+Ybhq8jgTAaQQs941qy4GKXvphyw=", response.getControlSum());
+        assertEquals("backupName", response.getBackupName());
+        assertEquals("storagename", response.getStorageName());
+        assertEquals("path", response.getBlobPath());
+        assertEquals(ExternalDatabaseStrategy.SKIP, response.getExternalDatabaseStrategy());
+        assertFalse(response.isIgnoreNotBackupableDatabases());
 
-        BackupResponse metadata = response.getMetadata();
-        assertEquals("backupName", metadata.getBackupName());
-        assertEquals("storagename", metadata.getStorageName());
-        assertEquals("path", metadata.getBlobPath());
-        assertEquals(ExternalDatabaseStrategy.SKIP, metadata.getExternalDatabaseStrategy());
-        assertFalse(metadata.isIgnoreNotBackupableDatabases());
-
-        BackupStatusResponse status = metadata.getStatus();
+        BackupStatusResponse status = response.getStatus();
         assertEquals(Status.COMPLETED, status.getStatus());
         assertEquals(1, status.getTotal());
         assertEquals(1, status.getCompleted());
         assertEquals(1, status.getSize());
         assertNull(status.getErrorMessage());
 
-        List<LogicalBackupResponse> logicalBackupsResponse = metadata.getLogicalBackups();
+        List<LogicalBackupResponse> logicalBackupsResponse = response.getLogicalBackups();
         assertEquals(1, logicalBackupsResponse.size());
 
         LogicalBackupResponse logicalBackup = logicalBackupsResponse.getFirst();
@@ -708,11 +704,7 @@ class DbBackupV2ServiceTest {
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
         backupResponse.setIgnoreNotBackupableDatabases(true);
 
-        BackupMetadataRequest backupMetadataRequest = new BackupMetadataRequest();
-        backupMetadataRequest.setMetadata(backupResponse);
-        backupMetadataRequest.setControlSum("");
-
-        dbBackupV2Service.uploadBackupMetadata(backupMetadataRequest);
+        dbBackupV2Service.uploadBackupMetadata(backupResponse);
 
         Backup backup = backupRepository.findById(backupName);
         assertEquals(backup.getName(), backupResponse.getBackupName());
