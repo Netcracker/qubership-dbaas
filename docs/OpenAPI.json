@@ -348,6 +348,18 @@
         ],
         "summary": "Upload backup metadata",
         "description": "Metadata upload done",
+        "parameters": [
+          {
+            "name": "Digest",
+            "in": "header",
+            "description": "Digest header in format: sha-256\u003d\u003cbase64-hash\u003e",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "sha-256\u003dnOJRJg..."
+            }
+          }
+        ],
         "requestBody": {
           "description": "Backup metadata",
           "content": {
