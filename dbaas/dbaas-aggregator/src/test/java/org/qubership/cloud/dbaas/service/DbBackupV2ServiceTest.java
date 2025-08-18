@@ -577,6 +577,67 @@ class DbBackupV2ServiceTest {
         assertEquals(Status.COMPLETED, expectedSuccess.getStatus());
     }
 
+    @Test
+    void getBackupMetadata() {
+        String backupName = "backupName";
+        List<LogicalBackup> logicalBackups = generateLogicalBackups(1);
+        Backup backup = createBackup(backupName, logicalBackups);
+
+        logicalBackups.forEach(lb -> lb.setBackup(backup));
+
+        backupRepository.save(backup);
+
+        BackupMetadataResponse response = dbBackupV2Service.getBackupMetadata(backupName);
+
+        assertNotNull(response);
+        assertNotNull(response.getMetadata());
+        assertEquals("f7xCZThvTAnxNmW+Ybhq8jgTAaQQs941qy4GKXvphyw=", response.getControlSum());
+
+        BackupResponse metadata = response.getMetadata();
+        assertEquals("backupName", metadata.getBackupName());
+        assertEquals("storagename", metadata.getStorageName());
+        assertEquals("path", metadata.getBlobPath());
+        assertEquals(ExternalDatabaseStrategy.SKIP, metadata.getExternalDatabaseStrategy());
+        assertFalse(metadata.isIgnoreNotBackupableDatabases());
+
+        BackupStatusResponse status = metadata.getStatus();
+        assertEquals(Status.COMPLETED, status.getStatus());
+        assertEquals(1, status.getTotal());
+        assertEquals(1, status.getCompleted());
+        assertEquals(1, status.getSize());
+        assertNull(status.getErrorMessage());
+
+        List<LogicalBackupResponse> logicalBackupsResponse = metadata.getLogicalBackups();
+        assertEquals(1, logicalBackupsResponse.size());
+
+        LogicalBackupResponse logicalBackup = logicalBackupsResponse.getFirst();
+        assertEquals("test-type", logicalBackup.getType());
+        assertEquals(Status.NOT_STARTED, logicalBackup.getStatus().getStatus());
+
+        List<LogicalBackupStatusResponse.Database> dbStatuses =
+                logicalBackup.getStatus().getDatabases();
+        assertEquals(2, dbStatuses.size());
+
+        assertEquals("db1-0", dbStatuses.getFirst().getDatabaseName());
+        assertEquals(Status.COMPLETED, dbStatuses.getFirst().getStatus());
+        assertEquals("duration", dbStatuses.getFirst().getDuration());
+
+        assertEquals("db2-0", dbStatuses.get(1).getDatabaseName());
+        assertEquals(Status.COMPLETED, dbStatuses.get(1).getStatus());
+
+        List<BackupDatabaseResponse> dbs = logicalBackup.getBackupDatabases();
+        assertEquals(2, dbs.size());
+
+        BackupDatabaseResponse db1 = dbs.getFirst();
+        assertEquals("db1-0", db1.getName());
+        assertFalse(db1.isExternallyManaged());
+        assertEquals("{key=value}", db1.getResources().toString());
+        assertEquals("role", db1.getUsers().getFirst().getRole());
+        assertEquals("name", db1.getUsers().getFirst().getName());
+
+
+        log.info(response.toString());
+    }
 
     @Test
     void uploadBackupMetadata() {
@@ -687,36 +748,54 @@ class DbBackupV2ServiceTest {
 
             LogicalBackupStatus.Database db1 = LogicalBackupStatus.Database.builder()
                     .databaseName("db1-" + i)
+                    .status(Status.COMPLETED)
+                    .size(1)
+                    .duration("duration")
+                    .path("path")
                     .build();
             LogicalBackupStatus.Database db2 = LogicalBackupStatus.Database.builder()
                     .databaseName("db2-" + i)
+                    .status(Status.COMPLETED)
+                    .size(1)
+                    .duration("duration")
+                    .path("path")
                     .build();
 
             status.setDatabases(List.of(db1, db2));
             logicalBackup.setStatus(status);
 
+            SortedMap<String, Object> sortedMap = new TreeMap<>();
+            sortedMap.put("key-first", Map.of("inner-key", "inner-value"));
+            sortedMap.put("key-second", Map.of("inner-key", "inner-value"));
+
             BackupDatabase backupDatabase1 = new BackupDatabase();
             backupDatabase1.setLogicalBackup(logicalBackup);
             backupDatabase1.setName("db1-" + i);
-            backupDatabase1.setSettings(Map.of());
-            backupDatabase1.setClassifiers(List.of());
-            backupDatabase1.setUsers(List.of());
-            backupDatabase1.setResources(Map.of());
+            backupDatabase1.setSettings(Map.of("key", Map.of("inner-key", "inner-value")));
+            backupDatabase1.setClassifiers(List.of(sortedMap));
+            backupDatabase1.setUsers(List.of(BackupDatabase.User.builder()
+                    .name("name")
+                    .role("role")
+                    .build()));
+            backupDatabase1.setResources(Map.of("key", "value"));
             backupDatabase1.setExternallyManageable(false);
-
-
-            backupDatabase1.setClassifiers(List.of());
 
             BackupDatabase backupDatabase2 = new BackupDatabase();
             backupDatabase2.setLogicalBackup(logicalBackup);
             backupDatabase2.setName("db2-" + i);
-            backupDatabase2.setSettings(Map.of());
-            backupDatabase2.setUsers(List.of());
-            backupDatabase2.setResources(Map.of());
-            backupDatabase2.setClassifiers(List.of());
+            backupDatabase2.setSettings(Map.of("key", Map.of("inner-key", "inner-value")));
+            backupDatabase2.setClassifiers(List.of(sortedMap));
+            backupDatabase2.setUsers(List.of(BackupDatabase.User.builder()
+                    .name("name")
+                    .role("role")
+                    .build()));
+            backupDatabase2.setResources(Map.of("key", "value"));
             backupDatabase2.setExternallyManageable(false);
 
+            backupDatabase1.setLogicalBackup(logicalBackup);
+            backupDatabase2.setLogicalBackup(logicalBackup);
             logicalBackup.setBackupDatabases(List.of(backupDatabase1, backupDatabase2));
+
             logicalBackups.add(logicalBackup);
         }
 
@@ -765,7 +844,12 @@ class DbBackupV2ServiceTest {
         Backup backup = new Backup();
         backup.setName(name);
         backup.setLogicalBackups(logicalBackups);
-        backup.setStatus(BackupStatus.builder().build());
+        backup.setStatus(BackupStatus.builder()
+                .status(Status.COMPLETED)
+                .total(1)
+                .completed(1)
+                .size(1L)
+                .build());
         backup.setFilters("\"er\"");
         backup.setBlobPath("path");
         backup.setStorageName("storagename");

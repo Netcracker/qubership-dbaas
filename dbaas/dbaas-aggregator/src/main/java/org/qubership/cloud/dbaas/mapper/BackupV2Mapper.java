@@ -6,6 +6,7 @@ import org.qubership.cloud.dbaas.dto.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.Backup;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.BackupStatus;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackup;
+import org.qubership.cloud.dbaas.utils.DigestUtil;
 
 
 @Mapper
@@ -18,8 +19,9 @@ public interface BackupV2Mapper {
 
     default BackupMetadataResponse toBackupMetadataResponse(Backup backup) {
         BackupMetadataResponse response = new BackupMetadataResponse();
-        response.setMetadata(toBackupResponse(backup));
-        response.setControlSum("");
+        BackupResponse backupResponse = toBackupResponse(backup);
+        response.setMetadata(backupResponse);
+        response.setControlSum(DigestUtil.calculateDigest(backupResponse));
         return response;
     }
 
