@@ -225,12 +225,32 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", allOf(
+                        containsString("digestHeader: must not be null"),
                         containsString("storageName: must not be blank"),
                         containsString("externalDatabaseStrategy: must not be null"),
                         containsString("backupName: must not be blank"),
                         containsString("blobPath: must not be blank"))
                 );
 
+    }
+
+    @Test
+    void uploadMetadata_DigestHeaderAndBodyNotEqual(){
+        BackupResponse backupResponse = new BackupResponse();
+        backupResponse.setBackupName("backupName");
+        backupResponse.setBlobPath("path");
+        backupResponse.setStorageName("storageName");
+        backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .header("Digest", "sha-256=abc")
+                .body(backupResponse)
+                .when().post("/operation/uploadMetadata")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", equalTo("Digest header mismatch."))
+                .extract().response().prettyPrint();
     }
 
     public static BackupRequest createBackupRequest(String namespace, String backupName) {

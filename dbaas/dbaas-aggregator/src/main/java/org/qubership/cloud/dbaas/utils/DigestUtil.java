@@ -14,6 +14,7 @@ import java.util.Base64;
 @Slf4j
 public class DigestUtil {
 
+    private static final String ALGORITHM = "SHA-256";
     private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder()
             .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
             .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
@@ -23,14 +24,14 @@ public class DigestUtil {
         try {
             String json = OBJECT_MAPPER.writeValueAsString(obj);
 
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            MessageDigest digest = MessageDigest.getInstance(ALGORITHM);
             byte[] hash = digest.digest(json.getBytes());
             String base64Hash = Base64.getEncoder().encodeToString(hash);
 
-            return "sha-256=" + base64Hash;
+            return ALGORITHM + "=" + base64Hash;
         } catch (JsonProcessingException | NoSuchAlgorithmException e) {
             log.error("Failed to calculate digest", e);
-            return "";
+            throw new RuntimeException(e);
         }
     }
 }

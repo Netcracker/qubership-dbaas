@@ -641,6 +641,45 @@ class DbBackupV2ServiceTest {
         String namespace = "namespace";
         String backupName = "backupName";
 
+        BackupResponse expected = generateBackupResponse(backupName, namespace);
+
+        dbBackupV2Service.uploadBackupMetadata(expected);
+
+        Backup actual = backupRepository.findById(backupName);
+        assertEquals(actual.getName(), expected.getBackupName());
+        assertEquals(actual.getStorageName(), expected.getStorageName());
+        assertEquals(actual.getBlobPath(), expected.getBlobPath());
+        assertEquals(actual.getExternalDatabaseStrategy(), expected.getExternalDatabaseStrategy());
+
+        LogicalBackupResponse expectedLogicalBackup = expected.getLogicalBackups().getFirst();
+        LogicalBackup actualLogicalBackup = actual.getLogicalBackups().getFirst();
+
+        assertEquals(actualLogicalBackup.getLogicalBackupName(), expectedLogicalBackup.getLogicalBackupName());
+        assertNull(actualLogicalBackup.getAdapterId());
+        assertEquals(actualLogicalBackup.getType(), expectedLogicalBackup.getType());
+
+        BackupDatabaseResponse expectedBackupDatabase = expectedLogicalBackup.getBackupDatabases().getFirst();
+        BackupDatabase actualBackupDatabase = actualLogicalBackup.getBackupDatabases().getFirst();
+        assertEquals(actualBackupDatabase.getName(), expectedBackupDatabase.getName());
+        assertEquals(actualBackupDatabase.getSettings(), expectedBackupDatabase.getSettings());
+        assertEquals(actualBackupDatabase.getResources(), expectedBackupDatabase.getResources());
+    }
+
+    @Test
+    void uploadBackupMetadata_BackupAlreadyExists() {
+        String backupName = "backupName";
+        String namespace = "namespace";
+
+        Backup backup = createBackup(backupName, List.of());
+        backupRepository.save(backup);
+
+        BackupResponse backupResponse = generateBackupResponse(backupName, namespace);
+
+        assertThrows(DBBackupValidationException.class,
+                ()-> dbBackupV2Service.uploadBackupMetadata(backupResponse));
+    }
+
+    private BackupResponse generateBackupResponse(String backupName, String namespace) {
         SortedMap<String, Object> sortedMap = new TreeMap<>();
         sortedMap.put("key-first", Map.of("inner-key", "inner-value"));
         sortedMap.put("key-second", Map.of("inner-key", "inner-value"));
@@ -704,25 +743,7 @@ class DbBackupV2ServiceTest {
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
         backupResponse.setIgnoreNotBackupableDatabases(true);
 
-        dbBackupV2Service.uploadBackupMetadata(backupResponse);
-
-        Backup backup = backupRepository.findById(backupName);
-        assertEquals(backup.getName(), backupResponse.getBackupName());
-        assertEquals(backup.getStorageName(), backupResponse.getStorageName());
-        assertEquals(backup.getBlobPath(), backupResponse.getBlobPath());
-        assertEquals(backup.getExternalDatabaseStrategy(), backupResponse.getExternalDatabaseStrategy());
-
-
-        LogicalBackup logicalBackup = backup.getLogicalBackups().getFirst();
-
-        assertEquals(logicalBackup.getLogicalBackupName(), logicalBackupResponse.getLogicalBackupName());
-        assertNull(logicalBackup.getAdapterId());
-        assertEquals(logicalBackup.getType(), logicalBackupResponse.getType());
-
-        BackupDatabase backupDatabase = logicalBackup.getBackupDatabases().getFirst();
-        assertEquals(backupDatabase.getName(), backupDatabaseResponse.getName());
-        assertEquals(backupDatabase.getSettings(), backupDatabaseResponse.getSettings());
-        assertEquals(backupDatabase.getResources(), backupDatabaseResponse.getResources());
+        return backupResponse;
     }
 
     private List<LogicalBackup> generateLogicalBackups(int count) {

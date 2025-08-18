@@ -4,11 +4,13 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.ParameterIn;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.headers.Header;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -18,7 +20,10 @@ import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.backupV2.*;
+import org.qubership.cloud.dbaas.exceptions.ErrorCodes;
+import org.qubership.cloud.dbaas.exceptions.RequestValidationException;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
 import org.qubership.cloud.dbaas.utils.DigestUtil;
 
@@ -147,7 +152,20 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/operation/uploadMetadata")
     @POST
-    public Response uploadMetadata(@RequestBody(description = "Backup metadata", required = true) @Valid BackupResponse backupResponse) {
+    public Response uploadMetadata(
+            @Parameter(
+                    name = "Digest",
+                    description = "Digest header in format: sha-256=<base64-hash>",
+                    required = true,
+                    in = ParameterIn.HEADER,
+                    schema = @Schema(type = SchemaType.STRING, example = "sha-256=nOJRJg..."))
+            @HeaderParam("Digest") @NotNull String digestHeader,
+            @RequestBody(description = "Backup metadata", required = true) @Valid BackupResponse backupResponse
+    ) {
+        String calculatedDigest = DigestUtil.calculateDigest(backupResponse);
+        if (!calculatedDigest.equals(digestHeader))
+            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_7003, "Digest header mismatch.", Source.builder().build());
+
         dbBackupV2Service.uploadBackupMetadata(backupResponse);
         return Response.ok().build();
     }
