@@ -197,7 +197,7 @@ class DatabaseBackupV2ControllerTest {
 
         BackupMetadataResponse backupMetadataResponse = new BackupMetadataResponse();
         backupMetadataResponse.setMetadata(backupResponse);
-        backupMetadataResponse.setControlSum("");
+        backupMetadataResponse.setControlSum("f7xCZThvTAnxNmW+Ybhq8jgTAaQQs941qy4GKXvphyw=");
 
         when(dbBackupV2Service.getBackupMetadata(backupName))
                 .thenReturn(backupMetadataResponse);
@@ -212,7 +212,7 @@ class DatabaseBackupV2ControllerTest {
     }
 
     @Test
-    void uploadMetadata_invalidRequest(){
+    void uploadMetadata_invalidRequest() {
         BackupResponse backupResponse = new BackupResponse();
         BackupMetadataRequest backupMetadataRequest = new BackupMetadataRequest();
         backupMetadataRequest.setMetadata(backupResponse);
