@@ -267,6 +267,15 @@ public class DbBackupV2Service {
 
         int totalDbCount = logicalBackuplist.stream().mapToInt(lb -> lb.getBackupDatabases().size()).sum();
 
+        String aggregatedErrorMsg = logicalBackuplist.stream()
+                .filter(lb -> lb.getStatus().getErrorMessage() != null && !lb.getStatus().getErrorMessage().isBlank())
+                .map(lb -> {
+                    String warn = String.format("LogicalBackup %s failed: %s", lb.getLogicalBackupName(), lb.getStatus().getErrorMessage());
+                    log.warn(warn);
+                    return warn;
+                })
+                .collect(Collectors.joining("; "));
+
         Set<Status> statusSet = new HashSet<>();
         long totalBytes = 0;
         int countCompletedDb = 0;
@@ -290,8 +299,8 @@ public class DbBackupV2Service {
                 .size(totalBytes)
                 .total(totalDbCount)
                 .completed(countCompletedDb)
+                .errorMessage(aggregatedErrorMsg)
                 .build());
-        //TODO fill errorMsg of aggregated backupStatus
     }
 
     protected Status aggregateStatus(Set<Status> statusSet) {

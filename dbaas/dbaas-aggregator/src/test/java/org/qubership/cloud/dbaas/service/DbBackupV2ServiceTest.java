@@ -28,6 +28,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -375,7 +376,6 @@ class DbBackupV2ServiceTest {
 
     @Test
     void updateAggregatedStatus_shouldReturnProceeding_containAllStatuses() {
-        String logicalBackupName = "mock-logical-backup-name";
         String adapterId = "some-adapter-id";
 
         LogicalBackupStatus.Database db1 = LogicalBackupStatus.Database.builder()
@@ -409,28 +409,42 @@ class DbBackupV2ServiceTest {
                 .databases(List.of(db1, db2, db3))
                 .build();
 
+        LogicalBackupStatus logicalBackupStatus1 = LogicalBackupStatus.builder()
+                .status(Status.PENDING)
+                .databases(List.of(db1, db2, db3))
+                .build();
+
         LogicalBackup logicalBackup = new LogicalBackup();
-        logicalBackup.setLogicalBackupName(logicalBackupName);
+        logicalBackup.setLogicalBackupName("mock-first-name");
         logicalBackup.setAdapterId(adapterId);
         logicalBackup.setStatus(logicalBackupStatus);
         logicalBackup.setBackupDatabases(List.of(BackupDatabase.builder().id(UUID.randomUUID()).build()));
 
         LogicalBackup logicalBackup1 = new LogicalBackup();
-        logicalBackup1.setLogicalBackupName(logicalBackupName);
-        logicalBackup1.setStatus(logicalBackupStatus);
+        logicalBackup1.setLogicalBackupName("mock-second-name");
+        logicalBackup1.setStatus(logicalBackupStatus1);
         logicalBackup1.setBackupDatabases(List.of(BackupDatabase.builder().id(UUID.randomUUID()).build()));
 
-        Backup backup = createBackup("name", List.of(logicalBackup, logicalBackup1));
+        List<LogicalBackup> logicalBackups = List.of(logicalBackup, logicalBackup1);
+
+        Backup backup = createBackup("name", logicalBackups);
 
         dbBackupV2Service.updateAggregatedStatus(backup);
 
         BackupStatus backupStatus = backup.getStatus();
+        String aggregatedErrorMsg = logicalBackups.stream()
+                .filter(lb -> lb.getStatus().getErrorMessage() != null && !lb.getStatus().getErrorMessage().isBlank())
+                .map(lb -> String.format("LogicalBackup %s failed: %s",
+                        lb.getLogicalBackupName(),
+                        lb.getStatus().getErrorMessage()))
+                .collect(Collectors.joining("; "));
+
         //check
         assertEquals(Status.PENDING, backupStatus.getStatus());
         assertEquals(2, backupStatus.getTotal());
         assertEquals(2, backupStatus.getCompleted());
         assertEquals(6, backupStatus.getSize());
-
+        assertEquals(aggregatedErrorMsg, backupStatus.getErrorMessage());
     }
 
     @Test
@@ -676,7 +690,7 @@ class DbBackupV2ServiceTest {
         BackupResponse backupResponse = generateBackupResponse(backupName, namespace);
 
         assertThrows(DBBackupValidationException.class,
-                ()-> dbBackupV2Service.uploadBackupMetadata(backupResponse));
+                () -> dbBackupV2Service.uploadBackupMetadata(backupResponse));
     }
 
     private BackupResponse generateBackupResponse(String backupName, String namespace) {
