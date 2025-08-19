@@ -244,7 +244,7 @@ class DatabaseBackupV2ControllerTest {
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
-                .header("Digest", "sha-256=abc")
+                .header("Digest", "SHA-256=abc")
                 .body(backupResponse)
                 .when().post("/operation/uploadMetadata")
                 .then()
