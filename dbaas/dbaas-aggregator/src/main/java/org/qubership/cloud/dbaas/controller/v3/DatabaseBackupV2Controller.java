@@ -120,7 +120,7 @@ public class DatabaseBackupV2Controller {
                             @Header(
                                     name = "Digest",
                                     description = "Digest header with SHA-256 checksum of the response body",
-                                    schema = @Schema(type = SchemaType.STRING, example = "sha-256=abc123...")
+                                    schema = @Schema(type = SchemaType.STRING, example = "SHA-256=abc123...")
                             )
                     },
                     content = @Content(schema = @Schema(implementation = BackupResponse.class))
