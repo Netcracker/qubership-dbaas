@@ -31,7 +31,7 @@ public class DigestUtil {
             return ALGORITHM + "=" + base64Hash;
         } catch (JsonProcessingException | NoSuchAlgorithmException e) {
             log.error("Failed to calculate digest", e);
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to calculate digest", e);
         }
     }
 }
