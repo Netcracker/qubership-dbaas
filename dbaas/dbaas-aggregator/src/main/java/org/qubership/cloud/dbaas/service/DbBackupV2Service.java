@@ -64,7 +64,7 @@ public class DbBackupV2Service {
                     String.format("Namespace %s doesn't contain any databases for backup", namespace),
                     null); //TODO fill correct path
         }
-        backupExistCheck(backupName);
+        backupExistenceCheck(backupName);
 
         Backup backup = initializeFullBackupStructure(databasesForBackup, backupRequest);
         startBackup(backup);
@@ -338,7 +338,7 @@ public class DbBackupV2Service {
     public void uploadBackupMetadata(BackupResponse backupResponse) {
         Backup backup = mapper.toBackup(backupResponse);
 
-        backupExistCheck(backup.getName());
+        backupExistenceCheck(backup.getName());
 
         backup.getLogicalBackups().forEach(lb -> {
             if (lb.getAdapterId() != null)
@@ -347,7 +347,7 @@ public class DbBackupV2Service {
         backupRepository.save(backup);
     }
 
-    private void backupExistCheck(String backupName) {
+    private void backupExistenceCheck(String backupName) {
         if (backupRepository.findByIdOptional(backupName).isPresent()) {
             log.error("Backup with name {} already exists", backupName);
             throw new DBBackupValidationException(Source.builder().build(),
