@@ -14,7 +14,10 @@ import org.mockito.Mockito;
 import org.qubership.cloud.dbaas.dto.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
+import org.qubership.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
+import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
 import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
@@ -22,6 +25,7 @@ import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupDatabaseRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.LogicalBackupRepository;
+import org.qubership.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -58,6 +62,11 @@ class DbBackupV2ServiceTest {
     @Inject
     private DbBackupV2Service dbBackupV2Service;
 
+    @InjectMock
+    private BalancingRulesService balancingRulesService;
+
+    @InjectMock
+    private RestoreRepository restoreRepository;
 
     @BeforeAll
     static void globalSetUp() {
@@ -692,6 +701,204 @@ class DbBackupV2ServiceTest {
         assertThrows(DBBackupValidationException.class,
                 () -> dbBackupV2Service.uploadBackupMetadata(backupResponse));
     }
+
+    @Test
+    void initializeFullRestoreStructure_withMapping() {
+        String oldNamespace1 = "old-ns1";
+        String newNamespace1 = "new-ns1";
+        String oldNamespace2 = "old-ns2";
+        String newNamespace2 = "new-ns2";
+        String adapterId1 = "adapterId1";
+        String adapterId2 = "adapterId2";
+
+        SortedMap<String, Object> classifier1 = new TreeMap<>();
+        classifier1.put("namespace", oldNamespace1);
+
+        BackupDatabase backupDatabase1 = BackupDatabase.builder()
+                .name("db1")
+                .classifiers(List.of(classifier1))
+                .users(List.of())
+                .settings(Map.of())
+                .resources(Map.of())
+                .build();
+
+        SortedMap<String, Object> classifier2 = new TreeMap<>();
+        classifier2.put("namespace", oldNamespace2);
+
+        BackupDatabase backupDatabase2 = BackupDatabase.builder()
+                .name("db2")
+                .classifiers(List.of(classifier2))
+                .users(List.of())
+                .settings(Map.of())
+                .resources(Map.of())
+                .build();
+
+        LogicalBackup logicalBackup1 = LogicalBackup.builder()
+                .logicalBackupName("lb1")
+                .type("postgres")
+                .backupDatabases(List.of(backupDatabase1))
+                .status(new LogicalBackupStatus())
+                .build();
+
+        LogicalBackup logicalBackup2 = LogicalBackup.builder()
+                .logicalBackupName("lb2")
+                .type("postgres")
+                .backupDatabases(List.of(backupDatabase2))
+                .status(new LogicalBackupStatus())
+                .build();
+
+        Backup backup = new Backup();
+        backup.setName("backup-name");
+        backup.setLogicalBackups(List.of(logicalBackup1, logicalBackup2));
+
+        Mapping mapping = new Mapping();
+        mapping.setNamespaces(Map.of(
+                oldNamespace1, newNamespace1,
+                oldNamespace2, newNamespace2
+        ));
+
+        RestoreRequest restoreRequest = new RestoreRequest();
+        restoreRequest.setMapping(mapping);
+        restoreRequest.setStorageName("storage");
+        restoreRequest.setBlobPath("blobPath");
+        restoreRequest.setFilterCriteria(new FilterCriteria());
+
+        ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
+        adapter1.setAdapterId(adapterId1);
+        PhysicalDatabase physicalDatabase1 = new PhysicalDatabase();
+        physicalDatabase1.setAdapter(adapter1);
+
+        ExternalAdapterRegistrationEntry adapter2 = new ExternalAdapterRegistrationEntry();
+        adapter2.setAdapterId(adapterId2);
+        PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
+        physicalDatabase2.setAdapter(adapter2);
+
+        when(balancingRulesService.applyNamespaceBalancingRule(newNamespace1, "postgres"))
+                .thenReturn(physicalDatabase1);
+        when(balancingRulesService.applyNamespaceBalancingRule(newNamespace2, "postgres"))
+                .thenReturn(physicalDatabase2);
+
+        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
+
+        assertNotNull(restore);
+        assertEquals(backup, restore.getBackup());
+        assertEquals("storage", restore.getStorageName());
+        assertEquals("blobPath", restore.getBlobPath());
+        assertEquals(2, restore.getLogicalRestores().size());
+
+        LogicalRestore logicalRestore1 = restore.getLogicalRestores().stream()
+                .filter(lr -> lr.getAdapterId().equals(adapterId1))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(adapterId1, logicalRestore1.getAdapterId());
+        assertEquals(1, logicalRestore1.getRestoreDatabases().size());
+        assertEquals(backupDatabase1, logicalRestore1.getRestoreDatabases().getFirst().getBackupDatabase());
+
+        LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
+                .filter(lr -> lr.getAdapterId().equals(adapterId2))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(adapterId2, logicalRestore2.getAdapterId());
+        assertEquals(1, logicalRestore2.getRestoreDatabases().size());
+        assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
+
+        verify(restoreRepository, times(1)).save(restore);
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace1, "postgres");
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace2, "postgres");
+    }
+
+    @Test
+    void initializeFullRestoreStructure_withoutMapping() {
+        String oldNamespace1 = "old-ns1";
+        String oldNamespace2 = "old-ns2";
+        String adapterId1 = "adapterId1";
+        String adapterId2 = "adapterId2";
+
+        SortedMap<String, Object> classifier1 = new TreeMap<>();
+        classifier1.put("namespace", oldNamespace1);
+
+        BackupDatabase backupDatabase1 = BackupDatabase.builder()
+                .name("db1")
+                .classifiers(List.of(classifier1))
+                .build();
+
+        SortedMap<String, Object> classifier2 = new TreeMap<>();
+        classifier2.put("namespace", oldNamespace2);
+
+        BackupDatabase backupDatabase2 = BackupDatabase.builder()
+                .name("db2")
+                .classifiers(List.of(classifier2))
+                .build();
+
+        LogicalBackup logicalBackup1 = LogicalBackup.builder()
+                .logicalBackupName("lb1")
+                .type("postgres")
+                .backupDatabases(List.of(backupDatabase1))
+                .status(new LogicalBackupStatus())
+                .build();
+
+        LogicalBackup logicalBackup2 = LogicalBackup.builder()
+                .logicalBackupName("lb2")
+                .type("postgres")
+                .backupDatabases(List.of(backupDatabase2))
+                .status(new LogicalBackupStatus())
+                .build();
+
+        Backup backup = new Backup();
+        backup.setName("backup-name");
+        backup.setLogicalBackups(List.of(logicalBackup1, logicalBackup2));
+
+
+        RestoreRequest restoreRequest = new RestoreRequest();
+        restoreRequest.setMapping(null);
+        restoreRequest.setStorageName("storage");
+        restoreRequest.setBlobPath("blobPath");
+        restoreRequest.setFilterCriteria(new FilterCriteria());
+
+        ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
+        adapter1.setAdapterId(adapterId1);
+        PhysicalDatabase physicalDatabase1 = new PhysicalDatabase();
+        physicalDatabase1.setAdapter(adapter1);
+
+        ExternalAdapterRegistrationEntry adapter2 = new ExternalAdapterRegistrationEntry();
+        adapter2.setAdapterId(adapterId2);
+        PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
+        physicalDatabase2.setAdapter(adapter2);
+
+        when(balancingRulesService.applyNamespaceBalancingRule(oldNamespace1, "postgres"))
+                .thenReturn(physicalDatabase1);
+        when(balancingRulesService.applyNamespaceBalancingRule(oldNamespace2, "postgres"))
+                .thenReturn(physicalDatabase2);
+
+        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
+
+        assertNotNull(restore);
+        assertEquals(backup, restore.getBackup());
+        assertEquals("storage", restore.getStorageName());
+        assertEquals("blobPath", restore.getBlobPath());
+        assertEquals(2, restore.getLogicalRestores().size());
+
+        LogicalRestore logicalRestore1 = restore.getLogicalRestores().stream()
+                .filter(lr -> lr.getAdapterId().equals(adapterId1))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(adapterId1, logicalRestore1.getAdapterId());
+        assertEquals(1, logicalRestore1.getRestoreDatabases().size());
+        assertEquals(backupDatabase1, logicalRestore1.getRestoreDatabases().getFirst().getBackupDatabase());
+
+        LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
+                .filter(lr -> lr.getAdapterId().equals(adapterId2))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(adapterId2, logicalRestore2.getAdapterId());
+        assertEquals(1, logicalRestore2.getRestoreDatabases().size());
+        assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
+
+        verify(restoreRepository, times(1)).save(restore);
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(oldNamespace1, "postgres");
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(oldNamespace2, "postgres");
+    }
+
 
     private BackupResponse generateBackupResponse(String backupName, String namespace) {
         SortedMap<String, Object> sortedMap = new TreeMap<>();
