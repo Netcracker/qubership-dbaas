@@ -820,6 +820,9 @@ class DbBackupV2ServiceTest {
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
                 .name("db1")
                 .classifiers(List.of(classifier1))
+                .users(List.of())
+                .settings(Map.of())
+                .resources(Map.of())
                 .build();
 
         SortedMap<String, Object> classifier2 = new TreeMap<>();
@@ -828,6 +831,9 @@ class DbBackupV2ServiceTest {
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name("db2")
                 .classifiers(List.of(classifier2))
+                .users(List.of())
+                .settings(Map.of())
+                .resources(Map.of())
                 .build();
 
         LogicalBackup logicalBackup1 = LogicalBackup.builder()
