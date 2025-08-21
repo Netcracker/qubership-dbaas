@@ -8,11 +8,10 @@ import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.qubership.cloud.context.propagation.core.ContextManager;
 import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupRequest;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupResponse;
-import org.qubership.cloud.dbaas.dto.backupV2.BackupStatusResponse;
+import org.qubership.cloud.dbaas.dto.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
@@ -21,6 +20,7 @@ import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.mapper.BackupV2Mapper;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
+import org.qubership.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import org.qubership.cloud.dbaas.utils.DbaasBackupUtils;
 import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 
@@ -45,11 +45,12 @@ public class DbBackupV2Service {
     protected static int TRACK_DELAY_MS = 3000;
 
     private final BackupRepository backupRepository;
+    private final RestoreRepository restoreRepository;
     private final PhysicalDatabasesService physicalDatabasesService;
     private final DatabaseDbaasRepository databaseDbaasRepository;
     private final BackupV2Mapper mapper;
     private final ExecutorService executor = Executors.newFixedThreadPool(20);
-
+    private final BalancingRulesService balancingRulesService;
 
     public void backup(BackupRequest backupRequest) {
         String backupName = backupRequest.getBackupName();
@@ -354,6 +355,73 @@ public class DbBackupV2Service {
                 lb.setAdapterId(null);
         });
         backupRepository.save(backup);
+    }
+
+    public void restore(String backupName, RestoreRequest restoreRequest) {
+        //get backup from backupRepository
+        Backup backup = backupRepository.findByIdOptional(backupName)
+                .orElseThrow(); //TODO throw backupNotFound
+
+        // fill restore tables with adapterId and related backup
+        Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
+        // aggregate restore status
+
+    }
+
+    protected Restore initializeFullRestoreStructure(Backup backup, RestoreRequest restoreRequest) {
+        List<LogicalBackup> logicalBackups = backup.getLogicalBackups();
+        Restore restore = new Restore();
+
+        Map<String, String> namespacesMap = Optional.ofNullable(restoreRequest.getMapping())
+                .map(Mapping::getNamespaces)
+                .orElseGet(HashMap::new);
+
+
+        Map<Map.Entry<String, String>, LogicalRestore> logicalRestoreMap = logicalBackups.stream()
+                .flatMap(lb -> lb.getBackupDatabases().stream()
+                        .flatMap(bd -> bd.getClassifiers().stream()
+                                .map(classifier -> {
+                                    String oldNamespace = (String) classifier.get("namespace");
+                                    String type = lb.getType();
+
+                                    String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
+                                    String adapterId = balancingRulesService
+                                            .applyNamespaceBalancingRule(targetNamespace, type)
+                                            .getAdapter().getAdapterId();
+
+                                    LogicalRestore lr = new LogicalRestore();
+                                    lr.setAdapterId(adapterId);
+                                    lr.setType(type);
+                                    lr.setStatus(new LogicalRestoreStatus());
+                                    lr.setRestore(restore);
+                                    lr.setRestoreDatabases(new ArrayList<>());
+                                    return Map.entry(Map.entry(type, targetNamespace), lr);
+                                })
+                        )
+                )
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        logicalBackups.forEach(lb -> lb.getBackupDatabases().forEach(bd -> {
+                    String oldNamespace = (String) bd.getClassifiers().getFirst().get("namespace"); //TODO even if microserviceName is different namespace is same?
+                    String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
+
+                    LogicalRestore logicalRestore = logicalRestoreMap.get(Map.entry(lb.getType(), targetNamespace));
+                    List<RestoreDatabase.User> users = bd.getUsers().stream().map(user -> new RestoreDatabase.User(user.getName(), user.getRole())).toList();
+
+                    RestoreDatabase rd = new RestoreDatabase(null, logicalRestore, bd, bd.getName(), bd.getClassifiers(), users, bd.getResources());
+                    logicalRestore.getRestoreDatabases().add(rd);
+                })
+        );
+
+        restore.setLogicalRestores(new ArrayList<>(logicalRestoreMap.values()));
+        restore.setBackup(backup);
+        restore.setStorageName(restoreRequest.getStorageName());
+        restore.setBlobPath(restoreRequest.getBlobPath());
+        restore.setMapping(String.valueOf(restoreRequest.getMapping()));
+        restore.setFilters(restoreRequest.getFilterCriteria().toString());
+
+        restoreRepository.save(restore);
+        return restore;
     }
 
     private void backupExistenceCheck(String backupName) {
