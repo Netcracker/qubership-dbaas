@@ -7,6 +7,7 @@ import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import org.qubership.cloud.dbaas.dto.v3.UserEnsureRequestV3;
 import org.qubership.cloud.dbaas.entity.pg.DbResource;
 import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
 import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
@@ -114,6 +115,12 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     public TrackedAction trackBackup(String action, String trackId) {
         return restClient.trackBackup(type(), action, trackId);
     }
+
+    @Override
+    public LogicalBackupStatus trackBackupV2(String logicalBackupName) {
+        return restClient.trackBackupV2(type(), logicalBackupName);
+    }
+
 
     @Override
     protected String deleteBackup(String localId) {

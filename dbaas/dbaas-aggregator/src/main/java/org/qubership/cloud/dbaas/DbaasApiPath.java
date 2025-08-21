@@ -35,5 +35,6 @@ public class DbaasApiPath {
             DBAAS_BLUE_GREEN_PATH_V1 = API + "/bluegreen/" + VERSION_1 + "/operation",
             USERS_PATH_V3 = DBAAS_PATH_V3 + "/users",
                     ACCESS_GRANTS_SUBPATH_V3 = "/services/{serviceName}/access-grants",
-                    GET_OVERALL_STATUS_PATH = "/info";
+                    GET_OVERALL_STATUS_PATH = "/info",
+            BACKUP_PATH_V1 = API + "/backups" + "/" + VERSION_1;
 }
