@@ -46,7 +46,7 @@ create table v2_logical_restore
     id uuid primary key,
     logical_restore_name varchar,
     restore_name varchar references v2_restore(name),
-    adapter_id uuid not null,
+    adapter_id varchar not null,
     type varchar not null,
     status jsonb not null
 );
