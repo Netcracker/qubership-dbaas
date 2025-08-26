@@ -17,6 +17,7 @@ import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
 import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
+import org.qubership.cloud.dbaas.exceptions.NotFoundException;
 import org.qubership.cloud.dbaas.mapper.BackupV2Mapper;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
@@ -357,16 +358,21 @@ public class DbBackupV2Service {
         backupRepository.save(backup);
     }
 
-    public void restore(String backupName, RestoreRequest restoreRequest) {
+    public void restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
         //get backup from backupRepository
+        log.info("Start restore to backup {}", backupName);
         Backup backup = backupRepository.findByIdOptional(backupName)
-                .orElseThrow(); //TODO throw backupNotFound
+                .orElseThrow(() -> new NotFoundException("Backup not found"));
 
         // fill restore tables with adapterId and related backup
         Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
+
+        //send dryRun request to adapters if all are successful send request
+        startRestore(restore, dryRun);
         // aggregate restore status
 
     }
+
 
     protected Restore initializeFullRestoreStructure(Backup backup, RestoreRequest restoreRequest) {
         List<LogicalBackup> logicalBackups = backup.getLogicalBackups();
@@ -402,26 +408,105 @@ public class DbBackupV2Service {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
         logicalBackups.forEach(lb -> lb.getBackupDatabases().forEach(bd -> {
-                    String oldNamespace = (String) bd.getClassifiers().getFirst().get("namespace"); //TODO even if microserviceName is different namespace is same?
+                    String oldNamespace = (String) bd.getClassifiers().getFirst().get("namespace");
                     String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
 
                     LogicalRestore logicalRestore = logicalRestoreMap.get(Map.entry(lb.getType(), targetNamespace));
                     List<RestoreDatabase.User> users = bd.getUsers().stream().map(user -> new RestoreDatabase.User(user.getName(), user.getRole())).toList();
+                    List<SortedMap<String, Object>> updatedClassifier = bd.getClassifiers().stream()
+                            .map(classifier -> {
+                                SortedMap<String, Object> copy = new TreeMap<>(classifier);
+                                if (copy.containsKey("namespace")) {
+                                    copy.put("namespace", targetNamespace);
+                                }
+                                return copy;
+                            })
+                            .toList();
 
-                    RestoreDatabase rd = new RestoreDatabase(null, logicalRestore, bd, bd.getName(), bd.getClassifiers(), users, bd.getResources());
+                    RestoreDatabase rd = new RestoreDatabase(null, logicalRestore, bd, bd.getName(), updatedClassifier, users, bd.getResources());
                     logicalRestore.getRestoreDatabases().add(rd);
                 })
         );
-
+        restore.setName(backup.getName());
         restore.setLogicalRestores(new ArrayList<>(logicalRestoreMap.values()));
         restore.setBackup(backup);
         restore.setStorageName(restoreRequest.getStorageName());
         restore.setBlobPath(restoreRequest.getBlobPath());
-        restore.setMapping(String.valueOf(restoreRequest.getMapping()));
-        restore.setFilters(restoreRequest.getFilterCriteria().toString());
+        restore.setMapping("\"n\""); //TODO
+        restore.setFilters("\"n\""); //TODO
 
         restoreRepository.save(restore);
         return restore;
+    }
+
+    protected void startRestore(Restore restore, boolean dryRun) {
+        Map<LogicalRestore, Future<String>> names = new HashMap<>();
+        List<LogicalRestore> logicalRestores = restore.getLogicalRestores();
+
+        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
+
+        logicalRestores.forEach(logicalRestore -> {
+            Future<String> future = executor.submit(() -> {
+                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                return logicalRestore(logicalRestore, dryRun);
+            });
+            names.put(logicalRestore, future);
+        });
+
+        names.forEach((logicalRestore, future) -> {
+            try {
+                String logicalRestoreName = future.get();
+                logicalRestore.setLogicalRestoreName(logicalRestoreName);
+            } catch (InterruptedException | ExecutionException e) {
+                LogicalRestoreStatus status = LogicalRestoreStatus.builder()
+                        .status(Status.FAILED)
+                        .errorMessage(e.getCause().getMessage())
+                        .build();
+                logicalRestore.setStatus(status);
+            }
+        });
+        restoreRepository.save(restore);//TODO dryRun
+    }
+
+
+    private String logicalRestore(LogicalRestore logicalRestore, boolean dryRun) {
+        String logicalBackupName = logicalRestore.getRestoreDatabases().getFirst().getBackupDatabase().getLogicalBackup().getLogicalBackupName();
+
+        List<Map<String, String>> databases = logicalRestore.getRestoreDatabases().stream()
+                .map(restoreDatabase -> {
+                    String namespace = restoreDatabase.getClassifiers()
+                            .stream()
+                            .map(i -> (String) i.get("namespace"))
+                            .findFirst()
+                            .orElseThrow(() -> new NotFoundException("Namespace not found in " + restoreDatabase));
+                    return Map.of(
+                            "namespace", namespace,
+                            "databaseName", restoreDatabase.getName()
+                    );
+                }).toList();
+
+        Restore restore = logicalRestore.getRestore();
+        RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
+                .handle(WebApplicationException.class)
+                .withMaxRetries(2)
+                .withDelay(Duration.ofSeconds(3))
+                .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
+                .onRetry(e -> log.info("Retrying restoreV2..."))
+                .onFailure(e -> log.error("Request limit exceeded for {}", logicalRestore));
+
+        try {
+            return Failsafe.with(retryPolicy).get(() -> {
+                DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
+                String result = adapter.restoreV2(logicalBackupName, dryRun, restore.getStorageName(), restore.getBlobPath(), databases);
+
+                if (result == null) {
+                    throw new BackupExecutionException(URI.create("e"), "Empty result from restore", new Throwable()); //TODO correct path
+                }
+                return result;
+            });
+        } catch (Exception e) {
+            throw new RuntimeException("Failsafe execution failed", e);
+        }
     }
 
     private void backupExistenceCheck(String backupName) {

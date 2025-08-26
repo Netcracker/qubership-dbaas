@@ -22,10 +22,7 @@ import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
 import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupDatabaseRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.LogicalBackupRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
+import org.qubership.cloud.dbaas.repositories.pg.jpa.*;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -65,8 +62,14 @@ class DbBackupV2ServiceTest {
     @InjectMock
     private BalancingRulesService balancingRulesService;
 
-    @InjectMock
+    @Inject
     private RestoreRepository restoreRepository;
+
+    @Inject
+    private RestoreDatabaseRepository restoreDatabaseRepository;
+
+    @Inject
+    private LogicalRestoreRepository logicalRestoreDatabaseRepository;
 
     @BeforeAll
     static void globalSetUp() {
@@ -75,6 +78,9 @@ class DbBackupV2ServiceTest {
 
     @AfterEach
     void setUp() {
+        restoreDatabaseRepository.deleteAll();
+        logicalRestoreDatabaseRepository.deleteAll();
+        restoreRepository.deleteAll();
         backupDatabaseRepository.deleteAll();
         logicalBackupRepository.deleteAll();
         backupRepository.deleteAll();
@@ -750,7 +756,11 @@ class DbBackupV2ServiceTest {
         Backup backup = new Backup();
         backup.setName("backup-name");
         backup.setLogicalBackups(List.of(logicalBackup1, logicalBackup2));
+        backup.setStorageName("storageName");
+        backup.setBlobPath("blobpath");
+        backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
 
+        backupRepository.save(backup);
         Mapping mapping = new Mapping();
         mapping.setNamespaces(Map.of(
                 oldNamespace1, newNamespace1,
@@ -778,6 +788,7 @@ class DbBackupV2ServiceTest {
         when(balancingRulesService.applyNamespaceBalancingRule(newNamespace2, "postgres"))
                 .thenReturn(physicalDatabase2);
 
+
         Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
 
         assertNotNull(restore);
@@ -802,7 +813,6 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
         assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
 
-        verify(restoreRepository, times(1)).save(restore);
         verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace1, "postgres");
         verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace2, "postgres");
     }
@@ -853,8 +863,11 @@ class DbBackupV2ServiceTest {
         Backup backup = new Backup();
         backup.setName("backup-name");
         backup.setLogicalBackups(List.of(logicalBackup1, logicalBackup2));
+        backup.setBlobPath("blobPath");
+        backup.setStorageName("storageName");
+        backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
 
-
+        backupRepository.save(backup);
         RestoreRequest restoreRequest = new RestoreRequest();
         restoreRequest.setMapping(null);
         restoreRequest.setStorageName("storage");
@@ -900,11 +913,139 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
         assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
 
-        verify(restoreRepository, times(1)).save(restore);
         verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(oldNamespace1, "postgres");
         verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(oldNamespace2, "postgres");
     }
 
+    @Test
+    void startRestore() {
+        String restoreName = "restoreName";
+        String adapterId = "adapterId";
+        String storageName = "storageName";
+        String blobPath = "blobPath";
+        String type = "postgresql";
+        String restoreDatabaseName1 = "restoreName1";
+        String restoreDatabaseName2 = "restoreName2";
+        String logicalRestoreName = "logicalRestoreName";
+
+        SortedMap<String, Object> map = new TreeMap<>();
+        map.put("namespace", "namespace");
+
+        BackupDatabase backupDatabase1 = BackupDatabase.builder()
+                .name("db1")
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map))
+                .externallyManageable(true)
+                .build();
+        BackupDatabase backupDatabase2 = BackupDatabase.builder()
+                .name("db2")
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map))
+                .externallyManageable(true)
+                .build();
+
+        LogicalBackup logicalBackup = LogicalBackup.builder()
+                .logicalBackupName("logicalBackupName")
+                .type("postgresql")
+                .backupDatabases(List.of(backupDatabase1, backupDatabase2))
+                .status(LogicalBackupStatus.builder().build())
+                .build();
+        backupDatabase1.setLogicalBackup(logicalBackup);
+        backupDatabase2.setLogicalBackup(logicalBackup);
+
+        Backup backup = Backup.builder()
+                .name("backupName")
+                .storageName(storageName)
+                .blobPath(blobPath)
+                .externalDatabaseStrategy(ExternalDatabaseStrategy.SKIP)
+                .logicalBackups(List.of(logicalBackup))
+                .build();
+        logicalBackup.setBackup(backup);
+
+        backupRepository.save(backup);
+
+        RestoreDatabase restoreDatabase1 = RestoreDatabase.builder()
+                .backupDatabase(backupDatabase1)
+                .name(restoreDatabaseName1)
+                .classifiers(List.of(map))
+                .users(List.of())
+                .resources(Map.of())
+                .build();
+        RestoreDatabase restoreDatabase2 = RestoreDatabase.builder()
+                .backupDatabase(backupDatabase2)
+                .name(restoreDatabaseName2)
+                .classifiers(List.of(map))
+                .users(List.of())
+                .resources(Map.of())
+                .build();
+
+        LogicalRestore logicalRestore = LogicalRestore.builder()
+                .adapterId(adapterId)
+                .type(type)
+                .restoreDatabases(List.of(restoreDatabase1, restoreDatabase2))
+                .status(LogicalRestoreStatus.builder().build())
+                .build();
+
+        restoreDatabase1.setLogicalRestore(logicalRestore);
+        restoreDatabase2.setLogicalRestore(logicalRestore);
+
+        Restore restore = Restore.builder()
+                .name(restoreName)
+                .storageName(storageName)
+                .blobPath(blobPath)
+                .backup(backup)
+                .logicalRestores(List.of(logicalRestore))
+                .build();
+
+        logicalRestore.setRestore(restore);
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(adapterId))
+                .thenReturn(adapter);
+        when(adapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+                .thenReturn(logicalRestoreName);
+
+        dbBackupV2Service.startRestore(restore, true);
+
+        Restore actualRestore = restoreRepository.findById(restoreName);
+        assertNotNull(actualRestore);
+        assertEquals(restoreName, actualRestore.getName());
+        assertEquals(blobPath, actualRestore.getBlobPath());
+        assertEquals(storageName, actualRestore.getStorageName());
+
+        LogicalRestore actualLogicalRestore = actualRestore.getLogicalRestores().getFirst();
+        assertNotNull(actualLogicalRestore);
+        assertEquals(logicalRestoreName, actualLogicalRestore.getLogicalRestoreName());
+        assertEquals(adapterId, actualLogicalRestore.getAdapterId());
+        assertEquals(type, actualLogicalRestore.getType());
+        assertEquals(2, actualLogicalRestore.getRestoreDatabases().size());
+
+        RestoreDatabase actualRestoreDatabase1 = logicalRestore.getRestoreDatabases()
+                .stream().filter(restoreDatabase -> restoreDatabaseName1.equals(restoreDatabase.getName())).toList().getFirst();
+        assertNotNull(actualRestoreDatabase1);
+        assertEquals(backupDatabase1, actualRestoreDatabase1.getBackupDatabase());
+        assertEquals(List.of(map), actualRestoreDatabase1.getClassifiers());
+
+        RestoreDatabase actualRestoreDatabase2 = logicalRestore.getRestoreDatabases()
+                .stream().filter(restoreDatabase -> restoreDatabaseName2.equals(restoreDatabase.getName())).toList().getFirst();
+        assertNotNull(actualRestoreDatabase2);
+        assertEquals(backupDatabase2, actualRestoreDatabase2.getBackupDatabase());
+        assertEquals(List.of(map), actualRestoreDatabase2.getClassifiers());
+
+        verify(physicalDatabasesService, times(1)).getAdapterById(adapterId);
+        verify(adapter, times(1)).restoreV2(any(), anyBoolean(), any(), any(), anyList());
+
+    }
 
     private BackupResponse generateBackupResponse(String backupName, String namespace) {
         SortedMap<String, Object> sortedMap = new TreeMap<>();
