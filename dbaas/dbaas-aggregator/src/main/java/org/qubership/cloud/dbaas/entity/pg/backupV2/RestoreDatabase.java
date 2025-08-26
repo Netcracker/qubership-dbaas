@@ -2,7 +2,10 @@ package org.qubership.cloud.dbaas.entity.pg.backupV2;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -12,6 +15,7 @@ import java.util.SortedMap;
 import java.util.UUID;
 
 @Data
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity(name = "RestoreDatabase")
@@ -26,7 +30,7 @@ public class RestoreDatabase {
     @JoinColumn(name = "logical_restore_id")
     private LogicalRestore logicalRestore;
 
-    @OneToOne
+    @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "backup_db_id")
     private BackupDatabase backupDatabase;
 
