@@ -1,6 +1,10 @@
 package org.qubership.cloud.dbaas.service;
 
+import jakarta.ws.rs.core.Response;
+import lombok.EqualsAndHashCode;
+import lombok.extern.slf4j.Slf4j;
 import org.qubership.cloud.dbaas.dto.*;
+import org.qubership.cloud.dbaas.dto.backup.Status;
 import org.qubership.cloud.dbaas.dto.v3.ApiVersion;
 import org.qubership.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import org.qubership.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
@@ -11,9 +15,6 @@ import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
 import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
-import jakarta.ws.rs.core.Response;
-import lombok.EqualsAndHashCode;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
 import java.util.List;
@@ -109,6 +110,11 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     @Override
     protected TrackedAction collectBackup(Boolean allowEviction, String keep, List<String> databases) {
         return restClient.collectBackup(type(), allowEviction, keep, databases);
+    }
+
+    @Override
+    public String restoreV2(String logicalBackupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
+        return "";//TODO implement
     }
 
     @Override

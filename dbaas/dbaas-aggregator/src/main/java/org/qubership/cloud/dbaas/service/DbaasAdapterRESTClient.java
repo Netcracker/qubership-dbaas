@@ -1,5 +1,7 @@
 package org.qubership.cloud.dbaas.service;
 
+import jakarta.ws.rs.core.Response;
+import lombok.extern.slf4j.Slf4j;
 import org.qubership.cloud.dbaas.dto.*;
 import org.qubership.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import org.qubership.cloud.dbaas.entity.pg.DbResource;
@@ -8,8 +10,6 @@ import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
 import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClient;
-import jakarta.ws.rs.core.Response;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 
@@ -89,12 +89,17 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     }
 
     @Override
+    public String restoreV2(String backupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
+        return "";
+    }
+
+    @Override
     public TrackedAction trackBackup(String action, String trackId) {
         return restClient.trackBackup(type(), action, trackId);
     }
 
     @Override
-    public LogicalBackupStatus trackBackupV2( String logicalBackupName) {
+    public LogicalBackupStatus trackBackupV2(String logicalBackupName) {
         return null;
     }
 

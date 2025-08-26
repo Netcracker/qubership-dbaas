@@ -1,5 +1,6 @@
 package org.qubership.cloud.dbaas.service;
 
+import jakarta.ws.rs.core.Response;
 import org.qubership.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
 import org.qubership.cloud.dbaas.dto.CreatedDatabase;
 import org.qubership.cloud.dbaas.dto.DescribedDatabase;
@@ -15,7 +16,6 @@ import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
 import org.qubership.cloud.dbaas.exceptions.InteruptedPollingException;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
-import jakarta.ws.rs.core.Response;
 
 import java.util.Collection;
 import java.util.List;
@@ -32,6 +32,8 @@ public interface DbaasAdapter {
     DatabasesBackup backup(List<String> databases, Boolean allowEviction) throws InteruptedPollingException;
 
     String backupV2(List<String> dbNames);
+
+    String restoreV2(String backupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases);
 
     DeleteResult delete(DatabasesBackup backup);
 
