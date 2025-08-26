@@ -3,7 +3,6 @@ package org.qubership.cloud.dbaas.entity.pg.backupV2;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
-import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -11,6 +10,8 @@ import java.util.List;
 
 
 @Data
+@Builder
+@AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity(name = "backup")
 @Table(name = "v2_backup")

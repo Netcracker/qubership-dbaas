@@ -8,9 +8,11 @@ import org.hibernate.type.SqlTypes;
 import org.qubership.cloud.dbaas.converter.LogicalRestoreStatusConverter;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Data
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity(name = "LogicalRestore")
@@ -21,6 +23,7 @@ public class LogicalRestore {
     @GeneratedValue
     private UUID id;
 
+    @Column(name = "logical_restore_name")
     private String logicalRestoreName;
 
     @ManyToOne
@@ -41,4 +44,15 @@ public class LogicalRestore {
     @Column(columnDefinition = "jsonb")
     @Convert(converter = LogicalRestoreStatusConverter.class)
     private LogicalRestoreStatus status;
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof LogicalRestore that)) return false;
+        return Objects.equals(id, that.id) && Objects.equals(logicalRestoreName, that.logicalRestoreName) && Objects.equals(restore, that.restore) && Objects.equals(adapterId, that.adapterId) && Objects.equals(type, that.type) && Objects.equals(status, that.status);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, logicalRestoreName, restore, adapterId, type, status);
+    }
 }
