@@ -46,7 +46,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     public List<Database> findAnyLogDbTypeByNamespace(String namespace) {
         log.debug("Search all logical databases by namespace={}", namespace);
         List<Database> databaseList = doGet(() -> databasesRepository.findByNamespace(namespace), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by namespace in Postgre, go to h2 database", ex.getMessage());
+            log.debug("Catch exception = {} while trying to find logical database by namespace in Postgres, go to h2 database", ex.getMessage());
             return h2DatabaseRepository.findByNamespace(namespace).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         log.debug("Was found {} logical database in namespace={}", databaseList.size(), namespace);
@@ -57,7 +57,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     public List<Database> findInternalDatabaseByNamespace(String namespace) {
         log.debug("Search internal logical databases by namespace {}", namespace);
         List<Database> databases = doGet(() -> databasesRepository.findByNamespace(namespace), ex -> {
-            log.debug("Catch exception = {} while trying to find internal logical database by namespace in Postgre, go to h2 database",
+            log.debug("Catch exception = {} while trying to find internal logical database by namespace in Postgres, go to h2 database",
                     ex.getMessage());
             return h2DatabaseRepository.findByNamespace(namespace).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
@@ -72,7 +72,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     public List<Database> findInternalDatabasesByNamespaceAndType(String namespace, String type) {
         log.debug("Search internal logical database with type={} in namespace={}", type, namespace);
         List<Database> databases = doGet(() -> databasesRepository.findByNamespaceAndType(namespace, type), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by namespace and type in Postgre, go to h2 database",
+            log.debug("Catch exception = {} while trying to find logical database by namespace and type in Postgres, go to h2 database",
                     ex.getMessage());
             return h2DatabaseRepository.findByNamespaceAndType(namespace, type).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
@@ -137,7 +137,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     @Override
     public Optional<Database> findById(UUID id) {
         return doGet(() -> databasesRepository.findByIdOptional(id), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by id in Postgre, go to h2 database",
+            log.debug("Catch exception = {} while trying to find logical database by id in Postgres, go to h2 database",
                     ex.getMessage());
             return h2DatabaseRepository.findByIdOptional(id).map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity);
         });
@@ -148,7 +148,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         log.debug("Search external logical database with namespace {}", namespace);
         List<Database> databases = doGet(() -> databasesRepository.findByNamespace(namespace),
                 ex -> {
-                    log.debug("Catch exception = {} while trying to find external logical database in Postgre, go to h2 database",
+                    log.debug("Catch exception = {} while trying to find external logical database in Postgres, go to h2 database",
                             ex.getMessage());
                     return h2DatabaseRepository.findByNamespace(namespace).stream().map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
                 });
@@ -173,7 +173,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     @Override
     public Optional<Database> findByNameAndAdapterId(String name, String adapterId) {
         return doGet(() -> databasesRepository.findByNameAndAdapterId(name, adapterId), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by id in Postgre, go to h2 database",
+            log.debug("Catch exception = {} while trying to find logical database by id in Postgres, go to h2 database",
                     ex.getMessage());
             return h2DatabaseRepository.findByNameAndAdapterId(name, adapterId).map(org.qubership.cloud.dbaas.entity.h2.Database::asPgEntity);
         });
