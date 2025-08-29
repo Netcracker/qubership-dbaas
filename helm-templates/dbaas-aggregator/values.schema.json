@@ -7,7 +7,6 @@
   "default": {},
   "examples": [
     {
-      "CERTIFICATE_BUNDLE_MD5SUM": "d41d8cd98f00b204e9800998ecf8427e",
       "PAAS_PLATFORM": "KUBERNETES",
       "IMAGE_REPOSITORY": "",
       "NAMESPACE": "",
@@ -53,15 +52,6 @@
     }
   },
   "properties": {
-    "CERTIFICATE_BUNDLE_MD5SUM": {
-      "$id": "#/properties/CERTIFICATE_BUNDLE_MD5SUM",
-      "type": "string",
-      "title": "The CERTIFICATE_BUNDLE_MD5SUM schema",
-      "examples": [
-        "d41d8cd98f00b204e9800998ecf8427e"
-      ],
-      "internal": true
-    },
     "PAAS_PLATFORM": {
       "$id": "#/properties/PAAS_PLATFORM",
       "type": "string",
