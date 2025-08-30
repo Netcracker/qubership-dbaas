@@ -5,7 +5,8 @@ create table v2_backup
     blob_path varchar not null,
     external_database_strategy varchar not null,
     filters jsonb,
-    status jsonb
+    status jsonb,
+    attempt_count int
 );
 
 create table v2_logical_backup
