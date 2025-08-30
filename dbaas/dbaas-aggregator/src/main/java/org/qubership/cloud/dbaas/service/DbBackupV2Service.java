@@ -14,6 +14,7 @@ import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
+import org.qubership.cloud.dbaas.enums.Status;
 import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
 import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
