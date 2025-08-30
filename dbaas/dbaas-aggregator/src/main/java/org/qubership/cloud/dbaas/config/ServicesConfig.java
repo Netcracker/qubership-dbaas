@@ -85,4 +85,14 @@ public class ServicesConfig {
         return new LogicalDbSettingsService(List.of(defaultDbSettingsHandler, postgresqlSettingsHandler));
     }
 
+    @Produces
+    @Singleton
+    public LockProvider lockProvider() throws SQLException {
+        return new JdbcTemplateLockProvider(
+                JdbcTemplateLockProvider.Configuration.builder()
+                        .withJdbcTemplate(new JdbcTemplate(processOrchestratorDataSource()))
+                        .usingDbTime()
+                        .build()
+        );
+    }
 }
