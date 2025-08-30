@@ -45,6 +45,9 @@ public class Backup {
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalBackup> logicalBackups;
 
+    @Column(name = "attempt_count")
+    private int attemptCount;
+
     public Backup(String name, String storageName, String blobPath, ExternalDatabaseStrategy externalDatabaseStrategy, String filters) {
         this.name = name;
         this.storageName = storageName;

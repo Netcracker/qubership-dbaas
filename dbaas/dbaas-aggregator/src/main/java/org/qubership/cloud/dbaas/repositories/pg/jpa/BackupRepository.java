@@ -6,13 +6,25 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.Backup;
 
-@ApplicationScoped
+import java.util.List;
+
 @Transactional
+@ApplicationScoped
 public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
 
     public Backup save(Backup backup) {
         EntityManager entityManager = getEntityManager();
         entityManager.merge(backup);
         return backup;
+    }
+
+    public List<Backup> findBackupsToAggregate() {
+        return getEntityManager()
+                .createNativeQuery(
+                        "select * from v2_backup " +
+                                "where status ->> 'status' in ('NOT_STARTED','IN_PROGRESS') ",
+                        Backup.class
+                )
+                .getResultList();
     }
 }

@@ -1,5 +1,6 @@
 package org.qubership.cloud.dbaas.service;
 
+import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.WebApplicationException;
 import lombok.AllArgsConstructor;
@@ -339,18 +340,12 @@ public class DbBackupV2Service {
     }
 
     public void restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
-        //get backup from backupRepository
         log.info("Start restore to backup {}", backupName);
         Backup backup = backupRepository.findByIdOptional(backupName)
                 .orElseThrow(() -> new NotFoundException("Backup not found"));
 
-        // fill restore tables with adapterId and related backup
         Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
-
-        //send dryRun request to adapters if all are successful send request
         startRestore(restore, dryRun);
-        // aggregate restore status
-
     }
 
 
@@ -364,26 +359,24 @@ public class DbBackupV2Service {
 
 
         Map<Map.Entry<String, String>, LogicalRestore> logicalRestoreMap = logicalBackups.stream()
-                .flatMap(lb -> lb.getBackupDatabases().stream()
-                        .flatMap(bd -> bd.getClassifiers().stream()
-                                .map(classifier -> {
-                                    String oldNamespace = (String) classifier.get("namespace");
-                                    String type = lb.getType();
+                .map(lb -> {
+                            var classifier = lb.getBackupDatabases().getFirst().getClassifiers().getFirst();
+                            String oldNamespace = (String) classifier.get("namespace");
+                            String type = lb.getType();
+                            String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
 
-                                    String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
-                                    String adapterId = balancingRulesService
-                                            .applyNamespaceBalancingRule(targetNamespace, type)
-                                            .getAdapter().getAdapterId();
+                            String adapterId = balancingRulesService
+                                    .applyNamespaceBalancingRule(targetNamespace, type)
+                                    .getAdapter().getAdapterId();
 
-                                    LogicalRestore lr = new LogicalRestore();
-                                    lr.setAdapterId(adapterId);
-                                    lr.setType(type);
-                                    lr.setStatus(new LogicalRestoreStatus());
-                                    lr.setRestore(restore);
-                                    lr.setRestoreDatabases(new ArrayList<>());
-                                    return Map.entry(Map.entry(type, targetNamespace), lr);
-                                })
-                        )
+                            LogicalRestore lr = new LogicalRestore();
+                            lr.setAdapterId(adapterId);
+                            lr.setType(type);
+                            lr.setStatus(new LogicalRestoreStatus());
+                            lr.setRestore(restore);
+                            lr.setRestoreDatabases(new ArrayList<>());
+                            return Map.entry(Map.entry(type, targetNamespace), lr);
+                        }
                 )
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 

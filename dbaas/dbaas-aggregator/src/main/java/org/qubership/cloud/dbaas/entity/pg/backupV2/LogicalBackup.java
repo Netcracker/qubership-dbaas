@@ -37,7 +37,7 @@ public class LogicalBackup {
 
     private String type;
 
-    @NonNull
+    @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     @Convert(converter = LogicalBackupStatusConverter.class)

@@ -2,6 +2,8 @@ package org.qubership.cloud.dbaas.config;
 
 import com.github.kagkarlsson.scheduler.task.Task;
 import io.quarkus.arc.properties.UnlessBuildProperty;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import org.qubership.cloud.dbaas.JdbcUtils;
 import org.qubership.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
@@ -20,6 +22,7 @@ import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
