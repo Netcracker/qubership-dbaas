@@ -66,7 +66,7 @@ public class DatabaseUsersControllerV3 {
     @PUT
     @Transactional
     public Response getOrCreateUser(@Parameter(description = "Contains classifier and information about user", required = true)
-                                            GetOrCreateUserRequest getOrCreateUserRequest) {
+                                    GetOrCreateUserRequest getOrCreateUserRequest) {
         log.info("Get request to get or create database user. Request body {}", getOrCreateUserRequest);
         DatabaseRegistry foundDb = dBaaService.findDatabaseByClassifierAndType(getOrCreateUserRequest.getClassifier(), getOrCreateUserRequest.getType(), true);
         if (foundDb == null) {
@@ -116,7 +116,7 @@ public class DatabaseUsersControllerV3 {
     @DELETE
     @Transactional
     public Response deleteUser(@Parameter(description = "Contains userId or classifier, logicalUserId and type field for user identification.", required = true)
-                                       UserOperationRequest deleteUserRequest) {
+                               UserOperationRequest deleteUserRequest) {
         log.info("Get request to delete database user. Request body {}", deleteUserRequest);
         if (!isUserOperationRequestValid(deleteUserRequest)) {
             log.error("Request body is not valid." +
@@ -145,7 +145,7 @@ public class DatabaseUsersControllerV3 {
     @POST
     @Transactional
     public Response rotateUserPassword(@Parameter(description = "Contains userId or classifier, logicalUserId and type field for user identification.", required = true)
-                                               UserOperationRequest rotateUserPasswordRequest) {
+                                       UserOperationRequest rotateUserPasswordRequest) {
         log.info("Get request to rotate password for database user. Request body {}", rotateUserPasswordRequest);
         if (!isUserOperationRequestValid(rotateUserPasswordRequest)) {
             log.error("Request body is not valid." +
@@ -172,7 +172,7 @@ public class DatabaseUsersControllerV3 {
     @POST
     @Transactional
     public Response restoreUser(@Parameter(description = "Contains classifier, user role and physical database type", required = true)
-                                             RestoreUsersRequest restoreUsersRequest) {
+                                RestoreUsersRequest restoreUsersRequest) {
         log.info("Get request to restore users");
         RestoreUsersResponse restoreUsersResponse = userService.restoreUsers(restoreUsersRequest);
         if (!restoreUsersResponse.getUnsuccessfully().isEmpty()) {
@@ -190,4 +190,3 @@ public class DatabaseUsersControllerV3 {
                 || StringUtils.hasLength(request.getType());
     }
 }
-

@@ -14,6 +14,7 @@ import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposit
 import org.qubership.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
+import org.qubership.cloud.dbaas.security.validators.NamespaceValidator;
 import org.qubership.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
 import io.quarkus.narayana.jta.QuarkusTransactionException;
 import jakarta.annotation.PostConstruct;
@@ -472,7 +473,6 @@ public class AggregatedDatabaseAdministrationService {
     }
 
     public static class AggregatedDatabaseAdministrationUtils {
-
         public static boolean isUniqueViolation(Exception ex) {
             Throwable subException = ex;
             String sqlState = null;
