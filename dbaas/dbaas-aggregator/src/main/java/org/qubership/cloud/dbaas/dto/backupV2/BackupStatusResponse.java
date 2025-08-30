@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.Status;
+import org.qubership.cloud.dbaas.enums.Status;
 
 @Data
 @NoArgsConstructor

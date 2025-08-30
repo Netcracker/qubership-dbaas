@@ -12,7 +12,7 @@ import org.mockito.Mockito;
 import org.qubership.cloud.dbaas.dto.Source;
 import org.qubership.cloud.dbaas.dto.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.ExternalDatabaseStrategy;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.Status;
+import org.qubership.cloud.dbaas.enums.Status;
 import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.service.DbBackupV2Service;
