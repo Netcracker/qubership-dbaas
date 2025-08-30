@@ -18,19 +18,25 @@ import org.qubership.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
+import org.qubership.cloud.dbaas.enums.Status;
 import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
 import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
 import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import org.qubership.cloud.dbaas.repositories.pg.jpa.*;
 
+import javax.sql.DataSource;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -70,6 +76,13 @@ class DbBackupV2ServiceTest {
 
     @Inject
     private LogicalRestoreRepository logicalRestoreDatabaseRepository;
+
+    @Inject
+    private LockProvider lockProvider;
+
+    @Inject
+    @Named("po-datasource")
+    private DataSource dataSource;
 
     @BeforeAll
     static void globalSetUp() {
@@ -153,10 +166,6 @@ class DbBackupV2ServiceTest {
         List<LogicalBackup> logicalBackups = logicalBackupRepository.getByBackupName(backupName);
 
         LogicalBackup logicalBackupFirst = logicalBackups.getFirst();
-        LogicalBackup logicalBackupLast = logicalBackups.getLast();
-        log.info(logicalBackups.toString());
-        log.info(logicalBackupFirst.toString());
-        log.info(logicalBackupLast.toString());
 
         assertEquals(2, logicalBackups.size());
         assertTrue(
@@ -164,30 +173,10 @@ class DbBackupV2ServiceTest {
                         logicalBackupNameTwo.equals(logicalBackupFirst.getLogicalBackupName()),
                 "Logical backup name should match one of the expected names"
         );
-        assertEquals(3, logicalBackupFirst.getStatus().getDatabases().size());
-        assertEquals(3, logicalBackupLast.getStatus().getDatabases().size());
-
-        Backup backup = backupRepository.findById(backupName);
-
-        assertEquals(Status.FAILED, backup.getStatus().getStatus());
-        assertEquals(6, backup.getStatus().getSize());
-
-        List<BackupDatabase> backupDatabaseList = backupDatabaseRepository.findAll().stream().toList();
-
-        long innerDbOneCount = backupDatabaseList.stream()
-                .filter(b -> b.getLogicalBackup().getLogicalBackupName().equals(logicalBackupNameOne)).count();
-        long innerDbLastCount = backupDatabaseList.stream()
-                .filter(b -> b.getLogicalBackup().getLogicalBackupName().equals(logicalBackupNameTwo)).count();
-
-        assertEquals(6, backupDatabaseList.size());
-        assertEquals(3, innerDbOneCount);
-        assertEquals(3, innerDbLastCount);
 
         Mockito.verify(adapterOne, times(1)).backupV2(any());
         Mockito.verify(adapterTwo, times(1)).backupV2(any());
 
-        Mockito.verify(adapterOne, times(1)).trackBackupV2(any());
-        Mockito.verify(adapterTwo, times(3)).trackBackupV2(any());
     }
 
     @Test
@@ -388,6 +377,174 @@ class DbBackupV2ServiceTest {
         assertEquals(databaseFirst.getSettings(), logicalBackupFirst.getBackupDatabases().getFirst().getSettings());
         assertEquals(databaseSecond.getSettings(), logicalBackupSecond.getBackupDatabases().getFirst().getSettings());
     }
+
+    @Test
+    void findAndStartAggregateBackup_shouldNotRunInParallelAcrossNodes() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch latch = new CountDownLatch(2);
+        AtomicInteger executions = new AtomicInteger();
+
+        LockProvider pod1LockProvider = new JdbcTemplateLockProvider(dataSource);
+        LockProvider pod2LockProvider = new JdbcTemplateLockProvider(dataSource);
+
+        LockConfiguration config = new LockConfiguration(
+                Instant.now(),
+                "findAndStartAggregateBackup",
+                Duration.ofMinutes(5),
+                Duration.ofMinutes(1)
+        );
+
+        Runnable pod1Job = () -> {
+            assertTrue(pod1LockProvider.lock(config).isPresent(), "pod1LockProvider don`t present");
+            dbBackupV2Service.findAndStartAggregateBackup();
+            executions.incrementAndGet();
+            latch.countDown();
+        };
+
+        Runnable pod2Job = () -> {
+            assertTrue(pod2LockProvider.lock(config).isPresent(), "pod2LockProvider don`t present");
+            dbBackupV2Service.findAndStartAggregateBackup();
+            executions.incrementAndGet();
+            latch.countDown();
+        };
+
+        executor.submit(pod1Job);
+        executor.submit(pod2Job);
+
+        latch.await(5, SECONDS);
+
+        assertEquals(1, executions.get());
+    }
+
+    @Test
+    void trackAndAggregate() {
+        String backupName = "backupName";
+        String adapterIdFirst = "some-first-adapter-id";
+        String adapterIdSecond = "some-second-adpater-id";
+
+        LogicalBackupStatus.Database db1 = LogicalBackupStatus.Database.builder()
+                .databaseName("db1")
+                .status(Status.COMPLETED)
+                .size(1)
+                .duration("1")
+                .path("somepath")
+                .build();
+
+        LogicalBackupStatus.Database db2 = LogicalBackupStatus.Database.builder()
+                .databaseName("db2")
+                .status(Status.PENDING)
+                .size(1)
+                .duration("1")
+                .errorMessage("errorMessage")
+                .path("somepath")
+                .build();
+
+        LogicalBackupStatus.Database db3 = LogicalBackupStatus.Database.builder()
+                .databaseName("db3")
+                .status(Status.PENDING)
+                .size(1)
+                .duration("1")
+                .path("somepath")
+                .build();
+
+        LogicalBackupStatus logicalBackupStatus = LogicalBackupStatus.builder()
+                .status(Status.PENDING)
+                .errorMessage("errorMessage")
+                .databases(List.of(db1, db2, db3))
+                .build();
+
+        LogicalBackup logicalBackup = new LogicalBackup();
+        logicalBackup.setLogicalBackupName("mock-first-name");
+        logicalBackup.setAdapterId(adapterIdFirst);
+        logicalBackup.setType("postgresql");
+        logicalBackup.setStatus(new LogicalBackupStatus());
+        logicalBackup.setBackupDatabases(List.of(BackupDatabase.builder()
+                .users(List.of())
+                .classifiers(List.of())
+                .build()));
+
+        LogicalBackup logicalBackup1 = new LogicalBackup();
+        logicalBackup1.setLogicalBackupName("mock-second-name");
+        logicalBackup1.setAdapterId(adapterIdSecond);
+        logicalBackup1.setType("postgresql");
+        logicalBackup1.setStatus(new LogicalBackupStatus());
+        logicalBackup1.setBackupDatabases(List.of(BackupDatabase.builder()
+                .classifiers(List.of())
+                .users(List.of())
+                .build()));
+
+        List<LogicalBackup> logicalBackups = List.of(logicalBackup, logicalBackup1);
+
+        Backup backup = createBackup(backupName, logicalBackups);
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById(adapterIdFirst))
+                .thenReturn(adapter);
+        when(adapter.trackBackupV2(any()))
+                .thenReturn(logicalBackupStatus);
+
+        DbaasAdapter adapter1 = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById(adapterIdSecond))
+                .thenReturn(adapter1);
+        when(adapter1.trackBackupV2(any()))
+                .thenReturn(logicalBackupStatus);
+
+
+        dbBackupV2Service.trackAndAggregate(backup);
+
+        Backup expectedBackup = backupRepository.findById(backupName);
+
+        assertNotNull(expectedBackup);
+        assertEquals(1, backup.getAttemptCount());
+        assertNotNull(expectedBackup.getStatus());
+
+        BackupStatus aggregatedStatus = backup.getStatus();
+
+        assertEquals(Status.PENDING, aggregatedStatus.getStatus());
+        assertEquals(2, aggregatedStatus.getTotal());
+        assertEquals(6, aggregatedStatus.getSize());
+        assertEquals(2, aggregatedStatus.getCompleted());
+
+        String aggregatedErrorMsg = logicalBackups.stream()
+                .filter(lb -> lb.getStatus().getErrorMessage() != null && !lb.getStatus().getErrorMessage().isBlank())
+                .map(lb -> String.format("LogicalBackup %s failed: %s",
+                        lb.getLogicalBackupName(),
+                        lb.getStatus().getErrorMessage()))
+                .collect(Collectors.joining("; "));
+
+        assertEquals(aggregatedErrorMsg, aggregatedStatus.getErrorMessage());
+    }
+
+    @Test
+    void trackAndAggregate_backupAttemptExceeded_aggregatorMustBeFailed() {
+        String backupName = "backupName";
+
+        Backup backup = createBackup(backupName, List.of());
+        backup.setStatus(BackupStatus.builder()
+                        .status(Status.IN_PROGRESS)
+                .build());
+        backup.setAttemptCount(21);
+
+
+        dbBackupV2Service.trackAndAggregate(backup);
+
+        Backup expectedBackup = backupRepository.findById(backupName);
+
+        assertNotNull(expectedBackup);
+        assertEquals(21, backup.getAttemptCount());
+        assertNotNull(expectedBackup.getStatus());
+
+        BackupStatus aggregatedStatus = backup.getStatus();
+
+        assertEquals(Status.FAILED, aggregatedStatus.getStatus());
+
+        String errorMsg = "The number of attempts exceeded 20";
+        assertEquals(errorMsg, aggregatedStatus.getErrorMessage());
+    }
+
+
 
     @Test
     void updateAggregatedStatus_shouldReturnProceeding_containAllStatuses() {
@@ -611,7 +768,12 @@ class DbBackupV2ServiceTest {
         String backupName = "backupName";
         List<LogicalBackup> logicalBackups = generateLogicalBackups(1);
         Backup backup = createBackup(backupName, logicalBackups);
-
+        backup.setStatus(BackupStatus.builder()
+                        .status(Status.COMPLETED)
+                        .total(1)
+                        .completed(1)
+                        .size(1L)
+                .build());
         logicalBackups.forEach(lb -> lb.setBackup(backup));
 
         backupRepository.save(backup);
@@ -1225,12 +1387,7 @@ class DbBackupV2ServiceTest {
         Backup backup = new Backup();
         backup.setName(name);
         backup.setLogicalBackups(logicalBackups);
-        backup.setStatus(BackupStatus.builder()
-                .status(Status.COMPLETED)
-                .total(1)
-                .completed(1)
-                .size(1L)
-                .build());
+        backup.setStatus(BackupStatus.builder().build());
         backup.setFilters("\"er\"");
         backup.setBlobPath("path");
         backup.setStorageName("storagename");

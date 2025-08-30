@@ -4,6 +4,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.WebApplicationException;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.cdi.SchedulerLock;
+import net.javacrumbs.shedlock.core.LockAssert;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.qubership.cloud.context.propagation.core.ContextManager;
@@ -35,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
+import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
@@ -71,7 +74,7 @@ public class DbBackupV2Service {
 
         Backup backup = initializeFullBackupStructure(databasesForBackup, backupRequest);
         startBackup(backup);
-        waitBackupCompletion(backup);
+        //TODO return backupName or throw exception
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
@@ -111,7 +114,6 @@ public class DbBackupV2Service {
                 .toList();
 
         backup.setLogicalBackups(logicalBackups);
-        updateAggregatedStatus(backup);
         backupRepository.save(backup);
         return backup;
     }
@@ -184,51 +186,30 @@ public class DbBackupV2Service {
         }
     }
 
-    protected void waitBackupCompletion(Backup backup) {
-        log.info("Start tracking backup for: {}", backup);
-        int maxAttempts = 25;
-        int currAttempt = 1;
-
-        List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups();
-
-        while (!notFinishedLogicalBackups.isEmpty() && currAttempt <= maxAttempts) {
-            try {
-                Thread.sleep(TRACK_DELAY_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("Waiting between attempts is interrupted", e);
-                break;
-            }
-
-            List<LogicalBackup> logicalBackupsToAggregate = fetchAndUpdateStatuses(notFinishedLogicalBackups);
-            updateAggregatedStatus(backup);
-            backupRepository.save(backup);
-
-            notFinishedLogicalBackups = filterBackupTasks(logicalBackupsToAggregate);
-            currAttempt++;
-        }
-
-        if (!notFinishedLogicalBackups.isEmpty()) {
-            notFinishedLogicalBackups.forEach(logicalBackup -> {
-                logicalBackup.getStatus().setStatus(Status.FAILED);
-                logicalBackup.getStatus().setErrorMessage("Timeout");
-            });
-            updateAggregatedStatus(backup);
-            backupRepository.save(backup);
-        }
+    @Scheduled(every = "${backup.aggregation.interval}", concurrentExecution = SKIP)
+    @SchedulerLock(name = "findAndStartAggregateBackup")
+    protected void findAndStartAggregateBackup() {
+        LockAssert.assertLocked();
+        List<Backup> backupsToAggregate = backupRepository.findBackupsToAggregate();
+        backupsToAggregate.forEach(this::trackAndAggregate);
     }
 
+    protected void trackAndAggregate(Backup backup) {
+        if (backup.getAttemptCount() > 20 && Status.IN_PROGRESS == backup.getStatus().getStatus()) {
+            BackupStatus backupStatus = backup.getStatus();
+            backupStatus.setStatus(Status.FAILED);
+            backupStatus.setErrorMessage("The number of attempts exceeded 20");
+        }else {
+            List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups();
+            fetchAndUpdateStatuses(notFinishedLogicalBackups);
+            updateAggregatedStatus(backup);
+            backup.setAttemptCount(backup.getAttemptCount() + 1); // update track attempt
+        }
 
-    private List<LogicalBackup> filterBackupTasks(List<LogicalBackup> backupsToTrack) {
-        return backupsToTrack.stream()
-                .filter(backup -> {
-                    Status status = backup.getStatus().getStatus();
-                    return status == Status.NOT_STARTED || status == Status.IN_PROGRESS;
-                })
-                .toList();
+        backupRepository.save(backup);
     }
 
-    private List<LogicalBackup> fetchAndUpdateStatuses(List<LogicalBackup> logicalBackupList) {
+    private void fetchAndUpdateStatuses(List<LogicalBackup> logicalBackupList) {
         Map<LogicalBackup, Future<LogicalBackupStatus>> statuses = new HashMap<>();
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
@@ -245,17 +226,15 @@ public class DbBackupV2Service {
                     statuses.put(logicalBackup, future);
                 });
 
-        return statuses.entrySet().stream().map(entry -> {
-            LogicalBackup logicalBackup = entry.getKey();
+        statuses.forEach((logicalBackup, future) -> {
             try {
-                LogicalBackupStatus logicalBackupStatus = entry.getValue().get();
+                LogicalBackupStatus logicalBackupStatus = future.get();
                 logicalBackup.setStatus(logicalBackupStatus);
             } catch (InterruptedException | ExecutionException e) {
                 logicalBackup.getStatus().setStatus(Status.FAILED);
                 logicalBackup.getStatus().setErrorMessage(e.getCause().getMessage());
             }
-            return logicalBackup;
-        }).toList();
+        });
     }
 
     protected void updateAggregatedStatus(Backup backup) {
@@ -327,7 +306,7 @@ public class DbBackupV2Service {
 
         return Status.COMPLETED;
     }
-
+    //TODO write test
     public BackupStatusResponse getCurrentStatus(String backupName) {
         BackupStatus backupStatus = backupRepository.findByIdOptional(backupName)
                 .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()))

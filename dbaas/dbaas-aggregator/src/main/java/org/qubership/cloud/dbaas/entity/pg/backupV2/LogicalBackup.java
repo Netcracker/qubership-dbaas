@@ -1,6 +1,7 @@
 package org.qubership.cloud.dbaas.entity.pg.backupV2;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.hibernate.annotations.JdbcTypeCode;
