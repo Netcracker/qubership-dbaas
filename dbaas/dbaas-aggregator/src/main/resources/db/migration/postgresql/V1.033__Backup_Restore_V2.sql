@@ -6,7 +6,7 @@ create table v2_backup
     external_database_strategy varchar not null,
     filters jsonb,
     status jsonb,
-    attempt_count int
+    attempt_count int default 0
 );
 
 create table v2_logical_backup
@@ -39,7 +39,8 @@ create table v2_restore
     blob_path varchar not null,
     filters jsonb,
     mapping jsonb,
-    status jsonb
+    status jsonb,
+    attempt_count int default 0
 );
 
 create table v2_logical_restore

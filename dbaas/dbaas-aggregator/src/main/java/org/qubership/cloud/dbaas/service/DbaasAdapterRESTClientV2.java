@@ -12,6 +12,7 @@ import org.qubership.cloud.dbaas.dto.v3.UserEnsureRequestV3;
 import org.qubership.cloud.dbaas.entity.pg.DbResource;
 import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
 import org.qubership.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import org.qubership.cloud.dbaas.rest.DbaasAdapterRestClientV2;
@@ -115,6 +116,11 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     @Override
     public String restoreV2(String logicalBackupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
         return "";//TODO implement
+    }
+
+    @Override
+    public LogicalRestoreStatus trackRestoreV2(String logicalRestoreName) {
+        return null; //TODO implement
     }
 
     @Override

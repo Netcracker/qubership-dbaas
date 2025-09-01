@@ -14,6 +14,7 @@ import org.qubership.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import org.qubership.cloud.dbaas.entity.pg.backup.RestoreResult;
 import org.qubership.cloud.dbaas.entity.pg.backup.TrackedAction;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import org.qubership.cloud.dbaas.exceptions.InteruptedPollingException;
 import org.qubership.cloud.dbaas.monitoring.AdapterHealthStatus;
 
@@ -34,6 +35,8 @@ public interface DbaasAdapter {
     String backupV2(List<String> dbNames);
 
     String restoreV2(String backupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases);
+
+    LogicalRestoreStatus trackRestoreV2(String logicalRestoreName);
 
     DeleteResult delete(DatabasesBackup backup);
 
