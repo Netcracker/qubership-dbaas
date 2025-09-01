@@ -1446,7 +1446,7 @@ class DbBackupV2ServiceTest {
                 .name(restoreName)
                 .blobPath("blobPath")
                 .storageName("storageName")
-                .attemptCount(20)
+                .attemptCount(21)
                 .logicalRestores(List.of())
                 .status(RestoreStatus.builder()
                         .status(Status.IN_PROGRESS)
