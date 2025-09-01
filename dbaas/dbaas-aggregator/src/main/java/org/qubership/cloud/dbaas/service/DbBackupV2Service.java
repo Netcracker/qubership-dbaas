@@ -316,9 +316,9 @@ public class DbBackupV2Service {
         List<Database> databasesForBackup = databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace);
 
         if (databasesForBackup.isEmpty()) {
-            log.warn("Namespace {} doesn't contain any databases for backup", namespace);
+            log.warn("Databases that match filterCriteria not found");
             throw new BackupExecutionException(URI.create("path"),
-                    String.format("Namespace %s doesn't contain any databases for backup", namespace),
+                    "Databases that match filterCriteria not found",
                     null); //TODO fill correct path
         }
 
