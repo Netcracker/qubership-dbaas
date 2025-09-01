@@ -48,6 +48,9 @@ public class Restore {
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalRestore> logicalRestores;
 
+    @Column(name = "attempt_count")
+    private int attemptCount;
+
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof Restore restore)) return false;

@@ -15,6 +15,7 @@ import org.qubership.cloud.dbaas.dto.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.Database;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
 import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
+import org.qubership.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
 import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import org.qubership.cloud.dbaas.enums.Status;
@@ -200,7 +201,7 @@ public class DbBackupV2Service {
             BackupStatus backupStatus = backup.getStatus();
             backupStatus.setStatus(Status.FAILED);
             backupStatus.setErrorMessage("The number of attempts exceeded 20");
-        }else {
+        } else {
             List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups();
             fetchAndUpdateStatuses(notFinishedLogicalBackups);
             updateAggregatedStatus(backup);
@@ -480,6 +481,110 @@ public class DbBackupV2Service {
         } catch (Exception e) {
             throw new RuntimeException("Failsafe execution failed", e);
         }
+    }
+
+    @Scheduled(every = "${restore.aggregation.interval}", concurrentExecution = SKIP)
+    @SchedulerLock(name = "findAndStartAggregateRestore")
+    protected void findAndStartAggregateRestore() {
+        LockAssert.assertLocked();
+        List<Restore> restoresToAggregate = restoreRepository.findRestoresToAggregate();
+        restoresToAggregate.forEach(this::trackAndAggregateRestore);
+    }
+
+    protected void trackAndAggregateRestore(Restore restore) {
+        if (restore.getAttemptCount() > 20 && Status.IN_PROGRESS == restore.getStatus().getStatus()) {
+            RestoreStatus restoreStatus = restore.getStatus();
+            restoreStatus.setStatus(Status.FAILED);
+            restoreStatus.setErrorMessage("The number of attempts exceeded 20");
+        } else {
+            List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores();
+            fetchStatuses(notFinishedLogicalRestores);
+            aggregateRestoreStatus(restore);
+            restore.setAttemptCount(restore.getAttemptCount() + 1); // update track attempt
+        }
+
+        restoreRepository.save(restore);
+    }
+
+
+    private void fetchStatuses(List<LogicalRestore> logicalRestoreList) {
+        Map<LogicalRestore, Future<LogicalRestoreStatus>> statuses = new HashMap<>();
+        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
+
+        logicalRestoreList
+                .forEach(logicalRestore -> {
+                    Future<LogicalRestoreStatus> future = executor.submit(() -> {
+                        ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                        return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
+                                    DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
+                                    return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName());
+                                }
+                        );
+                    });
+                    statuses.put(logicalRestore, future);
+                });
+
+        statuses.forEach((logicalRestore, future) -> {
+            try {
+                LogicalRestoreStatus logicalRestoreStatus = future.get();
+                logicalRestore.setStatus(logicalRestoreStatus);
+            } catch (InterruptedException | ExecutionException e) {
+                logicalRestore.getStatus().setStatus(Status.FAILED);
+                logicalRestore.getStatus().setErrorMessage(e.getCause().getMessage());
+            }
+        });
+    }
+
+    private void aggregateRestoreStatus(Restore restore) {
+        log.info("Start aggregating for restore: {}", restore.getName());
+
+        List<LogicalRestore> logicalRestoreList = restore.getLogicalRestores();
+        List<LogicalRestoreStatus> logicalRestoreStatuses = logicalRestoreList.stream()
+                .map(LogicalRestore::getStatus)
+                .toList();
+
+        log.info("List of logicalRestoreStatusList: {}", logicalRestoreStatuses);
+
+        int totalDbCount = logicalRestoreList.stream().mapToInt(lb -> lb.getRestoreDatabases().size()).sum();
+
+        String aggregatedErrorMsg = logicalRestoreList.stream()
+                .filter(logicalRestore ->
+                        logicalRestore.getStatus().getErrorMessage() != null
+                                && !logicalRestore.getStatus().getErrorMessage().isBlank())
+                .map(logicalRestore -> {
+                    String warn = String.format("LogicalRestore %s failed: %s",
+                            logicalRestore.getLogicalRestoreName(),
+                            logicalRestore.getStatus().getErrorMessage());
+                    log.warn(warn);
+                    return warn;
+                })
+                .collect(Collectors.joining("; "));
+
+        Set<Status> statusSet = new HashSet<>();
+        long totalBytes = 0;
+        int countCompletedDb = 0;
+
+        for (LogicalRestoreStatus logicalRestoreStatus : logicalRestoreStatuses) {
+            Status currStatus = logicalRestoreStatus.getStatus();
+            statusSet.add(currStatus);
+
+            totalBytes += logicalRestoreStatus.getDatabases().stream()
+                    .filter(database -> database.getSize() != null)
+                    .mapToLong(LogicalRestoreStatus.Database::getSize)
+                    .sum();
+
+            countCompletedDb += (int) logicalRestoreStatus.getDatabases().stream()
+                    .filter(db -> Status.COMPLETED.equals(db.getStatus()))
+                    .count();
+        }
+
+        restore.setStatus(RestoreStatus.builder()
+                .status(aggregateStatus(statusSet))
+                .size(totalBytes)
+                .total(totalDbCount)
+                .completed(countCompletedDb)
+                .errorMessage(aggregatedErrorMsg)
+                .build());
     }
 
     private void backupExistenceCheck(String backupName) {
