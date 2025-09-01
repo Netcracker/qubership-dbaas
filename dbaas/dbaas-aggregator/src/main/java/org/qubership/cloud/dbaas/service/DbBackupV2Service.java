@@ -61,12 +61,10 @@ public class DbBackupV2Service {
 
     public void backup(BackupRequest backupRequest) {
         String backupName = backupRequest.getBackupName();
+        backupExistenceCheck(backupName);
 
         log.info("Start backup process with name {}", backupName);
-
         List<Database> databasesForBackup = getAllDbByFilter(backupRequest.getFilterCriteria());
-
-        backupExistenceCheck(backupName);
 
         Backup backup = initializeFullBackupStructure(databasesForBackup, backupRequest);
         startBackup(backup);
