@@ -62,7 +62,7 @@ public class DbBackupV2Service {
     public void backup(BackupRequest backupRequest) {
         String backupName = backupRequest.getBackupName();
 
-        log.info("Start backup processing for backup: {}", backupName);
+        log.info("Start backup process with name {}", backupName);
 
         List<Database> databasesForBackup = getAllDbByFilter(backupRequest.getFilterCriteria());
 
