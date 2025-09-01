@@ -197,9 +197,14 @@ class DbBackupV2ServiceTest {
         BackupRequest backupRequest = createBackupRequest(backupName, namespace);
 
         Backup backup = createBackup(backupName, List.of());
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace));
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
         backupRepository.save(backup);
 
-        when(dbBackupV2Service.getAllDbByNamespace(namespace))
+        when(databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace))
                 .thenReturn(List.of(new Database()));
 
         assertThrows(DBBackupValidationException.class, () ->
@@ -1295,7 +1300,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void trackAndAggregateRestore(){
+    void trackAndAggregateRestore() {
         String restoreName = "restoreName";
         String adapterId = "adapterId";
         String storageName = "storageName";
@@ -1440,7 +1445,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void trackAndAggregateRestore_attemptExceeded(){
+    void trackAndAggregateRestore_attemptExceeded() {
         String restoreName = "name";
         Restore restore = Restore.builder()
                 .name(restoreName)

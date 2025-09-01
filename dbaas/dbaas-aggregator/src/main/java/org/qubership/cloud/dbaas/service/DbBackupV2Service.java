@@ -61,17 +61,11 @@ public class DbBackupV2Service {
 
     public void backup(BackupRequest backupRequest) {
         String backupName = backupRequest.getBackupName();
-        String namespace = backupRequest.getFilterCriteria().getFilter().getFirst().getNamespace().getFirst();
 
         log.info("Start backup processing for backup: {}", backupName);
 
-        List<Database> databasesForBackup = getAllDbByNamespace(namespace);
-        if (databasesForBackup.isEmpty()) {
-            log.warn("Namespace {} doesn't contain any databases for backup", namespace);
-            throw new BackupExecutionException(URI.create("path"),
-                    String.format("Namespace %s doesn't contain any databases for backup", namespace),
-                    null); //TODO fill correct path
-        }
+        List<Database> databasesForBackup = getAllDbByFilter(backupRequest.getFilterCriteria());
+
         backupExistenceCheck(backupName);
 
         Backup backup = initializeFullBackupStructure(databasesForBackup, backupRequest);
@@ -308,6 +302,7 @@ public class DbBackupV2Service {
 
         return Status.COMPLETED;
     }
+
     //TODO write test
     public BackupStatusResponse getCurrentStatus(String backupName) {
         BackupStatus backupStatus = backupRepository.findByIdOptional(backupName)
@@ -316,8 +311,18 @@ public class DbBackupV2Service {
         return mapper.toBackupStatusResponse(backupStatus);
     }
 
-    protected List<Database> getAllDbByNamespace(String namespace) {
-        return databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace);
+    protected List<Database> getAllDbByFilter(FilterCriteria filterCriteria) {
+        String namespace = filterCriteria.getFilter().getFirst().getNamespace().getFirst();
+        List<Database> databasesForBackup = databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace);
+
+        if (databasesForBackup.isEmpty()) {
+            log.warn("Namespace {} doesn't contain any databases for backup", namespace);
+            throw new BackupExecutionException(URI.create("path"),
+                    String.format("Namespace %s doesn't contain any databases for backup", namespace),
+                    null); //TODO fill correct path
+        }
+
+        return databasesForBackup;
     }
 
 
