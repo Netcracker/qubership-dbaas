@@ -1,5 +1,26 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.pg.BackupExternalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
+import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
+import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
+import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
+import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.WebApplicationException;
@@ -9,26 +30,6 @@ import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
-import org.qubership.cloud.context.propagation.core.ContextManager;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.backupV2.*;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
-import org.qubership.cloud.dbaas.entity.shared.AbstractDatabase;
-import org.qubership.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
-import org.qubership.cloud.dbaas.enums.Status;
-import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
-import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
-import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
-import org.qubership.cloud.dbaas.exceptions.NotFoundException;
-import org.qubership.cloud.dbaas.mapper.BackupV2Mapper;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.BackupRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
-import org.qubership.cloud.dbaas.utils.DbaasBackupUtils;
-import org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 
 import java.net.URI;
 import java.time.Duration;
@@ -39,8 +40,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
-import static org.qubership.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
 @ApplicationScoped

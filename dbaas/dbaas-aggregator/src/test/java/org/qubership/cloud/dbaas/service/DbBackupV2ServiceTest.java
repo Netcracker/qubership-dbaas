@@ -1,5 +1,16 @@
-package org.qubership.cloud.dbaas.service;
+package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
+import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
+import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.*;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -14,20 +25,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.qubership.cloud.dbaas.dto.backupV2.*;
-import org.qubership.cloud.dbaas.entity.pg.Database;
-import org.qubership.cloud.dbaas.entity.pg.DatabaseRegistry;
-import org.qubership.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
-import org.qubership.cloud.dbaas.entity.pg.PhysicalDatabase;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.*;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
-import org.qubership.cloud.dbaas.enums.Status;
-import org.qubership.cloud.dbaas.exceptions.BackupExecutionException;
-import org.qubership.cloud.dbaas.exceptions.DBBackupValidationException;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
-import org.qubership.cloud.dbaas.repositories.pg.jpa.*;
 
 import javax.sql.DataSource;
 import java.time.Duration;

@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.repositories.pg.jpa;
 
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.Restore;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.Backup;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
@@ -10,20 +10,20 @@ import java.util.List;
 
 @Transactional
 @ApplicationScoped
-public class RestoreRepository implements PanacheRepositoryBase<Restore, String> {
+public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
 
-    public Restore save(Restore restore) {
+    public Backup save(Backup backup) {
         EntityManager entityManager = getEntityManager();
-        entityManager.merge(restore);
-        return restore;
+        entityManager.merge(backup);
+        return backup;
     }
 
-    public List<Restore> findRestoresToAggregate() {
+    public List<Backup> findBackupsToAggregate() {
         return getEntityManager()
                 .createNativeQuery(
-                        "select * from v2_restore " +
-                                "where status ->> 'status' in ('NOT_STARTED','IN_PROGRESS')",
-                        Restore.class
+                        "select * from v2_backup " +
+                                "where status ->> 'status' in ('NOT_STARTED','IN_PROGRESS') ",
+                        Backup.class
                 )
                 .getResultList();
     }
