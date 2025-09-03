@@ -27,8 +27,16 @@ create table v2_backup_database
     classifiers jsonb not null,
     settings jsonb,
     users jsonb not null,
-    resources jsonb,
-    externally_manageable boolean not null
+    resources jsonb
+);
+
+create table v2_backup_external_database
+(
+    id uuid primary key,
+    backup_name varchar references v2_backup(name),
+    name varchar not null,
+    type varchar not null,
+    classifiers jsonb not null
 );
 
 create table v2_restore
