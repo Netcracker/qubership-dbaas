@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>dbaas-aggregator-parent</artifactId>
-        <groupId>org.qubership.cloud</groupId>
+        <groupId>com.netcracker.cloud</groupId>
         <version>2.0.0-SNAPSHOT</version>
         <relativePath>../dbaas-aggregator-parent</relativePath>
     </parent>
@@ -18,29 +18,29 @@
         <flyway.version>11.10.0</flyway.version>
         <sonar.coverage.exclusions>
             src/main/java/db/migration/postgresql/**/*,
-            src/main/java/org/qubership/cloud/dbaas/dto/**/*,
-            src/main/java/org/qubership/cloud/dbaas/converter/**/*,
-            src/main/java/org/qubership/cloud/dbaas/service/processengine/**/*,
-            src/main/java/org/qubership/cloud/dbaas/config/UndertowConfig.java,
+            src/main/java/com/netcracker/cloud/dbaas/dto/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/converter/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/service/processengine/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/config/UndertowConfig.java,
             <!--TODO remove after implemetation-->
-            src/main/java/org/qubership/cloud/dbaas/controller/ConfigControllerV1.java,
-            src/main/java/org/qubership/cloud/dbaas/config/pg/**,
-            src/main/java/org/qubership/cloud/dbaas/monitoring/model/**/*,
-            src/main/java/org/qubership/cloud/dbaas/controller/ApiVersionController.java
+            src/main/java/com/netcracker/cloud/dbaas/controller/ConfigControllerV1.java,
+            src/main/java/com/netcracker/cloud/dbaas/config/pg/**,
+            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/controller/ApiVersionController.java
         </sonar.coverage.exclusions>
         <sonar.cpd.exclusions>
             src/main/java/db/migration/postgresql/**/*,
-            src/main/java/org/qubership/cloud/dbaas/entity/**/*,
-            src/main/java/org/qubership/cloud/dbaas/dto/**/*,
-            src/main/java/org/qubership/cloud/dbaas/converter/**/*,
-            src/main/java/org/qubership/cloud/dbaas/exceptions/**/*,
-            src/main/java/org/qubership/cloud/dbaas/service/processengine/**/*,
-            src/main/java/org/qubership/cloud/dbaas/config/UndertowConfig.java,
+            src/main/java/com/netcracker/cloud/dbaas/entity/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/dto/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/converter/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/exceptions/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/service/processengine/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/config/UndertowConfig.java,
             <!--TODO remove after implemetation-->
-            src/main/java/org/qubership/cloud/dbaas/controller/ConfigControllerV1.java,
-            src/main/java/org/qubership/cloud/dbaas/config/pg/**,
-            src/main/java/org/qubership/cloud/dbaas/monitoring/model/**/*,
-            src/main/java/org/qubership/cloud/dbaas/controller/ApiVersionController.java
+            src/main/java/com/netcracker/cloud/dbaas/controller/ConfigControllerV1.java,
+            src/main/java/com/netcracker/cloud/dbaas/config/pg/**,
+            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/controller/ApiVersionController.java
         </sonar.cpd.exclusions>
     </properties>
 
@@ -137,17 +137,17 @@
         </dependency>
         <!--Qubership-->
         <dependency>
-            <groupId>org.qubership.cloud.quarkus</groupId>
+            <groupId>com.netcracker.cloud.quarkus</groupId>
             <artifactId>context-propagation</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.qubership.cloud.quarkus</groupId>
+            <groupId>com.netcracker.cloud.quarkus</groupId>
             <artifactId>framework-contexts</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.qubership.cloud</groupId>
+            <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>3.1.2</version>
+            <version>3.1.6-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -165,9 +165,9 @@
             <version>42.7.7</version>
         </dependency>
         <dependency>
-            <groupId>org.qubership.cloud.security.core.utils</groupId>
+            <groupId>com.netcracker.cloud.security.core.utils</groupId>
             <artifactId>tls-utils</artifactId>
-            <version>2.1.2</version>
+            <version>2.1.6-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>commons-beanutils</groupId>
@@ -182,9 +182,9 @@
         </dependency>
 
         <dependency>
-            <groupId>org.qubership.core</groupId>
+            <groupId>com.netcracker.core</groupId>
             <artifactId>process-engine</artifactId>
-            <version>1.1.5</version>
+            <version>1.1.8-SNAPSHOT</version>
         </dependency>
 
         <dependency>
