@@ -50,10 +50,6 @@ public class BackupDatabase {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> resources;
 
-    @NotNull
-    @Column(name = "externally_manageable")
-    private boolean externallyManageable;
-
     @Data
     @Builder
     @NoArgsConstructor

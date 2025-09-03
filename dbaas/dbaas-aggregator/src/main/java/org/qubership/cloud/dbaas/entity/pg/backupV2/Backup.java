@@ -45,6 +45,10 @@ public class Backup {
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalBackup> logicalBackups;
 
+    @ToString.Exclude
+    @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    private List<BackupExternalDatabase> externalDatabases;
+
     @Column(name = "attempt_count")
     private int attemptCount;
 
