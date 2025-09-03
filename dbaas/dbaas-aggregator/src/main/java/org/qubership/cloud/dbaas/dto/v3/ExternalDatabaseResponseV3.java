@@ -26,7 +26,7 @@ public class ExternalDatabaseResponseV3 {
     private String name;
     @Schema(required = true, description = "Database creation time")
     private Date timeDbCreation;
-    @Schema(description = "This parameter specifies that control over the database is not carried out by the DbaaS adapter")
+    @Schema(description = "This parameter specifies that control over the database is not carried out by the DBaaS adapter")
     private boolean externallyManageable;
 
     public ExternalDatabaseResponseV3(DatabaseResponseV3ListCP databaseResponse) {

@@ -671,8 +671,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Commit Bg Domain",
-        "description": "Group namespaces into on Blue-green domain",
+        "summary": "Commit Blue-Green Domain",
+        "description": "Group namespaces into one Blue-Green domain",
         "requestBody": {
           "content": {
             "application/json": {
@@ -693,7 +693,7 @@
             "description": "Invalid request body"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -714,8 +714,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Delete BG domain",
-        "description": "Destroy registered BG domain",
+        "summary": "Delete Blue-Green domain",
+        "description": "Destroy a registered Blue-Green domain",
         "requestBody": {
           "content": {
             "application/json": {
@@ -733,13 +733,13 @@
             "description": "Incorrect request"
           },
           "404": {
-            "description": "Bg domain not found"
+            "description": "Blue-Green domain not found"
           },
           "409": {
             "description": "Invalid request body"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -760,14 +760,14 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Get all BG domains",
-        "description": "Get all registered BG domains",
+        "summary": "Get all Blue-Green domains",
+        "description": "Get all registered Blue-Green domains",
         "responses": {
           "200": {
-            "description": "All registered BG domains"
+            "description": "All registered Blue-Green domains"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -788,8 +788,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Get specific BG domain",
-        "description": "Get specific registered BG domain by namespace",
+        "summary": "Get specific Blue-Green domain",
+        "description": "Get specific registered Blue-Green domain by namespace",
         "parameters": [
           {
             "name": "namespace",
@@ -802,10 +802,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Specific registered BG domain"
+            "description": "Specific registered Blue-Green domain"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -826,8 +826,8 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "Init Bg Domain",
-        "description": "Group namespaces into on Blue-green domain",
+        "summary": "Init Blue-Green Domain",
+        "description": "Group namespaces into one Blue-Green domain",
         "requestBody": {
           "content": {
             "application/json": {
@@ -848,7 +848,7 @@
             "description": "Invalid request body"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -869,14 +869,14 @@
         "tags": [
           "Blue Green Controller V 1"
         ],
-        "summary": "List all BG domains",
-        "description": "list all registered BG domains",
+        "summary": "List all Blue-Green domains",
+        "description": "List of registered Blue-Green domains",
         "responses": {
           "200": {
-            "description": "List of registered BG domains"
+            "description": "List of registered Blue-Green domains"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -999,7 +999,7 @@
             "description": "Invalid request body"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -1041,7 +1041,7 @@
             "description": "Invalid request body"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -1063,7 +1063,7 @@
           "Blue Green Controller V 1"
         ],
         "summary": "Warmup namespace",
-        "description": "The API prepare databases in namespace to work in versioning mode. If database is versioned then will be create full copy.If database is static will be create only new classifier",
+        "description": "The API prepares databases in namespace to work in versioning mode. If database is versioned then will be create full copy.If database is static will be create only new classifier",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1087,7 +1087,7 @@
             "description": "Invalid request body"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -1123,10 +1123,10 @@
         ],
         "responses": {
           "200": {
-            "description": "return operation status"
+            "description": "Return operation status"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -1165,7 +1165,7 @@
             "description": "Terminate operation and return status"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -1187,7 +1187,7 @@
           "Composite Controller"
         ],
         "summary": "Get all composite structures",
-        "description": "Retrieve all composite structures that are registered in DbaaS.",
+        "description": "Retrieve all composite structures that are registered in DBaaS.",
         "responses": {
           "200": {
             "description": "Successful operation"
@@ -1409,7 +1409,7 @@
             "description": "Not found operation status"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -1467,7 +1467,7 @@
             "description": "Validation error"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS"
+            "description": "Unknown error which may be related with internal work of DBaaS"
           },
           "401": {
             "description": "Not Authorized"
@@ -1516,7 +1516,7 @@
             "description": "Not found operation status"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -1565,7 +1565,7 @@
             "description": "Not found operation status"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS"
+            "description": "Unknown error which may be related with internal work of DBaaS"
           },
           "401": {
             "description": "Not Authorized"
@@ -1607,7 +1607,7 @@
             "description": "Incorrect trackingID"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS"
+            "description": "Unknown error which may be related with internal work of DBaaS"
           },
           "401": {
             "description": "Not Authorized"
@@ -1655,7 +1655,7 @@
             "description": "Selected backup or restoration not found"
           },
           "200": {
-            "description": "Backup validated and can be restored",
+            "description": "Backup is validated and can be restored",
             "content": {
               "application/json": {
                 "schema": {
@@ -1684,7 +1684,7 @@
           "Backups administration"
         ],
         "summary": "V3. Restore database",
-        "description": "Restores backup for specific only backup id",
+        "description": "Restores backup for a specific backup ID",
         "parameters": [
           {
             "name": "backupId",
@@ -2010,7 +2010,7 @@
           "Controller for debug operations"
         ],
         "summary": "V3. Get Dump",
-        "description": "Retrieves a dump of DbaaS database information, including logical databases, physical databases, declarative configurations, BG domains and balancing rules.\nBy default, response body is returned as compressed zip file with json file inside.\nHowever, it is possible to get response body in JSON format instead of file.",
+        "description": "Retrieves a dump of DBaaS database information, including logical databases, physical databases, declarative configurations, Blue-Green domains and balancing rules.\nBy default, response body is returned as compressed zip file with json file inside.\nHowever, it is possible to get response body in JSON format instead of file.",
         "responses": {
           "500": {
             "description": "An error occurred during getting dump"
@@ -2050,7 +2050,7 @@
           "Controller for debug operations"
         ],
         "summary": "V3. Get ghost databases",
-        "description": "Returns list of ghost databases (databases that exists in adapter, but not registered in DBaaS)",
+        "description": "Returns list of ghost databases (databases that exist in adapter, but not registered in DBaaS)",
         "responses": {
           "500": {
             "description": "Internal error"
@@ -2123,7 +2123,7 @@
           "Controller for debug operations"
         ],
         "summary": "V3. Get lost databases",
-        "description": "Returns list of lost databases (databases that registered in DBaaS, but not exists in adapter)",
+        "description": "Returns list of lost databases (databases that are registered in DBaaS but do not exist in the adapter)",
         "responses": {
           "500": {
             "description": "Internal error"
@@ -2354,7 +2354,7 @@
           "Database operation controller v3"
         ],
         "summary": "V3. Recreate database with existing classifier. Prohibited for Blue-Green",
-        "description": "Recreate existing database with same classifier in the same physicalDb or in another. The API can be useful if you want to migrate associated with microservice logical db to another physical database. So, DbaaS creates a new empty database. After it, you will get a new connection and can perform a migration.Pay attention, each request will produce a new database even if the database was previously recreated. So, if your response contains unsuccessful databases you must leave only these databases in the request. Otherwise successful databases will be recreated again. The previous database is not deleted but is marked as archived.",
+        "description": "Recreate existing database with same classifier in the same physicalDb or in another. The API can be useful if you want to migrate associated with microservice logical db to another physical database. So, DBaaS creates a new empty database. After it, you will get a new connection and can perform a migration.Pay attention, each request will produce a new database even if the database was previously recreated. So, if your response contains unsuccessful databases you must leave only these databases in the request. Otherwise successful databases will be recreated again. The previous database is not deleted but is marked as archived.",
         "parameters": [
           {
             "name": "namespace",
@@ -2511,7 +2511,7 @@
             }
           },
           "200": {
-            "description": "Database classifier was updated successfully",
+            "description": "The database classifier was updated successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -2569,7 +2569,7 @@
         },
         "responses": {
           "400": {
-            "description": "classifier contains namespace different from namespace in the path",
+            "description": "The classifier contains a namespace that differs from the one in the path",
             "content": {
               "application/json": {
                 "schema": {
@@ -2700,7 +2700,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Access grants was successfully found",
+            "description": "Access grants were successfully found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3535,7 +3535,7 @@
             "description": "Database is in process of creation"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           }
         },
         "security": [
@@ -3687,7 +3687,7 @@
           "Controller Database administration"
         ],
         "summary": "V3. External database registration",
-        "description": "This API supports registration in DbaaS for any external logical database.",
+        "description": "This API supports registration in DBaaS for any external logical database.",
         "parameters": [
           {
             "name": "namespace",
@@ -3918,7 +3918,7 @@
           "Balancing Rules Administration V3"
         ],
         "summary": "V3. On namespace physDb balancing rule",
-        "description": "There are no changes in comparison with version 1. Auto balancing rules allows configure behavior of DbaaS when a physical database of some specific type is choosen for new logical database. This rule currently works for new databases only, no migration of logical databases between physical databases is supported yet.",
+        "description": "There are no changes in comparison with version 1. Auto balancing rules allows configure behavior of DBaaS when a physical database of some specific type is choosen for new logical database. This rule currently works for new databases only, no migration of logical databases between physical databases is supported yet.",
         "parameters": [
           {
             "name": "namespace",
@@ -4043,7 +4043,7 @@
             "description": "Gotten on microservice physical database balancing rules"
           },
           "500": {
-            "description": "Unknown error which may be related with internal work of DbaaS."
+            "description": "Unknown error which may be related with internal work of DBaaS."
           },
           "401": {
             "description": "Not Authorized"
@@ -5040,7 +5040,7 @@
             }
           },
           "externallyManageable": {
-            "description": "This parameter specifies if a control over the database is not carried out by the DbaaS adapter.",
+            "description": "This parameter specifies if a control over the database is not carried out by the DBaaS adapter.",
             "type": "boolean"
           },
           "bgVersion": {
@@ -5419,7 +5419,7 @@
             }
           },
           "externallyManageable": {
-            "description": "This parameter specifies if a control over the database is not carried out by the DbaaS adapter",
+            "description": "This parameter specifies if a control over the database is not carried out by the DBaaS adapter",
             "type": "boolean"
           },
           "dbOwnerRoles": {
@@ -5472,7 +5472,7 @@
             "type": "string"
           },
           "externallyManageable": {
-            "description": "This parameter specifies if a control over the database is not carried out by the DbaaS adapter",
+            "description": "This parameter specifies if a control over the database is not carried out by the DBaaS adapter",
             "type": "boolean"
           },
           "timeDbCreation": {
@@ -5803,7 +5803,7 @@
             }
           },
           "delete": {
-            "description": "confirmation parameter. If this is not passed or false then orhan database will not be deleted and response will contain orhan databases that are registered in DbaaS",
+            "description": "confirmation parameter. If this is not passed or false then orhan database will not be deleted and response will contain orhan databases that are registered in DBaaS",
             "type": "boolean"
           }
         }
@@ -7053,11 +7053,11 @@
         "type": "object",
         "properties": {
           "adapterAddress": {
-            "description": "Physical address of DbaaS adapter. The address is used for CRUD operation with logic databases.",
+            "description": "Physical address of DBaaS adapter. The address is used for CRUD operation with logic databases.",
             "type": "string"
           },
           "httpBasicCredentials": {
-            "description": "Basic authentication username and password for requests from DbaaS Aggregator to DbaaS adapter.",
+            "description": "Basic authentication username and password for requests from DBaaS Aggregator to DBaaS adapter.",
             "type": "object",
             "allOf": [
               {
@@ -7222,7 +7222,7 @@
             "type": "string"
           },
           "backupDisabled": {
-            "description": "This parameter specifies if the DbaaS should except this database from backup/restore procedure. The parameter cannot be modified and it is installed only once during registration request.",
+            "description": "This parameter specifies if the DBaaS should except this database from backup/restore procedure. The parameter cannot be modified and it is installed only once during registration request.",
             "type": "boolean"
           },
           "physicalDatabaseId": {
@@ -7280,7 +7280,7 @@
             "type": "string"
           },
           "backupDisabled": {
-            "description": "This parameter specifies if the DbaaS should except this database from backup/restore procedure. The parameter cannot be modified and it is installed only once during registration request.",
+            "description": "This parameter specifies if the DBaaS should except this database from backup/restore procedure. The parameter cannot be modified and it is installed only once during registration request.",
             "type": "boolean"
           },
           "physicalDatabaseId": {
@@ -7316,7 +7316,7 @@
             "type": "string"
           },
           "backupDisabled": {
-            "description": "This parameter specifies if the DbaaS should except this database from backup/restore procedure. The parameter cannot be modified and it is installed only once during registration request.",
+            "description": "This parameter specifies if the DBaaS should except this database from backup/restore procedure. The parameter cannot be modified and it is installed only once during registration request.",
             "type": "boolean"
           },
           "physicalDatabaseId": {
