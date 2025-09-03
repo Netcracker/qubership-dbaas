@@ -13,8 +13,8 @@ import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import com.netcracker.cloud.dbaas.exceptions.InteruptedPollingException;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 

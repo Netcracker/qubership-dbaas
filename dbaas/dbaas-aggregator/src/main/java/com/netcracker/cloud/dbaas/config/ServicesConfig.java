@@ -1,9 +1,6 @@
 package com.netcracker.cloud.dbaas.config;
 
 import com.github.kagkarlsson.scheduler.task.Task;
-import io.quarkus.arc.properties.UnlessBuildProperty;
-import net.javacrumbs.shedlock.core.LockProvider;
-import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import com.netcracker.cloud.dbaas.JdbcUtils;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
@@ -15,12 +12,15 @@ import com.netcracker.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
 import com.netcracker.cloud.dbaas.service.dbsettings.PostgresqlSettingsHandler;
 import com.netcracker.core.scheduler.po.ProcessOrchestrator;
 import io.quarkus.arc.All;
+import io.quarkus.arc.properties.UnlessBuildProperty;
 import io.quarkus.runtime.Startup;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 

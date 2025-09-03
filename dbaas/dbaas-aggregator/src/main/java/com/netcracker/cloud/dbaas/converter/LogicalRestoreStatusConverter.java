@@ -1,10 +1,10 @@
-package org.qubership.cloud.dbaas.converter;
+package com.netcracker.cloud.dbaas.converter;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 
 @Converter(autoApply = false)
 public class LogicalRestoreStatusConverter implements AttributeConverter<LogicalRestoreStatus, String> {

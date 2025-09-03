@@ -1,19 +1,18 @@
-package org.qubership.cloud.dbaas.controller.error;
+package com.netcracker.cloud.dbaas.controller.error;
 
-import jakarta.validation.ConstraintViolation;
+import com.netcracker.cloud.core.error.runtime.ErrorCode;
+import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
+import com.netcracker.cloud.dbaas.exceptions.ValidationException;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
-import org.qubership.cloud.core.error.runtime.ErrorCode;
-import org.qubership.cloud.dbaas.exceptions.ErrorCodes;
-import org.qubership.cloud.dbaas.exceptions.ValidationException;
 
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.controller.error.Utils.buildDefaultResponse;
+import static com.netcracker.cloud.dbaas.controller.error.Utils.buildDefaultResponse;
 
 @Provider
 public class ConstraintViolationExceptionMapper

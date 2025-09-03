@@ -1,4 +1,4 @@
-package org.qubership.cloud.dbaas.utils;
+package com.netcracker.cloud.dbaas.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;

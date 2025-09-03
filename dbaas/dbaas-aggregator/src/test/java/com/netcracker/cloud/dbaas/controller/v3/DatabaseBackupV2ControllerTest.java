@@ -1,5 +1,13 @@
-package org.qubership.cloud.dbaas.controller.v3;
+package com.netcracker.cloud.dbaas.controller.v3;
 
+import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.ExternalDatabaseStrategy;
+import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
+import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
+import com.netcracker.cloud.dbaas.utils.DigestUtil;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
@@ -9,14 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.qubership.cloud.dbaas.dto.Source;
-import org.qubership.cloud.dbaas.dto.backupV2.*;
-import org.qubership.cloud.dbaas.entity.pg.backupV2.ExternalDatabaseStrategy;
-import org.qubership.cloud.dbaas.enums.Status;
-import org.qubership.cloud.dbaas.exceptions.BackupNotFoundException;
-import org.qubership.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import org.qubership.cloud.dbaas.service.DbBackupV2Service;
-import org.qubership.cloud.dbaas.utils.DigestUtil;
 
 import java.util.List;
 import java.util.Map;
@@ -235,7 +235,7 @@ class DatabaseBackupV2ControllerTest {
     }
 
     @Test
-    void uploadMetadata_DigestHeaderAndBodyNotEqual(){
+    void uploadMetadata_DigestHeaderAndBodyNotEqual() {
         BackupResponse backupResponse = new BackupResponse();
         backupResponse.setBackupName("backupName");
         backupResponse.setBlobPath("path");
