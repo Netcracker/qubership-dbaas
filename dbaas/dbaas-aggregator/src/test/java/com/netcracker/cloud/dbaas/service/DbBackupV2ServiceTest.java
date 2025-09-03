@@ -81,6 +81,9 @@ class DbBackupV2ServiceTest {
     private LogicalRestoreRepository logicalRestoreDatabaseRepository;
 
     @Inject
+    private BackupExternalDatabaseRepository backupExternalDatabaseRepository;
+
+    @Inject
     private LockProvider lockProvider;
 
     @Inject
@@ -99,6 +102,7 @@ class DbBackupV2ServiceTest {
         restoreRepository.deleteAll();
         backupDatabaseRepository.deleteAll();
         logicalBackupRepository.deleteAll();
+        backupExternalDatabaseRepository.deleteAll();
         backupRepository.deleteAll();
     }
 
@@ -289,7 +293,26 @@ class DbBackupV2ServiceTest {
         databaseSecond.setDatabaseRegistry(List.of(databaseRegistrySecond));
         databaseSecond.setSettings(Map.of("key", "value"));
 
-        List<Database> databaseList = List.of(databaseFirst, databaseSecond);
+        String databaseThirdName = "databaseThird";
+
+        Database databaseThird = new Database();
+        databaseThird.setName(databaseThirdName);
+        databaseThird.setSettings(Map.of());
+        databaseThird.setResources(List.of());
+        databaseThird.setExternallyManageable(true);
+        databaseThird.setAdapterId(null);
+        databaseThird.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierThird = new TreeMap<>();
+        classifierThird.put("microserviceName", databaseThirdName);
+        DatabaseRegistry databaseRegistryThird = new DatabaseRegistry();
+        databaseRegistryThird.setType("postgresql");
+        databaseRegistryThird.setClassifier(classifierThird);
+        databaseThird.setDatabaseRegistry(List.of(databaseRegistryThird));
+        databaseThird.setSettings(Map.of("key", "value"));
+
+
+        List<Database> databaseList = List.of(databaseFirst, databaseSecond, databaseThird);
         String backupName = "test-backup";
 
         BackupRequest backupRequest = createBackupRequest(backupName, "namespace");
@@ -335,6 +358,12 @@ class DbBackupV2ServiceTest {
         assertEquals(user, logicalBackupFirst.getBackupDatabases().getFirst().getUsers().getFirst());
         assertEquals(databaseFirst.getSettings(), logicalBackupFirst.getBackupDatabases().getFirst().getSettings());
         assertEquals(databaseSecond.getSettings(), logicalBackupSecond.getBackupDatabases().getFirst().getSettings());
+
+        BackupExternalDatabase backupExternalDatabase = backup.getExternalDatabases().getFirst();
+
+        assertEquals(databaseThirdName, backupExternalDatabase.getName());
+        assertEquals("postgresql", backupExternalDatabase.getType());
+        assertEquals(List.of(classifierThird), backupExternalDatabase.getClassifiers());
     }
 
     @Test
@@ -766,7 +795,6 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()))
                 .classifiers(List.of(map1))
-                .externallyManageable(true)
                 .build();
 
 
@@ -779,7 +807,6 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()))
                 .classifiers(List.of(map1))
-                .externallyManageable(true)
                 .build();
 
         SortedMap<String, Object> map2 = new TreeMap<>();
@@ -793,7 +820,6 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()))
                 .classifiers(List.of(map2))
-                .externallyManageable(true)
                 .build();
 
         LogicalBackup logicalBackup1 = LogicalBackup.builder()
@@ -1192,7 +1218,6 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()))
                 .classifiers(List.of(map))
-                .externallyManageable(true)
                 .build();
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name("db2")
@@ -1203,7 +1228,6 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()))
                 .classifiers(List.of(map))
-                .externallyManageable(true)
                 .build();
 
         LogicalBackup logicalBackup = LogicalBackup.builder()
@@ -1322,7 +1346,6 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()))
                 .classifiers(List.of(map))
-                .externallyManageable(true)
                 .build();
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name("db2")
@@ -1333,7 +1356,6 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()))
                 .classifiers(List.of(map))
-                .externallyManageable(true)
                 .build();
 
         LogicalBackup logicalBackup = LogicalBackup.builder()
@@ -1579,7 +1601,6 @@ class DbBackupV2ServiceTest {
                     .role("role")
                     .build()));
             backupDatabase1.setResources(Map.of("key", "value"));
-            backupDatabase1.setExternallyManageable(false);
 
             BackupDatabase backupDatabase2 = new BackupDatabase();
             backupDatabase2.setLogicalBackup(logicalBackup);
@@ -1591,7 +1612,6 @@ class DbBackupV2ServiceTest {
                     .role("role")
                     .build()));
             backupDatabase2.setResources(Map.of("key", "value"));
-            backupDatabase2.setExternallyManageable(false);
 
             backupDatabase1.setLogicalBackup(logicalBackup);
             backupDatabase2.setLogicalBackup(logicalBackup);

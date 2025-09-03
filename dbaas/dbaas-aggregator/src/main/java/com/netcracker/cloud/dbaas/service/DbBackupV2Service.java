@@ -74,7 +74,12 @@ public class DbBackupV2Service {
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
         Backup backup = new Backup(backupRequest.getBackupName(), backupRequest.getStorageName(), backupRequest.getBlobPath(), backupRequest.getExternalDatabaseStrategy(), null); //TODO fill backup class properly
 
-        List<LogicalBackup> logicalBackups = databasesForBackup.stream()
+        Map<Boolean, List<Database>> partitioned = databasesForBackup.stream()
+                .collect(Collectors.partitioningBy(AbstractDatabase::isExternallyManageable));
+
+        List<Database> nonExternallyManaged = partitioned.get(false);
+
+        List<LogicalBackup> logicalBackups = nonExternallyManaged.stream()
                 .collect(Collectors.groupingBy(AbstractDatabase::getAdapterId))
                 .entrySet()
                 .stream()
@@ -100,13 +105,27 @@ public class DbBackupV2Service {
                                             .toList())
                                     .users(getBackupDatabaseUsers(db.getConnectionProperties()))
                                     .settings(db.getSettings())
-                                    .externallyManageable(db.isExternallyManageable())
                                     .build())
                             .toList());
                     return lb;
                 })
                 .toList();
 
+        List<Database> externallyManaged = partitioned.get(true);
+
+        List<BackupExternalDatabase> externalDatabases = externallyManaged
+                .stream()
+                .map(database -> BackupExternalDatabase.builder()
+                        .backup(backup)
+                        .name(database.getName())
+                        .type(database.getDatabaseRegistry().getFirst().getType())
+                        .classifiers(database.getDatabaseRegistry().stream()
+                                .map(AbstractDatabaseRegistry::getClassifier)
+                                .toList())
+                        .build()
+                ).toList();
+
+        backup.setExternalDatabases(externalDatabases);
         backup.setLogicalBackups(logicalBackups);
         backupRepository.save(backup);
         return backup;
@@ -361,6 +380,7 @@ public class DbBackupV2Service {
                 .map(Mapping::getNamespaces)
                 .orElseGet(HashMap::new);
 
+        // Map<String, List<BackupDatabase>> adapterToBackupDatabase
 
         Map<Map.Entry<String, String>, LogicalRestore> logicalRestoreMap = logicalBackups.stream()
                 .map(lb -> {
@@ -457,10 +477,10 @@ public class DbBackupV2Service {
                             .findFirst()
                             .orElseThrow(() -> new NotFoundException("Namespace not found in " + restoreDatabase));
                     return Map.of(
-                            "namespace", namespace,
-                            "databaseName", restoreDatabase.getName()
+                            "target_namespace", namespace,
+                            "logical_database", restoreDatabase.getName()
                     );
-                }).toList();
+                }).toList(); //TODO можно с classifiers достать microserviceName
 
         Restore restore = logicalRestore.getRestore();
         RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
@@ -494,6 +514,7 @@ public class DbBackupV2Service {
         restoresToAggregate.forEach(this::trackAndAggregateRestore);
     }
 
+    //TODO after aggregate status completed need to start registry database (Database.class)
     protected void trackAndAggregateRestore(Restore restore) {
         if (restore.getAttemptCount() > 20 && Status.IN_PROGRESS == restore.getStatus().getStatus()) {
             RestoreStatus restoreStatus = restore.getStatus();
