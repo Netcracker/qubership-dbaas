@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.entity.pg.BackupExternalDatabase;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;

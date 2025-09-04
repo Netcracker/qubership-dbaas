@@ -1017,6 +1017,12 @@ class DbBackupV2ServiceTest {
         assertEquals(actualBackupDatabase.getName(), expectedBackupDatabase.getName());
         assertEquals(actualBackupDatabase.getSettings(), expectedBackupDatabase.getSettings());
         assertEquals(actualBackupDatabase.getResources(), expectedBackupDatabase.getResources());
+
+        BackupExternalDatabaseResponse backupExternalDatabaseResponse = expected.getExternalDatabases().getFirst();
+        BackupExternalDatabase backupExternalDatabase = actual.getExternalDatabases().getFirst();
+        assertEquals(backupExternalDatabaseResponse.getName(), backupExternalDatabase.getName());
+        assertEquals(backupExternalDatabaseResponse.getType(), backupExternalDatabase.getType());
+        assertEquals(backupExternalDatabaseResponse.getClassifiers(), backupExternalDatabase.getClassifiers());
     }
 
     @Test
@@ -1808,6 +1814,14 @@ class DbBackupV2ServiceTest {
         FilterCriteria filterCriteria = new FilterCriteria();
         filterCriteria.setFilter(List.of(filter));
 
+        SortedMap<String, Object> map = new TreeMap<>();
+        map.put("key", "value");
+
+        BackupExternalDatabaseResponse backupExternalDatabase = new BackupExternalDatabaseResponse();
+        backupExternalDatabase.setName("Name");
+        backupExternalDatabase.setType("postgresql");
+        backupExternalDatabase.setClassifiers(List.of(map));
+
         BackupResponse backupResponse = new BackupResponse();
         backupResponse.setBackupName(backupName);
         backupResponse.setStatus(backupStatusResponse);
@@ -1817,6 +1831,7 @@ class DbBackupV2ServiceTest {
         backupResponse.setFilterCriteria(filterCriteria);
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
         backupResponse.setIgnoreNotBackupableDatabases(true);
+        backupResponse.setExternalDatabases(List.of(backupExternalDatabase));
 
         return backupResponse;
     }
@@ -1891,7 +1906,7 @@ class DbBackupV2ServiceTest {
     private static @NotNull List<Database> getDatabases(String dbName, String namespace) {
         List<Database> databases = new ArrayList<>();
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 4; i++) {
             int k = i % 2 == 0 ? 1 : 2;
 
             Database database = new Database();
@@ -1951,6 +1966,7 @@ class DbBackupV2ServiceTest {
         dto.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
         dto.setBlobPath("blobPath");
         dto.setStorageName("storageName");
+        dto.setIgnoreNotBackupableDatabases(true);
         return dto;
     }
 }
