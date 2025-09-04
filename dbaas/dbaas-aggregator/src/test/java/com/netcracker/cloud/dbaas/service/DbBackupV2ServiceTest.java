@@ -1,13 +1,17 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
 import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
 import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
+import com.netcracker.cloud.dbaas.exceptions.DBNotSupportedValidationException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.*;
@@ -39,7 +43,6 @@ import java.util.stream.Collectors;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @Slf4j
@@ -152,18 +155,12 @@ class DbBackupV2ServiceTest {
 
         when(adapterOne.backupV2(any()))
                 .thenReturn(logicalBackupNameOne);
+        when(adapterOne.isBackupRestoreSupported())
+                .thenReturn(true);
         when(adapterTwo.backupV2(any()))
                 .thenReturn(logicalBackupNameTwo);
-
-        when(adapterOne.trackBackupV2(eq(logicalBackupNameOne)))
-                .thenReturn(logicalBackupStatusSuccess);
-        when(adapterTwo.trackBackupV2(eq(logicalBackupNameTwo)))
-                .thenReturn(logicalBackupStatusProceeding)
-                .thenReturn(logicalBackupStatusProceeding2)
-                .thenReturn(logicalBackupStatusFail);
-
-        log.info(logicalBackupStatusSuccess.toString());
-        log.info(logicalBackupStatusFail.toString());
+        when(adapterTwo.isBackupRestoreSupported())
+                .thenReturn(true);
 
         dbBackupV2Service.backup(backupRequest);
 
@@ -212,6 +209,277 @@ class DbBackupV2ServiceTest {
                 dbBackupV2Service.backup(backupRequest));
     }
 
+    @Test
+    void validateAndFilterDatabasesForBackup() {
+        String databaseFirstName = "databaseFirst";
+        Database databaseFirst = new Database();
+        databaseFirst.setName(databaseFirstName);
+        databaseFirst.setConnectionProperties(List.of(Map.of()));
+        databaseFirst.setSettings(Map.of());
+        databaseFirst.setResources(List.of());
+        databaseFirst.setExternallyManageable(false);
+        databaseFirst.setAdapterId("1");
+        databaseFirst.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierFirst = new TreeMap<>();
+        classifierFirst.put("microserviceName", databaseFirstName);
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setType("postgresql");
+        databaseRegistry.setClassifier(classifierFirst);
+        databaseFirst.setDatabaseRegistry(List.of(databaseRegistry));
+        databaseFirst.setSettings(Map.of("key", "value"));
+
+        String databaseSecondName = "databaseSecond";
+        Database databaseSecond = new Database();
+        databaseSecond.setName(databaseSecondName);
+        databaseSecond.setConnectionProperties(List.of(Map.of()));
+        databaseSecond.setSettings(Map.of());
+        databaseSecond.setResources(List.of());
+        databaseSecond.setExternallyManageable(false);
+        databaseSecond.setBackupDisabled(true);
+        databaseSecond.setAdapterId("2");
+        databaseSecond.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierSecond = new TreeMap<>();
+        classifierSecond.put("microserviceName", databaseSecondName);
+        DatabaseRegistry databaseRegistrySecond = new DatabaseRegistry();
+        databaseRegistrySecond.setType("postgresql");
+        databaseRegistrySecond.setClassifier(classifierSecond);
+        databaseSecond.setDatabaseRegistry(List.of(databaseRegistrySecond));
+        databaseSecond.setSettings(Map.of("key", "value"));
+
+        String databaseThirdName = "databaseThird";
+        Database databaseThird = new Database();
+        databaseThird.setName(databaseThirdName);
+        databaseThird.setSettings(Map.of());
+        databaseThird.setResources(List.of());
+        databaseThird.setExternallyManageable(true);
+        databaseThird.setAdapterId(null);
+        databaseThird.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierThird = new TreeMap<>();
+        classifierThird.put("microserviceName", databaseThirdName);
+        DatabaseRegistry databaseRegistryThird = new DatabaseRegistry();
+        databaseRegistryThird.setType("postgresql");
+        databaseRegistryThird.setClassifier(classifierThird);
+        databaseThird.setDatabaseRegistry(List.of(databaseRegistryThird));
+        databaseThird.setSettings(Map.of("key", "value"));
+
+        String databaseFourthName = "databaseFourth";
+        Database databaseFourth = new Database();
+        databaseFourth.setName(databaseFourthName);
+        databaseFourth.setSettings(Map.of());
+        databaseFourth.setResources(List.of());
+        databaseFourth.setAdapterId("3");
+        databaseFourth.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierFourth = new TreeMap<>();
+        classifierThird.put("microserviceName", databaseFourthName);
+        DatabaseRegistry databaseRegistryFourth = new DatabaseRegistry();
+        databaseRegistryFourth.setType("postgresql");
+        databaseRegistryFourth.setClassifier(classifierFourth);
+        databaseFourth.setDatabaseRegistry(List.of(databaseRegistryFourth));
+        databaseFourth.setSettings(Map.of("key", "value"));
+
+        List<Database> databaseList = List.of(databaseFirst, databaseSecond, databaseThird, databaseFourth);
+
+        DbaasAdapter adapter1 = Mockito.mock(DbaasAdapter.class);
+        when(adapter1.isBackupRestoreSupported())
+                .thenReturn(false);
+        when(physicalDatabasesService.getAdapterById("1"))
+                .thenReturn(adapter1);
+
+        DbaasAdapter adapter2 = Mockito.mock(DbaasAdapter.class);
+        when(adapter2.isBackupRestoreSupported())
+                .thenReturn(true);
+        when(physicalDatabasesService.getAdapterById("3"))
+                .thenReturn(adapter2);
+
+        List<Database> filteredDatabases = dbBackupV2Service.validateAndFilterDatabasesForBackup(databaseList,
+                true,
+                ExternalDatabaseStrategy.INCLUDE
+        );
+
+        assertNotNull(filteredDatabases);
+        assertEquals(2, filteredDatabases.size());
+
+        Database internalDatabase = filteredDatabases.stream()
+                .filter(db -> databaseFourthName.equals(db.getName()))
+                .findFirst().get();
+
+        assertEquals(databaseFourth, internalDatabase);
+
+        Database externalDatabase = filteredDatabases.stream()
+                .filter(db -> databaseThirdName.equals(db.getName()))
+                .findFirst().get();
+        assertEquals(databaseThird, externalDatabase);
+    }
+
+    @Test
+    void validateAndFilterDatabasesForBackup_whenStrategyFail() {
+        String databaseThirdName = "databaseThird";
+        Database databaseThird = new Database();
+        databaseThird.setName(databaseThirdName);
+        databaseThird.setSettings(Map.of());
+        databaseThird.setResources(List.of());
+        databaseThird.setExternallyManageable(true);
+        databaseThird.setAdapterId(null);
+        databaseThird.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierThird = new TreeMap<>();
+        classifierThird.put("microserviceName", databaseThirdName);
+        DatabaseRegistry databaseRegistryThird = new DatabaseRegistry();
+        databaseRegistryThird.setType("postgresql");
+        databaseRegistryThird.setClassifier(classifierThird);
+        databaseThird.setDatabaseRegistry(List.of(databaseRegistryThird));
+        databaseThird.setSettings(Map.of("key", "value"));
+
+        DBNotSupportedValidationException ex = assertThrows(DBNotSupportedValidationException.class,
+                () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(
+                        List.of(databaseThird),
+                        false,
+                        ExternalDatabaseStrategy.FAIL
+                ));
+
+        assertTrue(ex.getMessage().contains("Backup failed: external databases not allowed by external database strategy"));
+    }
+
+    @Test
+    void validateAndFilterDatabasesForBackup_whenStrategyFailAndIgnoreBackupableDbTrue() {
+        String databaseFirstName = "databaseFirst";
+        Database databaseFirst = new Database();
+        databaseFirst.setName(databaseFirstName);
+        databaseFirst.setConnectionProperties(List.of(Map.of()));
+        databaseFirst.setSettings(Map.of());
+        databaseFirst.setResources(List.of());
+        databaseFirst.setExternallyManageable(false);
+        databaseFirst.setAdapterId("1");
+        databaseFirst.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierFirst = new TreeMap<>();
+        classifierFirst.put("microserviceName", databaseFirstName);
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setType("postgresql");
+        databaseRegistry.setClassifier(classifierFirst);
+        databaseFirst.setDatabaseRegistry(List.of(databaseRegistry));
+        databaseFirst.setSettings(Map.of("key", "value"));
+
+        String databaseSecondName = "databaseSecond";
+        Database databaseSecond = new Database();
+        databaseSecond.setName(databaseSecondName);
+        databaseSecond.setConnectionProperties(List.of(Map.of()));
+        databaseSecond.setSettings(Map.of());
+        databaseSecond.setResources(List.of());
+        databaseSecond.setExternallyManageable(false);
+        databaseSecond.setBackupDisabled(true);
+        databaseSecond.setAdapterId("2");
+        databaseSecond.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierSecond = new TreeMap<>();
+        classifierSecond.put("microserviceName", databaseSecondName);
+        DatabaseRegistry databaseRegistrySecond = new DatabaseRegistry();
+        databaseRegistrySecond.setType("postgresql");
+        databaseRegistrySecond.setClassifier(classifierSecond);
+        databaseSecond.setDatabaseRegistry(List.of(databaseRegistrySecond));
+        databaseSecond.setSettings(Map.of("key", "value"));
+
+        String databaseThirdName = "databaseThird";
+        Database databaseThird = new Database();
+        databaseThird.setName(databaseThirdName);
+        databaseThird.setSettings(Map.of());
+        databaseThird.setResources(List.of());
+        databaseThird.setExternallyManageable(true);
+        databaseThird.setAdapterId(null);
+        databaseThird.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierThird = new TreeMap<>();
+        classifierThird.put("microserviceName", databaseThirdName);
+        DatabaseRegistry databaseRegistryThird = new DatabaseRegistry();
+        databaseRegistryThird.setType("postgresql");
+        databaseRegistryThird.setClassifier(classifierThird);
+        databaseThird.setDatabaseRegistry(List.of(databaseRegistryThird));
+        databaseThird.setSettings(Map.of("key", "value"));
+
+        String databaseFourthName = "databaseFourth";
+        Database databaseFourth = new Database();
+        databaseFourth.setName(databaseFourthName);
+        databaseFourth.setSettings(Map.of());
+        databaseFourth.setResources(List.of());
+        databaseFourth.setAdapterId("3");
+        databaseFourth.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierFourth = new TreeMap<>();
+        classifierThird.put("microserviceName", databaseFourthName);
+        DatabaseRegistry databaseRegistryFourth = new DatabaseRegistry();
+        databaseRegistryFourth.setType("postgresql");
+        databaseRegistryFourth.setClassifier(classifierFourth);
+        databaseFourth.setDatabaseRegistry(List.of(databaseRegistryFourth));
+        databaseFourth.setSettings(Map.of("key", "value"));
+
+        List<Database> databaseList = List.of(databaseFirst, databaseSecond, databaseThird, databaseFourth);
+
+        DbaasAdapter adapter1 = Mockito.mock(DbaasAdapter.class);
+        when(adapter1.isBackupRestoreSupported())
+                .thenReturn(false);
+        when(physicalDatabasesService.getAdapterById("1"))
+                .thenReturn(adapter1);
+
+        DbaasAdapter adapter2 = Mockito.mock(DbaasAdapter.class);
+        when(adapter2.isBackupRestoreSupported())
+                .thenReturn(true);
+        when(physicalDatabasesService.getAdapterById("3"))
+                .thenReturn(adapter2);
+
+        List<Database> filteredDatabases = dbBackupV2Service.validateAndFilterDatabasesForBackup(databaseList,
+                true,
+                ExternalDatabaseStrategy.SKIP
+        );
+
+        assertNotNull(filteredDatabases);
+        assertEquals(1, filteredDatabases.size());
+
+        Database internalDatabase = filteredDatabases.stream()
+                .filter(db -> databaseFourthName.equals(db.getName()))
+                .findFirst().get();
+
+        assertEquals(databaseFourth, internalDatabase);
+    }
+
+    @Test
+    void validateAndFilterDatabasesForBackup_whenIgnoreBackupableDbFalse() {
+        String databaseFirstName = "databaseFirst";
+        Database databaseFirst = new Database();
+        databaseFirst.setName(databaseFirstName);
+        databaseFirst.setConnectionProperties(List.of(Map.of()));
+        databaseFirst.setSettings(Map.of());
+        databaseFirst.setResources(List.of());
+        databaseFirst.setExternallyManageable(false);
+        databaseFirst.setAdapterId("1");
+        databaseFirst.setConnectionProperties(List.of(Map.of("username", "user", "role", "role")));
+
+        SortedMap<String, Object> classifierFirst = new TreeMap<>();
+        classifierFirst.put("microserviceName", databaseFirstName);
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setType("postgresql");
+        databaseRegistry.setClassifier(classifierFirst);
+        databaseFirst.setDatabaseRegistry(List.of(databaseRegistry));
+        databaseFirst.setSettings(Map.of("key", "value"));
+
+        DbaasAdapter adapter1 = Mockito.mock(DbaasAdapter.class);
+        when(adapter1.isBackupRestoreSupported())
+                .thenReturn(false);
+        when(physicalDatabasesService.getAdapterById("1"))
+                .thenReturn(adapter1);
+
+        DBNotSupportedValidationException ex = assertThrows(DBNotSupportedValidationException.class,
+                () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(
+                        List.of(databaseFirst),
+                        false,
+                        ExternalDatabaseStrategy.FAIL
+                ));
+
+        assertTrue(ex.getMessage().contains("Backup validation failed: Backup operation unsupported for databases:"));
+    }
 
     @Test
     void startBackup_whenValidInput_thenBackupIsInitialized() {
