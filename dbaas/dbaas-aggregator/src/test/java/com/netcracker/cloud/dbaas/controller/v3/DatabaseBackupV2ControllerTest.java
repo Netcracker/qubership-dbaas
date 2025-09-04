@@ -187,6 +187,14 @@ class DatabaseBackupV2ControllerTest {
         FilterCriteria filterCriteria = new FilterCriteria();
         filterCriteria.setFilter(List.of(filter));
 
+        SortedMap<String, Object> map = new TreeMap<>();
+        map.put("key", "value");
+
+        BackupExternalDatabaseResponse backupExternalDatabase = new BackupExternalDatabaseResponse();
+        backupExternalDatabase.setName("Name");
+        backupExternalDatabase.setType("postgresql");
+        backupExternalDatabase.setClassifiers(List.of(map));
+
         BackupResponse backupResponse = new BackupResponse();
         backupResponse.setBackupName(backupName);
         backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
@@ -196,6 +204,7 @@ class DatabaseBackupV2ControllerTest {
         backupResponse.setIgnoreNotBackupableDatabases(false);
         backupResponse.setFilterCriteria(filterCriteria);
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        backupResponse.setExternalDatabases(List.of(backupExternalDatabase));
 
         when(dbBackupV2Service.getBackupMetadata(backupName))
                 .thenReturn(backupResponse);

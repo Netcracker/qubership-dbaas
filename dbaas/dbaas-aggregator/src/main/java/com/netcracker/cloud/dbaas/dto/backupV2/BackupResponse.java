@@ -51,5 +51,6 @@ public class BackupResponse {
     )
     private List<LogicalBackupResponse> logicalBackups;
 
+    private List<BackupExternalDatabaseResponse> externalDatabases;
     //TODO need granular validation for fields
 }
