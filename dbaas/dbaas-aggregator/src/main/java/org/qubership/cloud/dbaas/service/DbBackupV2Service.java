@@ -3,7 +3,6 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.pg.BackupExternalDatabase;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
@@ -11,10 +10,7 @@ import com.netcracker.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
-import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
-import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
-import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
@@ -30,6 +26,7 @@ import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
+import org.apache.commons.collections4.CollectionUtils;
 
 import java.net.URI;
 import java.time.Duration;
@@ -39,6 +36,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
@@ -67,7 +65,13 @@ public class DbBackupV2Service {
         log.info("Start backup process with name {}", backupName);
         List<Database> databasesForBackup = getAllDbByFilter(backupRequest.getFilterCriteria());
 
-        Backup backup = initializeFullBackupStructure(databasesForBackup, backupRequest);
+        List<Database> filteredDb = validateAndFilterDatabasesForBackup(
+                databasesForBackup,
+                backupRequest.getIgnoreNotBackupableDatabases(),
+                backupRequest.getExternalDatabaseStrategy()
+        );
+
+        Backup backup = initializeFullBackupStructure(filteredDb, backupRequest);
         startBackup(backup);
         //TODO return backupName or throw exception
     }
@@ -610,6 +614,73 @@ public class DbBackupV2Service {
                 .completed(countCompletedDb)
                 .errorMessage(aggregatedErrorMsg)
                 .build());
+    }
+
+    protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,
+                                                                 boolean ignoreNotBackupableDatabases,
+                                                                 ExternalDatabaseStrategy strategy) {
+        List<Database> externalDatabases = databasesForBackup.stream()
+                .filter(AbstractDatabase::isExternallyManageable)
+                .toList();
+        List<Database> internalDatabases = databasesForBackup.stream()
+                .filter(db -> !db.isExternallyManageable())
+                .toList();
+
+        if (!externalDatabases.isEmpty()) {
+            String externalNames = externalDatabases.stream()
+                    .map(Database::getName)
+                    .collect(Collectors.joining(", "));
+
+            if (ExternalDatabaseStrategy.FAIL.equals(strategy)) {
+                log.error("External databases present but strategy=FAIL: {}", externalNames);
+                throw new DBNotSupportedValidationException(
+                        Source.builder().parameter("externalDatabaseStrategy").build(),
+                        "Backup failed: external databases not allowed by external database strategy: " + externalNames
+                );
+            }
+            if (ExternalDatabaseStrategy.SKIP.equals(strategy)) {
+                log.info("Excluding external databases from backup by strategy: {}", externalNames);
+            }
+        }
+
+        List<Database> disabledDatabases = internalDatabases.stream()
+                .filter(database -> Boolean.TRUE.equals(database.getBackupDisabled()))
+                .toList();
+
+        List<Database> unsupportedByAdapterDatabases = internalDatabases.stream()
+                .filter(database -> database.getBackupDisabled() == null || !database.getBackupDisabled())
+                .filter(database -> database.getAdapterId() != null)
+                .filter(database -> !physicalDatabasesService.getAdapterById(database.getAdapterId()).isBackupRestoreSupported())
+                .toList();
+
+        List<Database> notBackupableDatabases = Stream.concat(disabledDatabases.stream(), unsupportedByAdapterDatabases.stream())
+                .toList();
+
+        if (!CollectionUtils.isEmpty(notBackupableDatabases)) {
+            String dbNames = notBackupableDatabases.stream()
+                    .map(AbstractDatabase::getName)
+                    .collect(Collectors.joining(", "));
+
+            if (ignoreNotBackupableDatabases) {
+                log.info("Excluding not backupable databases: {}", dbNames);
+            } else {
+                log.error("Backup validation failed: Backup operation unsupported for databases: {}", dbNames);
+                throw new DBNotSupportedValidationException(
+                        Source.builder().parameter("ignoreNotBackupableDatabases").build(),
+                        "Backup validation failed: Backup operation unsupported for databases: " + dbNames
+                );
+            }
+        }
+
+        List<Database> filteredDatabases = new ArrayList<>(internalDatabases);
+
+        if (ignoreNotBackupableDatabases)
+            filteredDatabases.removeAll(notBackupableDatabases);
+
+        if (ExternalDatabaseStrategy.INCLUDE.equals(strategy))
+            filteredDatabases = Stream.concat(filteredDatabases.stream(), externalDatabases.stream()).toList();
+
+        return filteredDatabases;
     }
 
     private void backupExistenceCheck(String backupName) {
