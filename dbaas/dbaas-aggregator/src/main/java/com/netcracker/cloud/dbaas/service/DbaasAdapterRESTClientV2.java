@@ -1,12 +1,15 @@
 package com.netcracker.cloud.dbaas.service;
 
+
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
@@ -111,9 +114,25 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
+    public String restoreV2(String logicalBackupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
+        return "";//TODO implement
+    }
+
+    @Override
+    public LogicalRestoreStatus trackRestoreV2(String logicalRestoreName) {
+        return null; //TODO implement
+    }
+
+    @Override
     public TrackedAction trackBackup(String action, String trackId) {
         return restClient.trackBackup(type(), action, trackId);
     }
+
+    @Override
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName) {
+        return restClient.trackBackupV2(type(), logicalBackupName);
+    }
+
 
     @Override
     protected String deleteBackup(String localId) {

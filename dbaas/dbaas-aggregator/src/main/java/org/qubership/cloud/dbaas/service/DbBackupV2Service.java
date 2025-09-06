@@ -3,12 +3,14 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
@@ -35,6 +37,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -73,6 +76,7 @@ public class DbBackupV2Service {
 
         Backup backup = initializeFullBackupStructure(filteredDb, backupRequest);
         startBackup(backup);
+        updateAggregatedStatus(backup);
         //TODO return backupName or throw exception
     }
 
@@ -97,7 +101,6 @@ public class DbBackupV2Service {
                             .backup(backup)
                             .adapterId(adapterId)
                             .type(adapter.type())
-                            .status(new LogicalBackupStatus())
                             .backupDatabases(new ArrayList<>())
                             .build();
 
@@ -146,14 +149,14 @@ public class DbBackupV2Service {
     }
 
     protected void startBackup(Backup backup) {
-        Map<LogicalBackup, Future<String>> names = new HashMap<>();
+        Map<LogicalBackup, Future<LogicalBackupAdapterResponse>> names = new HashMap<>();
         List<LogicalBackup> logicalBackups = backup.getLogicalBackups();
 
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
         logicalBackups.forEach(logicalBackup -> {
             ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-            Future<String> future = executor.submit(() -> {
+            Future<LogicalBackupAdapterResponse> future = executor.submit(() -> {
                 ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                 return startLogicalBackup(logicalBackup);
             });
@@ -162,22 +165,43 @@ public class DbBackupV2Service {
 
         names.forEach((logicalbackup, future) -> {
             try {
-                String logicalBackupName = future.get();
-                logicalbackup.setLogicalBackupName(logicalBackupName);
+                LogicalBackupAdapterResponse logicalBackupAdapterResponse = future.get();
+                refreshLogicalBackupState(logicalbackup, logicalBackupAdapterResponse);
             } catch (InterruptedException | ExecutionException e) {
-                LogicalBackupStatus logicalBackupStatus = LogicalBackupStatus.builder()
-                        .status(Status.FAILED)
-                        .errorMessage(e.getCause().getMessage())
-                        .build();
-                logicalbackup.setStatus(logicalBackupStatus);
+                logicalbackup.setStatus(Status.FAILED);
+                logicalbackup.setErrorMessage(e.getCause().getMessage());
             }
         });
         backupRepository.save(backup);
     }
 
-    protected String startLogicalBackup(LogicalBackup logicalBackup) {
-        List<String> dbNames = logicalBackup.getStatus().getDatabases().stream()
-                .map(LogicalBackupStatus.Database::getDatabaseName)
+    protected void refreshLogicalBackupState(LogicalBackup logicalBackup, LogicalBackupAdapterResponse logicalBackupAdapterResponse) {
+        logicalBackup.setLogicalBackupName(logicalBackupAdapterResponse.getLogicalBackupName());
+        logicalBackup.setStatus(logicalBackupAdapterResponse.getStatus());
+        logicalBackup.setErrorMessage(logicalBackupAdapterResponse.getErrorMessage());
+        logicalBackup.setCreationTime(logicalBackupAdapterResponse.getCreationTime());
+        logicalBackup.setCompletionTime(logicalBackupAdapterResponse.getCompletionTime());
+
+        Map<String, BackupDatabase> backupDbMap = logicalBackup.getBackupDatabases().stream()
+                .collect(Collectors.toMap(BackupDatabase::getName, Function.identity()));
+
+        logicalBackupAdapterResponse.getDatabases().forEach(db -> {
+            BackupDatabase backupDb = backupDbMap.get(db.getDatabaseName());
+            if (backupDb != null) {
+                backupDb.setStatus(db.getStatus());
+                backupDb.setSize(db.getSize());
+                backupDb.setDuration(db.getDuration());
+                backupDb.setCreationTime(db.getCreationTime());
+                backupDb.setPath(db.getPath());
+                backupDb.setErrorMessage(db.getErrorMessage());
+            }
+        });
+
+    }
+
+    protected LogicalBackupAdapterResponse startLogicalBackup(LogicalBackup logicalBackup) {
+        List<Map<String, String>> dbNames = logicalBackup.getBackupDatabases().stream()
+                .map(backupDatabase -> Map.of("databaseName", backupDatabase.getName()))
                 .toList();
         String adapterId = logicalBackup.getAdapterId();
 
@@ -192,7 +216,7 @@ public class DbBackupV2Service {
         try {
             return Failsafe.with(retryPolicy).get(() -> {
                 DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-                String result = adapter.backupV2(dbNames);
+                LogicalBackupAdapterResponse result = adapter.backupV2(dbNames);
 
                 if (result == null) {
                     throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable()); //TODO correct path
@@ -207,16 +231,16 @@ public class DbBackupV2Service {
     @Scheduled(every = "${backup.aggregation.interval}", concurrentExecution = SKIP)
     @SchedulerLock(name = "findAndStartAggregateBackup")
     protected void findAndStartAggregateBackup() {
+        //TODO propagate correct business id
         LockAssert.assertLocked();
         List<Backup> backupsToAggregate = backupRepository.findBackupsToAggregate();
         backupsToAggregate.forEach(this::trackAndAggregate);
     }
 
     protected void trackAndAggregate(Backup backup) {
-        if (backup.getAttemptCount() > 20 && Status.IN_PROGRESS == backup.getStatus().getStatus()) {
-            BackupStatus backupStatus = backup.getStatus();
-            backupStatus.setStatus(Status.FAILED);
-            backupStatus.setErrorMessage("The number of attempts exceeded 20");
+        if (backup.getAttemptCount() > 20 && Status.IN_PROGRESS == backup.getStatus()) {
+            backup.setStatus(Status.FAILED);
+            backup.setErrorMessage("The number of attempts exceeded 20");
         } else {
             List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups();
             fetchAndUpdateStatuses(notFinishedLogicalBackups);
@@ -228,12 +252,12 @@ public class DbBackupV2Service {
     }
 
     private void fetchAndUpdateStatuses(List<LogicalBackup> logicalBackupList) {
-        Map<LogicalBackup, Future<LogicalBackupStatus>> statuses = new HashMap<>();
+        Map<LogicalBackup, Future<LogicalBackupAdapterResponse>> statuses = new HashMap<>();
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
         logicalBackupList
                 .forEach(logicalBackup -> {
-                    Future<LogicalBackupStatus> future = executor.submit(() -> {
+                    Future<LogicalBackupAdapterResponse> future = executor.submit(() -> {
                         ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                         return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
                                     DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
@@ -246,11 +270,11 @@ public class DbBackupV2Service {
 
         statuses.forEach((logicalBackup, future) -> {
             try {
-                LogicalBackupStatus logicalBackupStatus = future.get();
-                logicalBackup.setStatus(logicalBackupStatus);
+                LogicalBackupAdapterResponse logicalBackupAdapterResponse = future.get();
+                refreshLogicalBackupState(logicalBackup, logicalBackupAdapterResponse);
             } catch (InterruptedException | ExecutionException e) {
-                logicalBackup.getStatus().setStatus(Status.FAILED);
-                logicalBackup.getStatus().setErrorMessage(e.getCause().getMessage());
+                logicalBackup.setStatus(Status.FAILED);
+                logicalBackup.setErrorMessage(e.getCause().getMessage());
             }
         });
     }
@@ -259,7 +283,7 @@ public class DbBackupV2Service {
         log.info("Start aggregating for backupName: {}", backup.getName());
 
         List<LogicalBackup> logicalBackuplist = backup.getLogicalBackups();
-        List<LogicalBackupStatus> logicalBackupStatusList = logicalBackuplist.stream()
+        List<Status> logicalBackupStatusList = logicalBackuplist.stream()
                 .map(LogicalBackup::getStatus)
                 .toList();
 
@@ -268,39 +292,32 @@ public class DbBackupV2Service {
         int totalDbCount = logicalBackuplist.stream().mapToInt(lb -> lb.getBackupDatabases().size()).sum();
 
         String aggregatedErrorMsg = logicalBackuplist.stream()
-                .filter(lb -> lb.getStatus().getErrorMessage() != null && !lb.getStatus().getErrorMessage().isBlank())
+                .filter(lb -> lb.getErrorMessage() != null && !lb.getErrorMessage().isBlank())
                 .map(lb -> {
-                    String warn = String.format("LogicalBackup %s failed: %s", lb.getLogicalBackupName(), lb.getStatus().getErrorMessage());
+                    String warn = String.format("LogicalBackup %s failed: %s", lb.getLogicalBackupName(), lb.getErrorMessage());
                     log.warn(warn);
                     return warn;
                 })
                 .collect(Collectors.joining("; "));
 
-        Set<Status> statusSet = new HashSet<>();
-        long totalBytes = 0;
-        int countCompletedDb = 0;
+        long totalBytes = logicalBackuplist.stream()
+                .flatMap(lb -> lb.getBackupDatabases().stream())
+                .mapToLong(BackupDatabase::getSize)
+                .sum();
 
-        for (LogicalBackupStatus logicalBackupStatus : logicalBackupStatusList) {
-            Status currStatus = logicalBackupStatus.getStatus();
-            statusSet.add(currStatus);
+        int countCompletedDb = (int) logicalBackuplist.stream()
+                .flatMap(lb -> lb.getBackupDatabases().stream())
+                .filter(db -> Status.COMPLETED.equals(db.getStatus()))
+                .count();
 
-            totalBytes += logicalBackupStatus.getDatabases().stream()
-                    .filter(database -> database.getSize() != null)
-                    .mapToLong(LogicalBackupStatus.Database::getSize)
-                    .sum();
 
-            countCompletedDb += (int) logicalBackupStatus.getDatabases().stream()
-                    .filter(db -> Status.COMPLETED.equals(db.getStatus()))
-                    .count();
-        }
+        Set<Status> statusSet = new HashSet<>(logicalBackupStatusList);
 
-        backup.setStatus(BackupStatus.builder()
-                .status(aggregateStatus(statusSet))
-                .size(totalBytes)
-                .total(totalDbCount)
-                .completed(countCompletedDb)
-                .errorMessage(aggregatedErrorMsg)
-                .build());
+        backup.setStatus(aggregateStatus(statusSet));
+        backup.setSize(totalBytes);
+        backup.setTotal(totalDbCount);
+        backup.setCompleted(countCompletedDb);
+        backup.setErrorMessage(aggregatedErrorMsg);
     }
 
     protected Status aggregateStatus(Set<Status> statusSet) {
@@ -327,10 +344,10 @@ public class DbBackupV2Service {
 
     //TODO write test
     public BackupStatusResponse getCurrentStatus(String backupName) {
-        BackupStatus backupStatus = backupRepository.findByIdOptional(backupName)
-                .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()))
-                .getStatus();
-        return mapper.toBackupStatusResponse(backupStatus);
+        Backup backup = backupRepository.findByIdOptional(backupName)
+                .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()));
+
+        return mapper.toBackupStatusResponse(backup);
     }
 
     protected List<Database> getAllDbByFilter(FilterCriteria filterCriteria) {

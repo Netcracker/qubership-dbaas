@@ -1,9 +1,12 @@
 package com.netcracker.cloud.dbaas.service;
 
+
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
@@ -88,8 +91,23 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     }
 
     @Override
+    public String restoreV2(String backupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
+        return "";
+    }
+
+    @Override
+    public LogicalRestoreStatus trackRestoreV2(String logicalRestoreName) {
+        return null; //TODO implement
+    }
+
+    @Override
     public TrackedAction trackBackup(String action, String trackId) {
         return restClient.trackBackup(type(), action, trackId);
+    }
+
+    @Override
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName) {
+        return null;
     }
 
     @Override

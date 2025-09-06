@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.ExternalDatabaseStrategy;
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -139,17 +140,21 @@ class DatabaseBackupV2ControllerTest {
         SortedMap<String, Object> sortedMap = new TreeMap<>();
         sortedMap.put("key", "value");
 
-
         BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
-                "db1",
+                "backup-database",
                 List.of(sortedMap),
-                Map.of("settings-key", Map.of("field1", "value1", "field2", 123)),
+                Map.of("settings-key", "settings-value"),
                 List.of(BackupDatabaseResponse.User.builder()
-                        .role("role")
                         .name("name")
+                        .role("role")
                         .build()),
                 Map.of("key", "value"),
-                true
+                Status.COMPLETED,
+                1,
+                1,
+                "path",
+                null,
+                LocalDateTime.now()
         );
 
         LogicalBackupStatusResponse logicalBackupStatusResponse = new LogicalBackupStatusResponse(
@@ -168,9 +173,12 @@ class DatabaseBackupV2ControllerTest {
 
         LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
                 "logicalBackupName",
-                "adapterId",
+                "adapterID",
                 "type",
-                logicalBackupStatusResponse,
+                Status.COMPLETED,
+                null,
+                null,
+                null,
                 List.of(backupDatabaseResponse)
         );
 
@@ -199,7 +207,11 @@ class DatabaseBackupV2ControllerTest {
         backupResponse.setBackupName(backupName);
         backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
         backupResponse.setStorageName(storageName);
-        backupResponse.setStatus(backupStatusResponse);
+        backupResponse.setStatus(Status.COMPLETED);
+        backupResponse.setTotal(1);
+        backupResponse.setCompleted(1);
+        backupResponse.setSize(1L);
+        backupResponse.setErrorMessage(null);
         backupResponse.setBlobPath("blobPath");
         backupResponse.setIgnoreNotBackupableDatabases(false);
         backupResponse.setFilterCriteria(filterCriteria);

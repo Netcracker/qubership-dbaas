@@ -4,6 +4,7 @@ import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
@@ -62,6 +63,12 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @Path("/api/v2/dbaas/adapter/{type}/backups/track/{action}/{track}")
     @Produces(MediaType.APPLICATION_JSON)
     TrackedAction trackBackup(@PathParam("type") String type, @PathParam("action") String action, @PathParam("track") String track);
+
+
+    @GET
+    @Path("/api/v2/dbaas/adapter/{type}/backups/backup/{logicalBackupName}/status")
+    @Produces(MediaType.APPLICATION_JSON)
+    LogicalBackupAdapterResponse trackBackupV2(@PathParam("type") String type, @PathParam("logicalBackupName") String logicalBackupName);
 
     @DELETE
     @Path("/api/v2/dbaas/adapter/{type}/backups/{backupId}")
