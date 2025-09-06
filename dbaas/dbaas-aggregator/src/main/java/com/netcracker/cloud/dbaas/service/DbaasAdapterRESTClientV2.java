@@ -2,14 +2,13 @@ package com.netcracker.cloud.dbaas.service;
 
 
 import com.netcracker.cloud.dbaas.dto.*;
-import com.netcracker.cloud.dbaas.dto.backup.Status;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalBackupStatus;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
@@ -130,7 +129,7 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
-    public LogicalBackupStatus trackBackupV2(String logicalBackupName) {
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName) {
         return restClient.trackBackupV2(type(), logicalBackupName);
     }
 
