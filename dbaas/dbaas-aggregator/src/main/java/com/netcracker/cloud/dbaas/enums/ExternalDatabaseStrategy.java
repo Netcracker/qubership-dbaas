@@ -1,4 +1,4 @@
-package com.netcracker.cloud.dbaas.entity.pg.backupV2;
+package com.netcracker.cloud.dbaas.enums;
 
 import lombok.Getter;
 
