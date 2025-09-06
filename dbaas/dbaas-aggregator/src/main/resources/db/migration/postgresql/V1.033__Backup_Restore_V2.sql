@@ -5,7 +5,11 @@ create table v2_backup
     blob_path varchar not null,
     external_database_strategy varchar not null,
     filters jsonb,
-    status jsonb,
+    status varchar,
+    total int,
+    completed int,
+    size bigint,
+    error_message varchar,
     attempt_count int default 0
 );
 
@@ -16,7 +20,10 @@ create table v2_logical_backup
     backup_name varchar references v2_backup(name),
     adapter_id varchar,
     type varchar not null,
-    status jsonb
+    status varchar,
+    error_message varchar,
+    creation_time timestamp default now(),
+    completion_time timestamp
 );
 
 create table v2_backup_database
@@ -27,7 +34,14 @@ create table v2_backup_database
     classifiers jsonb not null,
     settings jsonb,
     users jsonb not null,
-    resources jsonb
+    resources jsonb,
+    status varchar,
+    size bigint,
+    duration bigint,
+    path varchar,
+    error_message varchar,
+    creation_time timestamp default now(),
+    completion_time timestamp
 );
 
 create table v2_backup_external_database

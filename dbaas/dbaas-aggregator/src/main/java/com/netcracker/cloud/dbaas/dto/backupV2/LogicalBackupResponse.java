@@ -1,9 +1,11 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.Status;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -17,8 +19,15 @@ public class LogicalBackupResponse {
     private String adapterId;
     @Schema(description = "Type of the adapter", required = true)
     private String type;
-    @Schema(description = "Status of the logical backup", required = true)
-    private LogicalBackupStatusResponse status;
+
+    private Status status;
+
+    private String errorMessage;
+
+    private LocalDateTime creationTime;
+
+    private LocalDateTime completionTime;
+
     @Schema(
             description = "List of logical backup databases",
             required = true

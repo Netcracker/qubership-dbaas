@@ -1,5 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
+import com.netcracker.cloud.dbaas.enums.Status;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -37,10 +39,6 @@ public class Backup {
     @Column(columnDefinition = "jsonb")
     private String filters;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private BackupStatus status;
-
     @ToString.Exclude
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalBackup> logicalBackups;
@@ -48,6 +46,17 @@ public class Backup {
     @ToString.Exclude
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupExternalDatabase> externalDatabases;
+
+    private Status status = Status.NOT_STARTED;
+
+    private Integer total;
+
+    private Integer completed;
+
+    private Long size;
+
+    @Column(name = "error_message")
+    private String errorMessage;
 
     @Column(name = "attempt_count")
     private int attemptCount;

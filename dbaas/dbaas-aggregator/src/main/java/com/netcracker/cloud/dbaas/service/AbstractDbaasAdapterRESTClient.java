@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.dto.RestoreRequest;
 import com.netcracker.cloud.dbaas.dto.UpdateSettingsAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.backup.*;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;

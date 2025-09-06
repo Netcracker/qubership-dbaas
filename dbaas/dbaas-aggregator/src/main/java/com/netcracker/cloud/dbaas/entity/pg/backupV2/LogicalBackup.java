@@ -1,13 +1,11 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.converter.LogicalBackupStatusConverter;
+import com.netcracker.cloud.dbaas.enums.Status;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -37,15 +35,20 @@ public class LogicalBackup {
 
     private String type;
 
-    @NotNull
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    @Convert(converter = LogicalBackupStatusConverter.class)
-    private LogicalBackupStatus status;
-
     @ToString.Exclude
     @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupDatabase> backupDatabases;
+
+    private Status status = Status.NOT_STARTED;
+
+    @Column(name = "error_message")
+    private String errorMessage;
+
+    @Column(name = "creation_time")
+    private LocalDateTime creationTime;
+
+    @Column(name = "completion_time")
+    private LocalDateTime completionTime;
 
     @Override
     public boolean equals(Object o) {

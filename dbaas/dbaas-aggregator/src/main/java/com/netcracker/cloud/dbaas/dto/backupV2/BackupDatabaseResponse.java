@@ -1,11 +1,13 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.Status;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -25,8 +27,18 @@ public class BackupDatabaseResponse {
     private List<User> users;
     @Schema(description = "List of database resources")
     private Map<String, Object> resources;
-    @Schema(description = "Whether the database is externally managed", example = "false")
-    private boolean externallyManaged;
+
+    private Status status;
+
+    private long size;
+
+    private long duration;
+
+    private String path;
+
+    private String errorMessage;
+
+    private LocalDateTime creationTime;
 
     @Data
     @Builder

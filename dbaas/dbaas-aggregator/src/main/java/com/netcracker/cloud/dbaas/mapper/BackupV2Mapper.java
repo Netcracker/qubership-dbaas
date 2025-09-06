@@ -6,7 +6,6 @@ import com.netcracker.cloud.dbaas.dto.backupV2.BackupStatusResponse;
 import com.netcracker.cloud.dbaas.dto.backupV2.LogicalBackupResponse;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.Backup;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.BackupExternalDatabase;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.BackupStatus;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalBackup;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
@@ -19,7 +18,7 @@ import java.util.List;
 @Mapper
 public interface BackupV2Mapper {
 
-    BackupStatusResponse toBackupStatusResponse(BackupStatus backupStatus);
+    BackupStatusResponse toBackupStatusResponse(Backup backup);
 
     @Mapping(source = "name", target = "backupName")
     BackupResponse toBackupResponse(Backup backup);

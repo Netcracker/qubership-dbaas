@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.ExternalDatabaseStrategy;
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
+import com.netcracker.cloud.dbaas.enums.Status;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -43,8 +44,19 @@ public class BackupResponse {
     )
     private FilterCriteria filterCriteria;
 
-    @Schema(description = "Status of the backup operation")
-    private BackupStatusResponse status;
+    @Schema(
+            description = "Current state of the backup operation",
+            required = true,
+            implementation = Status.class)
+    private Status status;
+    @Schema(description = "Total number of databases being backed up", example = "5")
+    private Integer total;
+    @Schema(description = "Number of databases successfully backed up", example = "3")
+    private Integer completed;
+    @Schema(description = "Total size of the backup in bytes", example = "1073741824")
+    private Long size;
+    @Schema(description = "Error details if the backup failed", example = "Failed to connect to database")
+    private String errorMessage;
 
     @Schema(
             description = "List of logical backups"
