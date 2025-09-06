@@ -6,12 +6,14 @@ import com.netcracker.cloud.dbaas.dto.DescribedDatabase;
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestoreStatus;
 import com.netcracker.cloud.dbaas.exceptions.InteruptedPollingException;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import jakarta.ws.rs.core.Response;
@@ -30,11 +32,19 @@ public interface DbaasAdapter {
 
     DatabasesBackup backup(List<String> databases, Boolean allowEviction) throws InteruptedPollingException;
 
+    LogicalBackupAdapterResponse backupV2(List<Map<String, String>> dbNames);
+
+    String restoreV2(String backupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases);
+
+    LogicalRestoreStatus trackRestoreV2(String logicalRestoreName);
+
     DeleteResult delete(DatabasesBackup backup);
 
     boolean validate(DatabasesBackup backup);
 
     TrackedAction trackBackup(String action, String trackId);
+
+    LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName);
 
     String type();
 
