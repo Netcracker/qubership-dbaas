@@ -48,6 +48,8 @@ public class DbBackupV2Service {
 
     private final static RetryPolicy<Object> OPERATION_STATUS_RETRY_POLICY = new RetryPolicy<>()
             .withMaxRetries(2).withDelay(Duration.ofSeconds(1));
+    private static final Duration RETRY_DELAY = Duration.ofSeconds(3);
+    private static final int MAX_RETRIES = 2;
     protected static int TRACK_DELAY_MS = 3000;
 
     private final BackupRepository backupRepository;
@@ -203,8 +205,8 @@ public class DbBackupV2Service {
 
         RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
                 .handle(WebApplicationException.class)
-                .withMaxRetries(2)
-                .withDelay(Duration.ofSeconds(3))
+                .withMaxRetries(MAX_RETRIES)
+                .withDelay(RETRY_DELAY)
                 .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
                 .onRetry(e -> log.info("Retrying backupV2..."))
                 .onFailure(e -> log.error("Request limit exceeded for {}", logicalBackup));
@@ -502,8 +504,8 @@ public class DbBackupV2Service {
         Restore restore = logicalRestore.getRestore();
         RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
                 .handle(WebApplicationException.class)
-                .withMaxRetries(2)
-                .withDelay(Duration.ofSeconds(3))
+                .withMaxRetries(MAX_RETRIES)
+                .withDelay(RETRY_DELAY)
                 .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
                 .onRetry(e -> log.info("Retrying restoreV2..."))
                 .onFailure(e -> log.error("Request limit exceeded for {}", logicalRestore));
