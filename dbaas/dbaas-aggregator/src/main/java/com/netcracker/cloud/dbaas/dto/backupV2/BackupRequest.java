@@ -36,6 +36,6 @@ public class BackupRequest {
     private ExternalDatabaseStrategy externalDatabaseStrategy;
 
     @NotNull
-    @Schema(description = "Whether external databases were skipped during the backup", example = "false")
+    @Schema(description = "Whether non-backupable databases should be ignored during backup", example = "false")
     private Boolean ignoreNotBackupableDatabases;
 }

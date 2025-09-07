@@ -2515,7 +2515,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database1"
+                  "$ref": "#/components/schemas/Database"
                 }
               }
             }
@@ -2593,7 +2593,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database1"
+                  "$ref": "#/components/schemas/Database"
                 }
               }
             }
@@ -3516,7 +3516,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database1"
+                  "$ref": "#/components/schemas/Database"
                 }
               }
             }
@@ -3526,7 +3526,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database1"
+                  "$ref": "#/components/schemas/Database"
                 }
               }
             }
@@ -3608,7 +3608,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Database1"
+                    "$ref": "#/components/schemas/Database"
                   }
                 }
               }
@@ -3717,7 +3717,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database1"
+                  "$ref": "#/components/schemas/Database"
                 }
               }
             }
@@ -3727,7 +3727,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Database1"
+                  "$ref": "#/components/schemas/Database"
                 }
               }
             }
@@ -4571,10 +4571,44 @@
             "type": "object",
             "additionalProperties": {}
           },
-          "externallyManaged": {
-            "description": "Whether the database is externally managed",
-            "type": "boolean",
-            "example": false
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "duration": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/LocalDateTime"
+          }
+        }
+      },
+      "BackupExternalDatabaseResponse": {
+        "description": "External database details",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
           }
         }
       },
@@ -4649,7 +4683,7 @@
             "example": "fail"
           },
           "ignoreNotBackupableDatabases": {
-            "description": "Whether external databases were skipped during the backup",
+            "description": "Whether non-backupable databases should be ignored during backup",
             "type": "boolean",
             "example": false
           }
@@ -4662,7 +4696,8 @@
           "storageName",
           "blobPath",
           "externalDatabaseStrategy",
-          "ignoreNotBackupableDatabases"
+          "ignoreNotBackupableDatabases",
+          "status"
         ],
         "type": "object",
         "properties": {
@@ -4709,19 +4744,50 @@
             ]
           },
           "status": {
-            "description": "Status of the backup operation",
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BackupStatusResponse"
-              }
-            ]
+            "description": "Current state of the backup operation",
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "type": "object"
+          },
+          "total": {
+            "format": "int32",
+            "description": "Total number of databases being backed up",
+            "type": "integer",
+            "example": 5
+          },
+          "completed": {
+            "format": "int32",
+            "description": "Number of databases successfully backed up",
+            "type": "integer",
+            "example": 3
+          },
+          "size": {
+            "format": "int64",
+            "description": "Total size of the backup in bytes",
+            "type": "integer",
+            "example": 1073741824
+          },
+          "errorMessage": {
+            "description": "Error details if the backup failed",
+            "type": "string",
+            "example": "Failed to connect to database"
           },
           "logicalBackups": {
             "description": "List of logical backups",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LogicalBackupResponse"
+            }
+          },
+          "externalDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupExternalDatabaseResponse"
             }
           }
         }
@@ -4912,30 +4978,6 @@
         }
       },
       "Database": {
-        "type": "object",
-        "properties": {
-          "databaseName": {
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/Status"
-          },
-          "size": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "duration": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "errorMessage": {
-            "type": "string"
-          }
-        }
-      },
-      "Database1": {
         "required": [
           "oldClassifier",
           "classifier",
@@ -5845,7 +5887,7 @@
           "logicalDatabases": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Database1"
+              "$ref": "#/components/schemas/Database"
             }
           },
           "physicalDatabases": {
@@ -6229,7 +6271,6 @@
           "logicalBackupName",
           "adapterId",
           "type",
-          "status",
           "backupDatabases"
         ],
         "type": "object",
@@ -6248,27 +6289,6 @@
             "type": "string"
           },
           "status": {
-            "description": "Status of the logical backup",
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/LogicalBackupStatusResponse"
-              }
-            ]
-          },
-          "backupDatabases": {
-            "description": "List of logical backup databases",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BackupDatabaseResponse"
-            }
-          }
-        }
-      },
-      "LogicalBackupStatusResponse": {
-        "type": "object",
-        "properties": {
-          "status": {
             "$ref": "#/components/schemas/Status"
           },
           "errorMessage": {
@@ -6280,10 +6300,11 @@
           "completionTime": {
             "$ref": "#/components/schemas/LocalDateTime"
           },
-          "databases": {
+          "backupDatabases": {
+            "description": "List of logical backup databases",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Database"
+              "$ref": "#/components/schemas/BackupDatabaseResponse"
             }
           }
         }
@@ -6509,7 +6530,7 @@
             "description": "List of backup databases.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Database1"
+              "$ref": "#/components/schemas/Database"
             }
           },
           "databaseRegistries": {
@@ -6570,7 +6591,7 @@
           "databases": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Database1"
+              "$ref": "#/components/schemas/Database"
             }
           },
           "databaseRegistries": {
