@@ -22,7 +22,7 @@ public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
         return getEntityManager()
                 .createNativeQuery(
                         "select * from v2_backup " +
-                                "where status ->> 'status' in ('NOT_STARTED','IN_PROGRESS') ",
+                                "where status = 'IN_PROGRESS'",
                         Backup.class
                 )
                 .getResultList();
