@@ -8,8 +8,14 @@ on:
 
 jobs:
   mvn:
-    uses: netcracker/qubership-core-infra/.github/workflows/maven-build-with-sonar.yaml@v1.0.8
+    uses: netcracker/qubership-core-infra/.github/workflows/maven-build-with-sonar.yaml@v1.0.9
     with:
       event-name: ${{ github.event_name }}
       actor: ${{ github.actor }}
-      pom-file-path: pom.xml
+      upload-artifact: true
+
+  docker-build:
+    needs: [mvn]
+    uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@v1.0.9
+    with:
+      dry-run: false
