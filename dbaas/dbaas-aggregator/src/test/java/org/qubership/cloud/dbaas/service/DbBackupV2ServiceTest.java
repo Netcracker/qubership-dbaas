@@ -180,11 +180,11 @@ class DbBackupV2ServiceTest {
         when(adapterOne.type()).thenReturn("postgresql");
         when(adapterTwo.type()).thenReturn("mongodb");
 
-        when(adapterOne.backupV2(any()))
+        when(adapterOne.backupV2(any(), any(), any()))
                 .thenReturn(adapterResponseFirst);
         when(adapterOne.isBackupRestoreSupported())
                 .thenReturn(true);
-        when(adapterTwo.backupV2(any()))
+        when(adapterTwo.backupV2(any(), any(), any()))
                 .thenReturn(adapterResponseSecond);
         when(adapterTwo.isBackupRestoreSupported())
                 .thenReturn(true);
@@ -211,8 +211,8 @@ class DbBackupV2ServiceTest {
         assertNotNull(db0);
         assertEquals(Status.FAILED, db0.getStatus());
 
-        Mockito.verify(adapterOne, times(1)).backupV2(any());
-        Mockito.verify(adapterTwo, times(1)).backupV2(any());
+        Mockito.verify(adapterOne, times(1)).backupV2(any(), any(), any());
+        Mockito.verify(adapterTwo, times(1)).backupV2(any(), any(), any());
 
     }
 
@@ -524,7 +524,7 @@ class DbBackupV2ServiceTest {
         List<LogicalBackup> logicalBackups = generateLogicalBackups(logicalBackupCount);
 
         Backup backup = createBackup("name", logicalBackups);
-
+        logicalBackups.forEach(lb -> lb.setBackup(backup));
         DbaasAdapter adapter = mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(any()))
                 .thenReturn(adapter);
@@ -551,11 +551,15 @@ class DbBackupV2ServiceTest {
         );
 
         for (int i = 0; i < logicalBackupCount; i++) {
+            Backup currBackup = logicalBackups.get(i).getBackup();
+            String storageName = currBackup.getStorageName();
+            String blobPath = currBackup.getBlobPath();
+
             List<Map<String, String>> dbNames = logicalBackups.get(i).getBackupDatabases().stream()
                     .map(db -> Map.of("databaseName", db.getName()))
                     .toList();
             adapterResponses.get(i).setLogicalBackupName("backup" + logicalBackups.get(i).getAdapterId());
-            when(adapter.backupV2(dbNames))
+            when(adapter.backupV2(storageName, blobPath, dbNames))
                     .thenReturn(adapterResponses.get(i));
         }
 
@@ -571,11 +575,15 @@ class DbBackupV2ServiceTest {
 
         for (int i = 0; i < logicalBackupFromRepository.size(); i++) {
             assertEquals("backup" + logicalBackup.getAdapterId(), logicalBackup.getLogicalBackupName());
+            Backup currBackup = logicalBackups.get(i).getBackup();
+            String storageName = currBackup.getStorageName();
+            String blobPath = currBackup.getBlobPath();
+
             List<Map<String, String>> dbNames = logicalBackups.get(i).getBackupDatabases().stream()
                     .map(db -> Map.of("databaseName", db.getName()))
                     .toList();
             Mockito.verify(adapter, times(1))
-                    .backupV2(dbNames);
+                    .backupV2(storageName, blobPath, dbNames);
         }
     }
 
