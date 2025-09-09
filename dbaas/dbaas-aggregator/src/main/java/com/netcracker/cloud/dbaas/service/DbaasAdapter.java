@@ -32,7 +32,7 @@ public interface DbaasAdapter {
 
     DatabasesBackup backup(List<String> databases, Boolean allowEviction) throws InteruptedPollingException;
 
-    LogicalBackupAdapterResponse backupV2(List<Map<String, String>> dbNames);
+    LogicalBackupAdapterResponse backupV2(String storageName, String blobPath, List<Map<String, String>> dbNames);
 
     String restoreV2(String backupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases);
 

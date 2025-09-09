@@ -198,6 +198,10 @@ public class DbBackupV2Service {
     }
 
     protected LogicalBackupAdapterResponse startLogicalBackup(LogicalBackup logicalBackup) {
+        Backup backup = logicalBackup.getBackup();
+        String storageName = backup.getStorageName();
+        String blobPath = backup.getBlobPath();
+
         List<Map<String, String>> dbNames = logicalBackup.getBackupDatabases().stream()
                 .map(backupDatabase -> Map.of("databaseName", backupDatabase.getName()))
                 .toList();
@@ -214,7 +218,7 @@ public class DbBackupV2Service {
         try {
             return Failsafe.with(retryPolicy).get(() -> {
                 DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-                LogicalBackupAdapterResponse result = adapter.backupV2(dbNames);
+                LogicalBackupAdapterResponse result = adapter.backupV2(storageName, blobPath, dbNames);
 
                 if (result == null) {
                     throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable()); //TODO correct path

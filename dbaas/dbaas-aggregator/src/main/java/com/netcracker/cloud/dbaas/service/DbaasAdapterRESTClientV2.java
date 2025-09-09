@@ -114,6 +114,11 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
+    public LogicalBackupAdapterResponse backupV2(String storageName, String blobPath, List<Map<String, String>> dbNames) {
+        return restClient.backupV2(type(), storageName, blobPath, dbNames);
+    }
+
+    @Override
     public String restoreV2(String logicalBackupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
         return "";//TODO implement
     }
