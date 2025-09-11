@@ -117,7 +117,8 @@ class AggregatedBackupAdministrationControllerV3Test {
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceRestoration namespaceRestoration = new NamespaceRestoration();
         namespaceRestoration.setId(UUID.randomUUID());
-        when(dbBackupsService.restore(any(), any(), any(), eq(false), any())).thenAnswer(new AnswersWithDelay(100, new Returns(namespaceRestoration)));
+        when(dbBackupsService.restore(any(), any(), any(), eq(false), any()))
+                .thenAnswer(new AnswersWithDelay(100, new Returns(namespaceRestoration)));
         aggregatedBackupAdministrationControllerV3.awaitOperationSeconds = 0;
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
@@ -229,7 +230,8 @@ class AggregatedBackupAdministrationControllerV3Test {
         when(asyncOperations.getBackupPool()).thenReturn(new ThreadPoolExecutor(1, 1,
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
-        when(dbBackupsService.collectBackup(eq(TEST_NAMESPACE), any(), eq(ALLOW_EVICTION))).thenReturn(namespaceBackup);
+        when(dbBackupsService.collectBackup(eq(TEST_NAMESPACE), any(), eq(ALLOW_EVICTION)))
+                .thenAnswer(new AnswersWithDelay(100, new Returns(namespaceBackup)));
         aggregatedBackupAdministrationControllerV3.awaitOperationSeconds = 0;
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
