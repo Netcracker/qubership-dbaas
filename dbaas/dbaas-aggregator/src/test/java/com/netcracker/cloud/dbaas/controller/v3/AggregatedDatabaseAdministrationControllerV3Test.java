@@ -26,24 +26,20 @@ import jakarta.ws.rs.core.MediaType;
 import lombok.extern.slf4j.Slf4j;
 
 import org.hibernate.exception.ConstraintViolationException;
+import org.jose4j.lang.JoseException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
+import com.netcracker.cloud.dbaas.TestJwtUtils;
+import com.netcracker.cloud.dbaas.security.validators.NamespaceValidator;
 
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.netcracker.cloud.dbaas.Constants.ACTIVE_STATE;
-import static com.netcracker.cloud.dbaas.Constants.IDLE_STATE;
-import static com.netcracker.cloud.dbaas.Constants.NAMESPACE;
-import static com.netcracker.cloud.dbaas.Constants.ROLE;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.ASYNC_PARAMETER;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.LIST_DATABASES_PATH;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static java.util.Collections.singletonList;
@@ -52,6 +48,9 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static com.netcracker.cloud.dbaas.Constants.*;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
+import static com.netcracker.cloud.framework.contexts.tenant.TenantContextObject.TENANT_HEADER;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
@@ -90,6 +89,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
 
     @Inject
     ProcessConnectionPropertiesService processConnectionPropertiesService;
+    @Inject
+    TestJwtUtils jwtUtils;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -291,6 +292,32 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     }
 
     @Test
+    void testCreateDatabaseWithK8sToken() throws JsonProcessingException, JoseException {
+        when(dBaaService.getConnectionPropertiesService()).thenReturn(processConnectionPropertiesService);
+        final DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample();
+        when(declarativeConfigRepository.findFirstByClassifierAndType(any(), any())).thenReturn(Optional.empty());
+        Mockito.when(databaseRolesService.getSupportedRoleFromRequest(any(DatabaseCreateRequestV3.class), any(), any())).thenReturn(Role.ADMIN.toString());
+        when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("constraint violation", new PSQLException("constraint violation", PSQLState.UNIQUE_VIOLATION), "database_registry_classifier_and_type_index"));
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(anyMap(), anyString())).thenReturn(Optional.of(Mockito.mock(DatabaseRegistry.class)));
+
+        final DatabaseRegistry database = getDatabaseSample();
+        when(dBaaService.findDatabaseByClassifierAndType(any(), any(), anyBoolean())).thenReturn(database.getDatabaseRegistry().get(0));
+        when(dBaaService.detach(database)).thenReturn(database);
+        when(dBaaService.isModifiedFields(any(), any())).thenReturn(false);
+        DatabaseResponseV3 response = new DatabaseResponseV3SingleCP(database.getDatabaseRegistry().get(0), PHYSICAL_DATABASE_ID, Role.ADMIN.toString());
+        when(dBaaService.processConnectionPropertiesV3(any(DatabaseRegistry.class), any())).thenReturn(response);
+
+        given().auth().preemptive().oauth2(jwtUtils.newDefaultClaimsJwt(TEST_NAMESPACE))
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(databaseCreateRequest))
+                .when().put()
+                .then()
+                .statusCode(OK.getStatusCode())
+                .body("name", is(database.getName()));
+    }
+
+    @Test
     void testCreateDatabaseAsync() throws JsonProcessingException {
         when(dBaaService.getConnectionPropertiesService()).thenReturn(processConnectionPropertiesService);
         final DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample();
@@ -485,6 +512,53 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .when().put()
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode());
+    }
+
+    @Test
+    void testClassifierWithTenantIdToCreateDatabase() throws JsonProcessingException {
+        when(dBaaService.getConnectionPropertiesService()).thenReturn(processConnectionPropertiesService);
+        final DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample();
+        when(declarativeConfigRepository.findFirstByClassifierAndType(any(), any())).thenReturn(Optional.empty());
+        Mockito.when(databaseRolesService.getSupportedRoleFromRequest(any(DatabaseCreateRequestV3.class), any(), any())).thenReturn(Role.ADMIN.toString());
+        when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("constraint violation", new PSQLException("constraint violation", PSQLState.UNIQUE_VIOLATION), "database_registry_classifier_and_type_index"));
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(anyMap(), anyString())).thenReturn(Optional.of(Mockito.mock(DatabaseRegistry.class)));
+
+        final DatabaseRegistry database = getDatabaseSample();
+        when(dBaaService.findDatabaseByClassifierAndType(any(), any(), anyBoolean())).thenReturn(database.getDatabaseRegistry().get(0));
+
+        String tenantId = UUID.randomUUID().toString();
+        databaseCreateRequest.getClassifier().put("scope", "tenant");
+        databaseCreateRequest.getClassifier().put(TENANT_ID, tenantId);
+
+        when(dBaaService.detach(database)).thenReturn(database);
+        when(dBaaService.isModifiedFields(any(), any())).thenReturn(false);
+        DatabaseResponseV3 response = new DatabaseResponseV3SingleCP(database.getDatabaseRegistry().get(0), PHYSICAL_DATABASE_ID, Role.ADMIN.toString());
+        when(dBaaService.processConnectionPropertiesV3(any(DatabaseRegistry.class), any())).thenReturn(response);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, tenantId)
+                .body(objectMapper.writeValueAsString(databaseCreateRequest))
+                .when().put()
+                .then()
+                .statusCode(OK.getStatusCode());
+    }
+
+    @Test
+    void testClassifierWithInvalidTenantIdToCreateDatabase() throws JsonProcessingException {
+        Map<String, Object> classifier = getSampleClassifier();
+        classifier.put("scope", "tenant");
+        classifier.put(TENANT_ID, UUID.randomUUID().toString());
+        DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample(classifier);
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, UUID.randomUUID().toString())
+                .body(objectMapper.writeValueAsString(databaseCreateRequest))
+                .when().put()
+                .then()
+                .statusCode(FORBIDDEN.getStatusCode());
     }
 
     @Test

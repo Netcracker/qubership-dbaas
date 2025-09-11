@@ -11,7 +11,7 @@ public class ClassifierWithRolesRequest implements UserRolesServices {
     @Schema(description = "Database composite identify key. See details in https://perch.qubership.org/display/CLOUDCORE/DbaaS+Database+Classifier", required = true)
     private Map<String, Object> classifier;
 
-    @Schema(description = "Origin service which send request", required = true)
+    @Schema(description = "Origin service which send request")
     private String originService;
 
     @Schema(description = "Indicates connection properties with which user role should be returned to a client")
