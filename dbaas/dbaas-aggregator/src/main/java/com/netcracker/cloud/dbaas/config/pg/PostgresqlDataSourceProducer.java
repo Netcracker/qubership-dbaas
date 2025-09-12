@@ -1,12 +1,10 @@
 package com.netcracker.cloud.dbaas.config.pg;
 
-import org.flywaydb.core.api.exception.FlywayValidateException;
 import com.netcracker.cloud.dbaas.JdbcUtils;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.narayana.NarayanaTransactionIntegration;
 import io.quarkus.agroal.runtime.*;
 import io.quarkus.datasource.common.runtime.DatabaseKind;
-import io.quarkus.datasource.runtime.DataSourceSupport;
 import io.quarkus.datasource.runtime.DataSourcesBuildTimeConfig;
 import io.quarkus.datasource.runtime.DataSourcesRuntimeConfig;
 import io.quarkus.narayana.jta.runtime.TransactionManagerConfiguration;
@@ -19,6 +17,7 @@ import jakarta.transaction.TransactionSynchronizationRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.jboss.tm.XAResourceRecoveryRegistry;
 
 import java.sql.SQLException;
@@ -61,12 +60,11 @@ public class PostgresqlDataSourceProducer extends DataSources {
                                         TransactionManager transactionManager,
                                         XAResourceRecoveryRegistry xaResourceRecoveryRegistry,
                                         TransactionSynchronizationRegistry transactionSynchronizationRegistry,
-                                        DataSourceSupport dataSourceSupport,
                                         AgroalDataSourceSupport agroalDataSourceSupport,
                                         Instance<io.agroal.api.AgroalPoolInterceptor> agroalPoolInterceptors,
                                         Instance<AgroalOpenTelemetryWrapper> agroalOpenTelemetryWrapper) {
 
-        super(dataSourcesBuildTimeConfig, dataSourcesRuntimeConfig, dataSourcesJdbcBuildTimeConfig, dataSourcesJdbcRuntimeConfig, transactionRuntimeConfig, transactionManager, xaResourceRecoveryRegistry, transactionSynchronizationRegistry, dataSourceSupport, agroalDataSourceSupport, agroalPoolInterceptors, agroalOpenTelemetryWrapper);
+        super(dataSourcesBuildTimeConfig, dataSourcesRuntimeConfig, dataSourcesJdbcBuildTimeConfig, dataSourcesJdbcRuntimeConfig, transactionRuntimeConfig, transactionManager, xaResourceRecoveryRegistry, transactionSynchronizationRegistry, agroalDataSourceSupport, agroalPoolInterceptors, agroalOpenTelemetryWrapper);
         this.agroalDataSourceSupport = agroalDataSourceSupport;
         this.transactionManager = transactionManager;
         this.transactionSynchronizationRegistry = transactionSynchronizationRegistry;

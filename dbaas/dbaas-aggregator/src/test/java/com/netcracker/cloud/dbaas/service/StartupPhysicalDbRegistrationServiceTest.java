@@ -161,6 +161,11 @@ class StartupPhysicalDbRegistrationServiceTest {
         }
 
         @Override
+        public RestClientBuilder header(String s, Object o) {
+            return null;
+        }
+
+        @Override
         public Configuration getConfiguration() {
             return null;
         }
