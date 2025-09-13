@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.Status;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -40,13 +41,20 @@ public class Restore {
     @Column(columnDefinition = "jsonb")
     private String mapping;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private RestoreStatus status;
-
     @ToString.Exclude
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalRestore> logicalRestores;
+
+    private Status status = Status.NOT_STARTED;
+
+    private Integer total;
+
+    private Integer completed;
+
+    private Long size;
+
+    @Column(name = "error_message")
+    private String errorMessage;
 
     @Column(name = "attempt_count")
     private int attemptCount;
