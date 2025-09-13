@@ -61,7 +61,11 @@ create table v2_restore
     blob_path varchar not null,
     filters jsonb,
     mapping jsonb,
-    status jsonb,
+    status varchar,
+    total int,
+    completed int,
+    size bigint,
+    error_message varchar,
     attempt_count int default 0
 );
 
@@ -72,7 +76,10 @@ create table v2_logical_restore
     restore_name varchar references v2_restore(name),
     adapter_id varchar not null,
     type varchar not null,
-    status jsonb not null
+    status varchar,
+    error_message varchar,
+    creation_time timestamp default now(),
+    completion_time timestamp
 );
 
 create table v2_restore_database
@@ -84,4 +91,11 @@ create table v2_restore_database
     classifiers jsonb not null,
     users jsonb not null,
     resources jsonb
+    status varchar,
+    size bigint,
+    duration bigint,
+    path varchar,
+    error_message varchar,
+    creation_time timestamp default now(),
+    completion_time timestamp
 );
