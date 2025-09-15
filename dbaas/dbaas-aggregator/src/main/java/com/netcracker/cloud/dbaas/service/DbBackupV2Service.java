@@ -35,7 +35,6 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -47,8 +46,6 @@ import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 @AllArgsConstructor
 public class DbBackupV2Service {
 
-    private final static RetryPolicy<Object> OPERATION_STATUS_RETRY_POLICY = new RetryPolicy<>()
-            .withMaxRetries(2).withDelay(Duration.ofSeconds(1));
     private static final Duration RETRY_DELAY = Duration.ofSeconds(3);
     private static final int MAX_RETRIES = 2;
     protected static int TRACK_DELAY_MS = 3000;
@@ -81,7 +78,7 @@ public class DbBackupV2Service {
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
-        //Create base backup
+        // Create base backup
         Backup backup = new Backup(
                 backupRequest.getBackupName(),
                 backupRequest.getStorageName(),
@@ -89,11 +86,11 @@ public class DbBackupV2Service {
                 backupRequest.getExternalDatabaseStrategy(),
                 null); //TODO fill backup class properly
 
-        //Partition databases into externally manageable and non-externally manageable
+        // Partition databases into externally manageable and non-externally manageable
         Map<Boolean, List<Database>> partitioned = databasesForBackup.stream()
                 .collect(Collectors.partitioningBy(AbstractDatabase::isExternallyManageable));
 
-        //Handle non-externally managed databases
+        // Handle non-externally managed databases
         List<LogicalBackup> logicalBackups = partitioned
                 .getOrDefault(false, List.of())
                 .stream()
@@ -103,7 +100,7 @@ public class DbBackupV2Service {
                 .map(entry -> createLogicalBackup(entry.getKey(), entry.getValue(), backup))
                 .toList();
 
-        //Handle externally managed databases
+        // Handle externally managed databases
         List<BackupExternalDatabase> externalDatabases = partitioned
                 .getOrDefault(true, List.of())
                 .stream()
@@ -117,7 +114,7 @@ public class DbBackupV2Service {
                         .build()
                 ).toList();
 
-        //Persist and return
+        // Persist and return
         backup.setExternalDatabases(externalDatabases);
         backup.setLogicalBackups(logicalBackups);
         backupRepository.save(backup);
@@ -165,9 +162,9 @@ public class DbBackupV2Service {
                                     ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                                     return startLogicalBackup(logicalBackup);
                                 }, executor)
-                                .thenAccept(response -> {
-                                    refreshLogicalBackupState(logicalBackup, response);
-                                })
+                                .thenAccept(response ->
+                                        refreshLogicalBackupState(logicalBackup, response)
+                                )
                                 .exceptionally(throwable -> {
                                     logicalBackup.setStatus(Status.FAILED);
                                     logicalBackup.setErrorMessage(throwable.getCause() != null ?
@@ -215,13 +212,7 @@ public class DbBackupV2Service {
                 .toList();
         String adapterId = logicalBackup.getAdapterId();
 
-        RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
-                .handle(WebApplicationException.class)
-                .withMaxRetries(MAX_RETRIES)
-                .withDelay(RETRY_DELAY)
-                .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
-                .onRetry(e -> log.info("Retrying backupV2..."))
-                .onFailure(e -> log.error("Request limit exceeded for {}", logicalBackup));
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup, LogicalBackup::getLogicalBackupName, "backupV2");
 
         try {
             return Failsafe.with(retryPolicy).get(() -> {
@@ -234,6 +225,7 @@ public class DbBackupV2Service {
                 return result;
             });
         } catch (Exception e) {
+            log.error("Failsafe execution failed", e);
             throw new RuntimeException("Failsafe execution failed", e);
         }
     }
@@ -265,24 +257,25 @@ public class DbBackupV2Service {
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
         List<CompletableFuture<Void>> futures = logicalBackupList.stream()
-                .map(logicalBackup ->
-                        CompletableFuture.supplyAsync(() -> {
-                                    ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-                                    return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
-                                        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
-                                        return adapter.trackBackupV2(logicalBackup.getLogicalBackupName());
-                                    });
-                                }, executor)
-                                .thenAccept(response -> {
-                                    refreshLogicalBackupState(logicalBackup, response);
-                                })
-                                .exceptionally(throwable -> {
-                                    logicalBackup.setStatus(Status.FAILED);
-                                    logicalBackup.setErrorMessage(throwable.getCause() != null ?
-                                            throwable.getCause().getMessage() : throwable.getMessage());
-                                    return null;
-                                })
-                )
+                .map(logicalBackup -> {
+                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup, LogicalBackup::getLogicalBackupName, "trackBackupV2");
+                    return CompletableFuture.supplyAsync(() -> {
+                                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                                return Failsafe.with(retryPolicy).get(() -> {
+                                    DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
+                                    return adapter.trackBackupV2(logicalBackup.getLogicalBackupName());
+                                });
+                            }, executor)
+                            .thenAccept(response ->
+                                    refreshLogicalBackupState(logicalBackup, response)
+                            )
+                            .exceptionally(throwable -> {
+                                logicalBackup.setStatus(Status.FAILED);
+                                logicalBackup.setErrorMessage(throwable.getCause() != null ?
+                                        throwable.getCause().getMessage() : throwable.getMessage());
+                                return null;
+                            });
+                })
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -291,42 +284,37 @@ public class DbBackupV2Service {
     protected void updateAggregatedStatus(Backup backup) {
         log.info("Start aggregating for backupName: {}", backup.getName());
 
-        List<LogicalBackup> logicalBackuplist = backup.getLogicalBackups();
-        List<Status> logicalBackupStatusList = logicalBackuplist.stream()
+        List<LogicalBackup> logicalBackupList = backup.getLogicalBackups();
+        Set<Status> statusSet = logicalBackupList.stream()
                 .map(LogicalBackup::getStatus)
-                .toList();
+                .collect(Collectors.toSet());
 
-        log.info("List of logicalBackupStatusList: {}", logicalBackupStatusList);
+        log.info("List of logicalBackupStatusList: {}", statusSet);
 
-        int totalDbCount = logicalBackuplist.stream().mapToInt(lb -> lb.getBackupDatabases().size()).sum();
+        StringBuilder errorMsg = new StringBuilder();
+        int totalDbCount = 0;
+        long totalBytes = 0;
+        int countCompletedDb = 0;
 
-        String aggregatedErrorMsg = logicalBackuplist.stream()
-                .filter(lb -> lb.getErrorMessage() != null && !lb.getErrorMessage().isBlank())
-                .map(lb -> {
-                    String warn = String.format("LogicalBackup %s failed: %s", lb.getLogicalBackupName(), lb.getErrorMessage());
-                    log.warn(warn);
-                    return warn;
-                })
-                .collect(Collectors.joining("; "));
+        for (LogicalBackup logicalBackup : logicalBackupList) {
+            totalDbCount += logicalBackup.getBackupDatabases().size();
 
-        long totalBytes = logicalBackuplist.stream()
-                .flatMap(lb -> lb.getBackupDatabases().stream())
-                .mapToLong(BackupDatabase::getSize)
-                .sum();
-
-        int countCompletedDb = (int) logicalBackuplist.stream()
-                .flatMap(lb -> lb.getBackupDatabases().stream())
-                .filter(db -> Status.COMPLETED.equals(db.getStatus()))
-                .count();
-
-
-        Set<Status> statusSet = new HashSet<>(logicalBackupStatusList);
+            if (logicalBackup.getErrorMessage() != null && !logicalBackup.getErrorMessage().isBlank()) {
+                String warn = String.format("LogicalBackup %s failed: %s", logicalBackup.getLogicalBackupName(), logicalBackup.getErrorMessage());
+                log.warn(warn);
+                if (!errorMsg.isEmpty())
+                    errorMsg.append("; ");
+                errorMsg.append(warn);
+            }
+            totalBytes += logicalBackup.getBackupDatabases().stream().mapToLong(BackupDatabase::getSize).sum();
+            countCompletedDb += (int) logicalBackup.getBackupDatabases().stream().filter(db -> Status.COMPLETED.equals(db.getStatus())).count();
+        }
 
         backup.setStatus(aggregateStatus(statusSet));
         backup.setSize(totalBytes);
         backup.setTotal(totalDbCount);
         backup.setCompleted(countCompletedDb);
-        backup.setErrorMessage(aggregatedErrorMsg);
+        backup.setErrorMessage(errorMsg.toString());
     }
 
     protected Status aggregateStatus(Set<Status> statusSet) {
@@ -474,7 +462,6 @@ public class DbBackupV2Service {
     }
 
     protected void startRestore(Restore restore, boolean dryRun) {
-        Map<LogicalRestore, Future<LogicalRestoreAdapterResponse>> names = new HashMap<>();
         List<LogicalRestore> logicalRestores = restore.getLogicalRestores();
 
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
@@ -550,13 +537,7 @@ public class DbBackupV2Service {
                 }).toList();
 
         Restore restore = logicalRestore.getRestore();
-        RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
-                .handle(WebApplicationException.class)
-                .withMaxRetries(MAX_RETRIES)
-                .withDelay(RETRY_DELAY)
-                .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
-                .onRetry(e -> log.info("Retrying restoreV2..."))
-                .onFailure(e -> log.error("Request limit exceeded for {}", logicalRestore));
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore, LogicalRestore::getLogicalRestoreName, "restoreV2");
 
         try {
             return Failsafe.with(retryPolicy).get(() -> {
@@ -598,28 +579,28 @@ public class DbBackupV2Service {
 
 
     private void fetchStatuses(List<LogicalRestore> logicalRestoreList) {
-        Map<LogicalRestore, Future<LogicalRestoreAdapterResponse>> statuses = new HashMap<>();
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
         List<CompletableFuture<Void>> futures = logicalRestoreList.stream()
-                .map(logicalRestore ->
-                        CompletableFuture.supplyAsync(() -> {
-                                    ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-                                    return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
-                                                DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                                                return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName());
-                                            }
-                                    );
-                                }, executor)
-                                .thenAccept(response ->
-                                        refreshLogicalRestoreState(logicalRestore, response)
-                                )
-                                .exceptionally(throwable -> {
-                                    logicalRestore.setStatus(Status.FAILED);
-                                    logicalRestore.setErrorMessage(throwable.getCause().getMessage());
-                                    return null;
-                                })
-                ).toList();
+                .map(logicalRestore -> {
+                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore, LogicalRestore::getLogicalRestoreName, "trackRestoreV2");
+                    return CompletableFuture.supplyAsync(() -> {
+                                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                                return Failsafe.with(retryPolicy).get(() -> {
+                                            DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
+                                            return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName());
+                                        }
+                                );
+                            }, executor)
+                            .thenAccept(response ->
+                                    refreshLogicalRestoreState(logicalRestore, response)
+                            )
+                            .exceptionally(throwable -> {
+                                logicalRestore.setStatus(Status.FAILED);
+                                logicalRestore.setErrorMessage(throwable.getCause().getMessage());
+                                return null;
+                            });
+                }).toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
@@ -737,4 +718,15 @@ public class DbBackupV2Service {
                     String.format("Backup with name %s already exists", backupName));
         }
     }
+
+    private <T> RetryPolicy<Object> buildRetryPolicy(T context, Function<T, String> nameExtractor, String operation) {
+        return new RetryPolicy<>()
+                .handle(WebApplicationException.class)
+                .withMaxRetries(MAX_RETRIES)
+                .withDelay(RETRY_DELAY)
+                .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
+                .onRetry(e -> log.info("Retrying {}...", operation))
+                .onFailure(e -> log.error("Request limit exceeded for {}", nameExtractor.apply(context)));
+    }
+
 }
