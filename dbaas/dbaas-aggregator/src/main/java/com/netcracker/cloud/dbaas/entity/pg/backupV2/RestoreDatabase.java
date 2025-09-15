@@ -54,8 +54,6 @@ public class RestoreDatabase {
 
     private Status status;
 
-    private long size;
-
     private long duration;
 
     private String path;

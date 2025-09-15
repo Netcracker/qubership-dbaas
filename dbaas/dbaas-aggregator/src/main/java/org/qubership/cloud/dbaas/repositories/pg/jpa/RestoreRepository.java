@@ -22,7 +22,7 @@ public class RestoreRepository implements PanacheRepositoryBase<Restore, String>
         return getEntityManager()
                 .createNativeQuery(
                         "select * from v2_restore " +
-                                "where status ->> 'status' in ('NOT_STARTED','IN_PROGRESS')",
+                                "where status = 'IN_PROGRESS'",
                         Restore.class
                 )
                 .getResultList();
