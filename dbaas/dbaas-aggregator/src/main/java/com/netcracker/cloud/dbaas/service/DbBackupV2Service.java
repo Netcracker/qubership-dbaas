@@ -35,7 +35,6 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
@@ -79,47 +78,31 @@ public class DbBackupV2Service {
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
-        Backup backup = new Backup(backupRequest.getBackupName(), backupRequest.getStorageName(), backupRequest.getBlobPath(), backupRequest.getExternalDatabaseStrategy(), null); //TODO fill backup class properly
+        //Create base backup
+        Backup backup = new Backup(
+                backupRequest.getBackupName(),
+                backupRequest.getStorageName(),
+                backupRequest.getBlobPath(),
+                backupRequest.getExternalDatabaseStrategy(),
+                null); //TODO fill backup class properly
 
+        //Partition databases into externally manageable and non-externally manageable
         Map<Boolean, List<Database>> partitioned = databasesForBackup.stream()
                 .collect(Collectors.partitioningBy(AbstractDatabase::isExternallyManageable));
 
-        List<Database> nonExternallyManaged = partitioned.get(false);
-
-        List<LogicalBackup> logicalBackups = nonExternallyManaged.stream()
+        //Handle non-externally managed databases
+        List<LogicalBackup> logicalBackups = partitioned
+                .getOrDefault(false, List.of())
+                .stream()
                 .collect(Collectors.groupingBy(AbstractDatabase::getAdapterId))
                 .entrySet()
                 .stream()
-                .map(entry -> {
-                    String adapterId = entry.getKey();
-                    List<Database> databases = entry.getValue();
-                    DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-
-                    LogicalBackup lb = LogicalBackup.builder()
-                            .backup(backup)
-                            .adapterId(adapterId)
-                            .type(adapter.type())
-                            .backupDatabases(new ArrayList<>())
-                            .build();
-
-                    lb.getBackupDatabases().addAll(databases.stream()
-                            .map(db -> BackupDatabase.builder()
-                                    .logicalBackup(lb)
-                                    .name(DbaasBackupUtils.getDatabaseName(db))
-                                    .classifiers(db.getDatabaseRegistry().stream()
-                                            .map(AbstractDatabaseRegistry::getClassifier)
-                                            .toList())
-                                    .users(getBackupDatabaseUsers(db.getConnectionProperties()))
-                                    .settings(db.getSettings())
-                                    .build())
-                            .toList());
-                    return lb;
-                })
+                .map(entry -> createLogicalBackup(entry.getKey(), entry.getValue(), backup))
                 .toList();
 
-        List<Database> externallyManaged = partitioned.get(true);
-
-        List<BackupExternalDatabase> externalDatabases = externallyManaged
+        //Handle externally managed databases
+        List<BackupExternalDatabase> externalDatabases = partitioned
+                .getOrDefault(true, List.of())
                 .stream()
                 .map(database -> BackupExternalDatabase.builder()
                         .backup(backup)
@@ -131,10 +114,34 @@ public class DbBackupV2Service {
                         .build()
                 ).toList();
 
+        //Persist and return
         backup.setExternalDatabases(externalDatabases);
         backup.setLogicalBackups(logicalBackups);
         backupRepository.save(backup);
         return backup;
+    }
+
+    private LogicalBackup createLogicalBackup(String adapterId, List<Database> databases, Backup backup) {
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+
+        LogicalBackup logicalBackup = LogicalBackup.builder()
+                .backup(backup)
+                .adapterId(adapterId)
+                .type(adapter.type())
+                .backupDatabases(new ArrayList<>())
+                .build();
+
+        logicalBackup.getBackupDatabases().addAll(databases.stream()
+                .map(db -> BackupDatabase.builder()
+                        .logicalBackup(logicalBackup)
+                        .name(DbaasBackupUtils.getDatabaseName(db))
+                        .classifiers(db.getDatabaseRegistry().stream()
+                                .map(AbstractDatabaseRegistry::getClassifier).toList())
+                        .users(getBackupDatabaseUsers(db.getConnectionProperties()))
+                        .settings(db.getSettings())
+                        .build())
+                .toList());
+        return logicalBackup;
     }
 
     private List<BackupDatabase.User> getBackupDatabaseUsers(List<Map<String, Object>> connectionProperties) {
