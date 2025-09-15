@@ -32,7 +32,10 @@ import net.jodah.failsafe.RetryPolicy;
 import java.net.URI;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -175,7 +178,6 @@ public class DbBackupV2Service {
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
         backupRepository.save(backup);
     }
 
@@ -477,23 +479,23 @@ public class DbBackupV2Service {
 
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
-        logicalRestores.forEach(logicalRestore -> {
-            Future<LogicalRestoreAdapterResponse> future = executor.submit(() -> {
-                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-                return logicalRestore(logicalRestore, dryRun);
-            });
-            names.put(logicalRestore, future);
-        });
+        List<CompletableFuture<Void>> futures = logicalRestores.stream()
+                .map(logicalRestore ->
+                        CompletableFuture.supplyAsync(() -> {
+                                    ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                                    return logicalRestore(logicalRestore, dryRun);
+                                }, executor)
+                                .thenAccept(response ->
+                                        refreshLogicalRestoreState(logicalRestore, response))
+                                .exceptionally(throwable -> {
+                                    logicalRestore.setStatus(Status.FAILED);
+                                    logicalRestore.setErrorMessage(throwable.getCause().getMessage());
+                                    return null;
+                                })
+                )
+                .toList();
 
-        names.forEach((logicalRestore, future) -> {
-            try {
-                LogicalRestoreAdapterResponse response = future.get();//TODO future.get() -> CompletableFuture
-                refreshLogicalRestoreState(logicalRestore, response);
-            } catch (InterruptedException | ExecutionException e) {
-                logicalRestore.setStatus(Status.FAILED);
-                logicalRestore.setErrorMessage(e.getCause().getMessage());
-            }
-        });
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         restoreRepository.save(restore);//TODO dryRun
     }
 
@@ -599,28 +601,27 @@ public class DbBackupV2Service {
         Map<LogicalRestore, Future<LogicalRestoreAdapterResponse>> statuses = new HashMap<>();
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
-        logicalRestoreList
-                .forEach(logicalRestore -> {
-                    Future<LogicalRestoreAdapterResponse> future = executor.submit(() -> {
-                        ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-                        return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
-                                    DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                                    return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName());
-                                }
-                        );
-                    });
-                    statuses.put(logicalRestore, future);
-                });
+        List<CompletableFuture<Void>> futures = logicalRestoreList.stream()
+                .map(logicalRestore ->
+                        CompletableFuture.supplyAsync(() -> {
+                                    ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+                                    return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
+                                                DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
+                                                return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName());
+                                            }
+                                    );
+                                }, executor)
+                                .thenAccept(response ->
+                                        refreshLogicalRestoreState(logicalRestore, response)
+                                )
+                                .exceptionally(throwable -> {
+                                    logicalRestore.setStatus(Status.FAILED);
+                                    logicalRestore.setErrorMessage(throwable.getCause().getMessage());
+                                    return null;
+                                })
+                ).toList();
 
-        statuses.forEach((logicalRestore, future) -> {
-            try {
-                LogicalRestoreAdapterResponse logicalRestoreStatus = future.get(); //TODO future.get() -> completableFuture
-                refreshLogicalRestoreState(logicalRestore, logicalRestoreStatus);
-            } catch (InterruptedException | ExecutionException e) {
-                logicalRestore.setStatus(Status.FAILED);
-                logicalRestore.setErrorMessage(e.getCause().getMessage());
-            }
-        });
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
     private void aggregateRestoreStatus(Restore restore) {
