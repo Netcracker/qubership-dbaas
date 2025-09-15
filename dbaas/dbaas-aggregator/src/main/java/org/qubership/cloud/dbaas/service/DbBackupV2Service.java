@@ -28,7 +28,6 @@ import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
-import org.apache.commons.collections4.CollectionUtils;
 
 import java.net.URI;
 import java.time.Duration;
@@ -657,44 +656,46 @@ public class DbBackupV2Service {
     protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,
                                                                  boolean ignoreNotBackupableDatabases,
                                                                  ExternalDatabaseStrategy strategy) {
-        List<Database> externalDatabases = databasesForBackup.stream()
-                .filter(AbstractDatabase::isExternallyManageable)
-                .toList();
-        List<Database> internalDatabases = databasesForBackup.stream()
-                .filter(db -> !db.isExternallyManageable())
-                .toList();
+
+        Map<Boolean, List<Database>> partitioned = databasesForBackup.stream().collect(Collectors.partitioningBy(Database::isExternallyManageable));
+        List<Database> externalDatabases = partitioned.get(true);
+        List<Database> internalDatabases = partitioned.get(false);
 
         if (!externalDatabases.isEmpty()) {
             String externalNames = externalDatabases.stream()
                     .map(Database::getName)
                     .collect(Collectors.joining(", "));
 
-            if (ExternalDatabaseStrategy.FAIL.equals(strategy)) {
-                log.error("External databases present but strategy=FAIL: {}", externalNames);
-                throw new DBNotSupportedValidationException(
-                        Source.builder().parameter("externalDatabaseStrategy").build(),
-                        "Backup failed: external databases not allowed by external database strategy: " + externalNames
-                );
-            }
-            if (ExternalDatabaseStrategy.SKIP.equals(strategy)) {
-                log.info("Excluding external databases from backup by strategy: {}", externalNames);
+            switch (strategy) {
+                case FAIL -> {
+                    log.error("External databases present but strategy=FAIL: {}", externalNames);
+                    throw new DBNotSupportedValidationException(
+                            Source.builder().parameter("externalDatabaseStrategy").build(),
+                            "Backup failed: external databases not allowed by external database strategy: " + externalNames
+                    );
+                }
+                case SKIP -> log.info("Excluding external databases from backup by strategy: {}", externalNames);
+                case INCLUDE -> {
+                }
             }
         }
 
-        List<Database> disabledDatabases = internalDatabases.stream()
-                .filter(database -> Boolean.TRUE.equals(database.getBackupDisabled()))
+        List<Database> notBackupableDatabases = internalDatabases.stream()
+                .filter(db -> {
+                    if (Boolean.TRUE.equals(db.getBackupDisabled())) {
+                        return true;
+                    }
+                    if (db.getAdapterId() != null) {
+                        return !physicalDatabasesService
+                                .getAdapterById(db.getAdapterId())
+                                .isBackupRestoreSupported();
+                    }
+                    return false;
+                })
                 .toList();
 
-        List<Database> unsupportedByAdapterDatabases = internalDatabases.stream()
-                .filter(database -> database.getBackupDisabled() == null || !database.getBackupDisabled())
-                .filter(database -> database.getAdapterId() != null)
-                .filter(database -> !physicalDatabasesService.getAdapterById(database.getAdapterId()).isBackupRestoreSupported())
-                .toList();
 
-        List<Database> notBackupableDatabases = Stream.concat(disabledDatabases.stream(), unsupportedByAdapterDatabases.stream())
-                .toList();
-
-        if (!CollectionUtils.isEmpty(notBackupableDatabases)) {
+        if (!notBackupableDatabases.isEmpty()) {
             String dbNames = notBackupableDatabases.stream()
                     .map(AbstractDatabase::getName)
                     .collect(Collectors.joining(", "));
@@ -716,7 +717,7 @@ public class DbBackupV2Service {
             filteredDatabases.removeAll(notBackupableDatabases);
 
         if (ExternalDatabaseStrategy.INCLUDE.equals(strategy))
-            filteredDatabases = Stream.concat(filteredDatabases.stream(), externalDatabases.stream()).toList();
+            filteredDatabases.addAll(externalDatabases);
 
         return filteredDatabases;
     }
