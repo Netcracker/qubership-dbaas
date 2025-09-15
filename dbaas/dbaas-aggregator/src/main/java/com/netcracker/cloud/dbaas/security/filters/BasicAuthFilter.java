@@ -1,4 +1,4 @@
-package com.netcracker.cloud.dbaas.rest;
+package com.netcracker.cloud.dbaas.security.filters;
 
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.client.ClientRequestContext;
