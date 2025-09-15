@@ -5,6 +5,7 @@ import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
@@ -77,6 +78,23 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @Path("/api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}")
     @Produces(MediaType.APPLICATION_JSON)
     LogicalBackupAdapterResponse trackBackupV2(@PathParam("dbType") String dbType, @PathParam("backupId") String logicalBackupName);
+
+    @POST
+    @Path("/api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}/restore")
+    @Produces(MediaType.APPLICATION_JSON)
+    LogicalRestoreAdapterResponse restoreV2(
+            @PathParam("dbType") String dbType,
+            @PathParam("backupId") String logicalRestoreName,
+            @QueryParam("dryRun") Boolean dryRun,
+            String storageName,
+            String blobPath,
+            List<Map<String, String>> databases);
+
+    @GET
+    @Path("/api/v2/dbaas/adapter/{dbType}/backups/restore/{restoreId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    LogicalRestoreAdapterResponse trackRestoreV2(@PathParam("dbType") String dbType, @PathParam("restoreId") String logicalBackupName);
+
 
     @DELETE
     @Path("/api/v2/dbaas/adapter/{type}/backups/{backupId}")
