@@ -90,7 +90,7 @@ create table v2_restore_database
     name varchar,
     classifiers jsonb not null,
     users jsonb not null,
-    resources jsonb
+    resources jsonb,
     status varchar,
     size bigint,
     duration bigint,
