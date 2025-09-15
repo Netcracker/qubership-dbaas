@@ -2,13 +2,13 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
@@ -1134,12 +1134,16 @@ class DbBackupV2ServiceTest {
         String errorMsg = "error messae";
         String adapterId1 = "adapter1";
         String adapterId2 = "adapter2";
+        String db1 = "db1";
+        String db2 = "db2";
+        String db3 = "db3";
 
         SortedMap<String, Object> map1 = new TreeMap<>();
         map1.put("namespace", oldNamespace1);
+        map1.put("microserviceName", "microserviceName");
 
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
-                .name("db1")
+                .name(db1)
                 .resources(Map.of())
                 .settings(Map.of())
                 .users(List.of(BackupDatabase.User.builder()
@@ -1151,7 +1155,7 @@ class DbBackupV2ServiceTest {
 
 
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
-                .name("db2")
+                .name(db2)
                 .resources(Map.of())
                 .settings(Map.of())
                 .users(List.of(BackupDatabase.User.builder()
@@ -1163,8 +1167,10 @@ class DbBackupV2ServiceTest {
 
         SortedMap<String, Object> map2 = new TreeMap<>();
         map2.put("namespace", oldNamespace2);
+        map2.put("microserviceName", "microserviceName");
+
         BackupDatabase backupDatabase3 = BackupDatabase.builder()
-                .name("db3")
+                .name(db3)
                 .resources(Map.of())
                 .settings(Map.of())
                 .users(List.of(BackupDatabase.User.builder()
@@ -1199,39 +1205,46 @@ class DbBackupV2ServiceTest {
 
         backupRepository.save(backup);
 
-        LogicalRestoreStatus status1 = LogicalRestoreStatus.builder()
-                .status(Status.COMPLETED)
-                .errorMessage(errorMsg)
-                .databases(List.of(LogicalRestoreStatus.Database.builder()
-                                .previousDatabaseName("previousName")
-                                .databaseName("databaseName")
+        LogicalRestoreAdapterResponse response1 = new LogicalRestoreAdapterResponse(
+                Status.COMPLETED,
+                null,
+                logicalBackupName1,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                storageName,
+                blobPath,
+                List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
                                 .status(Status.COMPLETED)
-                                .size(1)
+                                .previousDatabaseName(db1)
+                                .path("path")
+                                .databaseName("newDb1")
+                                .duration(1)
                                 .build(),
-                        LogicalRestoreStatus.Database.builder()
-                                .previousDatabaseName("previousName")
-                                .databaseName("databaseName")
+                        LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
                                 .status(Status.COMPLETED)
-                                .size(1)
-                                .build()))
-                .build();
+                                .previousDatabaseName(db2)
+                                .path("path")
+                                .databaseName("newDb2")
+                                .duration(1)
+                                .build())
+        );
 
-        LogicalRestoreStatus status2 = LogicalRestoreStatus.builder()
-                .status(Status.FAILED)
-                .errorMessage(errorMsg)
-                .databases(List.of(LogicalRestoreStatus.Database.builder()
-                                .previousDatabaseName("previousName")
-                                .databaseName("databaseName")
-                                .status(Status.FAILED)
-                                .size(1)
-                                .build(),
-                        LogicalRestoreStatus.Database.builder()
-                                .previousDatabaseName("previousName")
-                                .databaseName("databaseName")
-                                .status(Status.FAILED)
-                                .size(1)
-                                .build()))
-                .build();
+        LogicalRestoreAdapterResponse response2 = new LogicalRestoreAdapterResponse(
+                Status.COMPLETED,
+                null,
+                logicalBackupName2,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                storageName,
+                blobPath,
+                List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(Status.COMPLETED)
+                        .previousDatabaseName(db3)
+                        .path("path")
+                        .databaseName("newDb3")
+                        .duration(1)
+                        .build())
+        );
 
         Mapping mapping = new Mapping();
         mapping.setNamespaces(Map.of(
@@ -1265,14 +1278,14 @@ class DbBackupV2ServiceTest {
         when(physicalDatabasesService.getAdapterById(adapterId1))
                 .thenReturn(dbaasAdapter);
         when(dbaasAdapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
-                .thenReturn(logicalBackupName1);
+                .thenReturn(response1);
 
 
         DbaasAdapter dbaasAdapter2 = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId2))
                 .thenReturn(dbaasAdapter2);
         when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
-                .thenReturn(logicalBackupName2);
+                .thenReturn(response2);
 
 
         dbBackupV2Service.restore(backupName, restoreRequest, true);
@@ -1290,6 +1303,7 @@ class DbBackupV2ServiceTest {
                 .orElseThrow();
         assertEquals(adapterId1, logicalRestore1.getAdapterId());
         assertEquals(2, logicalRestore1.getRestoreDatabases().size());
+        assertEquals(Status.COMPLETED, logicalRestore1.getStatus());
 
         LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
                 .filter(lr -> lr.getAdapterId().equals(adapterId2))
@@ -1297,35 +1311,41 @@ class DbBackupV2ServiceTest {
                 .orElseThrow();
         assertEquals(adapterId2, logicalRestore2.getAdapterId());
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
+        assertEquals(Status.COMPLETED, logicalRestore2.getStatus());
 
         RestoreDatabase restoreDatabase1 = logicalRestore1.getRestoreDatabases().getFirst();
         assertNotNull(restoreDatabase1);
-        assertNotNull(restoreDatabase1.getLogicalRestore());
         assertNotNull(restoreDatabase1.getBackupDatabase());
-        assertEquals("db1", restoreDatabase1.getName());
+        assertEquals("newDb1", restoreDatabase1.getName());
 
         SortedMap<String, String> expectedClassifier = new TreeMap<>();
         expectedClassifier.put("namespace", newNamespace1);
+        expectedClassifier.put("microserviceName", "microserviceName");
+
         assertEquals(List.of(expectedClassifier), restoreDatabase1.getClassifiers());
 
         RestoreDatabase restoreDatabase2 = logicalRestore1.getRestoreDatabases().getLast();
         assertNotNull(restoreDatabase2);
         assertNotNull(restoreDatabase2.getLogicalRestore());
         assertNotNull(restoreDatabase2.getBackupDatabase());
-        assertEquals("db2", restoreDatabase2.getName());
+        assertEquals("newDb2", restoreDatabase2.getName());
 
         SortedMap<String, String> expectedClassifier2 = new TreeMap<>();
         expectedClassifier2.put("namespace", newNamespace1);
+        expectedClassifier2.put("microserviceName", "microserviceName");
+
         assertEquals(List.of(expectedClassifier2), restoreDatabase2.getClassifiers());
 
         RestoreDatabase restoreDatabase3 = logicalRestore2.getRestoreDatabases().getFirst();
         assertNotNull(restoreDatabase3);
         assertNotNull(restoreDatabase3.getLogicalRestore());
         assertNotNull(restoreDatabase3.getBackupDatabase());
-        assertEquals("db3", restoreDatabase3.getName());
+        assertEquals("newDb3", restoreDatabase3.getName());
 
         SortedMap<String, String> expectedClassifier3 = new TreeMap<>();
         expectedClassifier3.put("namespace", newNamespace2);
+        expectedClassifier3.put("microserviceName", "microserviceName");
+
         assertEquals(List.of(expectedClassifier3), restoreDatabase3.getClassifiers());
 
         verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace1, "postgresql");
@@ -1554,6 +1574,7 @@ class DbBackupV2ServiceTest {
 
         SortedMap<String, Object> map = new TreeMap<>();
         map.put("namespace", "namespace");
+        map.put("microserviceName", "microserviceName");
 
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
                 .name("db1")
@@ -1614,7 +1635,6 @@ class DbBackupV2ServiceTest {
                 .adapterId(adapterId)
                 .type(type)
                 .restoreDatabases(List.of(restoreDatabase1, restoreDatabase2))
-                .status(LogicalRestoreStatus.builder().build())
                 .build();
 
         restoreDatabase1.setLogicalRestore(logicalRestore);
@@ -1630,11 +1650,36 @@ class DbBackupV2ServiceTest {
 
         logicalRestore.setRestore(restore);
 
+        LogicalRestoreAdapterResponse response = new LogicalRestoreAdapterResponse(
+                Status.COMPLETED,
+                null,
+                logicalRestoreName,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                storageName,
+                blobPath,
+                List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName("db1")
+                                .path("path")
+                                .databaseName("newDb1")
+                                .duration(1)
+                                .build(),
+                        LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName("db2")
+                                .path("path")
+                                .databaseName("newDb2")
+                                .duration(1)
+                                .build()
+                )
+        );
+
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId))
                 .thenReturn(adapter);
         when(adapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
-                .thenReturn(logicalRestoreName);
+                .thenReturn(response);
 
         dbBackupV2Service.startRestore(restore, true);
 
@@ -1737,37 +1782,11 @@ class DbBackupV2ServiceTest {
                 .resources(Map.of())
                 .build();
 
-        LogicalRestoreStatus status = LogicalRestoreStatus.builder()
-                .status(Status.COMPLETED)
-                .errorMessage(null)
-                .databases(List.of(
-                        LogicalRestoreStatus.Database.builder()
-                                .previousDatabaseName("name")
-                                .databaseName("new-name")
-                                .status(Status.COMPLETED)
-                                .size(1)
-                                .duration("duration")
-                                .path("path")
-                                .errorMessage(null)
-                                .build(),
-                        LogicalRestoreStatus.Database.builder()
-                                .previousDatabaseName("name")
-                                .databaseName("new-name")
-                                .status(Status.COMPLETED)
-                                .size(1)
-                                .duration("duration")
-                                .path("path")
-                                .errorMessage(null)
-                                .build()
-                ))
-                .build();
-
         LogicalRestore logicalRestore = LogicalRestore.builder()
                 .adapterId(adapterId)
                 .logicalRestoreName(logicalRestoreName)
                 .type(type)
                 .restoreDatabases(List.of(restoreDatabase1, restoreDatabase2))
-                .status(LogicalRestoreStatus.builder().build())
                 .build();
 
         restoreDatabase1.setLogicalRestore(logicalRestore);
@@ -1783,11 +1802,36 @@ class DbBackupV2ServiceTest {
 
         logicalRestore.setRestore(restore);
 
+        LogicalRestoreAdapterResponse response = new LogicalRestoreAdapterResponse(
+                Status.COMPLETED,
+                null,
+                logicalRestoreName,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                storageName,
+                blobPath,
+                List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName(restoreDatabaseName1)
+                                .path("path")
+                                .databaseName("newDb1")
+                                .duration(1)
+                                .build(),
+                        LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName(restoreDatabaseName2)
+                                .path("path")
+                                .databaseName("newDb2")
+                                .duration(1)
+                                .build()
+                )
+        );
+
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId))
                 .thenReturn(adapter);
         when(adapter.trackRestoreV2(logicalRestoreName))
-                .thenReturn(status);
+                .thenReturn(response);
 
         dbBackupV2Service.trackAndAggregateRestore(restore);
 
@@ -1796,17 +1840,15 @@ class DbBackupV2ServiceTest {
         assertEquals(1, restore.getAttemptCount());
         assertNotNull(restore.getStatus());
 
-        RestoreStatus restoreStatus = restore.getStatus();
-        assertEquals(Status.COMPLETED, restoreStatus.getStatus());
-        assertEquals(2, restoreStatus.getTotal());
-        assertEquals(2, restoreStatus.getCompleted());
-        assertEquals(2, restoreStatus.getSize());
-        assertTrue(restoreStatus.getErrorMessage().isBlank());
+        assertEquals(Status.COMPLETED, restore.getStatus());
+        assertEquals(2, restore.getTotal());
+        assertEquals(2, restore.getCompleted());
+        assertTrue(restore.getErrorMessage().isBlank());
 
         LogicalRestore expectedLogical = expected.getLogicalRestores().getFirst();
         assertNotNull(expectedLogical);
         assertNotNull(expectedLogical.getStatus());
-        assertEquals(expectedLogical.getStatus(), status);
+        assertEquals(Status.COMPLETED, expectedLogical.getStatus());
 
     }
 
@@ -1819,9 +1861,7 @@ class DbBackupV2ServiceTest {
                 .storageName("storageName")
                 .attemptCount(21)
                 .logicalRestores(List.of())
-                .status(RestoreStatus.builder()
-                        .status(Status.IN_PROGRESS)
-                        .build())
+                .status(Status.IN_PROGRESS)
                 .build();
 
         dbBackupV2Service.trackAndAggregateRestore(restore);
@@ -1830,7 +1870,7 @@ class DbBackupV2ServiceTest {
 
         assertNotNull(expected);
         assertEquals(21, expected.getAttemptCount());
-        assertEquals(Status.FAILED, expected.getStatus().getStatus());
+        assertEquals(Status.FAILED, expected.getStatus());
     }
 
     private BackupResponse generateBackupResponse(String backupName, String namespace) {

@@ -4,10 +4,10 @@ import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.RestoreStatus;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
@@ -392,6 +392,7 @@ public class DbBackupV2Service {
 
         Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
         startRestore(restore, dryRun);
+        aggregateRestoreStatus(restore);
     }
 
 
@@ -402,8 +403,6 @@ public class DbBackupV2Service {
         Map<String, String> namespacesMap = Optional.ofNullable(restoreRequest.getMapping())
                 .map(Mapping::getNamespaces)
                 .orElseGet(HashMap::new);
-
-        // Map<String, List<BackupDatabase>> adapterToBackupDatabase
 
         Map<Map.Entry<String, String>, LogicalRestore> logicalRestoreMap = logicalBackups.stream()
                 .map(lb -> {
@@ -419,7 +418,6 @@ public class DbBackupV2Service {
                             LogicalRestore lr = new LogicalRestore();
                             lr.setAdapterId(adapterId);
                             lr.setType(type);
-                            lr.setStatus(new LogicalRestoreStatus());
                             lr.setRestore(restore);
                             lr.setRestoreDatabases(new ArrayList<>());
                             return Map.entry(Map.entry(type, targetNamespace), lr);
@@ -443,8 +441,16 @@ public class DbBackupV2Service {
                             })
                             .toList();
 
-                    RestoreDatabase rd = new RestoreDatabase(null, logicalRestore, bd, bd.getName(), updatedClassifier, users, bd.getResources());
-                    logicalRestore.getRestoreDatabases().add(rd);
+                    RestoreDatabase restoreDatabase = RestoreDatabase.builder()
+                            .logicalRestore(logicalRestore)
+                            .backupDatabase(bd)
+                            .name(bd.getName())
+                            .classifiers(updatedClassifier)
+                            .users(users)
+                            .resources(bd.getResources())
+                            .build();
+
+                    logicalRestore.getRestoreDatabases().add(restoreDatabase);
                 })
         );
         restore.setName(backup.getName());
@@ -460,13 +466,13 @@ public class DbBackupV2Service {
     }
 
     protected void startRestore(Restore restore, boolean dryRun) {
-        Map<LogicalRestore, Future<String>> names = new HashMap<>();
+        Map<LogicalRestore, Future<LogicalRestoreAdapterResponse>> names = new HashMap<>();
         List<LogicalRestore> logicalRestores = restore.getLogicalRestores();
 
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
         logicalRestores.forEach(logicalRestore -> {
-            Future<String> future = executor.submit(() -> {
+            Future<LogicalRestoreAdapterResponse> future = executor.submit(() -> {
                 ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                 return logicalRestore(logicalRestore, dryRun);
             });
@@ -475,21 +481,43 @@ public class DbBackupV2Service {
 
         names.forEach((logicalRestore, future) -> {
             try {
-                String logicalRestoreName = future.get();//TODO future.get() -> CompletableFuture
-                logicalRestore.setLogicalRestoreName(logicalRestoreName);
+                LogicalRestoreAdapterResponse response = future.get();//TODO future.get() -> CompletableFuture
+                refreshLogicalRestoreState(logicalRestore, response);
             } catch (InterruptedException | ExecutionException e) {
-                LogicalRestoreStatus status = LogicalRestoreStatus.builder()
-                        .status(Status.FAILED)
-                        .errorMessage(e.getCause().getMessage())
-                        .build();
-                logicalRestore.setStatus(status);
+                logicalRestore.setStatus(Status.FAILED);
+                logicalRestore.setErrorMessage(e.getCause().getMessage());
             }
         });
         restoreRepository.save(restore);//TODO dryRun
     }
 
+    private void refreshLogicalRestoreState(LogicalRestore logicalRestore, LogicalRestoreAdapterResponse response) {
+        logicalRestore.setLogicalRestoreName(response.getLogicalRestoreName());
+        logicalRestore.setStatus(response.getStatus());
+        logicalRestore.setErrorMessage(response.getErrorMessage());
+        logicalRestore.setCreationTime(response.getCreationTime());
+        logicalRestore.setCompletionTime(response.getCompletionTime());
 
-    private String logicalRestore(LogicalRestore logicalRestore, boolean dryRun) {
+        Map<String, RestoreDatabase> restoreDbMap = logicalRestore.getRestoreDatabases().stream()
+                .collect(Collectors.toMap(RestoreDatabase::getName, Function.identity()));
+
+        response.getDatabases().forEach(db -> {
+            RestoreDatabase restoreDatabase = restoreDbMap.get(db.getPreviousDatabaseName());
+            if (restoreDatabase != null) {
+                restoreDatabase.setStatus(db.getStatus());
+                restoreDatabase.setDuration(db.getDuration());
+                restoreDatabase.setPath(db.getPath());
+                restoreDatabase.setErrorMessage(db.getErrorMessage());
+                restoreDatabase.setCreationTime(db.getCreationTime());
+
+                if (db.getDatabaseName() != null)
+                    restoreDatabase.setName(db.getDatabaseName());
+            }
+        });
+    }
+
+
+    private LogicalRestoreAdapterResponse logicalRestore(LogicalRestore logicalRestore, boolean dryRun) {
         String logicalBackupName = logicalRestore.getRestoreDatabases().getFirst().getBackupDatabase().getLogicalBackup().getLogicalBackupName();
 
         List<Map<String, String>> databases = logicalRestore.getRestoreDatabases().stream()
@@ -497,13 +525,21 @@ public class DbBackupV2Service {
                     String namespace = restoreDatabase.getClassifiers()
                             .stream()
                             .map(i -> (String) i.get("namespace"))
-                            .findFirst()
-                            .orElseThrow(() -> new NotFoundException("Namespace not found in " + restoreDatabase));
+                            .findFirst()//todo logical error
+                            .orElse("");
+
+                    String microserviceName = restoreDatabase.getClassifiers()
+                            .stream()
+                            .map(i -> (String) i.get("microserviceName"))
+                            .findFirst()//todo logical error
+                            .orElse("");
+
                     return Map.of(
-                            "target_namespace", namespace,
-                            "logical_database", restoreDatabase.getName()
+                            "microserviceName", microserviceName,
+                            "databaseName", restoreDatabase.getName(),
+                            "namespace", namespace
                     );
-                }).toList(); //TODO можно с classifiers достать microserviceName
+                }).toList();
 
         Restore restore = logicalRestore.getRestore();
         RetryPolicy<Object> retryPolicy = new RetryPolicy<>()
@@ -517,7 +553,7 @@ public class DbBackupV2Service {
         try {
             return Failsafe.with(retryPolicy).get(() -> {
                 DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                String result = adapter.restoreV2(logicalBackupName, dryRun, restore.getStorageName(), restore.getBlobPath(), databases);
+                LogicalRestoreAdapterResponse result = adapter.restoreV2(logicalBackupName, dryRun, restore.getStorageName(), restore.getBlobPath(), databases);
 
                 if (result == null) {
                     throw new BackupExecutionException(URI.create("e"), "Empty result from restore", new Throwable()); //TODO correct path
@@ -539,10 +575,9 @@ public class DbBackupV2Service {
 
     //TODO after aggregate status completed need to start registry database (Database.class)
     protected void trackAndAggregateRestore(Restore restore) {
-        if (restore.getAttemptCount() > 20 && Status.IN_PROGRESS == restore.getStatus().getStatus()) {
-            RestoreStatus restoreStatus = restore.getStatus();
-            restoreStatus.setStatus(Status.FAILED);
-            restoreStatus.setErrorMessage("The number of attempts exceeded 20");
+        if (restore.getAttemptCount() > 20 && Status.IN_PROGRESS == restore.getStatus()) {
+            restore.setStatus(Status.FAILED);
+            restore.setErrorMessage("The number of attempts exceeded 20");
         } else {
             List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores();
             fetchStatuses(notFinishedLogicalRestores);
@@ -555,12 +590,12 @@ public class DbBackupV2Service {
 
 
     private void fetchStatuses(List<LogicalRestore> logicalRestoreList) {
-        Map<LogicalRestore, Future<LogicalRestoreStatus>> statuses = new HashMap<>();
+        Map<LogicalRestore, Future<LogicalRestoreAdapterResponse>> statuses = new HashMap<>();
         var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
         logicalRestoreList
                 .forEach(logicalRestore -> {
-                    Future<LogicalRestoreStatus> future = executor.submit(() -> {
+                    Future<LogicalRestoreAdapterResponse> future = executor.submit(() -> {
                         ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
                         return Failsafe.with(OPERATION_STATUS_RETRY_POLICY).get(() -> {
                                     DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
@@ -573,11 +608,11 @@ public class DbBackupV2Service {
 
         statuses.forEach((logicalRestore, future) -> {
             try {
-                LogicalRestoreStatus logicalRestoreStatus = future.get(); //TODO future.get() -> completableFuture
-                logicalRestore.setStatus(logicalRestoreStatus);
+                LogicalRestoreAdapterResponse logicalRestoreStatus = future.get(); //TODO future.get() -> completableFuture
+                refreshLogicalRestoreState(logicalRestore, logicalRestoreStatus);
             } catch (InterruptedException | ExecutionException e) {
-                logicalRestore.getStatus().setStatus(Status.FAILED);
-                logicalRestore.getStatus().setErrorMessage(e.getCause().getMessage());
+                logicalRestore.setStatus(Status.FAILED);
+                logicalRestore.setErrorMessage(e.getCause().getMessage());
             }
         });
     }
@@ -586,52 +621,37 @@ public class DbBackupV2Service {
         log.info("Start aggregating for restore: {}", restore.getName());
 
         List<LogicalRestore> logicalRestoreList = restore.getLogicalRestores();
-        List<LogicalRestoreStatus> logicalRestoreStatuses = logicalRestoreList.stream()
+        List<Status> logicalRestoreStatuses = logicalRestoreList.stream()
                 .map(LogicalRestore::getStatus)
                 .toList();
-
+        Set<Status> statusSet = new HashSet<>(logicalRestoreStatuses);
         log.info("List of logicalRestoreStatusList: {}", logicalRestoreStatuses);
 
         int totalDbCount = logicalRestoreList.stream().mapToInt(lb -> lb.getRestoreDatabases().size()).sum();
 
         String aggregatedErrorMsg = logicalRestoreList.stream()
                 .filter(logicalRestore ->
-                        logicalRestore.getStatus().getErrorMessage() != null
-                                && !logicalRestore.getStatus().getErrorMessage().isBlank())
+                        logicalRestore.getErrorMessage() != null
+                                && !logicalRestore.getErrorMessage().isBlank())
                 .map(logicalRestore -> {
                     String warn = String.format("LogicalRestore %s failed: %s",
                             logicalRestore.getLogicalRestoreName(),
-                            logicalRestore.getStatus().getErrorMessage());
+                            logicalRestore.getErrorMessage());
                     log.warn(warn);
                     return warn;
                 })
                 .collect(Collectors.joining("; "));
 
-        Set<Status> statusSet = new HashSet<>();
-        long totalBytes = 0;
-        int countCompletedDb = 0;
 
-        for (LogicalRestoreStatus logicalRestoreStatus : logicalRestoreStatuses) {
-            Status currStatus = logicalRestoreStatus.getStatus();
-            statusSet.add(currStatus);
+        int countCompletedDb = (int) logicalRestoreList.stream()
+                .flatMap(logicalRestore -> logicalRestore.getRestoreDatabases().stream())
+                .filter(db -> Status.COMPLETED.equals(db.getStatus()))
+                .count();
 
-            totalBytes += logicalRestoreStatus.getDatabases().stream()
-                    .filter(database -> database.getSize() != null)
-                    .mapToLong(LogicalRestoreStatus.Database::getSize)
-                    .sum();
-
-            countCompletedDb += (int) logicalRestoreStatus.getDatabases().stream()
-                    .filter(db -> Status.COMPLETED.equals(db.getStatus()))
-                    .count();
-        }
-
-        restore.setStatus(RestoreStatus.builder()
-                .status(aggregateStatus(statusSet))
-                .size(totalBytes)
-                .total(totalDbCount)
-                .completed(countCompletedDb)
-                .errorMessage(aggregatedErrorMsg)
-                .build());
+        restore.setStatus(aggregateStatus(statusSet));
+        restore.setTotal(totalDbCount);
+        restore.setCompleted(countCompletedDb);
+        restore.setErrorMessage(aggregatedErrorMsg);
     }
 
     protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,

@@ -51,8 +51,6 @@ public class Restore {
 
     private Integer completed;
 
-    private Long size;
-
     @Column(name = "error_message")
     private String errorMessage;
 
