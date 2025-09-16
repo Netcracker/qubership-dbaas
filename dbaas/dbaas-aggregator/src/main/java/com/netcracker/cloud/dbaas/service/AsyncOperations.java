@@ -1,11 +1,13 @@
 package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
-
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.*;
+import java.util.function.Supplier;
 
 
 @ApplicationScoped
@@ -14,7 +16,7 @@ public class AsyncOperations {
     @ConfigProperty(name = "backup.aggregator.async.thread.pool.size", defaultValue = "10")
     int asyncBackupThreadPoolSize;
 
-    ThreadPoolExecutor backupExecutor;
+    private ThreadPoolExecutor backupExecutor;
 
     @PostConstruct
     void initPools() {
@@ -25,7 +27,7 @@ public class AsyncOperations {
                 new LinkedBlockingQueue<>(), new NamedThreadFactory("backups-"));
     }
 
-    public ThreadPoolExecutor getBackupPool() {
+    public ExecutorService getBackupPool() {
         return backupExecutor;
     }
 
@@ -42,5 +44,13 @@ public class AsyncOperations {
             thread.setName(namePrefix + thread.getName());
             return thread;
         }
+    }
+
+    public <T> Supplier<T> wrapWithContext(Supplier<T> task) {
+        var requestIdObj = (XRequestIdContextObject) ContextManager.get("X_REQUEST_ID");
+        return () -> {
+            ContextManager.set("X_REQUEST_ID", requestIdObj);
+            return task.get();
+        };
     }
 }
