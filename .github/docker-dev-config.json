@@ -1,0 +1,16 @@
+{
+    "components" : [
+      {
+        "name": "default",
+        "file": "dbaas/Dockerfile",
+        "context": "./artifacts/pre-built-artifact/dbaas",        
+        "download-artifact": true
+      },
+      {
+        "name": "qubership-dbaas-validation-image",
+        "file": "validation-image/Dockerfile",
+        "context": "./validation-image"
+      }    
+    ],
+    "platforms" : "linux/amd64"
+  }
