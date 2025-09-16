@@ -1004,7 +1004,7 @@ class DbBackupV2ServiceTest {
 
 
     @Test
-    void getBackupMetadata() {
+    void getBackup() {
         String backupName = "backupName";
         List<LogicalBackup> logicalBackups = generateLogicalBackups(1);
         Backup backup = createBackup(backupName, logicalBackups);
@@ -1017,7 +1017,7 @@ class DbBackupV2ServiceTest {
 
         backupRepository.save(backup);
 
-        BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
+        BackupResponse response = dbBackupV2Service.getBackup(backupName);
 
         assertNotNull(response);
         assertEquals("backupName", response.getBackupName());

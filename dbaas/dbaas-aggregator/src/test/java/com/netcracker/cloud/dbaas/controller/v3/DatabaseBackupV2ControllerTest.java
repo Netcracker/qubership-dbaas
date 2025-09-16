@@ -134,91 +134,29 @@ class DatabaseBackupV2ControllerTest {
     }
 
     @Test
+    void getBackup() {
+        String backupName = "backupName";
+        BackupResponse backupResponse = createBackupResponse(backupName);
+
+        when(dbBackupV2Service.getBackup(backupName))
+                .thenReturn(backupResponse);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .pathParam("backupName", backupName)
+                .when().post("/backup/{backupName}")
+                .then()
+                .statusCode(OK.getStatusCode())
+                .body("backupName", equalTo(backupName))
+                .body("storageName", equalTo(backupResponse.getStorageName()));
+    }
+
+    @Test
     void getBackupMetadata() {
         String backupName = "backupName";
-        String storageName = "storageName";
-        SortedMap<String, Object> sortedMap = new TreeMap<>();
-        sortedMap.put("key", "value");
+        BackupResponse backupResponse = createBackupResponse(backupName);
 
-        BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
-                "backup-database",
-                List.of(sortedMap),
-                Map.of("settings-key", "settings-value"),
-                List.of(BackupDatabaseResponse.User.builder()
-                        .name("name")
-                        .role("role")
-                        .build()),
-                Map.of("key", "value"),
-                Status.COMPLETED,
-                1,
-                1,
-                "path",
-                null,
-                LocalDateTime.now()
-        );
-
-        LogicalBackupStatusResponse logicalBackupStatusResponse = new LogicalBackupStatusResponse(
-                Status.COMPLETED,
-                null,
-                null,
-                null,
-                List.of(new LogicalBackupStatusResponse.Database(
-                        "db1",
-                        Status.COMPLETED,
-                        1,
-                        "duration",
-                        "path",
-                        null))
-        );
-
-        LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
-                "logicalBackupName",
-                "adapterID",
-                "type",
-                Status.COMPLETED,
-                null,
-                null,
-                null,
-                List.of(backupDatabaseResponse)
-        );
-
-        BackupStatusResponse backupStatusResponse = new BackupStatusResponse();
-        backupStatusResponse.setStatus(Status.COMPLETED);
-        backupStatusResponse.setErrorMessage(null);
-        backupStatusResponse.setTotal(1);
-        backupStatusResponse.setCompleted(1);
-        backupStatusResponse.setSize(1L);
-
-        Filter filter = new Filter();
-        filter.setNamespace(List.of("namespace"));
-
-        FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
-
-        SortedMap<String, Object> map = new TreeMap<>();
-        map.put("key", "value");
-
-        BackupExternalDatabaseResponse backupExternalDatabase = new BackupExternalDatabaseResponse();
-        backupExternalDatabase.setName("Name");
-        backupExternalDatabase.setType("postgresql");
-        backupExternalDatabase.setClassifiers(List.of(map));
-
-        BackupResponse backupResponse = new BackupResponse();
-        backupResponse.setBackupName(backupName);
-        backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
-        backupResponse.setStorageName(storageName);
-        backupResponse.setStatus(Status.COMPLETED);
-        backupResponse.setTotal(1);
-        backupResponse.setCompleted(1);
-        backupResponse.setSize(1L);
-        backupResponse.setErrorMessage(null);
-        backupResponse.setBlobPath("blobPath");
-        backupResponse.setIgnoreNotBackupableDatabases(false);
-        backupResponse.setFilterCriteria(filterCriteria);
-        backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
-        backupResponse.setExternalDatabases(List.of(backupExternalDatabase));
-
-        when(dbBackupV2Service.getBackupMetadata(backupName))
+        when(dbBackupV2Service.getBackup(backupName))
                 .thenReturn(backupResponse);
 
         String expectedDigest = DigestUtil.calculateDigest(backupResponse);
@@ -231,7 +169,7 @@ class DatabaseBackupV2ControllerTest {
                 .statusCode(OK.getStatusCode())
                 .header("Digest", equalTo(expectedDigest))
                 .body("backupName", equalTo(backupName))
-                .body("storageName", equalTo(storageName))
+                .body("storageName", equalTo("storageName"))
                 .extract().response().prettyPrint();
     }
 
@@ -289,5 +227,77 @@ class DatabaseBackupV2ControllerTest {
         dto.setIgnoreNotBackupableDatabases(true);
         dto.setStorageName("e");
         return dto;
+    }
+
+    private BackupResponse createBackupResponse(String backupName){
+        String storageName = "storageName";
+        SortedMap<String, Object> sortedMap = new TreeMap<>();
+        sortedMap.put("key", "value");
+
+        BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
+                "backup-database",
+                List.of(sortedMap),
+                Map.of("settings-key", "settings-value"),
+                List.of(BackupDatabaseResponse.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()),
+                Map.of("key", "value"),
+                Status.COMPLETED,
+                1,
+                1,
+                "path",
+                null,
+                LocalDateTime.now()
+        );
+
+        LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+                "logicalBackupName",
+                "adapterID",
+                "type",
+                Status.COMPLETED,
+                null,
+                null,
+                null,
+                List.of(backupDatabaseResponse)
+        );
+
+        BackupStatusResponse backupStatusResponse = new BackupStatusResponse();
+        backupStatusResponse.setStatus(Status.COMPLETED);
+        backupStatusResponse.setErrorMessage(null);
+        backupStatusResponse.setTotal(1);
+        backupStatusResponse.setCompleted(1);
+        backupStatusResponse.setSize(1L);
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of("namespace"));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        SortedMap<String, Object> map = new TreeMap<>();
+        map.put("key", "value");
+
+        BackupExternalDatabaseResponse backupExternalDatabase = new BackupExternalDatabaseResponse();
+        backupExternalDatabase.setName("Name");
+        backupExternalDatabase.setType("postgresql");
+        backupExternalDatabase.setClassifiers(List.of(map));
+
+        BackupResponse backupResponse = new BackupResponse();
+        backupResponse.setBackupName(backupName);
+        backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
+        backupResponse.setStorageName(storageName);
+        backupResponse.setStatus(Status.COMPLETED);
+        backupResponse.setTotal(1);
+        backupResponse.setCompleted(1);
+        backupResponse.setSize(1L);
+        backupResponse.setErrorMessage(null);
+        backupResponse.setBlobPath("blobPath");
+        backupResponse.setIgnoreNotBackupableDatabases(false);
+        backupResponse.setFilterCriteria(filterCriteria);
+        backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        backupResponse.setExternalDatabases(List.of(backupExternalDatabase));
+
+        return backupResponse;
     }
 }

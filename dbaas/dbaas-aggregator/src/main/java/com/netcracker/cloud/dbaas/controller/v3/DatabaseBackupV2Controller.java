@@ -78,7 +78,7 @@ public class DatabaseBackupV2Controller {
     @Path("/backup/{backupName}")
     @POST
     public Response getBackup(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
-        return Response.ok().build();
+        return Response.ok(dbBackupV2Service.getBackup(backupName)).build();
     }
 
     @Operation(summary = "Delete backup", description = "Delete the backup operation")
@@ -135,7 +135,7 @@ public class DatabaseBackupV2Controller {
     public Response getBackupMetadata(@Parameter(description = "Unique identifier of the backup", required = true)
                                       @PathParam("backupName")
                                       @NotBlank String backupName) {
-        BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
+        BackupResponse response = dbBackupV2Service.getBackup(backupName);
         String digestHeader = DigestUtil.calculateDigest(response);
         return Response.ok(response)
                 .header("Digest", digestHeader)
