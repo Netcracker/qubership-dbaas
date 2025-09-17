@@ -46,6 +46,8 @@ public interface DbaasAdapter {
 
     LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName);
 
+    void deleteBackupV2(String logicalBackupName);
+
     String type();
 
     AdapterHealthStatus getAdapterHealth();
