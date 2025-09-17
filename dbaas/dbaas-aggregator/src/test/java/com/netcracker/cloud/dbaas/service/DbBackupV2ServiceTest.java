@@ -189,7 +189,18 @@ class DbBackupV2ServiceTest {
         when(adapterTwo.isBackupRestoreSupported())
                 .thenReturn(true);
 
-        dbBackupV2Service.backup(backupRequest);
+        BackupOperationResponse response = dbBackupV2Service.backup(backupRequest, false);
+
+        assertEquals(backupName, response.getBackupName());
+        assertNotNull(response.getDryRun());
+
+        BackupResponse backupResponse = response.getDryRun();
+        assertEquals(Status.FAILED, backupResponse.getStatus());
+        assertEquals("storageName", backupResponse.getStorageName());
+        assertEquals("blobPath", backupResponse.getBlobPath());
+        assertEquals(4, backupResponse.getTotal());
+        assertEquals(2, backupResponse.getCompleted());
+        assertEquals(4, backupResponse.getSize());
 
         List<LogicalBackup> logicalBackups = logicalBackupRepository.getByBackupName(backupName);
 
@@ -220,7 +231,7 @@ class DbBackupV2ServiceTest {
     void backup_shouldReturnBadRequest_namespaceReturnEmptyList() {
         BackupRequest backupRequest = createBackupRequest("test-backup", "test-namespace");
         assertThrows(BackupExecutionException.class, () ->
-                dbBackupV2Service.backup(backupRequest));
+                dbBackupV2Service.backup(backupRequest, false));
     }
 
     @Test
@@ -242,7 +253,7 @@ class DbBackupV2ServiceTest {
                 .thenReturn(List.of(new Database()));
 
         assertThrows(DBBackupValidationException.class, () ->
-                dbBackupV2Service.backup(backupRequest));
+                dbBackupV2Service.backup(backupRequest, false));
     }
 
     @Test
@@ -788,6 +799,7 @@ class DbBackupV2ServiceTest {
 
         LogicalBackup logicalBackup = new LogicalBackup();
         logicalBackup.setLogicalBackupName(logicalBackupName1);
+        logicalBackup.setStatus(Status.IN_PROGRESS);
         logicalBackup.setAdapterId(adapterIdFirst);
         logicalBackup.setType("postgresql");
         logicalBackup.setBackupDatabases(List.of(BackupDatabase.builder()
@@ -802,6 +814,7 @@ class DbBackupV2ServiceTest {
                         .build()));
 
         LogicalBackup logicalBackup1 = new LogicalBackup();
+        logicalBackup1.setStatus(Status.IN_PROGRESS);
         logicalBackup1.setLogicalBackupName(logicalBackupName2);
         logicalBackup1.setAdapterId(adapterIdSecond);
         logicalBackup1.setType("postgresql");
@@ -1786,6 +1799,7 @@ class DbBackupV2ServiceTest {
                 .adapterId(adapterId)
                 .logicalRestoreName(logicalRestoreName)
                 .type(type)
+                .status(Status.IN_PROGRESS)
                 .restoreDatabases(List.of(restoreDatabase1, restoreDatabase2))
                 .build();
 

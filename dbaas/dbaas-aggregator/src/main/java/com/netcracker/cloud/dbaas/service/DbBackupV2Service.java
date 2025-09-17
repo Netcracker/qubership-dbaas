@@ -11,7 +11,10 @@ import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
+import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
+import com.netcracker.cloud.dbaas.exceptions.DBNotSupportedValidationException;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
@@ -53,7 +56,7 @@ public class DbBackupV2Service {
     private final BalancingRulesService balancingRulesService;
     private final AsyncOperations asyncOperations;
 
-    public void backup(BackupRequest backupRequest) {
+    public BackupOperationResponse backup(BackupRequest backupRequest, boolean dryRun) {
         String backupName = backupRequest.getBackupName();
         backupExistenceCheck(backupName);
 
@@ -69,7 +72,8 @@ public class DbBackupV2Service {
         Backup backup = initializeFullBackupStructure(filteredDb, backupRequest);
         startBackup(backup);
         updateAggregatedStatus(backup);
-        //TODO return backupName or throw exception
+
+        return mapper.toBackupOperationResponse(backup);
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
@@ -273,11 +277,7 @@ public class DbBackupV2Service {
         log.info("Start aggregating for backupName: {}", backup.getName());
 
         List<LogicalBackup> logicalBackupList = backup.getLogicalBackups();
-        Set<Status> statusSet = logicalBackupList.stream()
-                .map(LogicalBackup::getStatus)
-                .collect(Collectors.toSet());
-
-        log.info("List of logicalBackupStatusList: {}", statusSet);
+        Set<Status> statusSet = new HashSet<>();
 
         StringBuilder errorMsg = new StringBuilder();
         int totalDbCount = 0;
@@ -285,6 +285,7 @@ public class DbBackupV2Service {
         int countCompletedDb = 0;
 
         for (LogicalBackup logicalBackup : logicalBackupList) {
+            statusSet.add(logicalBackup.getStatus());
             totalDbCount += logicalBackup.getBackupDatabases().size();
 
             if (logicalBackup.getErrorMessage() != null && !logicalBackup.getErrorMessage().isBlank()) {
@@ -550,7 +551,9 @@ public class DbBackupV2Service {
             restore.setStatus(Status.FAILED);
             restore.setErrorMessage("The number of attempts exceeded 20");
         } else {
-            List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores();
+            List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores().stream()
+                    .filter(db -> Status.IN_PROGRESS.equals(db.getStatus()))
+                    .toList();
             fetchStatuses(notFinishedLogicalRestores);
             aggregateRestoreStatus(restore);
             restore.setAttemptCount(restore.getAttemptCount() + 1); // update track attempt
@@ -586,37 +589,39 @@ public class DbBackupV2Service {
         log.info("Start aggregating for restore: {}", restore.getName());
 
         List<LogicalRestore> logicalRestoreList = restore.getLogicalRestores();
-        List<Status> logicalRestoreStatuses = logicalRestoreList.stream()
-                .map(LogicalRestore::getStatus)
-                .toList();
-        Set<Status> statusSet = new HashSet<>(logicalRestoreStatuses);
-        log.info("List of logicalRestoreStatusList: {}", logicalRestoreStatuses);
+        Set<Status> statusSet = new HashSet<>();
+        int totalDbCount = 0;
+        int countCompletedDb = 0;
+        StringBuilder sb = new StringBuilder();
 
-        int totalDbCount = logicalRestoreList.stream().mapToInt(lb -> lb.getRestoreDatabases().size()).sum();
+        for (LogicalRestore lr : logicalRestoreList) {
+            statusSet.add(lr.getStatus());
 
-        String aggregatedErrorMsg = logicalRestoreList.stream()
-                .filter(logicalRestore ->
-                        logicalRestore.getErrorMessage() != null
-                                && !logicalRestore.getErrorMessage().isBlank())
-                .map(logicalRestore -> {
-                    String warn = String.format("LogicalRestore %s failed: %s",
-                            logicalRestore.getLogicalRestoreName(),
-                            logicalRestore.getErrorMessage());
-                    log.warn(warn);
-                    return warn;
-                })
-                .collect(Collectors.joining("; "));
+            List<RestoreDatabase> dbs = lr.getRestoreDatabases();
+            totalDbCount += dbs.size();
+            countCompletedDb += (int) dbs.stream()
+                    .filter(db -> Status.COMPLETED.equals(db.getStatus()))
+                    .count();
 
+            String errorMessage = lr.getErrorMessage();
+            if (errorMessage != null && !errorMessage.isBlank()) {
+                String warn = String.format("LogicalRestore %s failed: %s",
+                        lr.getLogicalRestoreName(), errorMessage);
+                log.warn(warn);
 
-        int countCompletedDb = (int) logicalRestoreList.stream()
-                .flatMap(logicalRestore -> logicalRestore.getRestoreDatabases().stream())
-                .filter(db -> Status.COMPLETED.equals(db.getStatus()))
-                .count();
+                if (!sb.isEmpty()) {
+                    sb.append("; ");
+                }
+                sb.append(warn);
+            }
+        }
 
         restore.setStatus(aggregateStatus(statusSet));
         restore.setTotal(totalDbCount);
         restore.setCompleted(countCompletedDb);
         restore.setErrorMessage(aggregatedErrorMsg);
+        restore.setErrorMessage(sb.toString());
+    }
     }
 
     protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,
@@ -696,7 +701,7 @@ public class DbBackupV2Service {
         }
     }
 
-    private Backup getBackupOrThrowException(String backupName){
+    private Backup getBackupOrThrowException(String backupName) {
         return backupRepository.findByIdOptional(backupName)
                 .orElseThrow(() -> new BackupNotFoundException("Backup not found", Source.builder().build()));
     }
