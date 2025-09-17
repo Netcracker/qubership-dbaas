@@ -9,6 +9,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
 
+import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+
 
 @ApplicationScoped
 public class AsyncOperations {
@@ -47,9 +49,9 @@ public class AsyncOperations {
     }
 
     public <T> Supplier<T> wrapWithContext(Supplier<T> task) {
-        var requestIdObj = (XRequestIdContextObject) ContextManager.get("X_REQUEST_ID");
+        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
         return () -> {
-            ContextManager.set("X_REQUEST_ID", requestIdObj);
+            ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
             return task.get();
         };
     }
