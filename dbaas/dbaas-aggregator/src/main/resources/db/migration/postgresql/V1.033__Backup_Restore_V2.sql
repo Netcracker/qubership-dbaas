@@ -10,7 +10,8 @@ create table v2_backup
     completed int,
     size bigint,
     error_message varchar,
-    attempt_count int default 0
+    attempt_count int default 0,
+    imported boolean
 );
 
 create table v2_logical_backup
