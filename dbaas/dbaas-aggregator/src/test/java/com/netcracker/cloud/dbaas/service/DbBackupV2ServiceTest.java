@@ -22,6 +22,8 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockProvider;
@@ -1015,6 +1017,57 @@ class DbBackupV2ServiceTest {
         assertEquals(Status.COMPLETED, status);
     }
 
+    @Test
+    void deleteBackup() {
+        String backupName = "backupName";
+        List<LogicalBackup> logicalBackups = generateLogicalBackups(2);
+        Backup backup = createBackup(backupName, logicalBackups);
+        backupRepository.save(backup);
+
+        logicalBackups.forEach(db -> db.setBackup(backup));
+        logicalBackupRepository.persist(logicalBackups);
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+        DbaasAdapter adapter1 = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById("0"))
+                .thenReturn(adapter);
+        when(physicalDatabasesService.getAdapterById("1"))
+                .thenReturn(adapter1);
+
+        dbBackupV2Service.deleteBackup(backupName);
+
+        Backup deletedBackup = backupRepository.findById(backupName);
+        assertNull(deletedBackup);
+    }
+
+    @Test
+    void deleteBackup_adapterThrowException() {
+        String backupName = "backupName";
+        List<LogicalBackup> logicalBackups = generateLogicalBackups(2);
+        Backup backup = createBackup(backupName, logicalBackups);
+        backupRepository.save(backup);
+
+        logicalBackups.forEach(db -> db.setBackup(backup));
+        logicalBackupRepository.persist(logicalBackups);
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+        DbaasAdapter adapter1 = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById("0"))
+                .thenReturn(adapter);
+        when(physicalDatabasesService.getAdapterById("1"))
+                .thenReturn(adapter1);
+
+        doThrow(new WebApplicationException(
+                Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity("{\"error\":\"Internal server error\",\"requestId\":\"req_1234567890\"}")
+                        .build()
+        )).when(adapter1).deleteBackupV2(any());
+
+        assertThrows(BackupExecutionException.class,
+                () -> dbBackupV2Service.deleteBackup(backupName));
+    }
 
     @Test
     void getBackup() {

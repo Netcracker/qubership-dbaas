@@ -23,6 +23,7 @@ import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
@@ -34,6 +35,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -619,9 +621,50 @@ public class DbBackupV2Service {
         restore.setStatus(aggregateStatus(statusSet));
         restore.setTotal(totalDbCount);
         restore.setCompleted(countCompletedDb);
-        restore.setErrorMessage(aggregatedErrorMsg);
         restore.setErrorMessage(sb.toString());
     }
+
+
+    public void deleteBackup(String backupName) {
+        Backup backup = getBackupOrThrowException(backupName);
+        Map<String, String> errorHappenedAdapters = new ConcurrentHashMap<>();
+
+        List<CompletableFuture<Void>> futures = backup.getLogicalBackups().stream()
+                .map(logicalBackup -> {
+                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(
+                            logicalBackup,
+                            LogicalBackup::getLogicalBackupName,
+                            "deleteBackupV2");
+
+                    String adapterId = logicalBackup.getAdapterId();
+                    log.info("backup with adapter id {} has {} databases to delete", adapterId, logicalBackup.getBackupDatabases().size());
+                    return CompletableFuture.runAsync(
+                                    asyncOperations.wrapWithContext(() -> {
+                                        Failsafe.with(retryPolicy).run(() ->
+                                            physicalDatabasesService.getAdapterById(adapterId).deleteBackupV2(logicalBackup.getLogicalBackupName()));
+                                    }), asyncOperations.getBackupPool())
+                            .exceptionally(throwable -> {
+                                String exMessage = extractErrorMessage(throwable);
+                                log.error("Delete backup with adapter id {} (logicalBackup={}) failed: {}",
+                                        adapterId, logicalBackup.getLogicalBackupName(), exMessage);
+                                errorHappenedAdapters.put(adapterId, exMessage);
+                                return null;
+                            });
+                }).toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        if (!errorHappenedAdapters.isEmpty()) {
+            String aggregatedError = String.format(
+                    "Not all backups were deleted successfully in backup %s, failed adapters: %s",
+                    backupName, errorHappenedAdapters
+            );
+            log.error(aggregatedError);
+            throw new BackupExecutionException(URI.create("deleteBackup"), aggregatedError, new Throwable());
+        }
+
+        backupRepository.delete(backup);
+        log.info("Deletion of backup {} succeed", backupName);
     }
 
     protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,
@@ -638,16 +681,17 @@ public class DbBackupV2Service {
                     .collect(Collectors.joining(", "));
 
             switch (strategy) {
-                case FAIL -> {
+                case FAIL:
                     log.error("External databases present but strategy=FAIL: {}", externalNames);
                     throw new DBNotSupportedValidationException(
                             Source.builder().parameter("externalDatabaseStrategy").build(),
                             "Backup failed: external databases not allowed by external database strategy: " + externalNames
                     );
-                }
-                case SKIP -> log.info("Excluding external databases from backup by strategy: {}", externalNames);
-                case INCLUDE -> {
-                }
+                case SKIP:
+                    log.info("Excluding external databases from backup by strategy: {}", externalNames);
+                    break;
+                case INCLUDE:
+                    break;
             }
         }
 
@@ -711,9 +755,26 @@ public class DbBackupV2Service {
                 .handle(WebApplicationException.class)
                 .withMaxRetries(MAX_RETRIES)
                 .withDelay(RETRY_DELAY)
-                .onFailedAttempt(e -> log.warn("Attempt failed: {}", e.getLastFailure().getMessage()))
+                .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",
+                        nameExtractor.apply(context), extractErrorMessage(e.getLastFailure())))
                 .onRetry(e -> log.info("Retrying {}...", operation))
                 .onFailure(e -> log.error("Request limit exceeded for {}", nameExtractor.apply(context)));
     }
+
+    private String extractErrorMessage(Throwable throwable) {
+        Throwable cause = throwable.getCause() != null ? throwable.getCause() : throwable;
+
+        if (cause instanceof WebApplicationException webEx) {
+            Response response = webEx.getResponse();
+            try {
+                return response.readEntity(String.class);
+            } catch (Exception readEx) {
+                return "Unable to read response body: " + readEx.getMessage();
+            }
+        }
+
+        return cause.getMessage();
+    }
+
 
 }

@@ -116,6 +116,11 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     }
 
     @Override
+    public void deleteBackupV2(String logicalBackupName) {
+
+    }
+
+    @Override
     protected String deleteBackup(String localId) {
         return restClient.deleteBackup(type(), localId);
     }

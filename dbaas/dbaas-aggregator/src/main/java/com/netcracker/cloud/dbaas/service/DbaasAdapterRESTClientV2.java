@@ -139,6 +139,11 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
         return restClient.trackBackupV2(type(), logicalBackupName);
     }
 
+    @Override
+    public void deleteBackupV2(String logicalBackupName) {
+        restClient.deleteBackupV2(type(), logicalBackupName);
+    }
+
 
     @Override
     protected String deleteBackup(String localId) {
