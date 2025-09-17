@@ -46,14 +46,29 @@ class DatabaseBackupV2ControllerTest {
 
         BackupRequest backupRequest = createBackupRequest(namespace, backupName);
 
+        BackupResponse backupResponse = new BackupResponse();
+        backupResponse.setBackupName(backupName);
+        backupResponse.setStorageName("storageName");
+
+        BackupOperationResponse response = new BackupOperationResponse(
+                backupName,
+                backupResponse
+        );
+
+        when(dbBackupV2Service.backup(backupRequest, false))
+                .thenReturn(response);
+
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .body(backupRequest)
                 .when().post("/operation/backup")
                 .then()
-                .statusCode(OK.getStatusCode());
+                .statusCode(OK.getStatusCode())
+                .body("backupName", equalTo(backupName))
+                .body("dryRun.backupName", equalTo(backupName))
+                .body("dryRun.storageName", equalTo(backupResponse.getStorageName()));
 
-        verify(dbBackupV2Service, times(1)).backup(backupRequest);
+        verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
 
     @Test
@@ -74,7 +89,7 @@ class DatabaseBackupV2ControllerTest {
                         containsString("externalDatabaseStrategy: must not be null")
                 ));
 
-        verify(dbBackupV2Service, times(0)).backup(any());
+        verify(dbBackupV2Service, times(0)).backup(any(), anyBoolean());
     }
 
     @Test
@@ -229,7 +244,7 @@ class DatabaseBackupV2ControllerTest {
         return dto;
     }
 
-    private BackupResponse createBackupResponse(String backupName){
+    private BackupResponse createBackupResponse(String backupName) {
         String storageName = "storageName";
         SortedMap<String, Object> sortedMap = new TreeMap<>();
         sortedMap.put("key", "value");

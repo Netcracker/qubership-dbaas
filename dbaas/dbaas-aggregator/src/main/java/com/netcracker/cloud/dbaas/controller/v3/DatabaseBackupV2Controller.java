@@ -62,8 +62,12 @@ public class DatabaseBackupV2Controller {
     @Path("/operation/backup")
     @POST
     public Response initiateBackup(@RequestBody(description = "Backup request", required = true) @Valid BackupRequest backupRequest, @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        dbBackupV2Service.backup(backupRequest);
-        return Response.ok().build();
+
+        if (dryRun)
+            return Response.status(Response.Status.NOT_IMPLEMENTED)
+                    .entity("Dry-run mode is not implemented yet")
+                    .build();
+        return Response.ok(dbBackupV2Service.backup(backupRequest, dryRun)).build();
     }
 
     @Operation(summary = "Get backup details", description = "Retrieve details about a specific backup operation")
