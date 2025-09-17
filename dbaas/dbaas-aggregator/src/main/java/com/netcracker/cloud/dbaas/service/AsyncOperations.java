@@ -55,4 +55,12 @@ public class AsyncOperations {
             return task.get();
         };
     }
+
+    public Runnable wrapWithContext(Runnable task) {
+        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
+        return () -> {
+            ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+            task.run();
+        };
+    }
 }
