@@ -61,6 +61,8 @@ public class Backup {
     @Column(name = "attempt_count")
     private int attemptCount;
 
+    private boolean imported;
+
     public Backup(String name, String storageName, String blobPath, ExternalDatabaseStrategy externalDatabaseStrategy, String filters) {
         this.name = name;
         this.storageName = storageName;
