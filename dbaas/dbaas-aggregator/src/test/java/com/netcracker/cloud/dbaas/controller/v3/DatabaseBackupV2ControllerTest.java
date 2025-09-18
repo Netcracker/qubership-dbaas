@@ -116,7 +116,7 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(412)
                 .body("reason", equalTo("Backup not allowed"))
-                .body("message", equalTo("The backup request can`t process. Backup operation unsupported for databases: " + dbNames));
+                .body("message", equalTo("The backup request can`t be processed. Backup operation unsupported for databases: " + dbNames));
         verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
 
