@@ -11,10 +11,7 @@ import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
-import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
-import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
-import com.netcracker.cloud.dbaas.exceptions.DBNotSupportedValidationException;
+import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
@@ -639,10 +636,10 @@ public class DbBackupV2Service {
                     String adapterId = logicalBackup.getAdapterId();
                     log.info("backup with adapter id {} has {} databases to delete", adapterId, logicalBackup.getBackupDatabases().size());
                     return CompletableFuture.runAsync(
-                                    asyncOperations.wrapWithContext(() -> {
-                                        Failsafe.with(retryPolicy).run(() ->
-                                            physicalDatabasesService.getAdapterById(adapterId).deleteBackupV2(logicalBackup.getLogicalBackupName()));
-                                    }), asyncOperations.getBackupPool())
+                                    asyncOperations.wrapWithContext(() ->
+                                            Failsafe.with(retryPolicy).run(() ->
+                                                    physicalDatabasesService.getAdapterById(adapterId).deleteBackupV2(logicalBackup.getLogicalBackupName()))
+                                    ), asyncOperations.getBackupPool())
                             .exceptionally(throwable -> {
                                 String exMessage = extractErrorMessage(throwable);
                                 log.error("Delete backup with adapter id {} (logicalBackup={}) failed: {}",
@@ -683,9 +680,9 @@ public class DbBackupV2Service {
             switch (strategy) {
                 case FAIL:
                     log.error("External databases present but strategy=FAIL: {}", externalNames);
-                    throw new DBNotSupportedValidationException(
-                            Source.builder().parameter("externalDatabaseStrategy").build(),
-                            "Backup failed: external databases not allowed by external database strategy: " + externalNames
+                    throw new DatabaseBackupNotSupportedException(
+                            "External databases not allowed by strategy=FAIL: " + externalNames,
+                            Source.builder().parameter("ExternalDatabaseStrategy").build()
                     );
                 case SKIP:
                     log.info("Excluding external databases from backup by strategy: {}", externalNames);
@@ -719,9 +716,9 @@ public class DbBackupV2Service {
                 log.info("Excluding not backupable databases: {}", dbNames);
             } else {
                 log.error("Backup validation failed: Backup operation unsupported for databases: {}", dbNames);
-                throw new DBNotSupportedValidationException(
-                        Source.builder().parameter("ignoreNotBackupableDatabases").build(),
-                        "Backup validation failed: Backup operation unsupported for databases: " + dbNames
+                throw new DatabaseBackupNotSupportedException(
+                        "Backup operation unsupported for databases: " + dbNames,
+                        Source.builder().parameter("ignoreNotBackupableDatabases").build()
                 );
             }
         }
@@ -740,8 +737,7 @@ public class DbBackupV2Service {
     private void backupExistenceCheck(String backupName) {
         if (backupRepository.findByIdOptional(backupName).isPresent()) {
             log.error("Backup with name {} already exists", backupName);
-            throw new DBBackupValidationException(Source.builder().build(),
-                    String.format("Backup with name %s already exists", backupName));
+            throw new BackupAlreadyExistsException(backupName, Source.builder().build());
         }
     }
 

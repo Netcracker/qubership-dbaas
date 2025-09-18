@@ -4,7 +4,10 @@ import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
+import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
 import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
 import com.netcracker.cloud.dbaas.utils.DigestUtil;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +94,53 @@ class DatabaseBackupV2ControllerTest {
                 ));
 
         verify(dbBackupV2Service, times(0)).backup(any(), anyBoolean());
+    }
+
+    @Test
+    void initiateBackup_databasesCannotBackup_ignoreNotBackupableDatabaseFalse() {
+        String namespace = "test-namespace";
+        String backupName = "backup-123";
+
+        BackupRequest backupRequest = createBackupRequest(namespace, backupName);
+
+        List<String> dbNames = List.of("db1", "db2");
+        doThrow(new DatabaseBackupNotSupportedException(
+                    "Backup operation unsupported for databases: " + dbNames,
+                Source.builder().parameter("ignoreNotBackupableDatabases").build()))
+                .when(dbBackupV2Service).backup(backupRequest, false);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .body(backupRequest)
+                .when().post("/operation/backup")
+                .then()
+                .statusCode(412)
+                .body("reason", equalTo("Backup not allowed"))
+                .body("message", equalTo("The backup request can`t process. Backup operation unsupported for databases: " + dbNames));
+        verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
+    }
+
+    @Test
+    void initiateBackup_backupAlreadyExists() {
+        String namespace = "test-namespace";
+        String backupName = "backup-123";
+
+        BackupRequest backupRequest = createBackupRequest(namespace, backupName);
+
+
+        doThrow(new BackupAlreadyExistsException(backupName, Source.builder().build()))
+                .when(dbBackupV2Service).backup(backupRequest, false);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .body(backupRequest)
+                .when().post("/operation/backup")
+                .then()
+                .statusCode(CONFLICT.getStatusCode())
+                .body("reason", equalTo("Backup already exists"))
+                .body("message", equalTo(String.format("Backup with name '%s' already exists", backupName)))
+                .extract().response().prettyPrint();
+        verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
 
     @Test
@@ -225,6 +276,43 @@ class DatabaseBackupV2ControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", equalTo("Digest header mismatch."))
                 .extract().response().prettyPrint();
+    }
+
+    @Test
+    void deleteBackup_shouldReturn204() {
+        String backupName = "backup123";
+
+        doNothing().when(dbBackupV2Service).deleteBackup(backupName);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .when().delete("/backup/" + backupName)
+                .then()
+                .statusCode(204); // No Content
+
+        verify(dbBackupV2Service, times(1)).deleteBackup(backupName);
+    }
+
+    @Test
+    void deleteBackup_shouldReturn500_onException() {
+        String backupName = "backup123";
+
+        String aggregatedError = String.format(
+                "Not all backups were deleted successfully in backup %s, failed adapters: %s",
+                backupName, Map.of("adapterId1", "{\"error\":\"Internal server error\",\"requestId\":\"req_1234567890\"}")
+        );
+
+        doThrow(new BackupExecutionException(
+                URI.create("deleteBackup"),
+                aggregatedError,
+                new Throwable()
+        )).when(dbBackupV2Service).deleteBackup(backupName);
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .when().delete("/backup/" + backupName)
+                .then()
+                .statusCode(500); // Internal Server Error
     }
 
     public static BackupRequest createBackupRequest(String namespace, String backupName) {

@@ -96,6 +96,7 @@ public class DatabaseBackupV2Controller {
     @Path("/backup/{backupName}")
     @DELETE
     public Response deleteBackup(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
+        dbBackupV2Service.deleteBackup(backupName);
         return Response.noContent().build();
     }
 
