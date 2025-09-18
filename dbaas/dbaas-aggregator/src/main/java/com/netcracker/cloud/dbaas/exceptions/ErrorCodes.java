@@ -208,6 +208,15 @@ public enum ErrorCodes implements ErrorCode {
             "Adapter address name has wrong format",
             "register request contains adapter address field, but it has wrong format: %s. " +
                     "Must be in format: <schema>://<service-name>.<namespace>:<port>, e.g.: http://dbaas-postgres-adapter.postgresql:8080"),
+    CORE_DBAAS_4046(
+            "CORE-DBAAS-4046",
+            "Backup already exists",
+            "Backup with name '%s' already exists"),
+    CORE_DBAAS_4047(
+            "CORE-DBAAS-4047",
+            "Backup not allowed",
+            "The backup request can`t process. %s"
+    ),
 
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",

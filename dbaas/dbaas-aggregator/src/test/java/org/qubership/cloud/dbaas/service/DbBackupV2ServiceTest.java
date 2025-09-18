@@ -11,9 +11,9 @@ import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
 import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
-import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
-import com.netcracker.cloud.dbaas.exceptions.DBNotSupportedValidationException;
+import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.*;
@@ -254,7 +254,7 @@ class DbBackupV2ServiceTest {
         when(databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace))
                 .thenReturn(List.of(new Database()));
 
-        assertThrows(DBBackupValidationException.class, () ->
+        assertThrows(BackupAlreadyExistsException.class, () ->
                 dbBackupV2Service.backup(backupRequest, false));
     }
 
@@ -383,14 +383,14 @@ class DbBackupV2ServiceTest {
         databaseThird.setDatabaseRegistry(List.of(databaseRegistryThird));
         databaseThird.setSettings(Map.of("key", "value"));
 
-        DBNotSupportedValidationException ex = assertThrows(DBNotSupportedValidationException.class,
+        DatabaseBackupNotSupportedException ex = assertThrows(DatabaseBackupNotSupportedException.class,
                 () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(
                         List.of(databaseThird),
                         false,
                         ExternalDatabaseStrategy.FAIL
                 ));
 
-        assertTrue(ex.getMessage().contains("Backup failed: external databases not allowed by external database strategy"));
+        assertTrue(ex.getMessage().contains("External databases not allowed by strategy=FAIL:"));
     }
 
     @Test
@@ -520,14 +520,14 @@ class DbBackupV2ServiceTest {
         when(physicalDatabasesService.getAdapterById("1"))
                 .thenReturn(adapter1);
 
-        DBNotSupportedValidationException ex = assertThrows(DBNotSupportedValidationException.class,
+        DatabaseBackupNotSupportedException ex = assertThrows(DatabaseBackupNotSupportedException.class,
                 () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(
                         List.of(databaseFirst),
                         false,
                         ExternalDatabaseStrategy.FAIL
                 ));
 
-        assertTrue(ex.getMessage().contains("Backup validation failed: Backup operation unsupported for databases:"));
+        assertTrue(ex.getMessage().contains("Backup operation unsupported for databases:"));
     }
 
     @Test
@@ -1182,7 +1182,7 @@ class DbBackupV2ServiceTest {
 
         BackupResponse backupResponse = generateBackupResponse(backupName, namespace);
 
-        assertThrows(DBBackupValidationException.class,
+        assertThrows(BackupAlreadyExistsException.class,
                 () -> dbBackupV2Service.uploadBackupMetadata(backupResponse));
     }
 
