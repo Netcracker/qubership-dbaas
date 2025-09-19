@@ -1,8 +1,6 @@
 package com.netcracker.cloud.dbaas.config;
 
 import com.github.kagkarlsson.scheduler.task.Task;
-import io.quarkus.arc.properties.UnlessBuildProperty;
-import com.netcracker.cloud.dbaas.JdbcUtils;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
@@ -13,6 +11,7 @@ import com.netcracker.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
 import com.netcracker.cloud.dbaas.service.dbsettings.PostgresqlSettingsHandler;
 import com.netcracker.core.scheduler.po.ProcessOrchestrator;
 import io.quarkus.arc.All;
+import io.quarkus.arc.properties.UnlessBuildProperty;
 import io.quarkus.runtime.Startup;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
@@ -22,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.sql.DataSource;
-import java.sql.SQLException;
 import java.util.List;
 
 @Dependent
@@ -30,33 +28,7 @@ import java.util.List;
 public class ServicesConfig {
 
     public static final Object DBAAS_REPOSITORIES_MUTEX = new Object();
-
     private static final String PROCESS_ORCHESTRATOR_DATASOURCE = "po-datasource";
-
-    @ConfigProperty(name = "postgresql.host")
-    String pgHost;
-
-    @ConfigProperty(name = "postgresql.port")
-    Integer pgPort;
-
-    @ConfigProperty(name = "postgresql.database")
-    String pgDatabase;
-
-    @ConfigProperty(name = "postgresql.user")
-    String pgUser;
-
-    @ConfigProperty(name = "postgresql.password")
-    String pgPassword;
-
-    @ConfigProperty(name = "dbaas.datasource.maximum-pool-size", defaultValue = "15")
-    Integer maxPoolSize;
-
-    @Produces
-    @Singleton
-    @Named(PROCESS_ORCHESTRATOR_DATASOURCE)
-    public DataSource processOrchestratorDataSource() throws SQLException {
-        return JdbcUtils.buildDataSource(pgHost, pgPort, pgDatabase, pgUser, pgPassword, maxPoolSize, null);
-    }
 
     @Produces
     @Singleton
