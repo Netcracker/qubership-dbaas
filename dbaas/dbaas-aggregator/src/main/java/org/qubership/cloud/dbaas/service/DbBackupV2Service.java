@@ -11,7 +11,10 @@ import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
+import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
+import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
@@ -19,14 +22,15 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.net.URI;
 import java.time.Duration;
@@ -40,12 +44,19 @@ import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 
 @Slf4j
 @ApplicationScoped
-@AllArgsConstructor
 public class DbBackupV2Service {
 
-    private static final Duration RETRY_DELAY = Duration.ofSeconds(3);
-    private static final int MAX_RETRIES = 2;
-    protected static int TRACK_DELAY_MS = 3000;
+    @ConfigProperty(name = "retry.delay.seconds")
+    Duration retryDelay;
+
+    @ConfigProperty(name = "retry.max")
+    int maxRetries;
+
+    @ConfigProperty(name = "retry.delay.track.ms")
+    int trackDelayMs;
+
+    @ConfigProperty(name = "retry.count")
+    int retryCount;
 
     private final BackupRepository backupRepository;
     private final RestoreRepository restoreRepository;
@@ -54,6 +65,23 @@ public class DbBackupV2Service {
     private final BackupV2Mapper mapper;
     private final BalancingRulesService balancingRulesService;
     private final AsyncOperations asyncOperations;
+
+    @Inject
+    public DbBackupV2Service(BackupRepository backupRepository,
+                             RestoreRepository restoreRepository,
+                             PhysicalDatabasesService physicalDatabasesService,
+                             DatabaseDbaasRepository databaseDbaasRepository,
+                             BackupV2Mapper mapper,
+                             BalancingRulesService balancingRulesService,
+                             AsyncOperations asyncOperations) {
+        this.backupRepository = backupRepository;
+        this.restoreRepository = restoreRepository;
+        this.physicalDatabasesService = physicalDatabasesService;
+        this.databaseDbaasRepository = databaseDbaasRepository;
+        this.mapper = mapper;
+        this.balancingRulesService = balancingRulesService;
+        this.asyncOperations = asyncOperations;
+    }
 
     public BackupOperationResponse backup(BackupRequest backupRequest, boolean dryRun) {
         String backupName = backupRequest.getBackupName();
@@ -234,9 +262,10 @@ public class DbBackupV2Service {
     }
 
     protected void trackAndAggregate(Backup backup) {
-        if (backup.getAttemptCount() > 20) {
+        if (backup.getAttemptCount() > retryCount) {
+            log.warn("The number of attempts to track backup {} exceeded {}", backup.getName(), retryCount);
             backup.setStatus(Status.FAILED);
-            backup.setErrorMessage("The number of attempts exceeded 20");
+            backup.setErrorMessage("The number of attempts exceeded " + retryCount);
         } else {
             List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups().stream()
                     .filter(db -> Status.IN_PROGRESS.equals(db.getStatus()))
@@ -370,81 +399,140 @@ public class DbBackupV2Service {
     public void restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
         log.info("Start restore to backup {}", backupName);
         Backup backup = getBackupOrThrowException(backupName);
+        List<BackupDatabase> filteredBackupDbs = getAllDbByFilter(backup, restoreRequest.getFilterCriteria());
 
-        Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
+        Restore restore = initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
         startRestore(restore, dryRun);
         aggregateRestoreStatus(restore);
     }
 
+    private List<BackupDatabase> getAllDbByFilter(Backup backup, FilterCriteria filterCriteria) {
+        return backup.getLogicalBackups().stream().flatMap(lb -> lb.getBackupDatabases().stream()).toList();
+    }
 
-    protected Restore initializeFullRestoreStructure(Backup backup, RestoreRequest restoreRequest) {
-        List<LogicalBackup> logicalBackups = backup.getLogicalBackups();
-        Restore restore = new Restore();
-
+    protected Restore initializeFullRestoreStructure(
+            Backup backup,
+            List<BackupDatabase> backupDatabases,
+            RestoreRequest restoreRequest
+    ) {
         Map<String, String> namespacesMap = Optional.ofNullable(restoreRequest.getMapping())
                 .map(Mapping::getNamespaces)
                 .orElseGet(HashMap::new);
 
-        Map<Map.Entry<String, String>, LogicalRestore> logicalRestoreMap = logicalBackups.stream()
-                .map(lb -> {
-                            var classifier = lb.getBackupDatabases().getFirst().getClassifiers().getFirst();
-                            String oldNamespace = (String) classifier.get("namespace");
-                            String type = lb.getType();
-                            String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
+        // Group BackupDatabase by updated adapters
+        Map<Map.Entry<String, String>, List<BackupDatabase>> groupedByTypeAndAdapter =
+                groupBackupDatabasesByTypeAndAdapter(backupDatabases, namespacesMap);
 
-                            String adapterId = balancingRulesService
-                                    .applyNamespaceBalancingRule(targetNamespace, type)
-                                    .getAdapter().getAdapterId();
+        // Build logicalRestores for each new adapter
+        List<LogicalRestore> logicalRestores = groupedByTypeAndAdapter.entrySet().stream()
+                .map(entry -> {
+                    LogicalRestore logicalRestore = new LogicalRestore();
+                    logicalRestore.setType(entry.getKey().getKey());
+                    logicalRestore.setAdapterId(entry.getKey().getValue());
 
-                            LogicalRestore lr = new LogicalRestore();
-                            lr.setAdapterId(adapterId);
-                            lr.setType(type);
-                            lr.setRestore(restore);
-                            lr.setRestoreDatabases(new ArrayList<>());
-                            return Map.entry(Map.entry(type, targetNamespace), lr);
-                        }
-                )
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-        logicalBackups.forEach(lb -> lb.getBackupDatabases().forEach(bd -> {
-                    String oldNamespace = (String) bd.getClassifiers().getFirst().get("namespace");
-                    String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
-
-                    LogicalRestore logicalRestore = logicalRestoreMap.get(Map.entry(lb.getType(), targetNamespace));
-                    List<RestoreDatabase.User> users = bd.getUsers().stream().map(user -> new RestoreDatabase.User(user.getName(), user.getRole())).toList();
-                    List<SortedMap<String, Object>> updatedClassifier = bd.getClassifiers().stream()
-                            .map(classifier -> {
-                                SortedMap<String, Object> copy = new TreeMap<>(classifier);
-                                if (copy.containsKey("namespace")) {
-                                    copy.put("namespace", targetNamespace);
-                                }
-                                return copy;
-                            })
-                            .toList();
-
-                    RestoreDatabase restoreDatabase = RestoreDatabase.builder()
-                            .logicalRestore(logicalRestore)
-                            .backupDatabase(bd)
-                            .name(bd.getName())
-                            .classifiers(updatedClassifier)
-                            .users(users)
-                            .resources(bd.getResources())
-                            .build();
-
-                    logicalRestore.getRestoreDatabases().add(restoreDatabase);
+                    List<RestoreDatabase> restoreDatabases =
+                            createRestoreDatabases(entry.getValue(), namespacesMap);
+                    logicalRestore.setRestoreDatabases(restoreDatabases);
+                    restoreDatabases.forEach(rd -> rd.setLogicalRestore(logicalRestore));
+                    return logicalRestore;
                 })
-        );
+                .toList();
+
+        // Build restore
+        Restore restore = new Restore();
         restore.setName(backup.getName());
-        restore.setLogicalRestores(new ArrayList<>(logicalRestoreMap.values()));
         restore.setBackup(backup);
         restore.setStorageName(restoreRequest.getStorageName());
         restore.setBlobPath(restoreRequest.getBlobPath());
-        restore.setMapping("\"n\""); //TODO
-        restore.setFilters("\"n\""); //TODO
+        restore.setLogicalRestores(new ArrayList<>(logicalRestores));
 
-        restoreRepository.save(restore);
+        // TODO change to mapping/filters
+        restore.setMapping("\"n\"");
+        restore.setFilters("\"n\"");
+
+        // set up relation
+        logicalRestores.forEach(lr -> lr.setRestore(restore));
+
         return restore;
     }
+
+
+    private List<RestoreDatabase> createRestoreDatabases(
+            List<BackupDatabase> backupDatabases,
+            Map<String, String> namespacesMap
+    ) {
+        return backupDatabases.stream()
+                .map(backupDatabase -> {
+                    // updated classifiers
+                    List<SortedMap<String, Object>> classifiers = backupDatabase.getClassifiers().stream()
+                            .map(classifier ->
+                                    updateClassifierNamespace(classifier, namespacesMap))
+                            .toList();
+
+                    List<RestoreDatabase.User> users = backupDatabase.getUsers().stream()
+                            .map(u -> new RestoreDatabase.User(u.getName(), u.getRole()))
+                            .toList();
+
+                    return RestoreDatabase.builder()
+                            .backupDatabase(backupDatabase)
+                            .name(backupDatabase.getName())
+                            .classifiers(classifiers)
+                            .users(users)
+                            .resources(backupDatabase.getResources())
+                            .build();
+                })
+                .toList();
+    }
+
+    private SortedMap<String, Object> updateClassifierNamespace(
+            SortedMap<String, Object> classifier,
+            Map<String, String> namespacesMap
+    ) {
+        String oldNamespace = (String) classifier.get("namespace");
+        String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
+
+        SortedMap<String, Object> updatedClassifier = new TreeMap<>(classifier);
+        updatedClassifier.put("namespace", targetNamespace);
+        return updatedClassifier;
+    }
+
+    private Map<Map.Entry<String, String>, List<BackupDatabase>> groupBackupDatabasesByTypeAndAdapter(
+            List<BackupDatabase> backupDatabases,
+            Map<String, String> namespacesMap
+    ) {
+        return backupDatabases.stream()
+                .map(db -> {
+                    List<SortedMap<String, Object>> classifiers = db.getClassifiers(); // List<SortedMap<String,Object>>
+                    String targetNamespace = null;
+
+                    // 1) find classifier, that namespace exists in mapping
+                    for (var c : classifiers) {
+                        String oldNamespace = (String) c.get("namespace");
+                        if (namespacesMap.containsKey(oldNamespace)) {
+                            targetNamespace = namespacesMap.get(oldNamespace);
+                            break;
+                        }
+                    }
+
+                    // 2) if in case namespace not exists in mapping
+                    if (targetNamespace == null) {
+                        targetNamespace = (String) classifiers.getFirst().get("namespace");
+                    }
+
+                    String type = db.getLogicalBackup().getType();
+                    String adapterId = balancingRulesService
+                            .applyNamespaceBalancingRule(targetNamespace, type)
+                            .getAdapter()
+                            .getAdapterId();
+
+                    return Map.entry(Map.entry(type, adapterId), db);
+                })
+                .collect(Collectors.groupingBy(
+                        Map.Entry::getKey,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toList())
+                ));
+    }
+
 
     protected void startRestore(Restore restore, boolean dryRun) {
         List<LogicalRestore> logicalRestores = restore.getLogicalRestores();
@@ -458,7 +546,7 @@ public class DbBackupV2Service {
                                 .exceptionally(throwable -> {
                                     logicalRestore.setStatus(Status.FAILED);
                                     logicalRestore.setErrorMessage(throwable.getCause() != null
-                                            ? throwable.getCause().getMessage() : throwable.getMessage());
+                                            ? throwable.getCause().getMessage() : throwable.getMessage()); //TODO will be return general exception, see deleteBackup exception handling
                                     return null;
                                 })
                 )
@@ -502,13 +590,13 @@ public class DbBackupV2Service {
                     String namespace = restoreDatabase.getClassifiers()
                             .stream()
                             .map(i -> (String) i.get("namespace"))
-                            .findFirst()//todo logical error
+                            .findFirst()
                             .orElse("");
 
                     String microserviceName = restoreDatabase.getClassifiers()
                             .stream()
                             .map(i -> (String) i.get("microserviceName"))
-                            .findFirst()//todo logical error
+                            .findFirst()
                             .orElse("");
 
                     return Map.of(
@@ -546,9 +634,10 @@ public class DbBackupV2Service {
 
     //TODO after aggregate status completed need to start registry database (Database.class)
     protected void trackAndAggregateRestore(Restore restore) {
-        if (restore.getAttemptCount() > 20) {
+        if (restore.getAttemptCount() > retryCount) {
+            log.warn("The number of attempts of track restore {} exceeded {}", restore.getName(), retryCount);
             restore.setStatus(Status.FAILED);
-            restore.setErrorMessage("The number of attempts exceeded 20");
+            restore.setErrorMessage("The number of attempts exceeded " + retryCount);
         } else {
             List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores().stream()
                     .filter(db -> Status.IN_PROGRESS.equals(db.getStatus()))
@@ -749,8 +838,8 @@ public class DbBackupV2Service {
     private <T> RetryPolicy<Object> buildRetryPolicy(T context, Function<T, String> nameExtractor, String operation) {
         return new RetryPolicy<>()
                 .handle(WebApplicationException.class)
-                .withMaxRetries(MAX_RETRIES)
-                .withDelay(RETRY_DELAY)
+                .withMaxRetries(maxRetries)
+                .withDelay(retryDelay)
                 .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",
                         nameExtractor.apply(context), extractErrorMessage(e.getLastFailure())))
                 .onRetry(e -> log.info("Retrying {}...", operation))

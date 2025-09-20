@@ -29,8 +29,7 @@ import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import org.jetbrains.annotations.NotNull;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -95,13 +94,9 @@ class DbBackupV2ServiceTest {
     @Named("po-datasource")
     private DataSource dataSource;
 
-    @BeforeAll
-    static void globalSetUp() {
-        DbBackupV2Service.TRACK_DELAY_MS = 0;
-    }
-
-    @AfterEach
+    @BeforeEach
     void setUp() {
+        dbBackupV2Service.trackDelayMs = 0;
         restoreDatabaseRepository.deleteAll();
         logicalRestoreDatabaseRepository.deleteAll();
         restoreRepository.deleteAll();
@@ -745,7 +740,7 @@ class DbBackupV2ServiceTest {
         executor.submit(pod1Job);
         executor.submit(pod2Job);
 
-        latch.await(5, SECONDS);
+        latch.await(2, SECONDS);
 
         assertEquals(1, executions.get());
     }
@@ -1197,7 +1192,6 @@ class DbBackupV2ServiceTest {
         String logicalBackupName2 = "logicalBackupName2";
         String storageName = "storageName";
         String blobPath = "blobPath";
-        String errorMsg = "error messae";
         String adapterId1 = "adapter1";
         String adapterId2 = "adapter2";
         String db1 = "db1";
@@ -1208,6 +1202,10 @@ class DbBackupV2ServiceTest {
         map1.put("namespace", oldNamespace1);
         map1.put("microserviceName", "microserviceName");
 
+        SortedMap<String, Object> map2 = new TreeMap<>();
+        map2.put("namespace", oldNamespace2);
+        map2.put("microserviceName", "microserviceName");
+
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
                 .name(db1)
                 .resources(Map.of())
@@ -1216,9 +1214,8 @@ class DbBackupV2ServiceTest {
                         .name("name")
                         .role("role")
                         .build()))
-                .classifiers(List.of(map1))
+                .classifiers(List.of(map1, map2))
                 .build();
-
 
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name(db2)
@@ -1228,12 +1225,8 @@ class DbBackupV2ServiceTest {
                         .name("name")
                         .role("role")
                         .build()))
-                .classifiers(List.of(map1))
+                .classifiers(List.of(map1, map2))
                 .build();
-
-        SortedMap<String, Object> map2 = new TreeMap<>();
-        map2.put("namespace", oldNamespace2);
-        map2.put("microserviceName", "microserviceName");
 
         BackupDatabase backupDatabase3 = BackupDatabase.builder()
                 .name(db3)
@@ -1247,11 +1240,13 @@ class DbBackupV2ServiceTest {
                 .build();
 
         LogicalBackup logicalBackup1 = LogicalBackup.builder()
+                .logicalBackupName(logicalBackupName1)
                 .type("postgresql")
                 .backupDatabases(List.of(backupDatabase1, backupDatabase2))
                 .build();
         LogicalBackup logicalBackup2 = LogicalBackup.builder()
-                .type("postgresql")
+                .logicalBackupName(logicalBackupName2)
+                .type("mongodb")
                 .backupDatabases(List.of(backupDatabase3))
                 .build();
 
@@ -1334,10 +1329,9 @@ class DbBackupV2ServiceTest {
         PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
         physicalDatabase2.setAdapter(adapter2);
 
-
-        when(balancingRulesService.applyNamespaceBalancingRule(newNamespace1, "postgresql"))
+        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType())))
                 .thenReturn(physicalDatabase1);
-        when(balancingRulesService.applyNamespaceBalancingRule(newNamespace2, "postgresql"))
+        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType())))
                 .thenReturn(physicalDatabase2);
 
         DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
@@ -1346,13 +1340,11 @@ class DbBackupV2ServiceTest {
         when(dbaasAdapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
                 .thenReturn(response1);
 
-
         DbaasAdapter dbaasAdapter2 = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId2))
                 .thenReturn(dbaasAdapter2);
         when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
                 .thenReturn(response2);
-
 
         dbBackupV2Service.restore(backupName, restoreRequest, true);
 
@@ -1366,41 +1358,43 @@ class DbBackupV2ServiceTest {
         LogicalRestore logicalRestore1 = restore.getLogicalRestores().stream()
                 .filter(lr -> lr.getAdapterId().equals(adapterId1))
                 .findFirst()
-                .orElseThrow();
-        assertEquals(adapterId1, logicalRestore1.getAdapterId());
+                .orElse(null);
+        assertNotNull(logicalRestore1);
         assertEquals(2, logicalRestore1.getRestoreDatabases().size());
         assertEquals(Status.COMPLETED, logicalRestore1.getStatus());
 
         LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
                 .filter(lr -> lr.getAdapterId().equals(adapterId2))
                 .findFirst()
-                .orElseThrow();
-        assertEquals(adapterId2, logicalRestore2.getAdapterId());
+                .orElse(null);
+        assertNotNull(logicalRestore2);
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
         assertEquals(Status.COMPLETED, logicalRestore2.getStatus());
 
-        RestoreDatabase restoreDatabase1 = logicalRestore1.getRestoreDatabases().getFirst();
-        assertNotNull(restoreDatabase1);
-        assertNotNull(restoreDatabase1.getBackupDatabase());
+        RestoreDatabase restoreDatabase1 = logicalRestore1.getRestoreDatabases().stream()
+                .filter(rd -> rd.getBackupDatabase().getName().equals(backupDatabase1.getName()))
+                .findFirst()
+                .orElse(null);
         assertEquals("newDb1", restoreDatabase1.getName());
 
-        SortedMap<String, String> expectedClassifier = new TreeMap<>();
+        SortedMap<String, Object> expectedClassifier = new TreeMap<>();
         expectedClassifier.put("namespace", newNamespace1);
         expectedClassifier.put("microserviceName", "microserviceName");
-
-        assertEquals(List.of(expectedClassifier), restoreDatabase1.getClassifiers());
-
-        RestoreDatabase restoreDatabase2 = logicalRestore1.getRestoreDatabases().getLast();
-        assertNotNull(restoreDatabase2);
-        assertNotNull(restoreDatabase2.getLogicalRestore());
-        assertNotNull(restoreDatabase2.getBackupDatabase());
-        assertEquals("newDb2", restoreDatabase2.getName());
-
-        SortedMap<String, String> expectedClassifier2 = new TreeMap<>();
-        expectedClassifier2.put("namespace", newNamespace1);
+        SortedMap<String, Object> expectedClassifier2 = new TreeMap<>();
+        expectedClassifier2.put("namespace", newNamespace2);
         expectedClassifier2.put("microserviceName", "microserviceName");
 
-        assertEquals(List.of(expectedClassifier2), restoreDatabase2.getClassifiers());
+        assertEquals(List.of(expectedClassifier, expectedClassifier2), restoreDatabase1.getClassifiers());
+
+        RestoreDatabase restoreDatabase2 = logicalRestore1.getRestoreDatabases().stream()
+                .filter(rd -> rd.getBackupDatabase().getName().equals(backupDatabase2.getName()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(restoreDatabase2);
+        assertEquals("newDb2", restoreDatabase2.getName());
+
+
+        assertEquals(List.of(expectedClassifier, expectedClassifier2), restoreDatabase2.getClassifiers());
 
         RestoreDatabase restoreDatabase3 = logicalRestore2.getRestoreDatabases().getFirst();
         assertNotNull(restoreDatabase3);
@@ -1408,19 +1402,20 @@ class DbBackupV2ServiceTest {
         assertNotNull(restoreDatabase3.getBackupDatabase());
         assertEquals("newDb3", restoreDatabase3.getName());
 
-        SortedMap<String, String> expectedClassifier3 = new TreeMap<>();
+        SortedMap<String, Object> expectedClassifier3 = new TreeMap<>();
         expectedClassifier3.put("namespace", newNamespace2);
         expectedClassifier3.put("microserviceName", "microserviceName");
 
         assertEquals(List.of(expectedClassifier3), restoreDatabase3.getClassifiers());
 
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace1, "postgresql");
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace2, "postgresql");
+        verify(balancingRulesService, times(2)).applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType()));
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType()));
         verify(physicalDatabasesService, times(1)).getAdapterById(adapterId1);
         verify(physicalDatabasesService, times(1)).getAdapterById(adapterId2);
         verify(dbaasAdapter).restoreV2(any(), anyBoolean(), any(), any(), anyList());
         verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any(), any(), anyList());
     }
+
 
     @Test
     void initializeFullRestoreStructure_withMapping() {
@@ -1433,21 +1428,21 @@ class DbBackupV2ServiceTest {
 
         SortedMap<String, Object> classifier1 = new TreeMap<>();
         classifier1.put("namespace", oldNamespace1);
+        SortedMap<String, Object> classifier2 = new TreeMap<>();
+        classifier2.put("namespace", oldNamespace2);
 
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
                 .name("db1")
-                .classifiers(List.of(classifier1))
+                .classifiers(List.of(classifier1, classifier2))
                 .users(List.of())
                 .settings(Map.of())
                 .resources(Map.of())
                 .build();
 
-        SortedMap<String, Object> classifier2 = new TreeMap<>();
-        classifier2.put("namespace", oldNamespace2);
 
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name("db2")
-                .classifiers(List.of(classifier2))
+                .classifiers(List.of(classifier1, classifier2))
                 .users(List.of())
                 .settings(Map.of())
                 .resources(Map.of())
@@ -1455,15 +1450,18 @@ class DbBackupV2ServiceTest {
 
         LogicalBackup logicalBackup1 = LogicalBackup.builder()
                 .logicalBackupName("lb1")
-                .type("postgres")
+                .type("postgresql")
                 .backupDatabases(List.of(backupDatabase1))
                 .build();
 
         LogicalBackup logicalBackup2 = LogicalBackup.builder()
                 .logicalBackupName("lb2")
-                .type("postgres")
+                .type("mongodb")
                 .backupDatabases(List.of(backupDatabase2))
                 .build();
+
+        backupDatabase1.setLogicalBackup(logicalBackup1);
+        backupDatabase2.setLogicalBackup(logicalBackup2);
 
         Backup backup = new Backup();
         backup.setName("backup-name");
@@ -1472,7 +1470,11 @@ class DbBackupV2ServiceTest {
         backup.setBlobPath("blobpath");
         backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
 
+        logicalBackup1.setBackup(backup);
+        logicalBackup2.setBackup(backup);
+
         backupRepository.save(backup);
+
         Mapping mapping = new Mapping();
         mapping.setNamespaces(Map.of(
                 oldNamespace1, newNamespace1,
@@ -1495,13 +1497,15 @@ class DbBackupV2ServiceTest {
         PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
         physicalDatabase2.setAdapter(adapter2);
 
-        when(balancingRulesService.applyNamespaceBalancingRule(newNamespace1, "postgres"))
+        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType())))
                 .thenReturn(physicalDatabase1);
-        when(balancingRulesService.applyNamespaceBalancingRule(newNamespace2, "postgres"))
+        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType())))
                 .thenReturn(physicalDatabase2);
 
+        List<BackupDatabase> filteredBackupDbs = backup.getLogicalBackups().stream()
+                .flatMap(lb -> lb.getBackupDatabases().stream()).toList();
 
-        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
+        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
 
         assertNotNull(restore);
         assertEquals(backup, restore.getBackup());
@@ -1517,6 +1521,13 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore1.getRestoreDatabases().size());
         assertEquals(backupDatabase1, logicalRestore1.getRestoreDatabases().getFirst().getBackupDatabase());
 
+        SortedMap<String, Object> expectedClassifier1 = new TreeMap<>(classifier1);
+        expectedClassifier1.put("namespace", newNamespace1);
+        SortedMap<String, Object> expectedClassifier2 = new TreeMap<>(classifier2);
+        expectedClassifier2.put("namespace", newNamespace2);
+
+        assertEquals(List.of(expectedClassifier1, expectedClassifier2), logicalRestore1.getRestoreDatabases().getFirst().getClassifiers());
+
         LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
                 .filter(lr -> lr.getAdapterId().equals(adapterId2))
                 .findFirst()
@@ -1525,8 +1536,11 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
         assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
 
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace1, "postgres");
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(newNamespace2, "postgres");
+
+        assertEquals(List.of(expectedClassifier1, expectedClassifier2), logicalRestore2.getRestoreDatabases().getFirst().getClassifiers());
+
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType()));
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType()));
     }
 
     @Test
@@ -1538,21 +1552,21 @@ class DbBackupV2ServiceTest {
 
         SortedMap<String, Object> classifier1 = new TreeMap<>();
         classifier1.put("namespace", oldNamespace1);
+        SortedMap<String, Object> classifier2 = new TreeMap<>();
+        classifier2.put("namespace", oldNamespace2);
 
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
                 .name("db1")
-                .classifiers(List.of(classifier1))
+                .classifiers(List.of(classifier1, classifier2))
                 .users(List.of())
                 .settings(Map.of())
                 .resources(Map.of())
                 .build();
 
-        SortedMap<String, Object> classifier2 = new TreeMap<>();
-        classifier2.put("namespace", oldNamespace2);
 
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name("db2")
-                .classifiers(List.of(classifier2))
+                .classifiers(List.of(classifier1, classifier2))
                 .users(List.of())
                 .settings(Map.of())
                 .resources(Map.of())
@@ -1560,15 +1574,19 @@ class DbBackupV2ServiceTest {
 
         LogicalBackup logicalBackup1 = LogicalBackup.builder()
                 .logicalBackupName("lb1")
-                .type("postgres")
+                .type("postgresql")
                 .backupDatabases(List.of(backupDatabase1))
                 .build();
 
         LogicalBackup logicalBackup2 = LogicalBackup.builder()
                 .logicalBackupName("lb2")
-                .type("postgres")
+                .type("mongodb")
                 .backupDatabases(List.of(backupDatabase2))
                 .build();
+
+
+        backupDatabase1.setLogicalBackup(logicalBackup1);
+        backupDatabase2.setLogicalBackup(logicalBackup2);
 
         Backup backup = new Backup();
         backup.setName("backup-name");
@@ -1577,9 +1595,13 @@ class DbBackupV2ServiceTest {
         backup.setStorageName("storageName");
         backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
 
+        logicalBackup1.setBackup(backup);
+        logicalBackup2.setBackup(backup);
+
         backupRepository.save(backup);
+
         RestoreRequest restoreRequest = new RestoreRequest();
-        restoreRequest.setMapping(null);
+        restoreRequest.setMapping(null); // No mapping
         restoreRequest.setStorageName("storage");
         restoreRequest.setBlobPath("blobPath");
         restoreRequest.setFilterCriteria(new FilterCriteria());
@@ -1594,12 +1616,15 @@ class DbBackupV2ServiceTest {
         PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
         physicalDatabase2.setAdapter(adapter2);
 
-        when(balancingRulesService.applyNamespaceBalancingRule(oldNamespace1, "postgres"))
+        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType())))
                 .thenReturn(physicalDatabase1);
-        when(balancingRulesService.applyNamespaceBalancingRule(oldNamespace2, "postgres"))
+        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType())))
                 .thenReturn(physicalDatabase2);
 
-        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
+        List<BackupDatabase> filteredBackupDbs = backup.getLogicalBackups().stream()
+                .flatMap(lb -> lb.getBackupDatabases().stream()).toList();
+
+        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
 
         assertNotNull(restore);
         assertEquals(backup, restore.getBackup());
@@ -1615,6 +1640,8 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore1.getRestoreDatabases().size());
         assertEquals(backupDatabase1, logicalRestore1.getRestoreDatabases().getFirst().getBackupDatabase());
 
+        assertEquals(List.of(classifier1, classifier2), logicalRestore1.getRestoreDatabases().getFirst().getClassifiers());
+
         LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
                 .filter(lr -> lr.getAdapterId().equals(adapterId2))
                 .findFirst()
@@ -1623,8 +1650,10 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
         assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
 
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(oldNamespace1, "postgres");
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(oldNamespace2, "postgres");
+        assertEquals(List.of(classifier1, classifier2), logicalRestore2.getRestoreDatabases().getFirst().getClassifiers());
+
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType()));
+        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType()));
     }
 
     @Test
