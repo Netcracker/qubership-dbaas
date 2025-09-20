@@ -1,12 +1,16 @@
 package com.netcracker.cloud.dbaas.service;
 
+
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
@@ -111,9 +115,35 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
+    public LogicalBackupAdapterResponse backupV2(String storageName, String blobPath, List<Map<String, String>> dbNames) {
+        return restClient.backupV2(type(), storageName, blobPath, dbNames);
+    }
+
+    @Override
+    public LogicalRestoreAdapterResponse restoreV2(String logicalBackupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
+        return restClient.restoreV2(type(),logicalBackupName, dryRun, storageName, blobPath, databases);
+    }
+
+    @Override
+    public LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName) {
+        return restClient.trackRestoreV2(type(), logicalRestoreName);
+    }
+
+    @Override
     public TrackedAction trackBackup(String action, String trackId) {
         return restClient.trackBackup(type(), action, trackId);
     }
+
+    @Override
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName) {
+        return restClient.trackBackupV2(type(), logicalBackupName);
+    }
+
+    @Override
+    public void deleteBackupV2(String logicalBackupName) {
+        restClient.deleteBackupV2(type(), logicalBackupName);
+    }
+
 
     @Override
     protected String deleteBackup(String localId) {
