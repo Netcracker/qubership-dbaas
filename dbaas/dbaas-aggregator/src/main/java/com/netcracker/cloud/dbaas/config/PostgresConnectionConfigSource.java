@@ -32,7 +32,6 @@ public class PostgresConnectionConfigSource implements ConfigSource {
     @Override
     public Set<String> getPropertyNames() {
         return Set.of("quarkus.datasource.jdbc.url",
-                "quarkus.datasource.po-datasource.jdbc.url",
                 "postgresql.user",
                 "postgresql.password");
     }

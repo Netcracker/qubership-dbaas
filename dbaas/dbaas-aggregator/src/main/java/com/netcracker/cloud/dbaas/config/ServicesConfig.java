@@ -28,7 +28,7 @@ import java.util.List;
 public class ServicesConfig {
 
     public static final Object DBAAS_REPOSITORIES_MUTEX = new Object();
-    private static final String PROCESS_ORCHESTRATOR_DATASOURCE = "po-datasource";
+    private static final String PROCESS_ORCHESTRATOR_DATASOURCE = "process-orchestrator";
 
     @Produces
     @Singleton
