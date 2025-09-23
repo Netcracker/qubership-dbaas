@@ -30,8 +30,8 @@ public class PostgresqlContainerResource implements QuarkusTestResourceLifecycle
         postgresql.start();
         String url = JdbcUtils.buildConnectionURL(postgresql.getHost(), postgresql.getFirstMappedPort().toString(), DBAAS_DB);
         return Map.of("quarkus.datasource.jdbc.url", url,
-                "postgresql.user", DBAAS_USERNAME,
-                "postgresql.password", DBAAS_PASSWORD);
+                "quarkus.datasource.username", DBAAS_USERNAME,
+                "quarkus.datasource.password", DBAAS_PASSWORD);
     }
 
     @Override

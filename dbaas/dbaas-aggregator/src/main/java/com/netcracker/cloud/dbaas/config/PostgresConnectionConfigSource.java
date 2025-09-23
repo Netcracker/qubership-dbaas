@@ -20,8 +20,8 @@ public class PostgresConnectionConfigSource implements ConfigSource {
         String url = JdbcUtils.buildConnectionURL(host, port, database);
 
         properties.put("quarkus.datasource.jdbc.url", url);
-        properties.put("postgresql.user", user);
-        properties.put("postgresql.password", password);
+        properties.put("quarkus.datasource.username", user);
+        properties.put("quarkus.datasource.password", password);
     }
 
     @Override
@@ -32,8 +32,8 @@ public class PostgresConnectionConfigSource implements ConfigSource {
     @Override
     public Set<String> getPropertyNames() {
         return Set.of("quarkus.datasource.jdbc.url",
-                "postgresql.user",
-                "postgresql.password");
+                "quarkus.datasource.username",
+                "quarkus.datasource.password");
     }
 
     @Override
