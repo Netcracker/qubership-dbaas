@@ -11,17 +11,9 @@ public class PostgresConnectionConfigSource implements ConfigSource {
     private final Map<String, String> properties = new HashMap<>();
 
     public PostgresConnectionConfigSource() {
-        String host = System.getenv().getOrDefault("POSTGRES_HOST", "localhost");
-        String port = System.getenv().getOrDefault("POSTGRES_PORT", "5432");
-        String database = System.getenv().getOrDefault("POSTGRES_DATABASE", "dbaas");
-        String user = System.getenv().getOrDefault("POSTGRES_USER", "dbaas");
-        String password = System.getenv().getOrDefault("POSTGRES_PASSWORD", "dbaas");
-
-        String url = JdbcUtils.buildConnectionURL(host, port, database);
-
-        properties.put("quarkus.datasource.jdbc.url", url);
-        properties.put("quarkus.datasource.username", user);
-        properties.put("quarkus.datasource.password", password);
+        properties.put("quarkus.datasource.jdbc.url", JdbcUtils.resolveConnectionURL());
+        properties.put("quarkus.datasource.username", JdbcUtils.resolveUsername());
+        properties.put("quarkus.datasource.password", JdbcUtils.resolvePassword());
     }
 
     @Override

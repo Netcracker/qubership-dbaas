@@ -16,23 +16,40 @@ import java.util.Map;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 @Slf4j
 public class JdbcUtils {
-
+    public static final String DEFAULT_HOST = "localhost";
+    public static final String DEFAULT_PORT = "5432";
+    public static final String DEFAULT_DATABASE_NAME = "dbaas";
+    public static final String DEFAULT_USERNAME = "dbaas";
+    public static final String DEFAULT_PASSWORD = "dbaas";
+    public static final boolean DEFAULT_SSL_ENABLED = false;
     private static final String CERTIFICATE_STORE_PATH = getEnvOrProperty("CERTIFICATE_FILE_PATH", "/etc/tls");
     private static final String CA_CERTIFICATE_URL = "file://" + CERTIFICATE_STORE_PATH + "/ca.crt";
     private static final String SSL_URL_PARAMS = "?ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=" + CA_CERTIFICATE_URL;
 
-    public static String buildConnectionURL(String pgHost, String pgPort, String pgDatabase) {
-        String url = String.format("jdbc:postgresql://%s:%s/%s", pgHost, pgPort, pgDatabase);
-        if (isInternalTlsEnabled()) {
-            log.debug("Going to use secured connection to postgres");
-            url += SSL_URL_PARAMS;
-        }
-        log.debug("Using not secured connection to postgres");
-        return url;
+    public static String resolveConnectionURL() {
+        String host = getEnvOrProperty("POSTGRES_HOST", DEFAULT_HOST);
+        String port = getEnvOrProperty("POSTGRES_PORT", DEFAULT_PORT);
+        String database = getEnvOrProperty("POSTGRES_DATABASE", DEFAULT_DATABASE_NAME);
+        boolean ssl = Boolean.parseBoolean(getEnvOrProperty("INTERNAL_TLS_ENABLED", Boolean.toString(DEFAULT_SSL_ENABLED)));
+        return buildConnectionURL(host, port, database, ssl);
     }
 
-    private static boolean isInternalTlsEnabled() {
-        return Boolean.parseBoolean(getEnvOrProperty("INTERNAL_TLS_ENABLED", "false"));
+    public static String resolveUsername() {
+        return getEnvOrProperty("POSTGRES_USER", DEFAULT_USERNAME);
+    }
+
+    public static String resolvePassword() {
+        return getEnvOrProperty("POSTGRES_PASSWORD", DEFAULT_PASSWORD);
+    }
+
+    public static String buildConnectionURL(String host, String port, String database, boolean ssl) {
+        String url = String.format("jdbc:postgresql://%s:%s/%s", host, port, database);
+        if (ssl) {
+            log.info("Using secured connection to postgres");
+            url += SSL_URL_PARAMS;
+        }
+        log.info("Using not secured connection to postgres");
+        return url;
     }
 
     private static String getEnvOrProperty(String name, String defaultValue) {
