@@ -161,11 +161,6 @@
             <version>42.7.7</version>
         </dependency>
         <dependency>
-            <groupId>com.netcracker.cloud.security.core.utils</groupId>
-            <artifactId>tls-utils</artifactId>
-            <version>2.2.0</version>
-        </dependency>
-        <dependency>
             <groupId>commons-beanutils</groupId>
             <artifactId>commons-beanutils</artifactId>
             <version>1.11.0</version>
