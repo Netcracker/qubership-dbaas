@@ -22,6 +22,8 @@ public class JdbcUtils {
     public static final String DEFAULT_USERNAME = "dbaas";
     public static final String DEFAULT_PASSWORD = "dbaas";
     public static final boolean DEFAULT_SSL_ENABLED = false;
+    public static final String PROCESS_ORCHESTRATOR_DATASOURCE = "process-orchestrator";
+
     private static final String CERTIFICATE_STORE_PATH = getEnvOrProperty("CERTIFICATE_FILE_PATH", "/etc/tls");
     private static final String CA_CERTIFICATE_URL = "file://" + CERTIFICATE_STORE_PATH + "/ca.crt";
     private static final String SSL_URL_PARAMS = "?ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=" + CA_CERTIFICATE_URL;

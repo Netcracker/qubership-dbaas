@@ -23,12 +23,13 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import javax.sql.DataSource;
 import java.util.List;
 
+import static com.netcracker.cloud.dbaas.JdbcUtils.PROCESS_ORCHESTRATOR_DATASOURCE;
+
 @Dependent
 @Slf4j
 public class ServicesConfig {
 
     public static final Object DBAAS_REPOSITORIES_MUTEX = new Object();
-    private static final String PROCESS_ORCHESTRATOR_DATASOURCE = "process-orchestrator";
 
     @Produces
     @Singleton
