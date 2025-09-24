@@ -5,7 +5,6 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasReposi
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.Response;
-
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.ext.QueryParamStyle;
@@ -16,23 +15,17 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
 import java.net.URL;
 import java.security.KeyStore;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.SSLContext;
-
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class StartupPhysicalDbRegistrationServiceTest {
@@ -157,6 +150,11 @@ class StartupPhysicalDbRegistrationServiceTest {
 
         @Override
         public RestClientBuilder queryParamStyle(QueryParamStyle queryParamStyle) {
+            return null;
+        }
+
+        @Override
+        public RestClientBuilder header(String s, Object o) {
             return null;
         }
 
