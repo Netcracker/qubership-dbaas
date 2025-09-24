@@ -1,17 +1,14 @@
 package com.netcracker.cloud.dbaas.aspect;
 
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import com.netcracker.cloud.dbaas.integration.profiles.DirtiesMetricsProfile;
 import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -25,7 +22,6 @@ import java.util.stream.Collectors;
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
 @Slf4j
-@TestProfile(DirtiesMetricsProfile.class)
 public class TimeMeasurementInstrumentationTest {
 
     @Inject
@@ -38,7 +34,9 @@ public class TimeMeasurementInstrumentationTest {
 
     @AfterEach
     void afterEach() {
-        meterRegistry.clear();
+        meterRegistry.getMeters().stream()
+                .filter(meter -> "some.metric".equals(meter.getId().getName()))
+                .toList().forEach(meterRegistry::remove);
     }
 
     @Test
