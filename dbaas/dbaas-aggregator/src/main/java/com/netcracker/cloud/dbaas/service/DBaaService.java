@@ -129,7 +129,7 @@ public class DBaaService {
             return Optional.of(physicalDatabasesService.getAdapterById(adapterId));
         }
 
-        PhysicalDatabase physicalDatabase = balancingRulesService.applyBalancingRules(namespace, microserviceName, type);
+        PhysicalDatabase physicalDatabase = balancingRulesService.applyBalancingRules(type, namespace, microserviceName );
         log.info("Returning adapter of physical database {}", physicalDatabase.getPhysicalDatabaseIdentifier());
         return Optional.ofNullable(physicalDatabasesService.getAdapterById(physicalDatabase.getAdapter().getAdapterId()));
     }
