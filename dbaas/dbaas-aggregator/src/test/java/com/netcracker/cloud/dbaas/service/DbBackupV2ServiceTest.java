@@ -1,12 +1,10 @@
 package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
-import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
-import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
@@ -16,6 +14,7 @@ import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
 import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.*;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
@@ -58,6 +57,15 @@ class DbBackupV2ServiceTest {
     private DatabaseDbaasRepository databaseDbaasRepository;
 
     @Inject
+    private DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
+
+    @Inject
+    private DBaaService dBaaService;
+
+    @InjectMock
+    private PasswordEncryption encryption;
+
+    @Inject
     private BackupRepository backupRepository;
 
     @Inject
@@ -91,7 +99,7 @@ class DbBackupV2ServiceTest {
     private LockProvider lockProvider;
 
     @Inject
-    @Named("po-datasource")
+    @Named("process-orchestrator")
     private DataSource dataSource;
 
     @BeforeEach
@@ -1197,6 +1205,8 @@ class DbBackupV2ServiceTest {
         String db1 = "db1";
         String db2 = "db2";
         String db3 = "db3";
+        String postgresql = "postgresql";
+        String mongoDb = "mongoDb";
 
         SortedMap<String, Object> map1 = new TreeMap<>();
         map1.put("namespace", oldNamespace1);
@@ -1214,7 +1224,7 @@ class DbBackupV2ServiceTest {
                         .name("name")
                         .role("role")
                         .build()))
-                .classifiers(List.of(map1, map2))
+                .classifiers(List.of(map1))
                 .build();
 
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
@@ -1225,7 +1235,7 @@ class DbBackupV2ServiceTest {
                         .name("name")
                         .role("role")
                         .build()))
-                .classifiers(List.of(map1, map2))
+                .classifiers(List.of(map2))
                 .build();
 
         BackupDatabase backupDatabase3 = BackupDatabase.builder()
@@ -1241,12 +1251,12 @@ class DbBackupV2ServiceTest {
 
         LogicalBackup logicalBackup1 = LogicalBackup.builder()
                 .logicalBackupName(logicalBackupName1)
-                .type("postgresql")
+                .type(postgresql)
                 .backupDatabases(List.of(backupDatabase1, backupDatabase2))
                 .build();
         LogicalBackup logicalBackup2 = LogicalBackup.builder()
                 .logicalBackupName(logicalBackupName2)
-                .type("mongodb")
+                .type(mongoDb)
                 .backupDatabases(List.of(backupDatabase3))
                 .build();
 
@@ -1323,15 +1333,17 @@ class DbBackupV2ServiceTest {
         adapter1.setAdapterId(adapterId1);
         PhysicalDatabase physicalDatabase1 = new PhysicalDatabase();
         physicalDatabase1.setAdapter(adapter1);
+        physicalDatabase1.setType(postgresql);
 
         ExternalAdapterRegistrationEntry adapter2 = new ExternalAdapterRegistrationEntry();
         adapter2.setAdapterId(adapterId2);
         PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
         physicalDatabase2.setAdapter(adapter2);
+        physicalDatabase2.setType(mongoDb);
 
-        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType())))
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) map1.get("microserviceName"))))
                 .thenReturn(physicalDatabase1);
-        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType())))
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName"))))
                 .thenReturn(physicalDatabase2);
 
         DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
@@ -1339,10 +1351,14 @@ class DbBackupV2ServiceTest {
                 .thenReturn(dbaasAdapter);
         when(dbaasAdapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
                 .thenReturn(response1);
+        when(dbaasAdapter.isBackupRestoreSupported())
+                .thenReturn(true);
 
         DbaasAdapter dbaasAdapter2 = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId2))
                 .thenReturn(dbaasAdapter2);
+        when(dbaasAdapter2.isBackupRestoreSupported())
+                .thenReturn(true);
         when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
                 .thenReturn(response2);
 
@@ -1384,7 +1400,7 @@ class DbBackupV2ServiceTest {
         expectedClassifier2.put("namespace", newNamespace2);
         expectedClassifier2.put("microserviceName", "microserviceName");
 
-        assertEquals(List.of(expectedClassifier, expectedClassifier2), restoreDatabase1.getClassifiers());
+        assertEquals(List.of(expectedClassifier), restoreDatabase1.getClassifiers());
 
         RestoreDatabase restoreDatabase2 = logicalRestore1.getRestoreDatabases().stream()
                 .filter(rd -> rd.getBackupDatabase().getName().equals(backupDatabase2.getName()))
@@ -1394,7 +1410,7 @@ class DbBackupV2ServiceTest {
         assertEquals("newDb2", restoreDatabase2.getName());
 
 
-        assertEquals(List.of(expectedClassifier, expectedClassifier2), restoreDatabase2.getClassifiers());
+        assertEquals(List.of(expectedClassifier2), restoreDatabase2.getClassifiers());
 
         RestoreDatabase restoreDatabase3 = logicalRestore2.getRestoreDatabases().getFirst();
         assertNotNull(restoreDatabase3);
@@ -1408,10 +1424,10 @@ class DbBackupV2ServiceTest {
 
         assertEquals(List.of(expectedClassifier3), restoreDatabase3.getClassifiers());
 
-        verify(balancingRulesService, times(2)).applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType()));
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType()));
-        verify(physicalDatabasesService, times(1)).getAdapterById(adapterId1);
-        verify(physicalDatabasesService, times(1)).getAdapterById(adapterId2);
+        verify(balancingRulesService, times(2)).applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) map1.get("microserviceName")));
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName")));
+        verify(physicalDatabasesService, times(2)).getAdapterById(adapterId1);
+        verify(physicalDatabasesService, times(2)).getAdapterById(adapterId2);
         verify(dbaasAdapter).restoreV2(any(), anyBoolean(), any(), any(), anyList());
         verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any(), any(), anyList());
     }
@@ -1428,8 +1444,10 @@ class DbBackupV2ServiceTest {
 
         SortedMap<String, Object> classifier1 = new TreeMap<>();
         classifier1.put("namespace", oldNamespace1);
+        classifier1.put("microserviceName", "microserviceName1");
         SortedMap<String, Object> classifier2 = new TreeMap<>();
         classifier2.put("namespace", oldNamespace2);
+        classifier2.put("microserviceName", "microserviceName2");
 
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
                 .name("db1")
@@ -1442,7 +1460,7 @@ class DbBackupV2ServiceTest {
 
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name("db2")
-                .classifiers(List.of(classifier1, classifier2))
+                .classifiers(List.of(classifier2))
                 .users(List.of())
                 .settings(Map.of())
                 .resources(Map.of())
@@ -1497,10 +1515,22 @@ class DbBackupV2ServiceTest {
         PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
         physicalDatabase2.setAdapter(adapter2);
 
-        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType())))
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) classifier1.get("microserviceName"))))
                 .thenReturn(physicalDatabase1);
-        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType())))
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) classifier2.get("microserviceName"))))
                 .thenReturn(physicalDatabase2);
+
+        DbaasAdapter adapter3 = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(eq(adapterId2)))
+                .thenReturn(adapter3);
+        when(adapter3.isBackupRestoreSupported())
+                .thenReturn(true);
+
+        DbaasAdapter adapter4 = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(eq(adapterId1)))
+                .thenReturn(adapter4);
+        when(adapter4.isBackupRestoreSupported())
+                .thenReturn(true);
 
         List<BackupDatabase> filteredBackupDbs = backup.getLogicalBackups().stream()
                 .flatMap(lb -> lb.getBackupDatabases().stream()).toList();
@@ -1537,10 +1567,10 @@ class DbBackupV2ServiceTest {
         assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
 
 
-        assertEquals(List.of(expectedClassifier1, expectedClassifier2), logicalRestore2.getRestoreDatabases().getFirst().getClassifiers());
+        assertEquals(List.of(expectedClassifier2), logicalRestore2.getRestoreDatabases().getFirst().getClassifiers());
 
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType()));
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType()));
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) classifier1.get("microserviceName")));
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) classifier2.get("microserviceName")));
     }
 
     @Test
@@ -1552,12 +1582,14 @@ class DbBackupV2ServiceTest {
 
         SortedMap<String, Object> classifier1 = new TreeMap<>();
         classifier1.put("namespace", oldNamespace1);
+        classifier1.put("microserviceName", "microserviceName1");
         SortedMap<String, Object> classifier2 = new TreeMap<>();
         classifier2.put("namespace", oldNamespace2);
+        classifier2.put("microserviceName", "microserviceName2");
 
         BackupDatabase backupDatabase1 = BackupDatabase.builder()
                 .name("db1")
-                .classifiers(List.of(classifier1, classifier2))
+                .classifiers(List.of(classifier1))
                 .users(List.of())
                 .settings(Map.of())
                 .resources(Map.of())
@@ -1566,7 +1598,7 @@ class DbBackupV2ServiceTest {
 
         BackupDatabase backupDatabase2 = BackupDatabase.builder()
                 .name("db2")
-                .classifiers(List.of(classifier1, classifier2))
+                .classifiers(List.of(classifier2))
                 .users(List.of())
                 .settings(Map.of())
                 .resources(Map.of())
@@ -1616,10 +1648,22 @@ class DbBackupV2ServiceTest {
         PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
         physicalDatabase2.setAdapter(adapter2);
 
-        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType())))
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) classifier1.get("microserviceName"))))
                 .thenReturn(physicalDatabase1);
-        when(balancingRulesService.applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType())))
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) classifier2.get("microserviceName"))))
                 .thenReturn(physicalDatabase2);
+
+        DbaasAdapter adapter3 = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(eq(adapterId2)))
+                .thenReturn(adapter3);
+        when(adapter3.isBackupRestoreSupported())
+                .thenReturn(true);
+
+        DbaasAdapter adapter4 = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(eq(adapterId1)))
+                .thenReturn(adapter4);
+        when(adapter4.isBackupRestoreSupported())
+                .thenReturn(true);
 
         List<BackupDatabase> filteredBackupDbs = backup.getLogicalBackups().stream()
                 .flatMap(lb -> lb.getBackupDatabases().stream()).toList();
@@ -1640,7 +1684,7 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore1.getRestoreDatabases().size());
         assertEquals(backupDatabase1, logicalRestore1.getRestoreDatabases().getFirst().getBackupDatabase());
 
-        assertEquals(List.of(classifier1, classifier2), logicalRestore1.getRestoreDatabases().getFirst().getClassifiers());
+        assertEquals(List.of(classifier1), logicalRestore1.getRestoreDatabases().getFirst().getClassifiers());
 
         LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
                 .filter(lr -> lr.getAdapterId().equals(adapterId2))
@@ -1650,10 +1694,10 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
         assertEquals(backupDatabase2, logicalRestore2.getRestoreDatabases().getFirst().getBackupDatabase());
 
-        assertEquals(List.of(classifier1, classifier2), logicalRestore2.getRestoreDatabases().getFirst().getClassifiers());
+        assertEquals(List.of(classifier2), logicalRestore2.getRestoreDatabases().getFirst().getClassifiers());
 
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup1.getType()));
-        verify(balancingRulesService, times(1)).applyNamespaceBalancingRule(any(), eq(logicalBackup2.getType()));
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) classifier1.get("microserviceName")));
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) classifier2.get("microserviceName")));
     }
 
     @Test
@@ -1967,6 +2011,191 @@ class DbBackupV2ServiceTest {
         assertNotNull(expected);
         assertEquals(21, expected.getAttemptCount());
         assertEquals(Status.FAILED, expected.getStatus());
+    }
+
+    @Test
+    void initializeLogicalDatabasesFromRestore() {
+        String adapterId = "adapterId";
+        String dbName1 = "dbName1";
+        String dbName2 = "dbName2";
+        SortedMap<String, Object> classifier1 = new TreeMap<>();
+        classifier1.put("namespace", "namespace1");
+        classifier1.put("microserviceName", "microserviceName1");
+        classifier1.put("scope", "service");
+
+        SortedMap<String, Object> classifier2 = new TreeMap<>();
+        classifier2.put("namespace", "namespace2");
+        classifier2.put("microserviceName", "microserviceName2");
+        classifier2.put("scope", "service");
+
+        RestoreDatabase restoreDatabase1 = RestoreDatabase.builder()
+                .name(dbName1)
+                .classifiers(List.of(classifier1, classifier2))
+                .settings(Map.of(
+                        "setting", "setting"
+                ))
+                .users(List.of(
+                        new RestoreDatabase.User(
+                                "name1",
+                                "role1"
+                        )
+                ))
+                .build();
+
+        SortedMap<String, Object> classifier3 = new TreeMap<>();
+        classifier3.put("namespace", "namespace3");
+        classifier3.put("microserviceName", "microserviceName3");
+        classifier3.put("scope", "service");
+
+        SortedMap<String, Object> classifier4 = new TreeMap<>();
+        classifier4.put("namespace", "namespace4");
+        classifier4.put("microserviceName", "microserviceName4");
+        classifier4.put("scope", "service");
+
+        RestoreDatabase restoreDatabase2 = RestoreDatabase.builder()
+                .name(dbName2)
+                .classifiers(List.of(classifier3, classifier4))
+                .settings(Map.of(
+                        "setting", "setting"
+                ))
+                .users(List.of(
+                        new RestoreDatabase.User(
+                                "name1",
+                                "role1"
+                        )
+                ))
+                .build();
+
+        LogicalRestore logicalRestore = LogicalRestore.builder()
+                .logicalRestoreName("logicalRestoreName")
+                .adapterId(adapterId)
+                .type("type")
+                .restoreDatabases(List.of(restoreDatabase1, restoreDatabase2))
+                .build();
+
+        Restore restore = Restore.builder()
+                .name("restoreName")
+                .logicalRestores(List.of(logicalRestore))
+                .build();
+
+
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setClassifier(classifier1);
+        databaseRegistry.setNamespace("namespace1");
+        databaseRegistry.setType("type");
+
+        SortedMap<String, Object> anotherClassifier = new TreeMap<>();
+        anotherClassifier.put("namespace", "anotherNamespace");
+        anotherClassifier.put("microserviceName", "anotherMicroserviceName");
+        anotherClassifier.put("scope", "service");
+        anotherClassifier.put("type", "type");
+
+        DatabaseRegistry databaseRegistry1 = new DatabaseRegistry();
+        databaseRegistry1.setClassifier(anotherClassifier);
+        databaseRegistry1.setType("type");
+
+        Database database = new Database();
+        database.setId(UUID.randomUUID());
+        database.setClassifier(anotherClassifier);
+        database.setType("type");
+        databaseRegistry.setDatabase(database);
+        databaseRegistry1.setDatabase(database);
+        database.setDatabaseRegistry(List.of(databaseRegistry1, databaseRegistry));
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
+        physicalDatabase.setId(UUID.randomUUID().toString());
+
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(databaseRegistry);
+
+        when(physicalDatabasesService.getAdapterById(adapterId))
+                .thenReturn(adapter);
+        when(physicalDatabasesService.getByAdapterId(adapterId))
+                .thenReturn(physicalDatabase);
+        when(adapter.identifier())
+                .thenReturn(adapterId);
+
+        DbResource dbResource1 = new DbResource();
+        dbResource1.setId(UUID.randomUUID());
+        dbResource1.setName("name1");
+        dbResource1.setKind("kind1");
+
+        EnsuredUser ensuredUser1 = new EnsuredUser(
+                "dbName1",
+                Map.of(
+                        "key", "value"
+                ),
+                List.of(dbResource1),
+                true
+        );
+
+        DbResource dbResource2 = new DbResource();
+        dbResource2.setId(UUID.randomUUID());
+        dbResource2.setName("name2");
+        dbResource2.setKind("kind2");
+
+        EnsuredUser ensuredUser2 = new EnsuredUser(
+                "dbName2",
+                Map.of(
+                        "key", "value"
+                ),
+                List.of(dbResource2),
+                true
+        );
+
+        when(adapter.ensureUser(any(), any(), any(), any())).thenAnswer(invocation -> {
+            String dbName = invocation.getArgument(2, String.class);
+            if ("dbName1".equals(dbName)) {
+                return ensuredUser1;
+            } else if ("dbName2".equals(dbName)) {
+                return ensuredUser2;
+            }
+            return null;
+        });
+
+
+        dbBackupV2Service.initializeLogicalDatabasesFromRestore(restore);
+
+        List<DatabaseRegistry> databaseRegistries1 = databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace("namespace2");
+        Database database1 = databaseRegistries1.getFirst().getDatabase();
+        assertNotNull(database1);
+        assertEquals(restoreDatabase1.getSettings(), database1.getSettings());
+        assertEquals(3, database1.getDatabaseRegistry().size());
+
+        DatabaseRegistry actualRegistry1 = database1.getDatabaseRegistry().stream()
+                .filter(registry -> classifier1.equals(registry.getClassifier()))
+                .findFirst()
+                .orElse(null);
+        DatabaseRegistry actualRegistry2 = database1.getDatabaseRegistry().stream()
+                .filter(registry -> classifier2.equals(registry.getClassifier()))
+                .findFirst()
+                .orElse(null);
+        DatabaseRegistry actualRegistry3 = database1.getDatabaseRegistry().stream()
+                .filter(registry -> anotherClassifier.equals(registry.getClassifier()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(actualRegistry1);
+        assertNotNull(actualRegistry2);
+        assertNotNull(actualRegistry3);
+
+        List<DatabaseRegistry> databaseRegistries2 = databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace("namespace3");
+        Database database2 = databaseRegistries2.getFirst().getDatabase();
+        assertNotNull(database2);
+        assertEquals(restoreDatabase2.getSettings(), database2.getSettings());
+        assertEquals(2, database2.getDatabaseRegistry().size());
+
+        DatabaseRegistry actualRegistry4 = database2.getDatabaseRegistry().stream()
+                .filter(registry -> classifier3.equals(registry.getClassifier()))
+                .findFirst()
+                .orElse(null);
+        DatabaseRegistry actualRegistry5 = database2.getDatabaseRegistry().stream()
+                .filter(registry -> classifier4.equals(registry.getClassifier()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(actualRegistry4);
+        assertNotNull(actualRegistry5);
     }
 
     private BackupResponse generateBackupResponse(String backupName, String namespace) {

@@ -43,6 +43,10 @@ public class RestoreDatabase {
     @Column(columnDefinition = "jsonb")
     private List<SortedMap<String, Object>> classifiers;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> settings;
+
     @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

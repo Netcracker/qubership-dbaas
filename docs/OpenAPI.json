@@ -137,6 +137,307 @@
           }
         }
       },
+      "BackupDatabaseResponse": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "description": "Logical database backup details",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the database",
+            "example": "mydb"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "description": "List of database classifiers"
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "List of database settings"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            },
+            "description": "List of database users"
+          },
+          "resources": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "List of database resources"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "duration": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "path": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/LocalDateTime"
+          }
+        }
+      },
+      "BackupExternalDatabaseResponse": {
+        "type": "object",
+        "description": "External database details",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          }
+        }
+      },
+      "BackupOperationResponse": {
+        "type": "object",
+        "required": [
+          "backupName"
+        ],
+        "description": "Response containing backup operation details",
+        "properties": {
+          "backupName": {
+            "type": "string",
+            "description": "Unique identifier of the backup"
+          },
+          "dryRun": {
+            "$ref": "#/components/schemas/BackupResponse",
+            "type": "object",
+            "description": "Response containing backup operation details"
+          }
+        }
+      },
+      "BackupRequest": {
+        "type": "object",
+        "required": [
+          "backupName",
+          "storageName",
+          "blobPath",
+          "externalDatabaseStrategy",
+          "ignoreNotBackupableDatabases"
+        ],
+        "description": "Request to create a database backup",
+        "properties": {
+          "backupName": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Unique name for the backup",
+            "example": "before-prod-update-20251013T1345-G5s8"
+          },
+          "storageName": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Identifier of the storage backend",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Path in the storage where backup will be stored",
+            "example": "/backups/before-prod-update-20251013T1345-G5s8/logical/dbaas/"
+          },
+          "filterCriteria": {
+            "$ref": "#/components/schemas/FilterCriteria",
+            "type": "object",
+            "description": "Filter criteria"
+          },
+          "externalDatabaseStrategy": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "FAIL",
+              "SKIP",
+              "INCLUDE"
+            ],
+            "description": "How to handle external databases during backup",
+            "example": "fail"
+          },
+          "ignoreNotBackupableDatabases": {
+            "type": "boolean",
+            "description": "Whether non-backupable databases should be ignored during backup",
+            "example": false
+          }
+        }
+      },
+      "BackupResponse": {
+        "type": "object",
+        "required": [
+          "backupName",
+          "storageName",
+          "blobPath",
+          "externalDatabaseStrategy",
+          "ignoreNotBackupableDatabases",
+          "status"
+        ],
+        "description": "Response containing backup operation details",
+        "properties": {
+          "backupName": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Unique identifier of the backup",
+            "example": "before-prod-update-20251013T1345-G5s8"
+          },
+          "storageName": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Name of the storage backend containing the backup",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Path to the backup file in the storage",
+            "example": "/backups"
+          },
+          "externalDatabaseStrategy": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "FAIL",
+              "SKIP",
+              "INCLUDE"
+            ],
+            "description": "How to handle external databases during backup",
+            "example": "fail"
+          },
+          "ignoreNotBackupableDatabases": {
+            "type": "boolean",
+            "description": "Whether external databases were skipped during the backup",
+            "example": false
+          },
+          "filterCriteria": {
+            "$ref": "#/components/schemas/FilterCriteria",
+            "type": "object",
+            "description": "Filter criteria"
+          },
+          "status": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "description": "Current state of the backup operation"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of databases being backed up",
+            "example": 5
+          },
+          "completed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of databases successfully backed up",
+            "example": 3
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total size of the backup in bytes",
+            "example": 1073741824
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Error details if the backup failed",
+            "example": "Failed to connect to database"
+          },
+          "logicalBackups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalBackupResponse"
+            },
+            "description": "List of logical backups"
+          },
+          "externalDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupExternalDatabaseResponse"
+            }
+          }
+        }
+      },
+      "BackupStatusResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "description": "Current status of a backup operation",
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "description": "Current state of the backup operation"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of databases being backed up",
+            "example": 5
+          },
+          "completed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of databases successfully backed up",
+            "example": 3
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total size of the backup in bytes",
+            "example": 1073741824
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Error details if the backup failed",
+            "example": "Failed to connect to database"
+          }
+        }
+      },
       "BgDomain": {
         "type": "object",
         "properties": {
@@ -842,7 +1143,7 @@
             "$ref": "#/components/schemas/UUID"
           },
           "status": {
-            "$ref": "#/components/schemas/Status1",
+            "$ref": "#/components/schemas/Status2",
             "type": "string",
             "description": "This field contains the status of backup process of the specific adapter."
           },
@@ -1125,7 +1426,7 @@
             "$ref": "#/components/schemas/DatabasesBackup"
           },
           "status": {
-            "$ref": "#/components/schemas/Status1"
+            "$ref": "#/components/schemas/Status2"
           },
           "adapterId": {
             "type": "string"
@@ -1295,6 +1596,81 @@
           "PASSWORD"
         ]
       },
+      "Filter": {
+        "type": "object",
+        "description": "Single filter criteria for backup and restore operations",
+        "properties": {
+          "namespace": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by Kubernetes namespaces"
+          },
+          "microserviceName": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by microservice names"
+          },
+          "databaseType": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "POSTGRESQL",
+                "ARANGODB",
+                "CLICKHOUSE",
+                "MONGODB",
+                "CASSANDRA"
+              ]
+            },
+            "description": "Filter by database types"
+          },
+          "databaseKind": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "CONFIGURATION",
+                "TRANSACTIONAL"
+              ]
+            },
+            "description": "Filter by database kinds"
+          }
+        }
+      },
+      "FilterCriteria": {
+        "type": "object",
+        "required": [
+          "filter"
+        ],
+        "description": "Group of filters for backup and restore operations. Filters are applied in the following order:\n\n1. `filter`: Apply the filter to the databases.\n2. `include`: Include databases that match any of the filters in the list.\n3. `exclude`: Exclude databases that match any of the filters in the list.",
+        "properties": {
+          "filter": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            },
+            "description": "Apply the filter to the remaining databases"
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            },
+            "description": "Include databases that match any of the filters in the list"
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            },
+            "description": "Exclude databases that match any of the filters in the list"
+          }
+        }
+      },
       "GetOrCreateUserRequest": {
         "type": "object",
         "required": [
@@ -1449,6 +1825,162 @@
           }
         }
       },
+      "LocalDateTime": {
+        "type": "string",
+        "format": "date-time",
+        "examples": [
+          "2022-03-10T12:15:50"
+        ]
+      },
+      "LogicalBackupResponse": {
+        "type": "object",
+        "required": [
+          "logicalBackupName",
+          "adapterId",
+          "type",
+          "backupDatabases"
+        ],
+        "description": "Logical backup details",
+        "properties": {
+          "logicalBackupName": {
+            "type": "string",
+            "description": "Name of the logical backup in adapter"
+          },
+          "adapterId": {
+            "type": "string",
+            "description": "Unique identifier of the adapter",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of the adapter"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/LocalDateTime"
+          },
+          "completionTime": {
+            "$ref": "#/components/schemas/LocalDateTime"
+          },
+          "backupDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupDatabaseResponse"
+            },
+            "description": "List of logical backup databases"
+          }
+        }
+      },
+      "LogicalRestore": {
+        "type": "object",
+        "required": [
+          "id",
+          "adapterId",
+          "type",
+          "logicalRestoreDatabases"
+        ],
+        "description": "Logical restore details",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the logical restore",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "adapterId": {
+            "type": "string",
+            "description": "Unique identifier of the adapter",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of the adapter",
+            "example": "postgres"
+          },
+          "status": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Status of the logical restore (arbitrary key-value pairs)",
+            "example": {
+              "phase": "running",
+              "progress": 50
+            }
+          },
+          "logicalRestoreDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalRestoreDatabase"
+            },
+            "description": "List of logical restore databases"
+          }
+        }
+      },
+      "LogicalRestoreDatabase": {
+        "type": "object",
+        "required": [
+          "id",
+          "logicalBackupId",
+          "name"
+        ],
+        "description": "Logical database restore details",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the logical restore",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "logicalBackupId": {
+            "type": "string",
+            "description": "Unique identifier of the logical backup",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the database",
+            "example": "mydb"
+          },
+          "classifier": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Database classifier"
+          },
+          "users": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "List of database users"
+          }
+        }
+      },
+      "Mapping": {
+        "type": "object",
+        "description": "Defines how source database configurations map to target configurations during restore",
+        "properties": {
+          "namespaces": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Mapping of source namespace to target namespace",
+            "example": {
+              "source-namespace": "target-namespace"
+            }
+          },
+          "tenants": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Mapping of source tenant to target tenant",
+            "example": {
+              "source-tenant": "target-tenant"
+            }
+          }
+        }
+      },
       "Metadata": {
         "type": "object",
         "required": [
@@ -1580,7 +2112,7 @@
             "description": "Data of backup process creation."
           },
           "status": {
-            "$ref": "#/components/schemas/Status",
+            "$ref": "#/components/schemas/Status1",
             "type": "string",
             "description": "Status of backup process. This field may contain: FAIL, ACTIVE, PROCEEDING, RESTORING, INVALIDATED, DELETION_FAILED"
           }
@@ -1629,7 +2161,7 @@
             "$ref": "#/components/schemas/Date"
           },
           "status": {
-            "$ref": "#/components/schemas/Status"
+            "$ref": "#/components/schemas/Status1"
           }
         }
       },
@@ -1649,7 +2181,7 @@
             }
           },
           "status": {
-            "$ref": "#/components/schemas/Status1"
+            "$ref": "#/components/schemas/Status2"
           }
         }
       },
@@ -1672,7 +2204,7 @@
             }
           },
           "status": {
-            "$ref": "#/components/schemas/Status1"
+            "$ref": "#/components/schemas/Status2"
           }
         }
       },
@@ -2392,6 +2924,97 @@
           }
         }
       },
+      "RestoreRequest": {
+        "type": "object",
+        "required": [
+          "restoreName",
+          "storageName",
+          "blobPath"
+        ],
+        "description": "Request to restore a database from a backup",
+        "properties": {
+          "restoreName": {
+            "type": "string",
+            "description": "Unique identifier for the restore operation",
+            "example": "restore-before-prod-update-20251203T1020-4t6S"
+          },
+          "storageName": {
+            "type": "string",
+            "description": "Name of the storage backend containing the backup",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "type": "string",
+            "description": "Path to the backup file in the storage",
+            "example": "/backups"
+          },
+          "filterCriteria": {
+            "$ref": "#/components/schemas/FilterCriteria",
+            "type": "object",
+            "description": "Filter criteria"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/Mapping",
+            "type": "object",
+            "description": "Mapping to use for the restore operation"
+          }
+        }
+      },
+      "RestoreResponse": {
+        "type": "object",
+        "required": [
+          "restoreName"
+        ],
+        "description": "Response containing the restore operation details",
+        "properties": {
+          "restoreName": {
+            "type": "string",
+            "description": "Unique identifier for the restore operation",
+            "example": "restore-before-prod-update-20251203T1020-4t6S"
+          },
+          "backupName": {
+            "type": "string",
+            "description": "Unique identifier of the backup name",
+            "example": "before-prod-update-20251013T1345-G5s8"
+          },
+          "storageName": {
+            "type": "string",
+            "description": "Name of the storage backend containing the backup",
+            "example": "s3-backend"
+          },
+          "blobPath": {
+            "type": "string",
+            "description": "Path to the backup file in the storage",
+            "example": "/backups"
+          },
+          "filterCriteria": {
+            "$ref": "#/components/schemas/FilterCriteria",
+            "type": "object",
+            "description": "Criteria used to filter restore operations"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/Mapping",
+            "type": "object",
+            "description": "Mapping configuration for the restore"
+          },
+          "status": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Status of the restore operation (arbitrary key-value pairs)",
+            "example": {
+              "phase": "completed",
+              "duration": "5m"
+            }
+          },
+          "logicalRestores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalRestore"
+            },
+            "description": "List of logical restores"
+          }
+        }
+      },
       "RestoreResult": {
         "type": "object",
         "properties": {
@@ -2404,7 +3027,7 @@
             "description": "This object contains information about restoring the specific adapter."
           },
           "status": {
-            "$ref": "#/components/schemas/Status1",
+            "$ref": "#/components/schemas/Status2",
             "type": "string",
             "description": "The field contains the restore status of specific adapter."
           },
@@ -2417,6 +3040,47 @@
               "type": "string"
             },
             "description": "This associative array contain database names, where key: \"old db name\", value: \"new db name\". This array will not be empty if the targetNamespace parameter will be passed and it will be filled during restore to another namespace."
+          }
+        }
+      },
+      "RestoreStatusResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "description": "Current status of a restore operation",
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "PENDING",
+              "IN_PROGRESS",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "description": "Current state of the restore operation"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of databases to be restored",
+            "example": 5,
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of databases successfully restored",
+            "example": 3,
+            "minimum": 0
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Error details if the restore failed",
+            "example": "Insufficient permissions to create database"
           }
         }
       },
@@ -2589,6 +3253,16 @@
       "Status": {
         "type": "string",
         "enum": [
+          "NOT_STARTED",
+          "PENDING",
+          "IN_PROGRESS",
+          "FAILED",
+          "COMPLETED"
+        ]
+      },
+      "Status1": {
+        "type": "string",
+        "enum": [
           "FAIL",
           "ACTIVE",
           "PROCEEDING",
@@ -2597,7 +3271,7 @@
           "DELETION_FAILED"
         ]
       },
-      "Status1": {
+      "Status2": {
         "type": "string",
         "enum": [
           "SUCCESS",
@@ -2813,6 +3487,17 @@
           }
         }
       },
+      "User": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
       "UserOperationRequest": {
         "type": "object",
         "properties": {
@@ -2928,17 +3613,17 @@
     },
     "/api/backups/v1/backup/{backupName}": {
       "post": {
+        "summary": "Get backup details",
+        "description": "Retrieve details about a specific backup operation",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Get backup details",
-        "description": "Retrieve details about a specific backup operation",
         "parameters": [
           {
-            "name": "backupName",
-            "in": "path",
             "description": "Unique identifier of the backup",
             "required": true,
+            "name": "backupName",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -2970,22 +3655,24 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       },
       "delete": {
+        "summary": "Delete backup",
+        "description": "Delete the backup operation",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Delete backup",
-        "description": "Delete the backup operation",
         "parameters": [
           {
-            "name": "backupName",
-            "in": "path",
             "description": "Unique identifier of the backup",
             "required": true,
+            "name": "backupName",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -3010,27 +3697,29 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/backup/{backupName}/metadata": {
       "get": {
+        "summary": "Get backup metadata",
+        "description": "Retrieve metadata about a completed backup",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Get backup metadata",
-        "description": "Retrieve metadata about a completed backup",
         "parameters": [
           {
-            "name": "backupName",
-            "in": "path",
             "description": "Unique identifier of the backup",
             "required": true,
+            "name": "backupName",
+            "in": "path",
             "schema": {
-              "pattern": "\\S",
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
@@ -3040,7 +3729,6 @@
             "headers": {
               "Digest": {
                 "description": "Digest header with SHA-256 checksum of the response body",
-                "style": "simple",
                 "schema": {
                   "type": "string",
                   "example": "SHA-256\u003dabc123..."
@@ -3070,27 +3758,29 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/backup/{backupName}/status": {
       "get": {
+        "summary": "Get backup status",
+        "description": "Retrieve the current status of a backup operation",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Get backup status",
-        "description": "Retrieve the current status of a backup operation",
         "parameters": [
           {
-            "name": "backupName",
-            "in": "path",
             "description": "Unique identifier of the backup",
             "required": true,
+            "name": "backupName",
+            "in": "path",
             "schema": {
-              "pattern": "\\S",
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
@@ -3120,38 +3810,40 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/operation/backup": {
       "post": {
+        "summary": "Initiate database backup",
+        "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup identifier that can be used to track progress.",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Initiate database backup",
-        "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup identifier that can be used to track progress.",
         "parameters": [
           {
             "name": "dryRun",
             "in": "query",
             "schema": {
-              "default": false,
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             }
           }
         ],
         "requestBody": {
           "description": "Backup request",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BackupRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -3192,23 +3884,25 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/operation/uploadMetadata": {
       "post": {
+        "summary": "Upload backup metadata",
+        "description": "Metadata upload done",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Upload backup metadata",
-        "description": "Metadata upload done",
         "parameters": [
           {
-            "name": "Digest",
-            "in": "header",
             "description": "Digest header in format: sha-256\u003d\u003cbase64-hash\u003e",
+            "in": "header",
+            "name": "Digest",
             "required": true,
             "schema": {
               "type": "string",
@@ -3218,14 +3912,14 @@
         ],
         "requestBody": {
           "description": "Backup metadata",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BackupResponse"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -3246,40 +3940,42 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/restore/{backupName}": {
       "post": {
+        "summary": "Restore from backup",
+        "description": "Initiate a database restore operation from an existing backup.This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress.Operation is not idempotent",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Restore from backup",
-        "description": "Initiate a database restore operation from an existing backup.This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress.Operation is not idempotent",
         "parameters": [
           {
-            "name": "backupName",
-            "in": "path",
             "description": "Unique identifier of the backup",
             "required": true,
+            "name": "backupName",
+            "in": "path",
             "schema": {
-              "pattern": "\\S",
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
         "requestBody": {
           "description": "Restore request",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RestoreRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -3320,24 +4016,26 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/restore/{restoreName}": {
       "get": {
+        "summary": "Get restore details",
+        "description": "Retrieve details about a specific restore operation",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Get restore details",
-        "description": "Retrieve details about a specific restore operation",
         "parameters": [
           {
-            "name": "restoreName",
-            "in": "path",
             "description": "Unique identifier of the restore operation",
             "required": true,
+            "name": "restoreName",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -3369,22 +4067,24 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       },
       "delete": {
+        "summary": "Delete restore",
+        "description": "Delete a restore operation",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Delete restore",
-        "description": "Delete a restore operation",
         "parameters": [
           {
-            "name": "restoreName",
-            "in": "path",
             "description": "Unique identifier of the restore operation",
             "required": true,
+            "name": "restoreName",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -3409,24 +4109,26 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/restore/{restoreName}/retry": {
       "post": {
+        "summary": "Retry restore",
+        "description": "Retry a failed restore operation",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Retry restore",
-        "description": "Retry a failed restore operation",
         "parameters": [
           {
-            "name": "restoreName",
-            "in": "path",
             "description": "Unique identifier of the restore operation",
             "required": true,
+            "name": "restoreName",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -3468,24 +4170,26 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
     },
     "/api/backups/v1/restore/{restoreName}/status": {
       "get": {
+        "summary": "Get restore status",
+        "description": "Retrieve the current status of a restore operation",
         "tags": [
           "Backup \u0026 Restore"
         ],
-        "summary": "Get restore status",
-        "description": "Retrieve the current status of a restore operation",
         "parameters": [
           {
-            "name": "restoreName",
-            "in": "path",
             "description": "Unique identifier of the restore operation",
             "required": true,
+            "name": "restoreName",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -3517,7 +4221,9 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
           }
         ]
       }
@@ -6158,8 +6864,6 @@
             "required": true,
             "name": "backupId",
             "in": "path",
-            "description": "Identifier of backup process",
-            "required": true,
             "schema": {
               "$ref": "#/components/schemas/UUID"
             }
@@ -6644,40 +7348,46 @@
           },
           "403": {
             "description": "Not Allowed"
+          },
+          "400": {
+            "description": "Bad Request"
           }
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT",
+              "DISCR_TOOL_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{namespace}/databases/list": {
       "get": {
+        "summary": "V3. List of all databases",
+        "description": "Returns the list of all databases.",
         "tags": [
           "Controller Database administration"
         ],
-        "summary": "V3. List of all databases",
-        "description": "Returns the list of all databases.",
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
             "description": "Project namespace in which the databases is used",
             "required": true,
+            "name": "namespace",
+            "in": "path",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "withResources",
-            "in": "query",
             "description": "Parameter for adding database resources to response",
             "required": true,
+            "name": "withResources",
+            "in": "query",
             "schema": {
-              "default": "false",
-              "type": "boolean"
+              "type": "boolean",
+              "default": "false"
             }
           }
         ],
@@ -6704,24 +7414,27 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT",
+              "DISCR_TOOL_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{namespace}/databases/registration/externally_manageable": {
       "put": {
+        "summary": "V3. External database registration",
+        "description": "This API supports registration in DBaaS for any external logical database.",
         "tags": [
           "Controller Database administration"
         ],
-        "summary": "V3. External database registration",
-        "description": "This API supports registration in DBaaS for any external logical database.",
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
             "description": "Namespace with which new database will be connected",
             "required": true,
+            "name": "namespace",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -6734,7 +7447,8 @@
                 "$ref": "#/components/schemas/ExternalDatabaseRequestV3"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "500": {
@@ -6789,28 +7503,34 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad Request"
           }
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{namespace}/databases/statuses": {
       "get": {
+        "summary": "V3. Deprecated. Get list of ghosts and lost databases",
+        "description": "Databases may get lost if they were marked to delete but were not actually deleted. An existing database stays as a ghost if it was not registered in DBaaS.",
+        "deprecated": true,
         "tags": [
           "Controller Database administration"
         ],
-        "summary": "V3. Deprecated. Get list of ghosts and lost databases",
-        "description": "Databases may get lost if they were marked to delete but were not actually deleted. An existing database stays as a ghost if it was not registered in DBaaS.",
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
             "description": "Namespace for which to get the database statuses",
             "required": true,
+            "name": "namespace",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -6962,10 +7682,10 @@
             }
           },
           {
-            "name": "ruleName",
-            "in": "path",
             "description": "Name of the rule used as an identifier",
             "required": true,
+            "name": "ruleName",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -6978,7 +7698,8 @@
                 "$ref": "#/components/schemas/RuleRegistrationRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "409": {
@@ -6995,28 +7716,33 @@
           },
           "403": {
             "description": "Not Allowed"
+          },
+          "400": {
+            "description": "Bad Request"
           }
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{namespace}/physical_databases/rules/debug": {
       "post": {
+        "summary": "Debug for microservices\u0027 balancing rules.",
+        "description": "This API receives JSON-configs with rules and list of microservices to check and returns in response a mapping what physical database is going to be assigned to each microservice from the request based on the balancing rules from the request and the existing rules in DBaaS. Response will also contain a list of labels for the assigned physical database to help analyze which rule was applied.",
         "tags": [
           "Balancing Rules Administration V3"
         ],
-        "summary": "Debug for microservices\u0027 balancing rules.",
-        "description": "This API receives JSON-configs with rules and list of microservices to check and returns in response a mapping what physical database is going to be assigned to each microservice from the request based on the balancing rules from the request and the existing rules in DBaaS. Response will also contain a list of labels for the assigned physical database to help analyze which rule was applied.",
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
             "description": "Namespace where the rule is expected to be placed, each rule must have a namespace. Rules works only on logical databases created in the same namespace where they have been created.",
             "required": true,
+            "name": "namespace",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -7029,7 +7755,8 @@
                 "$ref": "#/components/schemas/DebugRulesRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -7043,28 +7770,33 @@
           },
           "403": {
             "description": "Not Allowed"
+          },
+          "400": {
+            "description": "Bad Request"
           }
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices": {
       "get": {
+        "summary": "V3. Get on microservice physical database balancing rules.",
+        "description": "Allows getting physical database balancing rules for microservices.",
         "tags": [
           "Balancing Rules Administration V3"
         ],
-        "summary": "V3. Get on microservice physical database balancing rules.",
-        "description": "Allows getting physical database balancing rules for microservices.",
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
             "description": "Namespace where the rule is placed, each rule has a namespace.\nRules works only on logical databases created in the same namespace where they have been created.",
             "required": true,
+            "name": "namespace",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -7086,22 +7818,24 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       },
       "put": {
+        "summary": "V3. On microservice physDb balancing rule.",
+        "description": "Allows adding balancing rules for microservices.  Balancing rules are intended to define in which physical database new logical database should be created. This API allows adding such rules for each microservice, or for group of microservices separately. \n *WARNING! Rules can be overridden. Rule\u0027s integrity and validity is the responsibility of project(applies) side.* \n It means that rule doesn\u0027t merge and there can be only one version of rule. If you change configuration of previous rule and send it, then logical databases will be created by the new changed rule. Therefore, be careful before deleting or modifying the rule.",
         "tags": [
           "Balancing Rules Administration V3"
         ],
-        "summary": "V3. On microservice physDb balancing rule.",
-        "description": "Allows adding balancing rules for microservices.  Balancing rules are intended to define in which physical database new logical database should be created. This API allows adding such rules for each microservice, or for group of microservices separately. \n *WARNING! Rules can be overridden. Rule\u0027s integrity and validity is the responsibility of project(applies) side.* \n It means that rule doesn\u0027t merge and there can be only one version of rule. If you change configuration of previous rule and send it, then logical databases will be created by the new changed rule. Therefore, be careful before deleting or modifying the rule.",
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
             "description": "Namespace where the rule will be placed, each rule must have a namespace. Rules works only on logical databases created in the same namespace where they have been created.",
             "required": true,
+            "name": "namespace",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -7117,7 +7851,8 @@
                 }
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -7135,24 +7870,26 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices/validation": {
       "put": {
+        "summary": "Validation for microservices\u0027 balancing rules.",
+        "description": "This API receives JSON-configs with rules for microservices and returns in response mapping label to physical db (whether all mentioned lables exist), indicates errors if any. Response also contains information about default physical databases for each db type.",
         "tags": [
           "Balancing Rules Administration V3"
         ],
-        "summary": "Validation for microservices\u0027 balancing rules.",
-        "description": "This API receives JSON-configs with rules for microservices and returns in response mapping label to physical db (whether all mentioned lables exist), indicates errors if any. Response also contains information about default physical databases for each db type.",
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
             "description": "Namespace where the rule is expected to be placed, each rule must have a namespace. Rules works only on logical databases created in the same namespace where they have been created.",
             "required": true,
+            "name": "namespace",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -7168,7 +7905,8 @@
                 }
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -7186,24 +7924,26 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{type}/physical_databases": {
       "get": {
+        "summary": "V3. List registered physical databases",
+        "description": "Returns the list of registered physical databases by database type",
         "tags": [
           "Physical databases registration controller"
         ],
-        "summary": "V3. List registered physical databases",
-        "description": "Returns the list of registered physical databases by database type",
         "parameters": [
           {
-            "name": "type",
-            "in": "path",
             "description": "Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc. or all - to list all registered physical databases",
             "required": true,
+            "name": "type",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -7232,33 +7972,35 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{type}/physical_databases/{phydbid}": {
       "put": {
+        "summary": "V3. Register new physical database",
+        "description": "Creates new physical database and returns path to it with physical database identifier.",
         "tags": [
           "Physical databases registration controller"
         ],
-        "summary": "V3. Register new physical database",
-        "description": "Creates new physical database and returns path to it with physical database identifier.",
         "parameters": [
           {
-            "name": "phydbid",
-            "in": "path",
             "description": "Physical database identifier. The value belongs to the specific database cluster",
             "required": true,
+            "name": "phydbid",
+            "in": "path",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "type",
-            "in": "path",
             "description": "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.",
             "required": true,
+            "name": "type",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -7271,7 +8013,8 @@
                 "$ref": "#/components/schemas/PhysicalDatabaseRegistryRequestV3"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -7322,31 +8065,33 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       },
       "delete": {
+        "summary": "V3. Delete physical database",
+        "description": "Deletes physical database by database type and physical database id",
         "tags": [
           "Physical databases registration controller"
         ],
-        "summary": "V3. Delete physical database",
-        "description": "Deletes physical database by database type and physical database id",
         "parameters": [
           {
-            "name": "phydbid",
-            "in": "path",
             "description": "Physical database identifier. The value belongs to the specific database cluster",
             "required": true,
+            "name": "phydbid",
+            "in": "path",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "type",
-            "in": "path",
             "description": "Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc.",
             "required": true,
+            "name": "type",
+            "in": "path",
             "schema": {
               "type": "string"
             }
@@ -7371,33 +8116,35 @@
         },
         "security": [
           {
-            "SecurityScheme": []
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
           }
         ]
       }
     },
     "/api/v3/dbaas/{type}/physical_databases/{phydbid}/global": {
       "put": {
+        "summary": "V3. Change default physical database",
+        "description": "Moves the \u0027global\u0027 flag to the specified existing physical database",
         "tags": [
           "Physical databases registration controller"
         ],
-        "summary": "V3. Change default physical database",
-        "description": "Moves the \u0027global\u0027 flag to the specified existing physical database",
         "parameters": [
           {
-            "name": "phydbid",
-            "in": "path",
             "description": "Physical database identifier. The value belongs to the specific database cluster",
             "required": true,
+            "name": "phydbid",
+            "in": "path",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "type",
-            "in": "path",
             "description": "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.",
             "required": true,
+            "name": "type",
+            "in": "path",
             "schema": {
               "type": "string"
             }

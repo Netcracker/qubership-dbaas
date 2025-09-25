@@ -24,6 +24,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.util.List;
 
 import static com.netcracker.cloud.dbaas.JdbcUtils.PROCESS_ORCHESTRATOR_DATASOURCE;
@@ -63,10 +64,10 @@ public class ServicesConfig {
 
     @Produces
     @Singleton
-    public LockProvider lockProvider() throws SQLException {
+    public LockProvider lockProvider(@Named(PROCESS_ORCHESTRATOR_DATASOURCE) DataSource dataSource) throws SQLException {
         return new JdbcTemplateLockProvider(
                 JdbcTemplateLockProvider.Configuration.builder()
-                        .withJdbcTemplate(new JdbcTemplate(processOrchestratorDataSource()))
+                        .withJdbcTemplate(new JdbcTemplate(dataSource))
                         .usingDbTime()
                         .build()
         );
