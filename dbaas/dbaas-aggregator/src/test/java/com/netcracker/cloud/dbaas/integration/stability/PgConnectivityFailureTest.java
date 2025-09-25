@@ -3,15 +3,15 @@ package com.netcracker.cloud.dbaas.integration.stability;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.role.Role;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
-import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.entity.pg.DbResource;
-import com.netcracker.cloud.dbaas.entity.pg.DbState;
+import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.h2.H2DatabaseRegistryRepository;
+import com.netcracker.cloud.dbaas.repositories.h2.H2PhysicalDatabaseRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -21,8 +21,6 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,15 +30,16 @@ import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
+@Slf4j
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
-@Slf4j
-@TestProfile(DbaasDatabasePgConnectivityFailureTest.DirtiesContextProfile.class)
-class DbaasDatabasePgConnectivityFailureTest {
+@TestProfile(PgConnectivityFailureTest.DirtiesContextProfile.class)
+public class PgConnectivityFailureTest {
 
-    private static final String POSTGRESQL = "postgresql";
+    private static final String TEST_TYPE = "postgresql";
+    private static final String TEST_NAMESPACE = "test-namespace";
 
     @Inject
     DatabaseRegistryRepository databaseRegistryRepository;
@@ -50,6 +49,14 @@ class DbaasDatabasePgConnectivityFailureTest {
     H2DatabaseRegistryRepository h2DatabaseRegistryRepository;
     @Inject
     DatabasesRepository databasesRepository;
+    @Inject
+    PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
+    @Inject
+    H2PhysicalDatabaseRepository h2PhysicalDatabaseRepository;
+    @Inject
+    PhysicalDatabasesRepository physicalDatabasesRepository;
+    @Inject
+    DatabaseRegistryDbaasRepository databaseDbaasRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -61,16 +68,26 @@ class DbaasDatabasePgConnectivityFailureTest {
     @Transactional
     public void clean() {
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType().forEach(dbr -> databaseRegistryDbaasRepository.delete(dbr));
+        physicalDatabaseDbaasRepository.findByType(TEST_TYPE).filter(Objects::nonNull).forEach(pd -> physicalDatabaseDbaasRepository.delete(pd));
+        databaseDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE).forEach(databaseRegistry -> databaseRegistryRepository.deleteById(databaseRegistry.getId()));
     }
 
     @Test
     void testExactClassifierMatch() throws JsonProcessingException {
         DatabaseRegistry database = createDatabase();
+        PhysicalDatabase physicalDatabase = createPhysicalDatabase();
+
         QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(database));
+        QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.save(physicalDatabase));
+
         DatabaseRegistry pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType()).get();
         await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2DatabaseRegistryRepository.findByIdOptional(database.getId()).isPresent());
+        await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
+                .until(() -> h2PhysicalDatabaseRepository.findByIdOptional(physicalDatabase.getId()).isPresent());
+
         PostgresqlContainerResource.postgresql.stop();
+
         boolean exceptionHappened = false;
         try {
             QuarkusTransaction.requiringNew().run(() -> databasesRepository.findByClassifierAndType(database.getClassifier(), database.getType()));
@@ -79,36 +96,55 @@ class DbaasDatabasePgConnectivityFailureTest {
         }
         assertTrue(exceptionHappened);
 
-        Optional<DatabaseRegistry> h2Database = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(database.getClassifier(), POSTGRESQL);
+        exceptionHappened = false;
+        try {
+            QuarkusTransaction.requiringNew().run(() -> physicalDatabasesRepository.findByPhysicalDatabaseIdentifier(physicalDatabase.getPhysicalDatabaseIdentifier()));
+        } catch (Exception exception) {
+            exceptionHappened = true;
+        }
+        assertTrue(exceptionHappened);
+
+        exceptionHappened = false;
+        try {
+            QuarkusTransaction.requiringNew().run(() -> databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType()));
+        } catch (Exception exception) {
+            exceptionHappened = true;
+        }
+        assertTrue(exceptionHappened);
+
+        Optional<DatabaseRegistry> h2Database = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(database.getClassifier(), TEST_TYPE);
         assertTrue(h2Database.isPresent());
         Assertions.assertEquals(objectMapper.writeValueAsString(pgDatabase), objectMapper.writeValueAsString(h2Database.get()));
+
+        Optional<DatabaseRegistry> h2DatabaseRegistry = databaseDbaasRepository.getDatabaseByClassifierAndType(database.getClassifier(), TEST_TYPE);
+        assertTrue(h2DatabaseRegistry.isPresent());
+        Assertions.assertEquals(objectMapper.writeValueAsString(pgDatabase), objectMapper.writeValueAsString(h2DatabaseRegistry.get()));
+
+        PhysicalDatabase foundDb = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabase.getPhysicalDatabaseIdentifier());
+        assertNotNull(foundDb);
+        assertEquals(foundDb, physicalDatabase);
     }
 
     private DatabaseRegistry createDatabase() {
-        return createDatabase("test-namespace");
-    }
-
-    private DatabaseRegistry createDatabase(String namespace) {
         SortedMap<String, Object> classifier = getClassifier();
-        classifier.put("namespace", namespace);
+        classifier.put("namespace", TEST_NAMESPACE);
 
         Database database = new Database();
         database.setId(UUID.randomUUID());
         database.setClassifier(classifier);
-        database.setType(POSTGRESQL);
-        database.setNamespace(namespace);
-        database.setConnectionProperties(Arrays.asList(new HashMap<String, Object>() {{
+        database.setType(TEST_TYPE);
+        database.setNamespace(TEST_NAMESPACE);
+        database.setConnectionProperties(List.of(new HashMap<>() {{
             put("username", "user");
             put(ROLE, Role.ADMIN.toString());
         }}));
-
 
         ArrayList<DatabaseRegistry> databaseRegistries = new ArrayList<>();
         DatabaseRegistry databaseRegistry = createDatabaseRegistry();
         databaseRegistry.setDatabase(database);
         databaseRegistry.setClassifier(classifier);
-        databaseRegistry.setType(POSTGRESQL);
-        databaseRegistry.setNamespace(namespace);
+        databaseRegistry.setType(TEST_TYPE);
+        databaseRegistry.setNamespace(TEST_NAMESPACE);
         databaseRegistries.add(databaseRegistry);
         database.setDatabaseRegistry(databaseRegistries);
 
@@ -123,7 +159,6 @@ class DbaasDatabasePgConnectivityFailureTest {
         return databaseRegistry;
     }
 
-    @NotNull
     private static SortedMap<String, Object> getClassifier() {
         SortedMap<String, Object> classifier = new TreeMap<>();
         classifier.put("test-key", "test-val");
@@ -132,17 +167,21 @@ class DbaasDatabasePgConnectivityFailureTest {
     }
 
     private DatabaseRegistry createDatabaseRegistry() {
-        return createDatabaseRegistry("test-namespace");
-    }
-
-    private DatabaseRegistry createDatabaseRegistry(String namespace) {
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setId(UUID.randomUUID());
         databaseRegistry.setClassifier(getClassifier());
-        databaseRegistry.setType(POSTGRESQL);
-        databaseRegistry.setNamespace(namespace);
-        databaseRegistry.getClassifier().put("namespace", namespace);
+        databaseRegistry.setType(TEST_TYPE);
+        databaseRegistry.setNamespace(TEST_NAMESPACE);
+        databaseRegistry.getClassifier().put("namespace", TEST_NAMESPACE);
         return databaseRegistry;
+    }
+
+    private PhysicalDatabase createPhysicalDatabase() {
+        PhysicalDatabase db = new PhysicalDatabase();
+        db.setId(UUID.randomUUID().toString());
+        db.setPhysicalDatabaseIdentifier(UUID.randomUUID().toString());
+        db.setType(TEST_TYPE);
+        return db;
     }
 
     @NoArgsConstructor
