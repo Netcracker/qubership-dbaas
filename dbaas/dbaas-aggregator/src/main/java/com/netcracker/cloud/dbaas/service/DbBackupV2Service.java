@@ -45,6 +45,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
+import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 
 @Slf4j
@@ -387,8 +389,27 @@ public class DbBackupV2Service {
                     "Databases that match filterCriteria not found",
                     null); //TODO fill correct path
         }
+        return databasesForBackup.stream().map(database -> {
+                    List<DatabaseRegistry> databaseRegistries = database.getDatabaseRegistry().stream()
+                            .filter(req ->
+                                    !req.getClassifier().containsKey(MARKED_FOR_DROP) &&
+                                            namespace.equals(req.getNamespace()) &&
+                                            !req.isMarkedForDrop() &&
+                                            CREATED.equals(req.getDbState().getDatabaseState())
+                            )
+                            .map(req -> new DatabaseRegistry(req, req.getNamespace()))
+                            .toList();
 
-        return databasesForBackup;
+                    if (databaseRegistries.isEmpty())
+                        return null;
+
+                    Database databaseToBackup = new Database(database);
+                    databaseToBackup.setDatabaseRegistry(databaseRegistries);
+                    databaseRegistries.forEach(reg -> reg.setDatabase(databaseToBackup));
+                    return databaseToBackup;
+                })
+                .filter(Objects::nonNull)
+                .toList();
     }
 
 
@@ -791,7 +812,7 @@ public class DbBackupV2Service {
         database.setType(type);
         database.setBackupDisabled(false);
         database.setSettings(settings);
-        database.setDbState(new DbState(DbState.DatabaseStateStatus.CREATED));
+        database.setDbState(new DbState(CREATED));
         database.setDatabaseRegistry(new ArrayList<>());
         database.setBgVersion(""); //TODO
         database.setAdapterId(adapterId);

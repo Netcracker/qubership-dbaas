@@ -7,6 +7,7 @@ import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterRespo
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
@@ -43,6 +44,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -230,6 +232,91 @@ class DbBackupV2ServiceTest {
         Mockito.verify(adapterOne, times(1)).backupV2(any(), any(), any());
         Mockito.verify(adapterTwo, times(1)).backupV2(any(), any(), any());
 
+    }
+
+    @Test
+    void getAllDbByFilter_shouldFilterRegistriesAndCreateCopy() {
+        String dbName = "dbName";
+        String otherNamespace = "other-namespace";
+        String namespace = "namespace";
+
+        SortedMap<String, Object> classifier = new TreeMap<>();
+        classifier.put("namespace", "namespace");
+
+        SortedMap<String, Object> markedClassifier = new TreeMap<>();
+        markedClassifier.put("namespace", "namespace");
+        markedClassifier.put(MARKED_FOR_DROP, MARKED_FOR_DROP);
+
+        DbState dbState = new DbState();
+        dbState.setId(UUID.randomUUID());
+        dbState.setState(AbstractDbState.DatabaseStateStatus.CREATED);
+        dbState.setDatabaseState(AbstractDbState.DatabaseStateStatus.CREATED);
+        dbState.setDescription("descripton");
+        dbState.setPodName("podName");
+
+        DbState wrongDbState = new DbState();
+        wrongDbState.setId(UUID.randomUUID());
+        wrongDbState.setState(AbstractDbState.DatabaseStateStatus.DELETING);
+        wrongDbState.setDatabaseState(AbstractDbState.DatabaseStateStatus.DELETING);
+        wrongDbState.setDescription("descripton");
+        wrongDbState.setPodName("podName");
+
+        Database originalDb = new Database();
+        originalDb.setNamespace(namespace);
+        originalDb.setName(dbName);
+        originalDb.setConnectionProperties(new ArrayList<>());
+        originalDb.setResources(new ArrayList<>());
+
+        DatabaseRegistry registry1 = new DatabaseRegistry();
+        registry1.setNamespace(namespace);
+        registry1.setClassifier(classifier);
+        registry1.setDatabase(originalDb);
+        registry1.setDbState(dbState);
+
+        DatabaseRegistry registry2 = new DatabaseRegistry();
+        registry2.setNamespace(otherNamespace);
+        registry2.setClassifier(classifier);
+        registry2.setDatabase(originalDb);
+
+
+        originalDb.setDatabaseRegistry(List.of(registry1, registry2));
+
+        Database originalDb2 = new Database();
+        originalDb2.setNamespace(namespace);
+        originalDb2.setName(dbName);
+        originalDb2.setConnectionProperties(new ArrayList<>());
+        originalDb2.setResources(new ArrayList<>());
+
+        DatabaseRegistry registry5 = new DatabaseRegistry();
+        registry5.setNamespace(namespace);
+        registry5.setClassifier(classifier);
+        registry5.setDatabase(originalDb2);
+        registry5.setDbState(wrongDbState);
+        registry5.setClassifier(markedClassifier);
+        registry5.setMarkedForDrop(true);
+
+        originalDb2.setDatabaseRegistry(List.of(registry5));
+
+        when(databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace))
+                .thenReturn(List.of(originalDb, originalDb2));
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace));
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        List<Database> result = dbBackupV2Service.getAllDbByFilter(filterCriteria);
+
+        assertEquals(1, result.size());
+        Database copy = result.getFirst();
+
+        assertNotSame(copy, originalDb);
+
+        assertEquals(1, copy.getDatabaseRegistry().size());
+        assertEquals(namespace, copy.getDatabaseRegistry().getFirst().getNamespace());
+        assertEquals(dbName, copy.getName());
+
+        assertSame(copy, copy.getDatabaseRegistry().getFirst().getDatabase());
     }
 
     @Test
@@ -2321,6 +2408,15 @@ class DbBackupV2ServiceTest {
 
     private static @NotNull List<Database> getDatabases(String dbName, String namespace) {
         List<Database> databases = new ArrayList<>();
+        SortedMap<String, Object> classifier = new TreeMap<>();
+        classifier.put("namespace", "namespace");
+
+        DbState dbState = new DbState();
+        dbState.setId(UUID.randomUUID());
+        dbState.setState(AbstractDbState.DatabaseStateStatus.CREATED);
+        dbState.setDatabaseState(AbstractDbState.DatabaseStateStatus.CREATED);
+        dbState.setDescription("descripton");
+        dbState.setPodName("podName");
 
         for (int i = 0; i < 4; i++) {
             int k = i % 2 == 0 ? 1 : 2;
@@ -2328,11 +2424,12 @@ class DbBackupV2ServiceTest {
             Database database = new Database();
             database.setAdapterId(String.valueOf(k));
             database.setName(dbName + i);
+            database.setDbState(dbState);
 
             DatabaseRegistry databaseRegistry = new DatabaseRegistry();
             databaseRegistry.setNamespace(namespace);
             databaseRegistry.setDatabase(database);
-
+            databaseRegistry.setClassifier(classifier);
             database.setDatabaseRegistry(new ArrayList<>());
             database.getDatabaseRegistry().add(databaseRegistry);
             database.setSettings(new HashMap<>());
