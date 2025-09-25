@@ -1,10 +1,14 @@
 package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.pg.DbState;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
@@ -17,6 +21,7 @@ import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
@@ -62,25 +67,34 @@ public class DbBackupV2Service {
     private final RestoreRepository restoreRepository;
     private final PhysicalDatabasesService physicalDatabasesService;
     private final DatabaseDbaasRepository databaseDbaasRepository;
+    private final DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     private final BackupV2Mapper mapper;
     private final BalancingRulesService balancingRulesService;
     private final AsyncOperations asyncOperations;
+    private final DBaaService dBaaService;
+    private final PasswordEncryption encryption;
 
     @Inject
     public DbBackupV2Service(BackupRepository backupRepository,
                              RestoreRepository restoreRepository,
                              PhysicalDatabasesService physicalDatabasesService,
                              DatabaseDbaasRepository databaseDbaasRepository,
+                             DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository,
                              BackupV2Mapper mapper,
                              BalancingRulesService balancingRulesService,
-                             AsyncOperations asyncOperations) {
+                             AsyncOperations asyncOperations,
+                             DBaaService dBaaService,
+                             PasswordEncryption encryption) {
         this.backupRepository = backupRepository;
         this.restoreRepository = restoreRepository;
         this.physicalDatabasesService = physicalDatabasesService;
         this.databaseDbaasRepository = databaseDbaasRepository;
+        this.databaseRegistryDbaasRepository = databaseRegistryDbaasRepository;
         this.mapper = mapper;
         this.balancingRulesService = balancingRulesService;
         this.asyncOperations = asyncOperations;
+        this.dBaaService = dBaaService;
+        this.encryption = encryption;
     }
 
     public BackupOperationResponse backup(BackupRequest backupRequest, boolean dryRun) {
@@ -234,7 +248,7 @@ public class DbBackupV2Service {
                 .toList();
         String adapterId = logicalBackup.getAdapterId();
 
-        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup, LogicalBackup::getLogicalBackupName, "backupV2");
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), "backupV2");
 
         try {
             return Failsafe.with(retryPolicy).get(() -> {
@@ -281,7 +295,7 @@ public class DbBackupV2Service {
     private void fetchAndUpdateStatuses(List<LogicalBackup> logicalBackupList) {
         List<CompletableFuture<Void>> futures = logicalBackupList.stream()
                 .map(logicalBackup -> {
-                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup, LogicalBackup::getLogicalBackupName, "trackBackupV2");
+                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), "trackBackupV2");
                     return CompletableFuture.supplyAsync(
                                     asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy).get(() -> {
                                         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
@@ -407,6 +421,7 @@ public class DbBackupV2Service {
     }
 
     private List<BackupDatabase> getAllDbByFilter(Backup backup, FilterCriteria filterCriteria) {
+        //TODO filter by classifiers
         return backup.getLogicalBackups().stream().flatMap(lb -> lb.getBackupDatabases().stream()).toList();
     }
 
@@ -420,15 +435,23 @@ public class DbBackupV2Service {
                 .orElseGet(HashMap::new);
 
         // Group BackupDatabase by updated adapters
-        Map<Map.Entry<String, String>, List<BackupDatabase>> groupedByTypeAndAdapter =
+        Map<PhysicalDatabase, List<BackupDatabase>> groupedByTypeAndAdapter =
                 groupBackupDatabasesByTypeAndAdapter(backupDatabases, namespacesMap);
+
+        //Check adapters are backupable
+        groupedByTypeAndAdapter.keySet().forEach(physicalDatabase -> {
+            String adapterId = physicalDatabase.getAdapter().getAdapterId();
+            if (!physicalDatabasesService.getAdapterById(adapterId).isBackupRestoreSupported()) {
+                //TODO throw exception
+            }
+        });
 
         // Build logicalRestores for each new adapter
         List<LogicalRestore> logicalRestores = groupedByTypeAndAdapter.entrySet().stream()
                 .map(entry -> {
                     LogicalRestore logicalRestore = new LogicalRestore();
-                    logicalRestore.setType(entry.getKey().getKey());
-                    logicalRestore.setAdapterId(entry.getKey().getValue());
+                    logicalRestore.setType(entry.getKey().getType());
+                    logicalRestore.setAdapterId(entry.getKey().getAdapter().getAdapterId());
 
                     List<RestoreDatabase> restoreDatabases =
                             createRestoreDatabases(entry.getValue(), namespacesMap);
@@ -452,7 +475,6 @@ public class DbBackupV2Service {
 
         // set up relation
         logicalRestores.forEach(lr -> lr.setRestore(restore));
-
         return restore;
     }
 
@@ -461,12 +483,21 @@ public class DbBackupV2Service {
             List<BackupDatabase> backupDatabases,
             Map<String, String> namespacesMap
     ) {
+        Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
+
         return backupDatabases.stream()
                 .map(backupDatabase -> {
                     // updated classifiers
                     List<SortedMap<String, Object>> classifiers = backupDatabase.getClassifiers().stream()
-                            .map(classifier ->
-                                    updateClassifierNamespace(classifier, namespacesMap))
+                            .map(classifier -> {
+                                SortedMap<String, Object> updatedClassifier = updateClassifierNamespace(classifier, namespacesMap);
+
+                                if (uniqueClassifiers.contains(updatedClassifier)) {
+                                    //TODO throw exception
+                                }
+                                uniqueClassifiers.add(updatedClassifier);
+                                return updatedClassifier;
+                            })
                             .toList();
 
                     List<RestoreDatabase.User> users = backupDatabase.getUsers().stream()
@@ -477,6 +508,7 @@ public class DbBackupV2Service {
                             .backupDatabase(backupDatabase)
                             .name(backupDatabase.getName())
                             .classifiers(classifiers)
+                            .settings(backupDatabase.getSettings())
                             .users(users)
                             .resources(backupDatabase.getResources())
                             .build();
@@ -496,18 +528,20 @@ public class DbBackupV2Service {
         return updatedClassifier;
     }
 
-    private Map<Map.Entry<String, String>, List<BackupDatabase>> groupBackupDatabasesByTypeAndAdapter(
+    private Map<PhysicalDatabase, List<BackupDatabase>> groupBackupDatabasesByTypeAndAdapter(
             List<BackupDatabase> backupDatabases,
             Map<String, String> namespacesMap
     ) {
         return backupDatabases.stream()
                 .map(db -> {
-                    List<SortedMap<String, Object>> classifiers = db.getClassifiers(); // List<SortedMap<String,Object>>
+                    List<SortedMap<String, Object>> classifiers = db.getClassifiers();
                     String targetNamespace = null;
+                    String microserviceName = null;
 
                     // 1) find classifier, that namespace exists in mapping
                     for (var c : classifiers) {
                         String oldNamespace = (String) c.get("namespace");
+                        microserviceName = (String) c.get("microserviceName");
                         if (namespacesMap.containsKey(oldNamespace)) {
                             targetNamespace = namespacesMap.get(oldNamespace);
                             break;
@@ -520,12 +554,10 @@ public class DbBackupV2Service {
                     }
 
                     String type = db.getLogicalBackup().getType();
-                    String adapterId = balancingRulesService
-                            .applyNamespaceBalancingRule(targetNamespace, type)
-                            .getAdapter()
-                            .getAdapterId();
+                    PhysicalDatabase physicalDatabase = balancingRulesService
+                            .applyBalancingRules(type, targetNamespace, microserviceName);
 
-                    return Map.entry(Map.entry(type, adapterId), db);
+                    return Map.entry(physicalDatabase, db);
                 })
                 .collect(Collectors.groupingBy(
                         Map.Entry::getKey,
@@ -607,7 +639,7 @@ public class DbBackupV2Service {
                 }).toList();
 
         Restore restore = logicalRestore.getRestore();
-        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore, LogicalRestore::getLogicalRestoreName, "restoreV2");
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), "restoreV2");
 
         try {
             return Failsafe.with(retryPolicy).get(() -> {
@@ -654,7 +686,7 @@ public class DbBackupV2Service {
     private void fetchStatuses(List<LogicalRestore> logicalRestoreList) {
         List<CompletableFuture<Void>> futures = logicalRestoreList.stream()
                 .map(logicalRestore -> {
-                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore, LogicalRestore::getLogicalRestoreName, "trackRestoreV2");
+                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), "trackRestoreV2");
                     return CompletableFuture.supplyAsync(
                                     asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy).get(() -> {
                                         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
@@ -710,6 +742,104 @@ public class DbBackupV2Service {
         restore.setErrorMessage(sb.toString());
     }
 
+    protected void initializeLogicalDatabasesFromRestore(Restore restore) {
+        log.info("Start initializing logical databases from restore {}", restore.getName());
+        restore.getLogicalRestores().forEach(logicalRestore -> {
+            log.info("Processing logical restore type={}, adapterId={}", logicalRestore.getType(), logicalRestore.getAdapterId());
+            logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
+                String type = logicalRestore.getType();
+                Set<SortedMap<String, Object>> classifiers = new HashSet<>();
+
+                log.info("Processing restoreDatabase [settings={}]", restoreDatabase.getSettings());
+                restoreDatabase.getClassifiers().forEach(classifier -> {
+                    classifiers.add(new TreeMap<>(classifier));
+                    log.debug("Classifier candidate: {}", classifier);
+                    databaseRegistryDbaasRepository
+                            .getDatabaseByClassifierAndType(classifier, type)
+                            .ifPresent(dbRegistry -> {
+                                Database db = dbRegistry.getDatabase();
+                                log.info("Found existing database {} for classifier {}", db.getId(), classifier);
+                                List<TreeMap<String, Object>> existClassifiers = db.getDatabaseRegistry().stream()
+                                        .map(AbstractDatabaseRegistry::getClassifier)
+                                        .map(TreeMap::new)
+                                        .toList();
+
+                                classifiers.addAll(existClassifiers);
+                                dBaaService.markDatabasesAsOrphan(dbRegistry);
+                                log.info("Database {} marked as orphan", db.getId());
+                                databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+                            });
+                });
+                String adapterId = logicalRestore.getAdapterId();
+                String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getId();
+                Database newDatabase = createLogicalDatabase(restoreDatabase.getName(), restoreDatabase.getSettings(), classifiers, type, adapterId, physicalDatabaseId);
+                ensureUsers(newDatabase, restoreDatabase.getUsers());
+            });
+        });
+        log.info("Finished initializing logical databases from restore {}", restore.getName());
+    }
+
+    private Database createLogicalDatabase(String dbName,
+                                           Map<String, Object> settings,
+                                           Set<SortedMap<String, Object>> classifiers,
+                                           String type,
+                                           String adapterId,
+                                           String physicalDatabaseId) {
+        Database database = new Database();
+        database.setId(UUID.randomUUID());
+        database.setName(dbName);
+        database.setType(type);
+        database.setBackupDisabled(false);
+        database.setSettings(settings);
+        database.setDbState(new DbState(DbState.DatabaseStateStatus.CREATED));
+        database.setDatabaseRegistry(new ArrayList<>());
+        database.setBgVersion(""); //TODO
+        database.setAdapterId(adapterId);
+        database.setConnectionProperties(new ArrayList<>());
+        database.setPhysicalDatabaseId(physicalDatabaseId);
+
+        classifiers.forEach(classifier -> {
+            String namespace = (String) classifier.get("namespace");
+            DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+            databaseRegistry.setClassifier(classifier);
+            databaseRegistry.setNamespace(namespace);
+            databaseRegistry.setType(type);
+            databaseRegistry.setDatabase(database);
+
+            database.getDatabaseRegistry().add(databaseRegistry);
+        });
+
+        database.setClassifier(database.getDatabaseRegistry().getFirst().getClassifier());
+        database.setNamespace(database.getDatabaseRegistry().getFirst().getNamespace());
+
+        log.info("Saving new logical database with id=[{}], adapterId=[{}]", database.getId(), database.getAdapterId());
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
+        return database;
+    }
+
+    private void ensureUsers(Database newDatabase, List<RestoreDatabase.User> users) {
+        String dbName = newDatabase.getName();
+
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(newDatabase.getAdapterId());
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(dbName, "ensureUser");
+
+        log.info("Ensuring {} users for database id=[{}] via adapter [{}]",
+                users.size(), newDatabase.getId(), adapter.identifier());
+
+        List<EnsuredUser> ensuredUsers = users.stream()
+                .map(user ->
+                        Failsafe.with(retryPolicy).get(() ->
+                                adapter.ensureUser(user.getName(), null, dbName, user.getRole()))
+                )
+                .toList();
+
+        newDatabase.setConnectionProperties(ensuredUsers.stream().map(EnsuredUser::getConnectionProperties).collect(Collectors.toList()));
+        newDatabase.setResources(ensuredUsers.stream().map(EnsuredUser::getResources).filter(Objects::nonNull).flatMap(Collection::stream).collect(Collectors.toList()));
+        newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
+        encryption.encryptPassword(newDatabase);
+        databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
+        log.info("Users ensured and database [{}] updated", newDatabase.getId());
+    }
 
     public void deleteBackup(String backupName) {
         Backup backup = getBackupOrThrowException(backupName);
@@ -718,8 +848,7 @@ public class DbBackupV2Service {
         List<CompletableFuture<Void>> futures = backup.getLogicalBackups().stream()
                 .map(logicalBackup -> {
                     RetryPolicy<Object> retryPolicy = buildRetryPolicy(
-                            logicalBackup,
-                            LogicalBackup::getLogicalBackupName,
+                            logicalBackup.getLogicalBackupName(),
                             "deleteBackupV2");
 
                     String adapterId = logicalBackup.getAdapterId();
@@ -835,15 +964,15 @@ public class DbBackupV2Service {
                 .orElseThrow(() -> new BackupNotFoundException("Backup not found", Source.builder().build()));
     }
 
-    private <T> RetryPolicy<Object> buildRetryPolicy(T context, Function<T, String> nameExtractor, String operation) {
+    private RetryPolicy<Object> buildRetryPolicy(String name, String operation) {
         return new RetryPolicy<>()
                 .handle(WebApplicationException.class)
                 .withMaxRetries(maxRetries)
                 .withDelay(retryDelay)
                 .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",
-                        nameExtractor.apply(context), extractErrorMessage(e.getLastFailure())))
+                        name, extractErrorMessage(e.getLastFailure())))
                 .onRetry(e -> log.info("Retrying {}...", operation))
-                .onFailure(e -> log.error("Request limit exceeded for {}", nameExtractor.apply(context)));
+                .onFailure(e -> log.error("Request limit exceeded for {}", name));
     }
 
     private String extractErrorMessage(Throwable throwable) {
