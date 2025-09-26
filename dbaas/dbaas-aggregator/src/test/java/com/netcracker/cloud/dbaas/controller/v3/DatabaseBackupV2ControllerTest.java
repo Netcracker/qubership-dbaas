@@ -105,7 +105,7 @@ class DatabaseBackupV2ControllerTest {
 
         List<String> dbNames = List.of("db1", "db2");
         doThrow(new DatabaseBackupNotSupportedException(
-                    "Backup operation unsupported for databases: " + dbNames,
+                "Backup operation unsupported for databases: " + dbNames,
                 Source.builder().parameter("ignoreNotBackupableDatabases").build()))
                 .when(dbBackupV2Service).backup(backupRequest, false);
 
@@ -346,6 +346,7 @@ class DatabaseBackupV2ControllerTest {
                         .role("role")
                         .build()),
                 Map.of("key", "value"),
+                true,
                 Status.COMPLETED,
                 1,
                 1,

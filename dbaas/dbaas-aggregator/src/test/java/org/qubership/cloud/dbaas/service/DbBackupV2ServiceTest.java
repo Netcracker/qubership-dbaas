@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupDatabaseDelegate;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.*;
@@ -131,6 +132,8 @@ class DbBackupV2ServiceTest {
 
         List<Database> registries = getDatabases(dbName, namespace);
 
+        registries.forEach(db -> db.setBgVersion("bgVersion"));
+
         LogicalBackupAdapterResponse adapterResponseFirst = new LogicalBackupAdapterResponse(
                 Status.FAILED,
                 null,
@@ -228,6 +231,7 @@ class DbBackupV2ServiceTest {
                 .findFirst().get();
         assertNotNull(db0);
         assertEquals(Status.FAILED, db0.getStatus());
+        assertTrue(db0.isConfigurational());
 
         Mockito.verify(adapterOne, times(1)).backupV2(any(), any(), any());
         Mockito.verify(adapterTwo, times(1)).backupV2(any(), any(), any());
@@ -1410,11 +1414,16 @@ class DbBackupV2ServiceTest {
                 oldNamespace2, newNamespace2
         ));
 
+        Filter filter = new Filter();
+        filter.setNamespace(List.of("old-ns2"));
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
         RestoreRequest restoreRequest = new RestoreRequest();
         restoreRequest.setMapping(mapping);
         restoreRequest.setStorageName(storageName);
         restoreRequest.setBlobPath(blobPath);
-        restoreRequest.setFilterCriteria(new FilterCriteria());
+        restoreRequest.setFilterCriteria(filterCriteria);
 
         ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
         adapter1.setAdapterId(adapterId1);
@@ -1463,7 +1472,7 @@ class DbBackupV2ServiceTest {
                 .findFirst()
                 .orElse(null);
         assertNotNull(logicalRestore1);
-        assertEquals(2, logicalRestore1.getRestoreDatabases().size());
+        assertEquals(1, logicalRestore1.getRestoreDatabases().size());
         assertEquals(Status.COMPLETED, logicalRestore1.getStatus());
 
         LogicalRestore logicalRestore2 = restore.getLogicalRestores().stream()
@@ -1474,20 +1483,9 @@ class DbBackupV2ServiceTest {
         assertEquals(1, logicalRestore2.getRestoreDatabases().size());
         assertEquals(Status.COMPLETED, logicalRestore2.getStatus());
 
-        RestoreDatabase restoreDatabase1 = logicalRestore1.getRestoreDatabases().stream()
-                .filter(rd -> rd.getBackupDatabase().getName().equals(backupDatabase1.getName()))
-                .findFirst()
-                .orElse(null);
-        assertEquals("newDb1", restoreDatabase1.getName());
-
-        SortedMap<String, Object> expectedClassifier = new TreeMap<>();
-        expectedClassifier.put("namespace", newNamespace1);
-        expectedClassifier.put("microserviceName", "microserviceName");
         SortedMap<String, Object> expectedClassifier2 = new TreeMap<>();
         expectedClassifier2.put("namespace", newNamespace2);
         expectedClassifier2.put("microserviceName", "microserviceName");
-
-        assertEquals(List.of(expectedClassifier), restoreDatabase1.getClassifiers());
 
         RestoreDatabase restoreDatabase2 = logicalRestore1.getRestoreDatabases().stream()
                 .filter(rd -> rd.getBackupDatabase().getName().equals(backupDatabase2.getName()))
@@ -1511,7 +1509,7 @@ class DbBackupV2ServiceTest {
 
         assertEquals(List.of(expectedClassifier3), restoreDatabase3.getClassifiers());
 
-        verify(balancingRulesService, times(2)).applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) map1.get("microserviceName")));
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) map1.get("microserviceName")));
         verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName")));
         verify(physicalDatabasesService, times(2)).getAdapterById(adapterId1);
         verify(physicalDatabasesService, times(2)).getAdapterById(adapterId2);
@@ -1519,6 +1517,55 @@ class DbBackupV2ServiceTest {
         verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any(), any(), anyList());
     }
 
+    @Test
+    void getAllDbByFilter_RestorePart() {
+        String namespace = "namespace";
+        String wrongNamespace = "wrongNamespace";
+
+        SortedMap<String, Object> classifier1 = new TreeMap<>();
+        classifier1.put("namespace", namespace);
+        classifier1.put("microserviceName", "microserviceName1");
+        SortedMap<String, Object> classifier2 = new TreeMap<>();
+        classifier2.put("namespace", wrongNamespace);
+        classifier2.put("microserviceName", "microserviceName2");
+
+        BackupDatabase backupDatabase1 = BackupDatabase.builder()
+                .name("db1")
+                .classifiers(List.of(classifier1, classifier2))
+                .users(List.of())
+                .settings(Map.of())
+                .resources(Map.of())
+                .build();
+
+
+        BackupDatabase backupDatabase2 = BackupDatabase.builder()
+                .name("db2")
+                .classifiers(List.of(classifier2))
+                .users(List.of())
+                .settings(Map.of())
+                .resources(Map.of())
+                .build();
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        List<BackupDatabaseDelegate> result =
+                dbBackupV2Service.getAllDbByFilter(List.of(backupDatabase1, backupDatabase2), filterCriteria);
+
+        assertEquals(1, result.size());
+        BackupDatabaseDelegate delegate = result.get(0);
+
+        assertEquals("db1", delegate.backupDatabase().getName());
+
+        assertEquals(1, delegate.filteredClassifiers().size());
+
+        SortedMap<String, Object> classifier = delegate.filteredClassifiers().get(0);
+        assertEquals(namespace, classifier.get("namespace"));
+        assertEquals("microserviceName1", classifier.get("microserviceName"));
+    }
 
     @Test
     void initializeFullRestoreStructure_withMapping() {
@@ -1619,8 +1666,14 @@ class DbBackupV2ServiceTest {
         when(adapter4.isBackupRestoreSupported())
                 .thenReturn(true);
 
-        List<BackupDatabase> filteredBackupDbs = backup.getLogicalBackups().stream()
-                .flatMap(lb -> lb.getBackupDatabases().stream()).toList();
+        List<BackupDatabaseDelegate> filteredBackupDbs = backup.getLogicalBackups().stream().flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
+                .map(backupDatabase -> new BackupDatabaseDelegate(
+                                backupDatabase,
+                                backupDatabase.getClassifiers().stream()
+                                        .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
+                                        .toList()
+                        )
+                ).toList();
 
         Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
 
@@ -1752,8 +1805,14 @@ class DbBackupV2ServiceTest {
         when(adapter4.isBackupRestoreSupported())
                 .thenReturn(true);
 
-        List<BackupDatabase> filteredBackupDbs = backup.getLogicalBackups().stream()
-                .flatMap(lb -> lb.getBackupDatabases().stream()).toList();
+        List<BackupDatabaseDelegate> filteredBackupDbs = backup.getLogicalBackups().stream().flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
+                .map(backupDatabase -> new BackupDatabaseDelegate(
+                                backupDatabase,
+                                backupDatabase.getClassifiers().stream()
+                                        .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
+                                        .toList()
+                        )
+                ).toList();
 
         Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
 
@@ -2299,6 +2358,7 @@ class DbBackupV2ServiceTest {
                         .role("role")
                         .build()),
                 Map.of("key", "value"),
+                true,
                 Status.COMPLETED,
                 1,
                 1,

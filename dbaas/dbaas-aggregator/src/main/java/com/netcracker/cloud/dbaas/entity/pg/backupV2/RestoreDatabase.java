@@ -56,6 +56,8 @@ public class RestoreDatabase {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> resources;
 
+    private String bgVersion;
+
     private Status status;
 
     private long duration;
