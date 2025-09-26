@@ -52,6 +52,8 @@ public class BackupDatabase {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> resources;
 
+    private boolean configurational;
+
     private Status status;
 
     private long size;

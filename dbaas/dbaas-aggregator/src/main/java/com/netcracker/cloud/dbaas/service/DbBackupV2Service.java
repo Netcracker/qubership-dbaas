@@ -3,12 +3,10 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupDatabaseDelegate;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
-import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.entity.pg.DbState;
-import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
@@ -23,6 +21,7 @@ import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
 import io.quarkus.scheduler.Scheduled;
@@ -75,6 +74,7 @@ public class DbBackupV2Service {
     private final AsyncOperations asyncOperations;
     private final DBaaService dBaaService;
     private final PasswordEncryption encryption;
+    private final BgNamespaceRepository bgNamespaceRepository;
 
     @Inject
     public DbBackupV2Service(BackupRepository backupRepository,
@@ -86,7 +86,8 @@ public class DbBackupV2Service {
                              BalancingRulesService balancingRulesService,
                              AsyncOperations asyncOperations,
                              DBaaService dBaaService,
-                             PasswordEncryption encryption) {
+                             PasswordEncryption encryption,
+                             BgNamespaceRepository bgNamespaceRepository) {
         this.backupRepository = backupRepository;
         this.restoreRepository = restoreRepository;
         this.physicalDatabasesService = physicalDatabasesService;
@@ -97,6 +98,7 @@ public class DbBackupV2Service {
         this.asyncOperations = asyncOperations;
         this.dBaaService = dBaaService;
         this.encryption = encryption;
+        this.bgNamespaceRepository = bgNamespaceRepository;
     }
 
     public BackupOperationResponse backup(BackupRequest backupRequest, boolean dryRun) {
@@ -181,6 +183,7 @@ public class DbBackupV2Service {
                                 .map(AbstractDatabaseRegistry::getClassifier).toList())
                         .users(getBackupDatabaseUsers(db.getConnectionProperties()))
                         .settings(db.getSettings())
+                        .configurational(db.getBgVersion() != null && !db.getBgVersion().isBlank())
                         .build())
                 .toList());
         return logicalBackup;
@@ -434,21 +437,44 @@ public class DbBackupV2Service {
     public void restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
         log.info("Start restore to backup {}", backupName);
         Backup backup = getBackupOrThrowException(backupName);
-        List<BackupDatabase> filteredBackupDbs = getAllDbByFilter(backup, restoreRequest.getFilterCriteria());
+
+        List<BackupDatabase> backupDatabasesToFilter = backup.getLogicalBackups().stream()
+                .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
+                .toList();
+
+        List<BackupDatabaseDelegate> filteredBackupDbs = getAllDbByFilter(backupDatabasesToFilter, restoreRequest.getFilterCriteria());
 
         Restore restore = initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
         startRestore(restore, dryRun);
         aggregateRestoreStatus(restore);
     }
 
-    private List<BackupDatabase> getAllDbByFilter(Backup backup, FilterCriteria filterCriteria) {
-        //TODO filter by classifiers
-        return backup.getLogicalBackups().stream().flatMap(lb -> lb.getBackupDatabases().stream()).toList();
+    protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
+        String namespace = filterCriteria.getFilter().getFirst().getNamespace().getFirst();
+
+        return backupDatabasesToFilter.stream()
+                .map(backupDatabase -> {
+                            List<SortedMap<String, Object>> filteredClassifiers = backupDatabase.getClassifiers().stream()
+                                    .filter(classifier -> namespace.equals(classifier.get("namespace")))
+                                    .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
+                                    .toList();
+
+                            if (filteredClassifiers.isEmpty())
+                                return null;
+
+                            return new BackupDatabaseDelegate(
+                                    backupDatabase,
+                                    filteredClassifiers
+                            );
+                        }
+                )
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     protected Restore initializeFullRestoreStructure(
             Backup backup,
-            List<BackupDatabase> backupDatabases,
+            List<BackupDatabaseDelegate> backupDatabases,
             RestoreRequest restoreRequest
     ) {
         Map<String, String> namespacesMap = Optional.ofNullable(restoreRequest.getMapping())
@@ -456,7 +482,7 @@ public class DbBackupV2Service {
                 .orElseGet(HashMap::new);
 
         // Group BackupDatabase by updated adapters
-        Map<PhysicalDatabase, List<BackupDatabase>> groupedByTypeAndAdapter =
+        Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupedByTypeAndAdapter =
                 groupBackupDatabasesByTypeAndAdapter(backupDatabases, namespacesMap);
 
         //Check adapters are backupable
@@ -501,15 +527,15 @@ public class DbBackupV2Service {
 
 
     private List<RestoreDatabase> createRestoreDatabases(
-            List<BackupDatabase> backupDatabases,
+            List<BackupDatabaseDelegate> backupDatabases,
             Map<String, String> namespacesMap
     ) {
         Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
 
         return backupDatabases.stream()
-                .map(backupDatabase -> {
+                .map(delegatedBackupDatabase -> {
                     // updated classifiers
-                    List<SortedMap<String, Object>> classifiers = backupDatabase.getClassifiers().stream()
+                    List<SortedMap<String, Object>> classifiers = delegatedBackupDatabase.filteredClassifiers().stream()
                             .map(classifier -> {
                                 SortedMap<String, Object> updatedClassifier = updateClassifierNamespace(classifier, namespacesMap);
 
@@ -520,6 +546,15 @@ public class DbBackupV2Service {
                                 return updatedClassifier;
                             })
                             .toList();
+
+                    BackupDatabase backupDatabase = delegatedBackupDatabase.backupDatabase();
+                    String namespace = (String) classifiers.getFirst().get("namespace");
+                    String bgVersion = null;
+                    if (backupDatabase.isConfigurational()) {
+                        Optional<BgNamespace> bgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(namespace);
+                        if (bgNamespace.isPresent())
+                            bgVersion = bgNamespace.get().getVersion();
+                    }
 
                     List<RestoreDatabase.User> users = backupDatabase.getUsers().stream()
                             .map(u -> new RestoreDatabase.User(u.getName(), u.getRole()))
@@ -532,6 +567,7 @@ public class DbBackupV2Service {
                             .settings(backupDatabase.getSettings())
                             .users(users)
                             .resources(backupDatabase.getResources())
+                            .bgVersion(bgVersion)
                             .build();
                 })
                 .toList();
@@ -549,13 +585,13 @@ public class DbBackupV2Service {
         return updatedClassifier;
     }
 
-    private Map<PhysicalDatabase, List<BackupDatabase>> groupBackupDatabasesByTypeAndAdapter(
-            List<BackupDatabase> backupDatabases,
+    private Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupBackupDatabasesByTypeAndAdapter(
+            List<BackupDatabaseDelegate> backupDatabases,
             Map<String, String> namespacesMap
     ) {
         return backupDatabases.stream()
                 .map(db -> {
-                    List<SortedMap<String, Object>> classifiers = db.getClassifiers();
+                    List<SortedMap<String, Object>> classifiers = db.filteredClassifiers();
                     String targetNamespace = null;
                     String microserviceName = null;
 
@@ -574,7 +610,7 @@ public class DbBackupV2Service {
                         targetNamespace = (String) classifiers.getFirst().get("namespace");
                     }
 
-                    String type = db.getLogicalBackup().getType();
+                    String type = db.backupDatabase().getLogicalBackup().getType();
                     PhysicalDatabase physicalDatabase = balancingRulesService
                             .applyBalancingRules(type, targetNamespace, microserviceName);
 
@@ -793,7 +829,15 @@ public class DbBackupV2Service {
                 });
                 String adapterId = logicalRestore.getAdapterId();
                 String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getId();
-                Database newDatabase = createLogicalDatabase(restoreDatabase.getName(), restoreDatabase.getSettings(), classifiers, type, adapterId, physicalDatabaseId);
+                Database newDatabase = createLogicalDatabase(
+                        restoreDatabase.getName(),
+                        restoreDatabase.getSettings(),
+                        classifiers,
+                        type,
+                        adapterId,
+                        physicalDatabaseId,
+                        restoreDatabase.getBgVersion());
+
                 ensureUsers(newDatabase, restoreDatabase.getUsers());
             });
         });
@@ -805,7 +849,9 @@ public class DbBackupV2Service {
                                            Set<SortedMap<String, Object>> classifiers,
                                            String type,
                                            String adapterId,
-                                           String physicalDatabaseId) {
+                                           String physicalDatabaseId,
+                                           String bgVersion
+    ) {
         Database database = new Database();
         database.setId(UUID.randomUUID());
         database.setName(dbName);
@@ -814,8 +860,8 @@ public class DbBackupV2Service {
         database.setSettings(settings);
         database.setDbState(new DbState(CREATED));
         database.setDatabaseRegistry(new ArrayList<>());
-        database.setBgVersion(""); //TODO
         database.setAdapterId(adapterId);
+        database.setBgVersion(bgVersion);
         database.setConnectionProperties(new ArrayList<>());
         database.setPhysicalDatabaseId(physicalDatabaseId);
 
@@ -826,7 +872,6 @@ public class DbBackupV2Service {
             databaseRegistry.setNamespace(namespace);
             databaseRegistry.setType(type);
             databaseRegistry.setDatabase(database);
-
             database.getDatabaseRegistry().add(databaseRegistry);
         });
 

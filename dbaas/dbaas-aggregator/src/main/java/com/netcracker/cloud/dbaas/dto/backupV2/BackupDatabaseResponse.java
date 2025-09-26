@@ -28,6 +28,8 @@ public class BackupDatabaseResponse {
     @Schema(description = "List of database resources")
     private Map<String, Object> resources;
 
+    private boolean configurational;
+
     private Status status;
 
     private long size;
