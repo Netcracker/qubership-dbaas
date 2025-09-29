@@ -1879,20 +1879,26 @@
           }
         }
       },
-      "LogicalRestore": {
+      "LogicalRestoreResponse": {
         "type": "object",
         "required": [
           "id",
+          "logicalRestoreName",
           "adapterId",
           "type",
-          "logicalRestoreDatabases"
+          "restoreDatabases"
         ],
         "description": "Logical restore details",
         "properties": {
           "id": {
+            "$ref": "#/components/schemas/UUID",
             "type": "string",
             "description": "Unique identifier of the logical restore",
             "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "logicalRestoreName": {
+            "type": "string",
+            "description": "Name of the logical backup in adapter"
           },
           "adapterId": {
             "type": "string",
@@ -1904,57 +1910,32 @@
             "description": "Type of the adapter",
             "example": "postgres"
           },
-          "status": {
-            "type": "object",
-            "additionalProperties": {},
-            "description": "Status of the logical restore (arbitrary key-value pairs)",
-            "example": {
-              "phase": "running",
-              "progress": 50
-            }
-          },
-          "logicalRestoreDatabases": {
+          "restoreDatabases": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LogicalRestoreDatabase"
+              "$ref": "#/components/schemas/RestoreDatabaseResponse"
             },
             "description": "List of logical restore databases"
-          }
-        }
-      },
-      "LogicalRestoreDatabase": {
-        "type": "object",
-        "required": [
-          "id",
-          "logicalBackupId",
-          "name"
-        ],
-        "description": "Logical database restore details",
-        "properties": {
-          "id": {
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status",
             "type": "string",
-            "description": "Unique identifier of the logical restore",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            "description": "Status of the logical restore (arbitrary key-value pairs)",
+            "example": "{\"phase\": \"running\", \"progress\": 50}"
           },
-          "logicalBackupId": {
+          "errorMessage": {
             "type": "string",
-            "description": "Unique identifier of the logical backup",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            "description": "Information about error message during restore process"
           },
-          "name": {
+          "creationTime": {
+            "$ref": "#/components/schemas/LocalDateTime",
             "type": "string",
-            "description": "Name of the database",
-            "example": "mydb"
+            "description": "Aggregated information about creation time of databases in adapter"
           },
-          "classifier": {
-            "type": "object",
-            "additionalProperties": {},
-            "description": "Database classifier"
-          },
-          "users": {
-            "type": "object",
-            "additionalProperties": {},
-            "description": "List of database users"
+          "completionTime": {
+            "$ref": "#/components/schemas/LocalDateTime",
+            "type": "string",
+            "description": "Aggregated information about completion time of databases in adapter"
           }
         }
       },
@@ -2904,6 +2885,84 @@
           }
         }
       },
+      "RestoreDatabaseResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "logicalBackupId",
+          "name"
+        ],
+        "description": "Logical database restore details",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the logical restore",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "logicalBackupId": {
+            "type": "string",
+            "description": "Unique identifier of the logical backup",
+            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the database",
+            "example": "mydb"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "description": "Database classifier"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User1"
+            },
+            "description": "List of database users"
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Map of database settings"
+          },
+          "resources": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Map of database resources"
+          },
+          "bgVersion": {
+            "type": "string",
+            "description": "Blue-Green version of database"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status",
+            "type": "string",
+            "description": "Restore operation status"
+          },
+          "duration": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Duration of restore request"
+          },
+          "path": {
+            "type": "string",
+            "description": "Information about path of database data in compatible storage"
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Information about error during restore operation"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/LocalDateTime",
+            "type": "string",
+            "description": "Information about creation time of database in adapter"
+          }
+        }
+      },
       "RestorePasswordRequest": {
         "type": "object",
         "required": [
@@ -3001,18 +3060,15 @@
             "description": "Mapping configuration for the restore"
           },
           "status": {
-            "type": "object",
-            "additionalProperties": {},
+            "$ref": "#/components/schemas/Status",
+            "type": "string",
             "description": "Status of the restore operation (arbitrary key-value pairs)",
-            "example": {
-              "phase": "completed",
-              "duration": "5m"
-            }
+            "example": "{\"phase\": \"completed\", \"duration\": \"5m\"}"
           },
           "logicalRestores": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LogicalRestore"
+              "$ref": "#/components/schemas/LogicalRestoreResponse"
             },
             "description": "List of logical restores"
           }
@@ -3491,6 +3547,17 @@
         }
       },
       "User": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "User1": {
         "type": "object",
         "properties": {
           "name": {
