@@ -1,9 +1,7 @@
 package com.netcracker.cloud.dbaas.mapper;
 
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.Backup;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.BackupExternalDatabase;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -49,4 +47,13 @@ public interface BackupV2Mapper {
     @Mapping(target = "dryRun", source = ".")
     @Mapping(target = "backupName", source = "name")
     BackupOperationResponse toBackupOperationResponse(Backup backup);
+
+    @Mapping(target = "logicalBackupId", source = "backupDatabase.id")
+    RestoreDatabaseResponse toLogicalRestoreDatabaseResponse(RestoreDatabase restoreDatabase);
+
+    List<LogicalRestoreResponse> toLogicalRestoreResponseList(List<LogicalRestore> logicalRestores);
+
+    @Mapping(target = "restoreName", source = "name")
+    @Mapping(target = "backupName", source = "backup.name")
+    RestoreResponse toRestoreResponse(Restore restore);
 }

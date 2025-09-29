@@ -7,7 +7,6 @@ import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterRespon
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
@@ -107,7 +106,6 @@ class DbBackupV2ServiceTest {
 
     @BeforeEach
     void setUp() {
-        dbBackupV2Service.trackDelayMs = 0;
         restoreDatabaseRepository.deleteAll();
         logicalRestoreDatabaseRepository.deleteAll();
         restoreRepository.deleteAll();
@@ -1458,7 +1456,60 @@ class DbBackupV2ServiceTest {
         when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
                 .thenReturn(response2);
 
-        dbBackupV2Service.restore(backupName, restoreRequest, true);
+        RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, true);
+
+        assertNotNull(response);
+        assertEquals(backupName, response.getRestoreName());
+        assertEquals(backupName, response.getBackupName());
+        assertEquals(storageName, response.getStorageName());
+        assertEquals(blobPath, response.getBlobPath());
+        assertEquals(Status.COMPLETED, response.getStatus());
+        assertNotNull(response.getMapping());
+        assertEquals(newNamespace1, response.getMapping().getNamespaces().get(oldNamespace1));
+        assertEquals(newNamespace2, response.getMapping().getNamespaces().get(oldNamespace2));
+        assertNull(response.getFilterCriteria());
+
+        assertNotNull(response);
+        assertEquals(backupName, response.getRestoreName());
+        assertEquals(backupName, response.getBackupName());
+        assertEquals(storageName, response.getStorageName());
+        assertEquals(blobPath, response.getBlobPath());
+        assertEquals(Status.COMPLETED, response.getStatus());
+        assertNotNull(response.getMapping());
+        assertEquals(Map.of(
+                oldNamespace2, newNamespace2,
+                oldNamespace1, newNamespace1
+        ), response.getMapping().getNamespaces());
+
+        assertEquals(2, response.getLogicalRestores().size());
+
+        LogicalRestoreResponse lrr1 = response.getLogicalRestores().stream()
+                .filter(lr -> adapterId1.equals(lr.getAdapterId()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(lrr1);
+        assertEquals(logicalBackupName1, lrr1.getLogicalRestoreName());
+        assertEquals(postgresql, lrr1.getType());
+        assertEquals(Status.COMPLETED, lrr1.getStatus());
+        assertEquals(1, lrr1.getRestoreDatabases().size());
+        RestoreDatabaseResponse rdb1 = lrr1.getRestoreDatabases().getFirst();
+        assertEquals("newDb2", rdb1.getName());
+        assertEquals(List.of(Map.of("microserviceName", "microserviceName", "namespace", newNamespace2)), rdb1.getClassifiers());
+        assertEquals(Status.COMPLETED, rdb1.getStatus());
+
+        LogicalRestoreResponse lrr2 = response.getLogicalRestores().stream()
+                .filter(lr -> adapterId2.equals(lr.getAdapterId()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(lrr2);
+        assertEquals(logicalBackupName2, lrr2.getLogicalRestoreName());
+        assertEquals(mongoDb, lrr2.getType());
+        assertEquals(Status.COMPLETED, lrr2.getStatus());
+        assertEquals(1, lrr2.getRestoreDatabases().size());
+        RestoreDatabaseResponse rdb2 = lrr2.getRestoreDatabases().getFirst();
+        assertEquals("newDb3", rdb2.getName());
+        assertEquals(List.of(Map.of("microserviceName", "microserviceName", "namespace", newNamespace2)), rdb2.getClassifiers());
+        assertEquals(Status.COMPLETED, rdb2.getStatus());
 
         Restore restore = restoreRepository.findById(backupName);
 

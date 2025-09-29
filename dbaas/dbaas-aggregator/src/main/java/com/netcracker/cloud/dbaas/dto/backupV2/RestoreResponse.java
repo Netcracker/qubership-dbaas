@@ -1,11 +1,11 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.Status;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
-import java.util.Map;
 
 @Data
 @AllArgsConstructor
@@ -50,10 +50,10 @@ public class RestoreResponse {
             description = "Status of the restore operation (arbitrary key-value pairs)",
             example = "{\"phase\": \"completed\", \"duration\": \"5m\"}"
     )
-    private Map<String, Object> status;
+    private Status status;
 
     @Schema(
             description = "List of logical restores"
     )
-    private List<LogicalRestore> logicalRestores;
+    private List<LogicalRestoreResponse> logicalRestores;
 }

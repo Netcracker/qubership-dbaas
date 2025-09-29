@@ -8,7 +8,6 @@ import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterRespon
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalRestore;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
@@ -57,9 +56,6 @@ public class DbBackupV2Service {
 
     @ConfigProperty(name = "retry.max")
     int maxRetries;
-
-    @ConfigProperty(name = "retry.delay.track.ms")
-    int trackDelayMs;
 
     @ConfigProperty(name = "retry.count")
     int retryCount;
@@ -434,7 +430,7 @@ public class DbBackupV2Service {
         backupRepository.save(backup);
     }
 
-    public void restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
+    public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
         log.info("Start restore to backup {}", backupName);
         Backup backup = getBackupOrThrowException(backupName);
 
@@ -447,6 +443,8 @@ public class DbBackupV2Service {
         Restore restore = initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
         startRestore(restore, dryRun);
         aggregateRestoreStatus(restore);
+
+        return mapper.toRestoreResponse(restore);
     }
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
@@ -516,8 +514,13 @@ public class DbBackupV2Service {
         restore.setBlobPath(restoreRequest.getBlobPath());
         restore.setLogicalRestores(new ArrayList<>(logicalRestores));
 
+        if (restoreRequest.getMapping() != null) {
+            restore.setMapping(Restore.Mapping.builder()
+                    .namespaces(restoreRequest.getMapping().getNamespaces())
+                    .tenants(restoreRequest.getMapping().getTenants())
+                    .build());
+        }
         // TODO change to mapping/filters
-        restore.setMapping("\"n\"");
         restore.setFilters("\"n\"");
 
         // set up relation

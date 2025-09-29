@@ -8,6 +8,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Data
@@ -39,7 +40,7 @@ public class Restore {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private String mapping;
+    private Mapping mapping;
 
     @ToString.Exclude
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
@@ -56,6 +57,15 @@ public class Restore {
 
     @Column(name = "attempt_count")
     private int attemptCount;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Mapping {
+        Map<String, String> namespaces;
+        Map<String, String> tenants;
+    }
 
     @Override
     public boolean equals(Object o) {
