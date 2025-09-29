@@ -931,14 +931,14 @@ class DbBackupV2ServiceTest {
 
         when(physicalDatabasesService.getAdapterById(adapterIdFirst))
                 .thenReturn(adapter);
-        when(adapter.trackBackupV2(any()))
+        when(adapter.trackBackupV2(any(), any(), any()))
                 .thenReturn(adapterResponse);
 
         DbaasAdapter adapter1 = Mockito.mock(DbaasAdapter.class);
 
         when(physicalDatabasesService.getAdapterById(adapterIdSecond))
                 .thenReturn(adapter1);
-        when(adapter1.trackBackupV2(any()))
+        when(adapter1.trackBackupV2(any(), any(), any()))
                 .thenReturn(adapterResponse2);
 
 
@@ -2167,7 +2167,7 @@ class DbBackupV2ServiceTest {
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId))
                 .thenReturn(adapter);
-        when(adapter.trackRestoreV2(logicalRestoreName))
+        when(adapter.trackRestoreV2(logicalRestoreName, restore.getStorageName(), restore.getBlobPath()))
                 .thenReturn(response);
 
         dbBackupV2Service.trackAndAggregateRestore(restore);

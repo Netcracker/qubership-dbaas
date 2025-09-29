@@ -36,7 +36,7 @@ public interface DbaasAdapter {
 
     LogicalRestoreAdapterResponse restoreV2(String backupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases);
 
-    LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName);
+    LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName, String storageName, String blobPath);
 
     DeleteResult delete(DatabasesBackup backup);
 
@@ -44,7 +44,7 @@ public interface DbaasAdapter {
 
     TrackedAction trackBackup(String action, String trackId);
 
-    LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName);
+    LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName, String storageName, String blobPath);
 
     void deleteBackupV2(String logicalBackupName);
 

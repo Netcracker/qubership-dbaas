@@ -77,7 +77,12 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @GET
     @Path("/api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}")
     @Produces(MediaType.APPLICATION_JSON)
-    LogicalBackupAdapterResponse trackBackupV2(@PathParam("dbType") String dbType, @PathParam("backupId") String logicalBackupName);
+    LogicalBackupAdapterResponse trackBackupV2(
+            @PathParam("dbType") String dbType,
+            @PathParam("backupId") String logicalBackupName,
+            @QueryParam("storageName") String storageName,
+            @QueryParam("blobPath") String blobPath
+    );
 
     @DELETE
     @Path("/api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}")
@@ -98,7 +103,12 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @GET
     @Path("/api/v2/dbaas/adapter/{dbType}/backups/restore/{restoreId}")
     @Produces(MediaType.APPLICATION_JSON)
-    LogicalRestoreAdapterResponse trackRestoreV2(@PathParam("dbType") String dbType, @PathParam("restoreId") String logicalBackupName);
+    LogicalRestoreAdapterResponse trackRestoreV2(
+            @PathParam("dbType") String dbType,
+            @PathParam("restoreId") String logicalBackupName,
+            @QueryParam("storageName") String storageName,
+            @QueryParam("blobPath") String blobPath
+    );
 
 
     @DELETE

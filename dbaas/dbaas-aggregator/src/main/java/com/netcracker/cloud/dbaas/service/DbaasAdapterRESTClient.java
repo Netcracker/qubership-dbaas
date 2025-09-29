@@ -101,7 +101,7 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     }
 
     @Override
-    public LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName) {
+    public LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName, String storageName, String blobPath) {
         return null;
     }
 
@@ -111,7 +111,7 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     }
 
     @Override
-    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName) {
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName, String storageName, String blobPath) {
         return null;
     }
 
