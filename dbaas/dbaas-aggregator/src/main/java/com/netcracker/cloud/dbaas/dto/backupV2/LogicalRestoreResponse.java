@@ -1,25 +1,32 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.Status;
+import jakarta.persistence.Column;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Logical restore details")
-public class LogicalRestore {
+public class LogicalRestoreResponse {
 
     @Schema(
             description = "Unique identifier of the logical restore",
             example = "4e1e9922-e5bf-490d-bb57-18a14de593c6",
             required = true
     )
-    private String id;
+    private UUID id;
+
+    @Schema(description = "Name of the logical backup in adapter", required = true)
+    private String logicalRestoreName;
+    ;
 
     @Schema(
             description = "Unique identifier of the adapter",
@@ -36,14 +43,29 @@ public class LogicalRestore {
     private String type;
 
     @Schema(
-            description = "Status of the logical restore (arbitrary key-value pairs)",
-            example = "{\"phase\": \"running\", \"progress\": 50}"
-    )
-    private Map<String, Object> status;
-
-    @Schema(
             description = "List of logical restore databases",
             required = true
     )
-    private List<LogicalRestoreDatabase> logicalRestoreDatabases;
+    private List<RestoreDatabaseResponse> restoreDatabases;
+
+    @Schema(
+            description = "Status of the logical restore (arbitrary key-value pairs)",
+            example = "{\"phase\": \"running\", \"progress\": 50}"
+    )
+    private Status status;
+
+    @Schema(
+            description = "Information about error message during restore process"
+    )
+    private String errorMessage;
+
+    @Schema(
+            description = "Aggregated information about creation time of databases in adapter"
+    )
+    private LocalDateTime creationTime;
+
+    @Schema(
+            description = "Aggregated information about completion time of databases in adapter"
+    )
+    private LocalDateTime completionTime;
 }
