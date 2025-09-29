@@ -282,10 +282,7 @@ public class DbBackupV2Service {
             backup.setStatus(Status.FAILED);
             backup.setErrorMessage("The number of attempts exceeded " + retryCount);
         } else {
-            List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups().stream()
-                    .filter(db -> Status.IN_PROGRESS.equals(db.getStatus()))
-                    .toList();
-            fetchAndUpdateStatuses(notFinishedLogicalBackups);
+            fetchAndUpdateStatuses(backup);
             updateAggregatedStatus(backup);
             backup.setAttemptCount(backup.getAttemptCount() + 1); // update track attempt
         }
@@ -293,14 +290,18 @@ public class DbBackupV2Service {
         backupRepository.save(backup);
     }
 
-    private void fetchAndUpdateStatuses(List<LogicalBackup> logicalBackupList) {
-        List<CompletableFuture<Void>> futures = logicalBackupList.stream()
+    private void fetchAndUpdateStatuses(Backup backup) {
+        List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups().stream()
+                .filter(db -> Status.IN_PROGRESS.equals(db.getStatus()))
+                .toList();
+
+        List<CompletableFuture<Void>> futures = notFinishedLogicalBackups.stream()
                 .map(logicalBackup -> {
                     RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), "trackBackupV2");
                     return CompletableFuture.supplyAsync(
                                     asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy).get(() -> {
                                         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
-                                        return adapter.trackBackupV2(logicalBackup.getLogicalBackupName());
+                                        return adapter.trackBackupV2(logicalBackup.getLogicalBackupName(), backup.getStorageName(), backup.getBlobPath());
                                     })), asyncOperations.getBackupPool())
                             .thenAccept(response ->
                                     refreshLogicalBackupState(logicalBackup, response))
@@ -731,10 +732,7 @@ public class DbBackupV2Service {
             restore.setStatus(Status.FAILED);
             restore.setErrorMessage("The number of attempts exceeded " + retryCount);
         } else {
-            List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores().stream()
-                    .filter(db -> Status.IN_PROGRESS.equals(db.getStatus()))
-                    .toList();
-            fetchStatuses(notFinishedLogicalRestores);
+            fetchStatuses(restore);
             aggregateRestoreStatus(restore);
             restore.setAttemptCount(restore.getAttemptCount() + 1); // update track attempt
         }
@@ -743,14 +741,18 @@ public class DbBackupV2Service {
     }
 
 
-    private void fetchStatuses(List<LogicalRestore> logicalRestoreList) {
-        List<CompletableFuture<Void>> futures = logicalRestoreList.stream()
+    private void fetchStatuses(Restore restore) {
+        List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores().stream()
+                .filter(db -> Status.IN_PROGRESS.equals(db.getStatus()))
+                .toList();
+
+        List<CompletableFuture<Void>> futures = notFinishedLogicalRestores.stream()
                 .map(logicalRestore -> {
                     RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), "trackRestoreV2");
                     return CompletableFuture.supplyAsync(
                                     asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy).get(() -> {
                                         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                                        return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName());
+                                        return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName(), restore.getStorageName(), restore.getBlobPath());
                                     })))
                             .thenAccept(response ->
                                     refreshLogicalRestoreState(logicalRestore, response))

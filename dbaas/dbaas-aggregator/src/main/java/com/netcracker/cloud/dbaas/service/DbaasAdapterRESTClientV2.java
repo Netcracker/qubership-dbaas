@@ -125,8 +125,8 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
-    public LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName) {
-        return restClient.trackRestoreV2(type(), logicalRestoreName);
+    public LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName, String storageName, String blobPath) {
+        return restClient.trackRestoreV2(type(), logicalRestoreName, storageName, blobPath);
     }
 
     @Override
@@ -135,8 +135,8 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
-    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName) {
-        return restClient.trackBackupV2(type(), logicalBackupName);
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName, String storageName, String blobPath) {
+        return restClient.trackBackupV2(type(), logicalBackupName, storageName, blobPath);
     }
 
     @Override
