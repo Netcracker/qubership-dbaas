@@ -1456,7 +1456,7 @@ class DbBackupV2ServiceTest {
         when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
                 .thenReturn(response2);
 
-        RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, true);
+        RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, false);
 
         assertNotNull(response);
         assertEquals(backupName, response.getRestoreName());
@@ -1559,6 +1559,251 @@ class DbBackupV2ServiceTest {
         expectedClassifier3.put("microserviceName", "microserviceName");
 
         assertEquals(List.of(expectedClassifier3), restoreDatabase3.getClassifiers());
+
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) map1.get("microserviceName")));
+        verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName")));
+        verify(physicalDatabasesService, times(2)).getAdapterById(adapterId1);
+        verify(physicalDatabasesService, times(2)).getAdapterById(adapterId2);
+        verify(dbaasAdapter).restoreV2(any(), anyBoolean(), any(), any(), anyList());
+        verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any(), any(), anyList());
+    }
+
+    @Test
+    void restore_dryRunTrue() {
+        String backupName = "backupName";
+        String oldNamespace1 = "old-ns1";
+        String newNamespace1 = "new-ns1";
+        String oldNamespace2 = "old-ns2";
+        String newNamespace2 = "new-ns2";
+        String logicalBackupName1 = "logicalBackupName1";
+        String logicalBackupName2 = "logicalBackupName2";
+        String storageName = "storageName";
+        String blobPath = "blobPath";
+        String adapterId1 = "adapter1";
+        String adapterId2 = "adapter2";
+        String db1 = "db1";
+        String db2 = "db2";
+        String db3 = "db3";
+        String postgresql = "postgresql";
+        String mongoDb = "mongoDb";
+
+        SortedMap<String, Object> map1 = new TreeMap<>();
+        map1.put("namespace", oldNamespace1);
+        map1.put("microserviceName", "microserviceName");
+
+        SortedMap<String, Object> map2 = new TreeMap<>();
+        map2.put("namespace", oldNamespace2);
+        map2.put("microserviceName", "microserviceName");
+
+        BackupDatabase backupDatabase1 = BackupDatabase.builder()
+                .name(db1)
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map1))
+                .build();
+
+        BackupDatabase backupDatabase2 = BackupDatabase.builder()
+                .name(db2)
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map2))
+                .build();
+
+        BackupDatabase backupDatabase3 = BackupDatabase.builder()
+                .name(db3)
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map2))
+                .build();
+
+        LogicalBackup logicalBackup1 = LogicalBackup.builder()
+                .logicalBackupName(logicalBackupName1)
+                .type(postgresql)
+                .backupDatabases(List.of(backupDatabase1, backupDatabase2))
+                .build();
+        LogicalBackup logicalBackup2 = LogicalBackup.builder()
+                .logicalBackupName(logicalBackupName2)
+                .type(mongoDb)
+                .backupDatabases(List.of(backupDatabase3))
+                .build();
+
+        backupDatabase1.setLogicalBackup(logicalBackup1);
+        backupDatabase2.setLogicalBackup(logicalBackup1);
+        backupDatabase3.setLogicalBackup(logicalBackup2);
+
+        Backup backup = Backup.builder()
+                .name(backupName)
+                .storageName(storageName)
+                .blobPath(blobPath)
+                .externalDatabaseStrategy(ExternalDatabaseStrategy.SKIP)
+                .logicalBackups(List.of(logicalBackup1, logicalBackup2))
+                .build();
+        logicalBackup1.setBackup(backup);
+        logicalBackup2.setBackup(backup);
+
+        backupRepository.save(backup);
+
+        LogicalRestoreAdapterResponse response1 = new LogicalRestoreAdapterResponse(
+                Status.COMPLETED,
+                null,
+                logicalBackupName1,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                storageName,
+                blobPath,
+                List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName(db1)
+                                .path("path")
+                                .databaseName("newDb1")
+                                .duration(1)
+                                .build(),
+                        LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName(db2)
+                                .path("path")
+                                .databaseName("newDb2")
+                                .duration(1)
+                                .build())
+        );
+
+        LogicalRestoreAdapterResponse response2 = new LogicalRestoreAdapterResponse(
+                Status.COMPLETED,
+                null,
+                logicalBackupName2,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                storageName,
+                blobPath,
+                List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(Status.COMPLETED)
+                        .previousDatabaseName(db3)
+                        .path("path")
+                        .databaseName("newDb3")
+                        .duration(1)
+                        .build())
+        );
+
+        Mapping mapping = new Mapping();
+        mapping.setNamespaces(Map.of(
+                oldNamespace1, newNamespace1,
+                oldNamespace2, newNamespace2
+        ));
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of("old-ns2"));
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        RestoreRequest restoreRequest = new RestoreRequest();
+        restoreRequest.setMapping(mapping);
+        restoreRequest.setStorageName(storageName);
+        restoreRequest.setBlobPath(blobPath);
+        restoreRequest.setFilterCriteria(filterCriteria);
+
+        ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
+        adapter1.setAdapterId(adapterId1);
+        PhysicalDatabase physicalDatabase1 = new PhysicalDatabase();
+        physicalDatabase1.setAdapter(adapter1);
+        physicalDatabase1.setType(postgresql);
+
+        ExternalAdapterRegistrationEntry adapter2 = new ExternalAdapterRegistrationEntry();
+        adapter2.setAdapterId(adapterId2);
+        PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
+        physicalDatabase2.setAdapter(adapter2);
+        physicalDatabase2.setType(mongoDb);
+
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) map1.get("microserviceName"))))
+                .thenReturn(physicalDatabase1);
+        when(balancingRulesService.applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName"))))
+                .thenReturn(physicalDatabase2);
+
+        DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(adapterId1))
+                .thenReturn(dbaasAdapter);
+        when(dbaasAdapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+                .thenReturn(response1);
+        when(dbaasAdapter.isBackupRestoreSupported())
+                .thenReturn(true);
+
+        DbaasAdapter dbaasAdapter2 = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(adapterId2))
+                .thenReturn(dbaasAdapter2);
+        when(dbaasAdapter2.isBackupRestoreSupported())
+                .thenReturn(true);
+        when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+                .thenReturn(response2);
+
+        RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, true);
+
+        assertNotNull(response);
+        assertEquals(backupName, response.getRestoreName());
+        assertEquals(backupName, response.getBackupName());
+        assertEquals(storageName, response.getStorageName());
+        assertEquals(blobPath, response.getBlobPath());
+        assertEquals(Status.COMPLETED, response.getStatus());
+        assertNotNull(response.getMapping());
+        assertEquals(newNamespace1, response.getMapping().getNamespaces().get(oldNamespace1));
+        assertEquals(newNamespace2, response.getMapping().getNamespaces().get(oldNamespace2));
+        assertNull(response.getFilterCriteria());
+
+        assertNotNull(response);
+        assertEquals(backupName, response.getRestoreName());
+        assertEquals(backupName, response.getBackupName());
+        assertEquals(storageName, response.getStorageName());
+        assertEquals(blobPath, response.getBlobPath());
+        assertEquals(Status.COMPLETED, response.getStatus());
+        assertNotNull(response.getMapping());
+        assertEquals(Map.of(
+                oldNamespace2, newNamespace2,
+                oldNamespace1, newNamespace1
+        ), response.getMapping().getNamespaces());
+
+        assertEquals(2, response.getLogicalRestores().size());
+
+        LogicalRestoreResponse lrr1 = response.getLogicalRestores().stream()
+                .filter(lr -> adapterId1.equals(lr.getAdapterId()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(lrr1);
+        assertEquals(logicalBackupName1, lrr1.getLogicalRestoreName());
+        assertEquals(postgresql, lrr1.getType());
+        assertEquals(Status.COMPLETED, lrr1.getStatus());
+        assertEquals(1, lrr1.getRestoreDatabases().size());
+        RestoreDatabaseResponse rdb1 = lrr1.getRestoreDatabases().getFirst();
+        assertEquals("newDb2", rdb1.getName());
+        assertEquals(List.of(Map.of("microserviceName", "microserviceName", "namespace", newNamespace2)), rdb1.getClassifiers());
+        assertEquals(Status.COMPLETED, rdb1.getStatus());
+
+        LogicalRestoreResponse lrr2 = response.getLogicalRestores().stream()
+                .filter(lr -> adapterId2.equals(lr.getAdapterId()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(lrr2);
+        assertEquals(logicalBackupName2, lrr2.getLogicalRestoreName());
+        assertEquals(mongoDb, lrr2.getType());
+        assertEquals(Status.COMPLETED, lrr2.getStatus());
+        assertEquals(1, lrr2.getRestoreDatabases().size());
+        RestoreDatabaseResponse rdb2 = lrr2.getRestoreDatabases().getFirst();
+        assertEquals("newDb3", rdb2.getName());
+        assertEquals(List.of(Map.of("microserviceName", "microserviceName", "namespace", newNamespace2)), rdb2.getClassifiers());
+        assertEquals(Status.COMPLETED, rdb2.getStatus());
+
+        Restore restore = restoreRepository.findById(backupName);
+
+        assertNull(restore);
 
         verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup1.getType()), any(), eq((String) map1.get("microserviceName")));
         verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName")));
@@ -2017,7 +2262,7 @@ class DbBackupV2ServiceTest {
         when(adapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
                 .thenReturn(response);
 
-        dbBackupV2Service.startRestore(restore, true);
+        dbBackupV2Service.startRestore(restore, false);
 
         Restore actualRestore = restoreRepository.findById(restoreName);
         assertNotNull(actualRestore);
@@ -2047,6 +2292,133 @@ class DbBackupV2ServiceTest {
         verify(physicalDatabasesService, times(1)).getAdapterById(adapterId);
         verify(adapter, times(1)).restoreV2(any(), anyBoolean(), any(), any(), anyList());
 
+    }
+
+    @Test
+    void startRestore_dryRunTrue() {
+        String restoreName = "restoreName";
+        String adapterId = "adapterId";
+        String storageName = "storageName";
+        String blobPath = "blobPath";
+        String type = "postgresql";
+        String restoreDatabaseName1 = "restoreName1";
+        String restoreDatabaseName2 = "restoreName2";
+        String logicalRestoreName = "logicalRestoreName";
+
+        SortedMap<String, Object> map = new TreeMap<>();
+        map.put("namespace", "namespace");
+        map.put("microserviceName", "microserviceName");
+
+        BackupDatabase backupDatabase1 = BackupDatabase.builder()
+                .name("db1")
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map))
+                .build();
+        BackupDatabase backupDatabase2 = BackupDatabase.builder()
+                .name("db2")
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map))
+                .build();
+
+        LogicalBackup logicalBackup = LogicalBackup.builder()
+                .logicalBackupName("logicalBackupName")
+                .type("postgresql")
+                .backupDatabases(List.of(backupDatabase1, backupDatabase2))
+                .build();
+        backupDatabase1.setLogicalBackup(logicalBackup);
+        backupDatabase2.setLogicalBackup(logicalBackup);
+
+        Backup backup = Backup.builder()
+                .name("backupName")
+                .storageName(storageName)
+                .blobPath(blobPath)
+                .externalDatabaseStrategy(ExternalDatabaseStrategy.SKIP)
+                .logicalBackups(List.of(logicalBackup))
+                .build();
+        logicalBackup.setBackup(backup);
+
+        backupRepository.save(backup);
+
+        RestoreDatabase restoreDatabase1 = RestoreDatabase.builder()
+                .backupDatabase(backupDatabase1)
+                .name(restoreDatabaseName1)
+                .classifiers(List.of(map))
+                .users(List.of())
+                .resources(Map.of())
+                .build();
+        RestoreDatabase restoreDatabase2 = RestoreDatabase.builder()
+                .backupDatabase(backupDatabase2)
+                .name(restoreDatabaseName2)
+                .classifiers(List.of(map))
+                .users(List.of())
+                .resources(Map.of())
+                .build();
+
+        LogicalRestore logicalRestore = LogicalRestore.builder()
+                .adapterId(adapterId)
+                .type(type)
+                .restoreDatabases(List.of(restoreDatabase1, restoreDatabase2))
+                .build();
+
+        restoreDatabase1.setLogicalRestore(logicalRestore);
+        restoreDatabase2.setLogicalRestore(logicalRestore);
+
+        Restore restore = Restore.builder()
+                .name(restoreName)
+                .storageName(storageName)
+                .blobPath(blobPath)
+                .backup(backup)
+                .logicalRestores(List.of(logicalRestore))
+                .build();
+
+        logicalRestore.setRestore(restore);
+
+        LogicalRestoreAdapterResponse response = new LogicalRestoreAdapterResponse(
+                Status.COMPLETED,
+                null,
+                logicalRestoreName,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                storageName,
+                blobPath,
+                List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName("db1")
+                                .path("path")
+                                .databaseName("newDb1")
+                                .duration(1)
+                                .build(),
+                        LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                                .status(Status.COMPLETED)
+                                .previousDatabaseName("db2")
+                                .path("path")
+                                .databaseName("newDb2")
+                                .duration(1)
+                                .build()
+                )
+        );
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(adapterId))
+                .thenReturn(adapter);
+        when(adapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+                .thenReturn(response);
+
+        dbBackupV2Service.startRestore(restore, true);
+
+        Restore actualRestore = restoreRepository.findById(restoreName);
+
+        assertNull(actualRestore);
     }
 
     @Test

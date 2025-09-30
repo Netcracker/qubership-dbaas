@@ -646,7 +646,8 @@ public class DbBackupV2Service {
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        restoreRepository.save(restore);//TODO dryRun
+        if (!dryRun)
+            restoreRepository.save(restore);
     }
 
     private void refreshLogicalRestoreState(LogicalRestore logicalRestore, LogicalRestoreAdapterResponse response) {
