@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
+import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupDatabaseDelegate;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
@@ -10,9 +11,7 @@ import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
-import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
-import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
+import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -22,8 +21,6 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockProvider;
@@ -1110,10 +1107,99 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void getCurrentStatus_throwException() {
+        String backupName = "backupName";
+        String oldNamespace1 = "old-ns1";
+        String oldNamespace2 = "old-ns2";
+        String logicalBackupName1 = "logicalBackupName1";
+        String logicalBackupName2 = "logicalBackupName2";
+        String storageName = "storageName";
+        String blobPath = "blobPath";
+        String db1 = "db1";
+        String db2 = "db2";
+        String db3 = "db3";
+        String postgresql = "postgresql";
+        String mongoDb = "mongoDb";
+
+        SortedMap<String, Object> map1 = new TreeMap<>();
+        map1.put("namespace", oldNamespace1);
+        map1.put("microserviceName", "microserviceName");
+
+        SortedMap<String, Object> map2 = new TreeMap<>();
+        map2.put("namespace", oldNamespace2);
+        map2.put("microserviceName", "microserviceName");
+
+        BackupDatabase backupDatabase1 = BackupDatabase.builder()
+                .name(db1)
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map1))
+                .build();
+
+        BackupDatabase backupDatabase2 = BackupDatabase.builder()
+                .name(db2)
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map2))
+                .build();
+
+        BackupDatabase backupDatabase3 = BackupDatabase.builder()
+                .name(db3)
+                .resources(Map.of())
+                .settings(Map.of())
+                .users(List.of(BackupDatabase.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()))
+                .classifiers(List.of(map2))
+                .build();
+
+        LogicalBackup logicalBackup1 = LogicalBackup.builder()
+                .logicalBackupName(logicalBackupName1)
+                .type(postgresql)
+                .backupDatabases(List.of(backupDatabase1, backupDatabase2))
+                .build();
+        LogicalBackup logicalBackup2 = LogicalBackup.builder()
+                .logicalBackupName(logicalBackupName2)
+                .type(mongoDb)
+                .backupDatabases(List.of(backupDatabase3))
+                .build();
+
+        backupDatabase1.setLogicalBackup(logicalBackup1);
+        backupDatabase2.setLogicalBackup(logicalBackup1);
+        backupDatabase3.setLogicalBackup(logicalBackup2);
+
+        Backup backup = Backup.builder()
+                .name(backupName)
+                .storageName(storageName)
+                .status(Status.DELETED)
+                .blobPath(blobPath)
+                .externalDatabaseStrategy(ExternalDatabaseStrategy.SKIP)
+                .logicalBackups(List.of(logicalBackup1, logicalBackup2))
+                .build();
+        logicalBackup1.setBackup(backup);
+        logicalBackup2.setBackup(backup);
+
+        backupRepository.save(backup);
+
+        assertThrows(BackupNotFoundException.class,
+                () -> dbBackupV2Service.getCurrentStatus(backupName));
+    }
+
+    @Test
     void deleteBackup() {
         String backupName = "backupName";
         List<LogicalBackup> logicalBackups = generateLogicalBackups(2);
         Backup backup = createBackup(backupName, logicalBackups);
+        backup.setStatus(Status.COMPLETED);
         backupRepository.save(backup);
 
         logicalBackups.forEach(db -> db.setBackup(backup));
@@ -1127,17 +1213,20 @@ class DbBackupV2ServiceTest {
         when(physicalDatabasesService.getAdapterById("1"))
                 .thenReturn(adapter1);
 
-        dbBackupV2Service.deleteBackup(backupName);
+        dbBackupV2Service.deleteBackup(backupName, true);
 
         Backup deletedBackup = backupRepository.findById(backupName);
-        assertNull(deletedBackup);
+        assertNotNull(deletedBackup);
+        assertEquals(Status.DELETE_IN_PROGRESS, deletedBackup.getStatus());
     }
 
     @Test
     void deleteBackup_adapterThrowException() {
         String backupName = "backupName";
+        boolean force = true;
         List<LogicalBackup> logicalBackups = generateLogicalBackups(2);
         Backup backup = createBackup(backupName, logicalBackups);
+        backup.setStatus(Status.IN_PROGRESS);
         backupRepository.save(backup);
 
         logicalBackups.forEach(db -> db.setBackup(backup));
@@ -1151,14 +1240,11 @@ class DbBackupV2ServiceTest {
         when(physicalDatabasesService.getAdapterById("1"))
                 .thenReturn(adapter1);
 
-        doThrow(new WebApplicationException(
-                Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                        .entity("{\"error\":\"Internal server error\",\"requestId\":\"req_1234567890\"}")
-                        .build()
-        )).when(adapter1).deleteBackupV2(any());
+        doThrow(new IllegalEntityStateException(backupName, Source.builder().build()))
+                .when(adapter1).deleteBackupV2(any());
 
-        assertThrows(BackupExecutionException.class,
-                () -> dbBackupV2Service.deleteBackup(backupName));
+        assertThrows(IllegalEntityStateException.class,
+                () -> dbBackupV2Service.deleteBackup(backupName, force));
     }
 
     @Test
@@ -1223,9 +1309,24 @@ class DbBackupV2ServiceTest {
         assertEquals("{key=value}", db1.getResources().toString());
         assertEquals("role", db1.getUsers().getFirst().getRole());
         assertEquals("name", db1.getUsers().getFirst().getName());
+    }
 
+    @Test
+    void getBackup_ForStatusNotCompletedBackup() {
+        String backupName = "backupName";
+        List<LogicalBackup> logicalBackups = generateLogicalBackups(1);
+        Backup backup = createBackup(backupName, logicalBackups);
+        backup.setStatus(Status.IN_PROGRESS);
+        backup.setTotal(1);
+        backup.setCompleted(1);
+        backup.setSize(1L);
 
-        log.info(response.toString());
+        logicalBackups.forEach(lb -> lb.setBackup(backup));
+
+        backupRepository.save(backup);
+
+        assertThrows(BackupNotFoundException.class,
+                () -> dbBackupV2Service.getBackup(backupName));
     }
 
     @Test
@@ -1248,7 +1349,7 @@ class DbBackupV2ServiceTest {
         LogicalBackup actualLogicalBackup = actual.getLogicalBackups().getFirst();
 
         assertEquals(actualLogicalBackup.getLogicalBackupName(), expectedLogicalBackup.getLogicalBackupName());
-        assertNull(actualLogicalBackup.getAdapterId());
+        assertNotNull(actualLogicalBackup.getAdapterId());
         assertEquals(actualLogicalBackup.getType(), expectedLogicalBackup.getType());
 
         BackupDatabaseResponse expectedBackupDatabase = expectedLogicalBackup.getBackupDatabases().getFirst();

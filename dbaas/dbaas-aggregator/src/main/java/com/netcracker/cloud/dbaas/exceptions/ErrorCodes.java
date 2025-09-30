@@ -217,6 +217,11 @@ public enum ErrorCodes implements ErrorCode {
             "Backup not allowed",
             "The backup request can`t be processed. %s"
     ),
+    CORE_DBAAS_4048(
+            "CORE-DBAAS-4047",
+            "Illegal state of entity",
+            "Entity with id '%s' has illegal state"
+    ),
 
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",

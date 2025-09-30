@@ -7,6 +7,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.*;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
@@ -63,4 +64,13 @@ public class AsyncOperations {
             task.run();
         };
     }
+
+    public <T, U> BiConsumer<T, U> wrapWithContext(BiConsumer<T, U> action) {
+        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
+        return (t, u) -> {
+            ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
+            action.accept(t, u);
+        };
+    }
+
 }
