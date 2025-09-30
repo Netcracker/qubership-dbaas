@@ -807,47 +807,55 @@ public class DbBackupV2Service {
 
     protected void initializeLogicalDatabasesFromRestore(Restore restore) {
         log.info("Start initializing logical databases from restore {}", restore.getName());
-        restore.getLogicalRestores().forEach(logicalRestore -> {
-            log.info("Processing logical restore type={}, adapterId={}", logicalRestore.getType(), logicalRestore.getAdapterId());
-            logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
-                String type = logicalRestore.getType();
-                Set<SortedMap<String, Object>> classifiers = new HashSet<>();
+        try {
+            restore.getLogicalRestores().forEach(logicalRestore -> {
+                log.info("Processing logical restore type={}, adapterId={}", logicalRestore.getType(), logicalRestore.getAdapterId());
+                logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
+                    String type = logicalRestore.getType();
+                    Set<SortedMap<String, Object>> classifiers = new HashSet<>();
 
-                log.info("Processing restoreDatabase [settings={}]", restoreDatabase.getSettings());
-                restoreDatabase.getClassifiers().forEach(classifier -> {
-                    classifiers.add(new TreeMap<>(classifier));
-                    log.debug("Classifier candidate: {}", classifier);
-                    databaseRegistryDbaasRepository
-                            .getDatabaseByClassifierAndType(classifier, type)
-                            .ifPresent(dbRegistry -> {
-                                Database db = dbRegistry.getDatabase();
-                                log.info("Found existing database {} for classifier {}", db.getId(), classifier);
-                                List<TreeMap<String, Object>> existClassifiers = db.getDatabaseRegistry().stream()
-                                        .map(AbstractDatabaseRegistry::getClassifier)
-                                        .map(TreeMap::new)
-                                        .toList();
+                    log.info("Processing restoreDatabase [settings={}]", restoreDatabase.getSettings());
+                    restoreDatabase.getClassifiers().forEach(classifier -> {
+                        classifiers.add(new TreeMap<>(classifier));
+                        log.debug("Classifier candidate: {}", classifier);
+                        databaseRegistryDbaasRepository
+                                .getDatabaseByClassifierAndType(classifier, type)
+                                .ifPresent(dbRegistry -> {
+                                    Database db = dbRegistry.getDatabase();
+                                    log.info("Found existing database {} for classifier {}", db.getId(), classifier);
+                                    List<TreeMap<String, Object>> existClassifiers = db.getDatabaseRegistry().stream()
+                                            .map(AbstractDatabaseRegistry::getClassifier)
+                                            .map(TreeMap::new)
+                                            .toList();
 
-                                classifiers.addAll(existClassifiers);
-                                dBaaService.markDatabasesAsOrphan(dbRegistry);
-                                log.info("Database {} marked as orphan", db.getId());
-                                databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
-                            });
+                                    classifiers.addAll(existClassifiers);
+                                    dBaaService.markDatabasesAsOrphan(dbRegistry);
+                                    log.info("Database {} marked as orphan", db.getId());
+                                    databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+                                });
+                    });
+                    String adapterId = logicalRestore.getAdapterId();
+                    String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getId();
+                    Database newDatabase = createLogicalDatabase(
+                            restoreDatabase.getName(),
+                            restoreDatabase.getSettings(),
+                            classifiers,
+                            type,
+                            adapterId,
+                            physicalDatabaseId,
+                            restoreDatabase.getBgVersion());
+
+                    ensureUsers(newDatabase, restoreDatabase.getUsers());
                 });
-                String adapterId = logicalRestore.getAdapterId();
-                String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getId();
-                Database newDatabase = createLogicalDatabase(
-                        restoreDatabase.getName(),
-                        restoreDatabase.getSettings(),
-                        classifiers,
-                        type,
-                        adapterId,
-                        physicalDatabaseId,
-                        restoreDatabase.getBgVersion());
-
-                ensureUsers(newDatabase, restoreDatabase.getUsers());
             });
-        });
-        log.info("Finished initializing logical databases from restore {}", restore.getName());
+            restore.setStatus(Status.COMPLETED);
+            log.info("Finished initializing logical databases from restore {}", restore.getName());
+        } catch (Exception e) {
+            log.error("Some exception occurred during restore process", e);
+            restore.setStatus(Status.FAILED);
+            restore.setErrorMessage(e.getMessage());
+        }
+
     }
 
     private Database createLogicalDatabase(String dbName,
