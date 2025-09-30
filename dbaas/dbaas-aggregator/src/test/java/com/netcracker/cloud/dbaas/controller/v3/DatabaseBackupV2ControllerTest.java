@@ -5,9 +5,9 @@ import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
-import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
 import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
+import com.netcracker.cloud.dbaas.exceptions.IllegalEntityStateException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
 import com.netcracker.cloud.dbaas.utils.DigestUtil;
@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -281,38 +280,36 @@ class DatabaseBackupV2ControllerTest {
     @Test
     void deleteBackup_shouldReturn204() {
         String backupName = "backup123";
+        boolean force = false;
 
-        doNothing().when(dbBackupV2Service).deleteBackup(backupName);
+        doNothing().when(dbBackupV2Service).deleteBackup(backupName, force);
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
-                .when().delete("/backup/" + backupName)
+                .when().delete("/backup/" + backupName + "?force=" + force)
                 .then()
                 .statusCode(204); // No Content
 
-        verify(dbBackupV2Service, times(1)).deleteBackup(backupName);
+        verify(dbBackupV2Service, times(1)).deleteBackup(backupName, force);
     }
 
     @Test
-    void deleteBackup_shouldReturn500_onException() {
+    void deleteBackup_shouldReturn409_onIllegalState() {
         String backupName = "backup123";
+        boolean force = true;
 
-        String aggregatedError = String.format(
-                "Not all backups were deleted successfully in backup %s, failed adapters: %s",
-                backupName, Map.of("adapterId1", "{\"error\":\"Internal server error\",\"requestId\":\"req_1234567890\"}")
-        );
 
-        doThrow(new BackupExecutionException(
-                URI.create("deleteBackup"),
-                aggregatedError,
-                new Throwable()
-        )).when(dbBackupV2Service).deleteBackup(backupName);
+        doThrow(new IllegalEntityStateException(
+                backupName,
+                Source.builder().build()
+        )).when(dbBackupV2Service).deleteBackup(backupName, force);
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
-                .when().delete("/backup/" + backupName)
+                .when().delete("/backup/" + backupName + "?force=" + force)
                 .then()
-                .statusCode(500); // Internal Server Error
+                .statusCode(409)
+                .body("message", equalTo(String.format("Entity with id '%s' has illegal state", backupName)));
     }
 
     public static BackupRequest createBackupRequest(String namespace, String backupName) {

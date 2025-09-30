@@ -16,6 +16,7 @@ import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
 import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
 import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
+import com.netcracker.cloud.dbaas.exceptions.IllegalEntityStateException;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -333,14 +334,16 @@ public class DbBackupV2Service {
             totalDbCount += logicalBackup.getBackupDatabases().size();
 
             if (logicalBackup.getErrorMessage() != null && !logicalBackup.getErrorMessage().isBlank()) {
-                String warn = String.format("LogicalBackup %s failed: %s", logicalBackup.getLogicalBackupName(), logicalBackup.getErrorMessage());
+                String warn = String.format("LogicalBackup %s failed: %s", logicalBackup.getLogicalBackupName(),
+                        logicalBackup.getErrorMessage());
                 log.warn(warn);
                 if (!errorMsg.isEmpty())
                     errorMsg.append("; ");
                 errorMsg.append(warn);
             }
             totalBytes += logicalBackup.getBackupDatabases().stream().mapToLong(BackupDatabase::getSize).sum();
-            countCompletedDb += (int) logicalBackup.getBackupDatabases().stream().filter(db -> Status.COMPLETED.equals(db.getStatus())).count();
+            countCompletedDb += (int) logicalBackup.getBackupDatabases().stream()
+                    .filter(db -> Status.COMPLETED.equals(db.getStatus())).count();
         }
 
         backup.setStatus(aggregateStatus(statusSet));
@@ -375,7 +378,8 @@ public class DbBackupV2Service {
     //TODO write test
     public BackupStatusResponse getCurrentStatus(String backupName) {
         Backup backup = getBackupOrThrowException(backupName);
-
+        if (Status.DELETED == backup.getStatus())
+            throw new BackupNotFoundException(backupName, Source.builder().build());
         return mapper.toBackupStatusResponse(backup);
     }
 
@@ -416,6 +420,16 @@ public class DbBackupV2Service {
     public BackupResponse getBackup(String backupName) {
         Backup backup = getBackupOrThrowException(backupName);
 
+        if (Status.COMPLETED != backup.getStatus()) {
+            throw new BackupNotFoundException("Can`t produce metadata for backup in status " + backup.getStatus(),
+                    Source.builder().build());
+        }
+        //todo need to discuss
+        backup.getLogicalBackups().forEach(lb -> {
+            if (lb.getAdapterId() != null)
+                lb.setAdapterId(null);
+        });
+
         return mapper.toBackupResponse(backup);
     }
 
@@ -423,11 +437,6 @@ public class DbBackupV2Service {
         Backup backup = mapper.toBackup(backupResponse);
 
         backupExistenceCheck(backup.getName());
-
-        backup.getLogicalBackups().forEach(lb -> {
-            if (lb.getAdapterId() != null)
-                lb.setAdapterId(null);
-        });
         backupRepository.save(backup);
     }
 
@@ -724,6 +733,10 @@ public class DbBackupV2Service {
         LockAssert.assertLocked();
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToAggregate();
         restoresToAggregate.forEach(this::trackAndAggregateRestore);
+        restoresToAggregate.forEach(restore -> {
+            if (Objects.equals(restore.getTotal(), restore.getCompleted()))
+                initializeLogicalDatabasesFromRestore(restore);
+        });
     }
 
     //TODO after aggregate status completed need to start registry database (Database.class)
@@ -921,9 +934,25 @@ public class DbBackupV2Service {
         log.info("Users ensured and database [{}] updated", newDatabase.getId());
     }
 
-    public void deleteBackup(String backupName) {
+    //todo how to handle deletion of backup if it was imported
+    public void deleteBackup(String backupName, boolean force) {
         Backup backup = getBackupOrThrowException(backupName);
+        Status status = backup.getStatus();
+
+        if (Status.COMPLETED != status && Status.FAILED != status){
+            throw new IllegalEntityStateException(backup.getName(), Source.builder().build());
+        }
+
         Map<String, String> errorHappenedAdapters = new ConcurrentHashMap<>();
+
+        if (!force) {
+            backup.setStatus(Status.DELETED);
+            backupRepository.save(backup);
+            return;
+        }
+
+        backup.setStatus(Status.DELETE_IN_PROGRESS);
+        backupRepository.save(backup);
 
         List<CompletableFuture<Void>> futures = backup.getLogicalBackups().stream()
                 .map(logicalBackup -> {
@@ -932,11 +961,13 @@ public class DbBackupV2Service {
                             "deleteBackupV2");
 
                     String adapterId = logicalBackup.getAdapterId();
-                    log.info("backup with adapter id {} has {} databases to delete", adapterId, logicalBackup.getBackupDatabases().size());
+                    log.info("backup with adapter id {} has {} databases to delete", adapterId,
+                            logicalBackup.getBackupDatabases().size());
                     return CompletableFuture.runAsync(
                                     asyncOperations.wrapWithContext(() ->
                                             Failsafe.with(retryPolicy).run(() ->
-                                                    physicalDatabasesService.getAdapterById(adapterId).deleteBackupV2(logicalBackup.getLogicalBackupName()))
+                                                    physicalDatabasesService.getAdapterById(adapterId)
+                                                            .deleteBackupV2(logicalBackup.getLogicalBackupName()))
                                     ), asyncOperations.getBackupPool())
                             .exceptionally(throwable -> {
                                 String exMessage = extractErrorMessage(throwable);
@@ -947,19 +978,21 @@ public class DbBackupV2Service {
                             });
                 }).toList();
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-        if (!errorHappenedAdapters.isEmpty()) {
-            String aggregatedError = String.format(
-                    "Not all backups were deleted successfully in backup %s, failed adapters: %s",
-                    backupName, errorHappenedAdapters
-            );
-            log.error(aggregatedError);
-            throw new BackupExecutionException(URI.create("deleteBackup"), aggregatedError, new Throwable());
-        }
-
-        backupRepository.delete(backup);
-        log.info("Deletion of backup {} succeed", backupName);
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .whenComplete(asyncOperations.wrapWithContext((res, ex) -> {
+                    if (!errorHappenedAdapters.isEmpty()) {
+                        String aggregatedError = String.format(
+                                "Not all backups were deleted successfully in backup %s, failed adapters: %s",
+                                backupName, errorHappenedAdapters
+                        );
+                        log.error(aggregatedError);
+                        backup.setStatus(Status.FAILED);
+                        backup.setErrorMessage(aggregatedError);
+                    } else {
+                        backup.setStatus(Status.DELETED);
+                    }
+                    backupRepository.save(backup);
+                }));
     }
 
     protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,
