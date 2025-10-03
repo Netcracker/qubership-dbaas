@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupDatabaseDelegate;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
@@ -185,11 +186,11 @@ class DbBackupV2ServiceTest {
         when(adapterOne.type()).thenReturn("postgresql");
         when(adapterTwo.type()).thenReturn("mongodb");
 
-        when(adapterOne.backupV2(any(), any(), any()))
+        when(adapterOne.backupV2(any()))
                 .thenReturn(adapterResponseFirst);
         when(adapterOne.isBackupRestoreSupported())
                 .thenReturn(true);
-        when(adapterTwo.backupV2(any(), any(), any()))
+        when(adapterTwo.backupV2(any()))
                 .thenReturn(adapterResponseSecond);
         when(adapterTwo.isBackupRestoreSupported())
                 .thenReturn(true);
@@ -228,8 +229,8 @@ class DbBackupV2ServiceTest {
         assertEquals(Status.FAILED, db0.getStatus());
         assertTrue(db0.isConfigurational());
 
-        Mockito.verify(adapterOne, times(1)).backupV2(any(), any(), any());
-        Mockito.verify(adapterTwo, times(1)).backupV2(any(), any(), any());
+        Mockito.verify(adapterOne, times(1)).backupV2(any());
+        Mockito.verify(adapterTwo, times(1)).backupV2(any());
 
     }
 
@@ -661,7 +662,7 @@ class DbBackupV2ServiceTest {
                     .map(db -> Map.of("databaseName", db.getName()))
                     .toList();
             adapterResponses.get(i).setLogicalBackupName("backup" + logicalBackups.get(i).getAdapterId());
-            when(adapter.backupV2(storageName, blobPath, dbNames))
+            when(adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames)))
                     .thenReturn(adapterResponses.get(i));
         }
 
@@ -685,7 +686,7 @@ class DbBackupV2ServiceTest {
                     .map(db -> Map.of("databaseName", db.getName()))
                     .toList();
             Mockito.verify(adapter, times(1))
-                    .backupV2(storageName, blobPath, dbNames);
+                    .backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
         }
     }
 
@@ -1544,7 +1545,7 @@ class DbBackupV2ServiceTest {
         DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId1))
                 .thenReturn(dbaasAdapter);
-        when(dbaasAdapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+        when(dbaasAdapter.restoreV2(any(), anyBoolean(), any()))
                 .thenReturn(response1);
         when(dbaasAdapter.isBackupRestoreSupported())
                 .thenReturn(true);
@@ -1554,7 +1555,7 @@ class DbBackupV2ServiceTest {
                 .thenReturn(dbaasAdapter2);
         when(dbaasAdapter2.isBackupRestoreSupported())
                 .thenReturn(true);
-        when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+        when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any()))
                 .thenReturn(response2);
 
         RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, false);
@@ -1665,8 +1666,8 @@ class DbBackupV2ServiceTest {
         verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName")));
         verify(physicalDatabasesService, times(2)).getAdapterById(adapterId1);
         verify(physicalDatabasesService, times(2)).getAdapterById(adapterId2);
-        verify(dbaasAdapter).restoreV2(any(), anyBoolean(), any(), any(), anyList());
-        verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any(), any(), anyList());
+        verify(dbaasAdapter).restoreV2(any(), anyBoolean(), any());
+        verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any());
     }
 
     @Test
@@ -1834,7 +1835,7 @@ class DbBackupV2ServiceTest {
         DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId1))
                 .thenReturn(dbaasAdapter);
-        when(dbaasAdapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+        when(dbaasAdapter.restoreV2(any(), anyBoolean(), any()))
                 .thenReturn(response1);
         when(dbaasAdapter.isBackupRestoreSupported())
                 .thenReturn(true);
@@ -1844,7 +1845,7 @@ class DbBackupV2ServiceTest {
                 .thenReturn(dbaasAdapter2);
         when(dbaasAdapter2.isBackupRestoreSupported())
                 .thenReturn(true);
-        when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+        when(dbaasAdapter2.restoreV2(any(), anyBoolean(), any()))
                 .thenReturn(response2);
 
         RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, true);
@@ -1910,8 +1911,8 @@ class DbBackupV2ServiceTest {
         verify(balancingRulesService, times(1)).applyBalancingRules(eq(logicalBackup2.getType()), any(), eq((String) map2.get("microserviceName")));
         verify(physicalDatabasesService, times(2)).getAdapterById(adapterId1);
         verify(physicalDatabasesService, times(2)).getAdapterById(adapterId2);
-        verify(dbaasAdapter).restoreV2(any(), anyBoolean(), any(), any(), anyList());
-        verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any(), any(), anyList());
+        verify(dbaasAdapter).restoreV2(any(), anyBoolean(), any());
+        verify(dbaasAdapter2).restoreV2(any(), anyBoolean(), any());
     }
 
     @Test
@@ -2360,7 +2361,7 @@ class DbBackupV2ServiceTest {
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId))
                 .thenReturn(adapter);
-        when(adapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+        when(adapter.restoreV2(any(), anyBoolean(), any()))
                 .thenReturn(response);
 
         dbBackupV2Service.startRestore(restore, false);
@@ -2391,7 +2392,7 @@ class DbBackupV2ServiceTest {
         assertEquals(List.of(map), actualRestoreDatabase2.getClassifiers());
 
         verify(physicalDatabasesService, times(1)).getAdapterById(adapterId);
-        verify(adapter, times(1)).restoreV2(any(), anyBoolean(), any(), any(), anyList());
+        verify(adapter, times(1)).restoreV2(any(), anyBoolean(), any());
 
     }
 
@@ -2512,7 +2513,7 @@ class DbBackupV2ServiceTest {
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
         when(physicalDatabasesService.getAdapterById(adapterId))
                 .thenReturn(adapter);
-        when(adapter.restoreV2(any(), anyBoolean(), any(), any(), anyList()))
+        when(adapter.restoreV2(any(), anyBoolean(), any()))
                 .thenReturn(response);
 
         dbBackupV2Service.startRestore(restore, true);
