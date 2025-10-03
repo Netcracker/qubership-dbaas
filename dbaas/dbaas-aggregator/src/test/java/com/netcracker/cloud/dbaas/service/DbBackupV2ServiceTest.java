@@ -2824,8 +2824,15 @@ class DbBackupV2ServiceTest {
             return null;
         });
 
+        Map<String, List<EnsuredUser>> dbNameToEnsuredUsers = restore.getLogicalRestores().stream().flatMap(lr -> lr.getRestoreDatabases().stream()
+                        .map(rd -> dbBackupV2Service.ensureUsers(lr.getAdapterId(), rd.getName(), rd.getUsers())))
+                .flatMap(m -> m.entrySet().stream())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue
+                ));
 
-        dbBackupV2Service.initializeLogicalDatabasesFromRestore(restore);
+        dbBackupV2Service.initializeLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
 
         List<DatabaseRegistry> databaseRegistries1 = databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace("namespace2");
         Database database1 = databaseRegistries1.getFirst().getDatabase();

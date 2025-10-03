@@ -10,11 +10,7 @@ import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
-import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
-import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
-import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
-import com.netcracker.cloud.dbaas.exceptions.IllegalEntityStateException;
+import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -723,6 +719,7 @@ public class DbBackupV2Service {
         }
     }
 
+    //todo write test
     @Scheduled(every = "${restore.aggregation.interval}", concurrentExecution = SKIP)
     @SchedulerLock(name = "findAndStartAggregateRestore")
     protected void findAndStartAggregateRestore() {
@@ -730,9 +727,39 @@ public class DbBackupV2Service {
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToAggregate();
         restoresToAggregate.forEach(this::trackAndAggregateRestore);
         restoresToAggregate.forEach(restore -> {
-            if (Objects.equals(restore.getTotal(), restore.getCompleted()))
-                initializeLogicalDatabasesFromRestore(restore);
+            if (Objects.equals(restore.getTotal(), restore.getCompleted())) {
+                Map<String, List<EnsuredUser>> dbNameToEnsuredUsers = restore.getLogicalRestores().stream().flatMap(lr -> lr.getRestoreDatabases().stream()
+                                .map(rd -> ensureUsers(lr.getAdapterId(), rd.getName(), rd.getUsers())))
+                        .flatMap(m -> m.entrySet().stream())
+                        .collect(Collectors.toMap(
+                                Map.Entry::getKey,
+                                Map.Entry::getValue
+                        ));
+
+                initializeLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
+            }
         });
+    }
+
+
+    protected Map<String, List<EnsuredUser>> ensureUsers(String adapterId,
+                                                         String dbName,
+                                                         List<RestoreDatabase.User> users) {
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(dbName, "ensureUser");
+
+        log.info("Ensuring {} users for database name=[{}] via adapter [{}]",
+                users.size(), dbName, adapterId);
+
+        return Map.of(
+                dbName,
+                users.stream()
+                        .map(user ->
+                                Failsafe.with(retryPolicy).get(() ->
+                                        adapter.ensureUser(user.getName(), null, dbName, user.getRole()))
+                        )
+                        .toList()
+        );
     }
 
 
@@ -814,7 +841,9 @@ public class DbBackupV2Service {
         restore.setErrorMessage(sb.toString());
     }
 
-    protected void initializeLogicalDatabasesFromRestore(Restore restore) {
+    //todo нужен adapterId, userName, dbName, userRole
+    // Map.op(adapterId, List<EnsuredUser>)
+    protected void initializeLogicalDatabasesFromRestore(Restore restore, Map<String, List<EnsuredUser>> dbNameToEnsuredUsers) {
         log.info("Start initializing logical databases from restore {}", restore.getName());
         try {
             restore.getLogicalRestores().forEach(logicalRestore -> {
@@ -845,6 +874,7 @@ public class DbBackupV2Service {
                     });
                     String adapterId = logicalRestore.getAdapterId();
                     String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getId();
+                    List<EnsuredUser> ensuredUsers = dbNameToEnsuredUsers.get(restoreDatabase.getName());
                     Database newDatabase = createLogicalDatabase(
                             restoreDatabase.getName(),
                             restoreDatabase.getSettings(),
@@ -854,7 +884,12 @@ public class DbBackupV2Service {
                             physicalDatabaseId,
                             restoreDatabase.getBgVersion());
 
-                    ensureUsers(newDatabase, restoreDatabase.getUsers());
+                    newDatabase.setConnectionProperties(ensuredUsers.stream().map(EnsuredUser::getConnectionProperties).collect(Collectors.toList()));
+                    newDatabase.setResources(ensuredUsers.stream().map(EnsuredUser::getResources).filter(Objects::nonNull).flatMap(Collection::stream).collect(Collectors.toList()));
+                    newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
+                    encryption.encryptPassword(newDatabase);
+                    databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
+                    log.info("Database [{}] created", newDatabase.getName());
                 });
             });
             restore.setStatus(Status.COMPLETED);
@@ -930,12 +965,12 @@ public class DbBackupV2Service {
         log.info("Users ensured and database [{}] updated", newDatabase.getId());
     }
 
-    //todo how to handle deletion of backup if it was imported
+
     public void deleteBackup(String backupName, boolean force) {
         Backup backup = getBackupOrThrowException(backupName);
         Status status = backup.getStatus();
 
-        if (Status.COMPLETED != status && Status.FAILED != status){
+        if (Status.COMPLETED != status && Status.FAILED != status) {
             throw new IllegalEntityStateException(backup.getName(), Source.builder().build());
         }
 
@@ -1099,7 +1134,6 @@ public class DbBackupV2Service {
         }
         return throwable.getMessage();
     }
-
 
 
 }
