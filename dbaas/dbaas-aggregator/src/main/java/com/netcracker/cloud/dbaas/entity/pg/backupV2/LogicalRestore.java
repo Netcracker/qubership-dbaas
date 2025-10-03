@@ -37,6 +37,8 @@ public class LogicalRestore {
     @OneToMany(mappedBy = "logicalRestore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<RestoreDatabase> restoreDatabases;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
     private Status status = Status.NOT_STARTED;
 
     @Column(name = "error_message")

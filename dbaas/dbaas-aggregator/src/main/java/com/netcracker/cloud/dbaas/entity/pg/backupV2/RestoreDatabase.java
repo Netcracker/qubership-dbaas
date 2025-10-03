@@ -58,6 +58,8 @@ public class RestoreDatabase {
 
     private String bgVersion;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
     private Status status;
 
     private long duration;

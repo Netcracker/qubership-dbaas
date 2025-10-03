@@ -39,6 +39,8 @@ public class LogicalBackup {
     @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupDatabase> backupDatabases;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
     private Status status = Status.NOT_STARTED;
 
     @Column(name = "error_message")

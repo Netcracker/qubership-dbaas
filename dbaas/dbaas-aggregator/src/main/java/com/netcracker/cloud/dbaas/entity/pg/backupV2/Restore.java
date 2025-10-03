@@ -46,6 +46,8 @@ public class Restore {
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalRestore> logicalRestores;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
     private Status status = Status.NOT_STARTED;
 
     private Integer total;
