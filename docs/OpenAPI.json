@@ -353,7 +353,9 @@
               "PENDING",
               "IN_PROGRESS",
               "FAILED",
-              "COMPLETED"
+              "COMPLETED",
+              "DELETE_IN_PROGRESS",
+              "DELETED"
             ],
             "description": "Current state of the backup operation"
           },
@@ -412,7 +414,9 @@
               "PENDING",
               "IN_PROGRESS",
               "FAILED",
-              "COMPLETED"
+              "COMPLETED",
+              "DELETE_IN_PROGRESS",
+              "DELETED"
             ],
             "description": "Current state of the backup operation"
           },
@@ -3316,7 +3320,9 @@
           "PENDING",
           "IN_PROGRESS",
           "FAILED",
-          "COMPLETED"
+          "COMPLETED",
+          "DELETE_IN_PROGRESS",
+          "DELETED"
         ]
       },
       "Status1": {
@@ -3745,6 +3751,14 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
             }
           }
         ],
