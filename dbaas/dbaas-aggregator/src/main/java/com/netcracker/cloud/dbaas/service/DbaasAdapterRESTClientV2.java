@@ -6,11 +6,12 @@ import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.RestoreAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
-import com.netcracker.cloud.dbaas.enums.Status;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
@@ -115,13 +116,13 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
-    public LogicalBackupAdapterResponse backupV2(String storageName, String blobPath, List<Map<String, String>> dbNames) {
-        return restClient.backupV2(type(), storageName, blobPath, dbNames);
+    public LogicalBackupAdapterResponse backupV2(BackupAdapterRequest backupAdapterRequest) {
+        return restClient.backupV2(type(), backupAdapterRequest);
     }
 
     @Override
-    public LogicalRestoreAdapterResponse restoreV2(String logicalBackupName, boolean dryRun, String storageName, String blobPath, List<Map<String, String>> databases) {
-        return restClient.restoreV2(type(),logicalBackupName, dryRun, storageName, blobPath, databases);
+    public LogicalRestoreAdapterResponse restoreV2(String logicalBackupName, boolean dryRun, RestoreAdapterRequest restoreAdapterRequest) {
+        return restClient.restoreV2(type(),logicalBackupName, dryRun, restoreAdapterRequest);
     }
 
     @Override

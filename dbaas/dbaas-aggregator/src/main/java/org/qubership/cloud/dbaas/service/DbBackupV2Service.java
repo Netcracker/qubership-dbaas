@@ -3,9 +3,7 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupDatabaseDelegate;
-import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
-import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
@@ -206,8 +204,7 @@ public class DbBackupV2Service {
                                 )
                                 .exceptionally(throwable -> {
                                     logicalBackup.setStatus(Status.FAILED);
-                                    logicalBackup.setErrorMessage(throwable.getCause() != null ?
-                                            throwable.getCause().getMessage() : throwable.getMessage());
+                                    logicalBackup.setErrorMessage(extractErrorMessage(throwable));
                                     return null;
                                 }))
                 .toList();
@@ -255,7 +252,7 @@ public class DbBackupV2Service {
         try {
             return Failsafe.with(retryPolicy).get(() -> {
                 DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-                LogicalBackupAdapterResponse result = adapter.backupV2(storageName, blobPath, dbNames);
+                LogicalBackupAdapterResponse result = adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
 
                 if (result == null) {
                     throw new BackupExecutionException(URI.create("e"), "Empty result from backup", new Throwable()); //TODO correct path
@@ -647,8 +644,7 @@ public class DbBackupV2Service {
                                         refreshLogicalRestoreState(logicalRestore, response))
                                 .exceptionally(throwable -> {
                                     logicalRestore.setStatus(Status.FAILED);
-                                    logicalRestore.setErrorMessage(throwable.getCause() != null
-                                            ? throwable.getCause().getMessage() : throwable.getMessage()); //TODO will be return general exception, see deleteBackup exception handling
+                                    logicalRestore.setErrorMessage(extractErrorMessage(throwable));
                                     return null;
                                 })
                 )
@@ -715,7 +711,7 @@ public class DbBackupV2Service {
         try {
             return Failsafe.with(retryPolicy).get(() -> {
                 DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                LogicalRestoreAdapterResponse result = adapter.restoreV2(logicalBackupName, dryRun, restore.getStorageName(), restore.getBlobPath(), databases);
+                LogicalRestoreAdapterResponse result = adapter.restoreV2(logicalBackupName, dryRun, new RestoreAdapterRequest(restore.getStorageName(), restore.getBlobPath(), databases));
 
                 if (result == null) {
                     throw new BackupExecutionException(URI.create("e"), "Empty result from restore", new Throwable()); //TODO correct path
@@ -739,7 +735,7 @@ public class DbBackupV2Service {
         });
     }
 
-    //TODO after aggregate status completed need to start registry database (Database.class)
+
     protected void trackAndAggregateRestore(Restore restore) {
         if (restore.getAttemptCount() > retryCount) {
             log.warn("The number of attempts of track restore {} exceeded {}", restore.getName(), retryCount);
@@ -1089,19 +1085,21 @@ public class DbBackupV2Service {
     }
 
     private String extractErrorMessage(Throwable throwable) {
-        Throwable cause = throwable.getCause() != null ? throwable.getCause() : throwable;
-
-        if (cause instanceof WebApplicationException webEx) {
-            Response response = webEx.getResponse();
-            try {
-                return response.readEntity(String.class);
-            } catch (Exception readEx) {
-                return "Unable to read response body: " + readEx.getMessage();
+        Throwable cause = throwable;
+        while (cause != null) {
+            if (cause instanceof WebApplicationException webEx) {
+                Response response = webEx.getResponse();
+                try {
+                    return response.readEntity(String.class);
+                } catch (Exception readEx) {
+                    return "Unable to read response body: " + readEx.getMessage();
+                }
             }
+            cause = cause.getCause();
         }
-
-        return cause.getMessage();
+        return throwable.getMessage();
     }
+
 
 
 }
