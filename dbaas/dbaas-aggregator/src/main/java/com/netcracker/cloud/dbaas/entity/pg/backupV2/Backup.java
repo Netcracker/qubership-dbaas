@@ -47,6 +47,8 @@ public class Backup {
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupExternalDatabase> externalDatabases;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
     private Status status = Status.NOT_STARTED;
 
     private Integer total;

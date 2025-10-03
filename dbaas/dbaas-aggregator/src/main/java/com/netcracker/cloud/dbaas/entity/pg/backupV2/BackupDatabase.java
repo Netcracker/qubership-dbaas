@@ -54,6 +54,8 @@ public class BackupDatabase {
 
     private boolean configurational;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
     private Status status;
 
     private long size;
