@@ -719,7 +719,7 @@ public class DbBackupV2Service {
         }
     }
 
-    //todo write test
+
     @Scheduled(every = "${restore.aggregation.interval}", concurrentExecution = SKIP)
     @SchedulerLock(name = "findAndStartAggregateRestore")
     protected void findAndStartAggregateRestore() {
@@ -727,17 +727,20 @@ public class DbBackupV2Service {
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToAggregate();
         restoresToAggregate.forEach(this::trackAndAggregateRestore);
         restoresToAggregate.forEach(restore -> {
-            if (Objects.equals(restore.getTotal(), restore.getCompleted())) {
-                Map<String, List<EnsuredUser>> dbNameToEnsuredUsers = restore.getLogicalRestores().stream().flatMap(lr -> lr.getRestoreDatabases().stream()
-                                .map(rd -> ensureUsers(lr.getAdapterId(), rd.getName(), rd.getUsers())))
-                        .flatMap(m -> m.entrySet().stream())
-                        .collect(Collectors.toMap(
-                                Map.Entry::getKey,
-                                Map.Entry::getValue
-                        ));
-
-                initializeLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
+            if (!Objects.equals(restore.getTotal(), restore.getCompleted())) {
+                return;
             }
+            Map<String, List<EnsuredUser>> dbNameToEnsuredUsers = restore.getLogicalRestores().stream()
+                    .flatMap(lr -> lr.getRestoreDatabases().stream()
+                            .map(rd -> ensureUsers(lr.getAdapterId(), rd.getName(), rd.getUsers()))
+                    )
+                    .flatMap(m -> m.entrySet().stream())
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            Map.Entry::getValue
+                    ));
+
+            initializeLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
         });
     }
 
@@ -841,8 +844,7 @@ public class DbBackupV2Service {
         restore.setErrorMessage(sb.toString());
     }
 
-    //todo нужен adapterId, userName, dbName, userRole
-    // Map.op(adapterId, List<EnsuredUser>)
+
     protected void initializeLogicalDatabasesFromRestore(Restore restore, Map<String, List<EnsuredUser>> dbNameToEnsuredUsers) {
         log.info("Start initializing logical databases from restore {}", restore.getName());
         try {
@@ -939,30 +941,6 @@ public class DbBackupV2Service {
         log.info("Saving new logical database with id=[{}], adapterId=[{}]", database.getId(), database.getAdapterId());
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
         return database;
-    }
-
-    private void ensureUsers(Database newDatabase, List<RestoreDatabase.User> users) {
-        String dbName = newDatabase.getName();
-
-        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(newDatabase.getAdapterId());
-        RetryPolicy<Object> retryPolicy = buildRetryPolicy(dbName, "ensureUser");
-
-        log.info("Ensuring {} users for database id=[{}] via adapter [{}]",
-                users.size(), newDatabase.getId(), adapter.identifier());
-
-        List<EnsuredUser> ensuredUsers = users.stream()
-                .map(user ->
-                        Failsafe.with(retryPolicy).get(() ->
-                                adapter.ensureUser(user.getName(), null, dbName, user.getRole()))
-                )
-                .toList();
-
-        newDatabase.setConnectionProperties(ensuredUsers.stream().map(EnsuredUser::getConnectionProperties).collect(Collectors.toList()));
-        newDatabase.setResources(ensuredUsers.stream().map(EnsuredUser::getResources).filter(Objects::nonNull).flatMap(Collection::stream).collect(Collectors.toList()));
-        newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
-        encryption.encryptPassword(newDatabase);
-        databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
-        log.info("Users ensured and database [{}] updated", newDatabase.getId());
     }
 
 
