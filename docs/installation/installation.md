@@ -57,7 +57,7 @@ This table contains minimal supported versions:
 
 - If you update from 3.17.0 or older version then migration procedure to v3 classifier will be performed. If there is
   incorrect classifier, update won't be performed. So, it's highly recommended to check microservices' classifiers and
-  update to correct classifier by procedure: [Classifier v3 migration process](../migration/Classifier%20v3%20migration%20process.md).  
+  update to correct classifier by procedure: [Classifier v3 migration process](./Classifier%20v3%20migration%20process.md).  
   By incorrect classifier we mean a classifier which does contains such necessary fields as 'microserviceName',
   'isService' or 'isServiceDb', 'tenantId' in case of tenant database.
 
