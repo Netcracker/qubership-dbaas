@@ -3119,10 +3119,13 @@
               "object"
             ],
             "enum": [
+              "NOT_STARTED",
               "PENDING",
               "IN_PROGRESS",
+              "FAILED",
               "COMPLETED",
-              "FAILED"
+              "DELETE_IN_PROGRESS",
+              "DELETED"
             ],
             "description": "Current state of the restore operation"
           },
@@ -3688,7 +3691,7 @@
       }
     },
     "/api/backups/v1/backup/{backupName}": {
-      "post": {
+      "get": {
         "summary": "Get backup details",
         "description": "Retrieve details about a specific backup operation",
         "tags": [
@@ -3962,6 +3965,9 @@
           "404": {
             "description": "The requested resource could not be found"
           },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource"
+          },
           "500": {
             "description": "An unexpected error occurred on the server"
           }
@@ -4048,6 +4054,14 @@
               "type": "string",
               "pattern": "\\S"
             }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "requestBody": {
@@ -4121,7 +4135,8 @@
             "name": "restoreName",
             "in": "path",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
@@ -4275,7 +4290,8 @@
             "name": "restoreName",
             "in": "path",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
