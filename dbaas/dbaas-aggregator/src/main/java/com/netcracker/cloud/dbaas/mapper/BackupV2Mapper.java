@@ -56,4 +56,6 @@ public interface BackupV2Mapper {
     @Mapping(target = "restoreName", source = "name")
     @Mapping(target = "backupName", source = "backup.name")
     RestoreResponse toRestoreResponse(Restore restore);
+
+    RestoreStatusResponse toRestoreStatusResponse(Restore restore);
 }

@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.Status;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -11,8 +12,8 @@ public class RestoreStatusResponse {
     @Schema(
             description = "Current state of the restore operation",
             required = true,
-            implementation = RestoreStatus.class)
-    private RestoreStatus status;
+            implementation = Status.class)
+    private Status status;
 
     @Schema(
             description = "Total number of databases to be restored",
