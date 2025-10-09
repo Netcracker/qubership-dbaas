@@ -57,16 +57,13 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
+            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource"),
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
     })
     @Path("/operation/backup")
     @POST
-    public Response initiateBackup(@RequestBody(description = "Backup request", required = true) @Valid BackupRequest backupRequest, @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-
-        if (dryRun)
-            return Response.status(Response.Status.NOT_IMPLEMENTED)
-                    .entity("Dry-run mode is not implemented yet")
-                    .build();
+    public Response initiateBackup(@RequestBody(description = "Backup request", required = true) @Valid BackupRequest backupRequest,
+                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         return Response.ok(dbBackupV2Service.backup(backupRequest, dryRun)).build();
     }
 
@@ -80,7 +77,7 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
     })
     @Path("/backup/{backupName}")
-    @POST
+    @GET
     public Response getBackup(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
         return Response.ok(dbBackupV2Service.getBackup(backupName)).build();
     }
@@ -116,8 +113,7 @@ public class DatabaseBackupV2Controller {
     public Response getBackupStatus(@Parameter(description = "Unique identifier of the backup", required = true)
                                     @PathParam("backupName")
                                     @NotBlank String backupName) {
-        BackupStatusResponse backupStatusResponse = dbBackupV2Service.getCurrentStatus(backupName);
-        return Response.ok(backupStatusResponse).build();
+        return Response.ok(dbBackupV2Service.getCurrentStatus(backupName)).build();
     }
 
     @Operation(summary = "Get backup metadata", description = "Retrieve metadata about a completed backup")
@@ -142,7 +138,7 @@ public class DatabaseBackupV2Controller {
     public Response getBackupMetadata(@Parameter(description = "Unique identifier of the backup", required = true)
                                       @PathParam("backupName")
                                       @NotBlank String backupName) {
-        BackupResponse response = dbBackupV2Service.getBackup(backupName);
+        BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
         String digestHeader = DigestUtil.calculateDigest(response);
         return Response.ok(response)
                 .header("Digest", digestHeader)
@@ -196,8 +192,9 @@ public class DatabaseBackupV2Controller {
     public Response restoreBackup(@Parameter(description = "Unique identifier of the backup", required = true)
                                   @PathParam("backupName")
                                   @NotBlank String backupName,
-                                  @RequestBody(description = "Restore request", required = true) RestoreRequest restoreRequest) {
-        return Response.ok().build();
+                                  @RequestBody(description = "Restore request", required = true) RestoreRequest restoreRequest,
+                                  @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
+        return Response.ok(dbBackupV2Service.restore(backupName, restoreRequest, dryRun)).build();
     }
 
     @Operation(summary = "Get restore details", description = "Retrieve details about a specific restore operation")
@@ -211,8 +208,10 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}")
     @GET
-    public Response getRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
-        return Response.ok().build();
+    public Response getRestore(@Parameter(description = "Unique identifier of the restore operation", required = true)
+                               @PathParam("restoreName")
+                               @NotBlank String restoreName) {
+        return Response.ok(dbBackupV2Service.getRestore(restoreName)).build();
     }
 
     @Operation(summary = "Delete restore", description = "Delete a restore operation")
@@ -240,8 +239,10 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}/status")
     @GET
-    public Response getRestoreStatus(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
-        return Response.ok().build();
+    public Response getRestoreStatus(@Parameter(description = "Unique identifier of the restore operation", required = true)
+                                     @PathParam("restoreName")
+                                     @NotBlank String restoreName) {
+        return Response.ok(dbBackupV2Service.getRestoreStatus(restoreName)).build();
     }
 
     @Operation(summary = "Retry restore", description = "Retry a failed restore operation")
