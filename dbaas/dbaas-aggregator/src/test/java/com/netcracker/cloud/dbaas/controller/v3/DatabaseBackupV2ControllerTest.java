@@ -4,10 +4,7 @@ import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.BackupAlreadyExistsException;
-import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
-import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
-import com.netcracker.cloud.dbaas.exceptions.IllegalEntityStateException;
+import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
 import com.netcracker.cloud.dbaas.utils.DigestUtil;
@@ -113,7 +110,7 @@ class DatabaseBackupV2ControllerTest {
                 .body(backupRequest)
                 .when().post("/operation/backup")
                 .then()
-                .statusCode(412)
+                .statusCode(422)
                 .body("reason", equalTo("Backup not allowed"))
                 .body("message", equalTo("The backup request can`t be processed. Backup operation unsupported for databases: " + dbNames));
         verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
@@ -127,7 +124,7 @@ class DatabaseBackupV2ControllerTest {
         BackupRequest backupRequest = createBackupRequest(namespace, backupName);
 
 
-        doThrow(new BackupAlreadyExistsException(backupName, Source.builder().build()))
+        doThrow(new ResourceAlreadyExistsException(backupName, Source.builder().build()))
                 .when(dbBackupV2Service).backup(backupRequest, false);
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
@@ -136,8 +133,8 @@ class DatabaseBackupV2ControllerTest {
                 .when().post("/operation/backup")
                 .then()
                 .statusCode(CONFLICT.getStatusCode())
-                .body("reason", equalTo("Backup already exists"))
-                .body("message", equalTo(String.format("Backup with name '%s' already exists", backupName)))
+                .body("reason", equalTo("Resource already exists"))
+                .body("message", equalTo(String.format("Resource with name '%s' already exists", backupName)))
                 .extract().response().prettyPrint();
         verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
@@ -209,7 +206,7 @@ class DatabaseBackupV2ControllerTest {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .pathParam("backupName", backupName)
-                .when().post("/backup/{backupName}")
+                .when().get("/backup/{backupName}")
                 .then()
                 .statusCode(OK.getStatusCode())
                 .body("backupName", equalTo(backupName))
@@ -221,7 +218,7 @@ class DatabaseBackupV2ControllerTest {
         String backupName = "backupName";
         BackupResponse backupResponse = createBackupResponse(backupName);
 
-        when(dbBackupV2Service.getBackup(backupName))
+        when(dbBackupV2Service.getBackupMetadata(backupName))
                 .thenReturn(backupResponse);
 
         String expectedDigest = DigestUtil.calculateDigest(backupResponse);
@@ -297,10 +294,11 @@ class DatabaseBackupV2ControllerTest {
     void deleteBackup_shouldReturn409_onIllegalState() {
         String backupName = "backup123";
         boolean force = true;
+        Status status = Status.NOT_STARTED;
 
-
-        doThrow(new IllegalEntityStateException(
+        doThrow(new UnprocessableEntityException(
                 backupName,
+                "has invalid status '" + status + "'. Only COMPLETED or FAILED backups can be processed.",
                 Source.builder().build()
         )).when(dbBackupV2Service).deleteBackup(backupName, force);
 
@@ -308,8 +306,10 @@ class DatabaseBackupV2ControllerTest {
                 .contentType(ContentType.JSON)
                 .when().delete("/backup/" + backupName + "?force=" + force)
                 .then()
-                .statusCode(409)
-                .body("message", equalTo(String.format("Entity with id '%s' has illegal state", backupName)));
+                .statusCode(422)
+                .body("message",
+                        equalTo(String.format("Resource '%s' can`t be processed: %s", backupName,
+                                "has invalid status '" + status + "'. Only COMPLETED or FAILED backups can be processed.")));
     }
 
     public static BackupRequest createBackupRequest(String namespace, String backupName) {
