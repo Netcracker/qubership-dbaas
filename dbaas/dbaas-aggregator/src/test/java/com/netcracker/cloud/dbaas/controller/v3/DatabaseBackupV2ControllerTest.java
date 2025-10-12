@@ -2,9 +2,13 @@ package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.enums.BackupStatus;
+import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
-import com.netcracker.cloud.dbaas.enums.Status;
-import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
+import com.netcracker.cloud.dbaas.exceptions.ResourceAlreadyExistsException;
+import com.netcracker.cloud.dbaas.exceptions.UnprocessableEntityException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
 import com.netcracker.cloud.dbaas.utils.DigestUtil;
@@ -144,7 +148,7 @@ class DatabaseBackupV2ControllerTest {
         String backupName = "test-backup-name";
 
         BackupStatusResponse expected = new BackupStatusResponse();
-        expected.setStatus(Status.COMPLETED);
+        expected.setStatus(BackupStatus.COMPLETED);
         expected.setTotal(0);
         expected.setCompleted(0);
         expected.setErrorMessage(null);
@@ -269,8 +273,8 @@ class DatabaseBackupV2ControllerTest {
                 .body(backupResponse)
                 .when().post("/operation/uploadMetadata")
                 .then()
-                .statusCode(BAD_REQUEST.getStatusCode())
-                .body("message", equalTo("Digest header mismatch."))
+                .statusCode(CONFLICT.getStatusCode())
+                .body("message", equalTo("Entity has illegal state: Digest header mismatch"))
                 .extract().response().prettyPrint();
     }
 
@@ -294,11 +298,11 @@ class DatabaseBackupV2ControllerTest {
     void deleteBackup_shouldReturn409_onIllegalState() {
         String backupName = "backup123";
         boolean force = true;
-        Status status = Status.NOT_STARTED;
+        BackupStatus backupStatus = BackupStatus.NOT_STARTED;
 
         doThrow(new UnprocessableEntityException(
                 backupName,
-                "has invalid status '" + status + "'. Only COMPLETED or FAILED backups can be processed.",
+                "has invalid status '" + backupStatus + "'. Only COMPLETED or FAILED backups can be processed.",
                 Source.builder().build()
         )).when(dbBackupV2Service).deleteBackup(backupName, force);
 
@@ -309,7 +313,7 @@ class DatabaseBackupV2ControllerTest {
                 .statusCode(422)
                 .body("message",
                         equalTo(String.format("Resource '%s' can`t be processed: %s", backupName,
-                                "has invalid status '" + status + "'. Only COMPLETED or FAILED backups can be processed.")));
+                                "has invalid status '" + backupStatus + "'. Only COMPLETED or FAILED backups can be processed.")));
     }
 
     public static BackupRequest createBackupRequest(String namespace, String backupName) {
@@ -344,7 +348,7 @@ class DatabaseBackupV2ControllerTest {
                         .build()),
                 Map.of("key", "value"),
                 true,
-                Status.COMPLETED,
+                BackupTaskStatus.COMPLETED,
                 1,
                 1,
                 "path",
@@ -356,7 +360,7 @@ class DatabaseBackupV2ControllerTest {
                 "logicalBackupName",
                 "adapterID",
                 "type",
-                Status.COMPLETED,
+                BackupTaskStatus.COMPLETED,
                 null,
                 null,
                 null,
@@ -364,7 +368,7 @@ class DatabaseBackupV2ControllerTest {
         );
 
         BackupStatusResponse backupStatusResponse = new BackupStatusResponse();
-        backupStatusResponse.setStatus(Status.COMPLETED);
+        backupStatusResponse.setStatus(BackupStatus.COMPLETED);
         backupStatusResponse.setErrorMessage(null);
         backupStatusResponse.setTotal(1);
         backupStatusResponse.setCompleted(1);
@@ -388,7 +392,7 @@ class DatabaseBackupV2ControllerTest {
         backupResponse.setBackupName(backupName);
         backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
         backupResponse.setStorageName(storageName);
-        backupResponse.setStatus(Status.COMPLETED);
+        backupResponse.setStatus(BackupStatus.COMPLETED);
         backupResponse.setTotal(1);
         backupResponse.setCompleted(1);
         backupResponse.setSize(1L);
