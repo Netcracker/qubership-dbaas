@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 public class DbaasAdapterRESTClientFactory {
     @Inject
     @ConfigProperty(name = "dbaas.security.k8s.jwt.enabled")
-    private boolean isJwtEnabled;
+    boolean isJwtEnabled;
 
     @Inject
     TimeMeasurementManager timeMeasurementManager;
