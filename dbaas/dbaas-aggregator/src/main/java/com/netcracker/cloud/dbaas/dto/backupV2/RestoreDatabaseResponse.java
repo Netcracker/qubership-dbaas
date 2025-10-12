@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
-import jakarta.persistence.Column;
+import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -63,9 +62,11 @@ public class RestoreDatabaseResponse {
     private String bgVersion;
 
     @Schema(
-            description = "Restore operation status"
+            description = "Current state of the restore database",
+            required = true,
+            implementation = RestoreTaskStatus.class
     )
-    private Status status;
+    private RestoreTaskStatus status;
 
     @Schema(
             description = "Duration of restore request"

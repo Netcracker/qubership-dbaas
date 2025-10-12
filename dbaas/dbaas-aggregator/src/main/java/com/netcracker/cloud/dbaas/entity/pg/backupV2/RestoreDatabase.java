@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -60,7 +60,7 @@ public class RestoreDatabase {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private Status status;
+    private RestoreTaskStatus status = RestoreTaskStatus.NOT_STARTED;
 
     private long duration;
 

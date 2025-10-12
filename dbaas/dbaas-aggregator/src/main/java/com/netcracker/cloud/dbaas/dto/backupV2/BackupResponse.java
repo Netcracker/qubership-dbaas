@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
-import com.netcracker.cloud.dbaas.enums.Status;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -47,8 +47,8 @@ public class BackupResponse {
     @Schema(
             description = "Current state of the backup operation",
             required = true,
-            implementation = Status.class)
-    private Status status;
+            implementation = BackupStatus.class)
+    private BackupStatus status;
     @Schema(description = "Total number of databases being backed up", example = "5")
     private Integer total;
     @Schema(description = "Number of databases successfully backed up", example = "3")
@@ -64,5 +64,7 @@ public class BackupResponse {
     private List<LogicalBackupResponse> logicalBackups;
 
     private List<BackupExternalDatabaseResponse> externalDatabases;
+
+    private String digest;
     //TODO need granular validation for fields
 }

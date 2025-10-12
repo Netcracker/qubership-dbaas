@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -39,7 +39,7 @@ public class LogicalRestore {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private Status status = Status.NOT_STARTED;
+    private RestoreTaskStatus status = RestoreTaskStatus.NOT_STARTED;
 
     @Column(name = "error_message")
     private String errorMessage;

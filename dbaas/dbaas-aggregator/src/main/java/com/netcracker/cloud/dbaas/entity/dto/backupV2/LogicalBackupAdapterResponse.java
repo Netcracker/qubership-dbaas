@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +14,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LogicalBackupAdapterResponse {
-    private Status status;
+    private BackupTaskStatus status;
     private String errorMessage;
     private String logicalBackupName;
     private LocalDateTime creationTime;
@@ -27,7 +27,7 @@ public class LogicalBackupAdapterResponse {
     @Builder
     public static class BackupDatabaseResponse {
         private String databaseName;
-        private Status status;
+        private BackupTaskStatus status;
         private long size;
         private long duration;
         private String path;

@@ -140,7 +140,8 @@
       "BackupDatabaseResponse": {
         "type": "object",
         "required": [
-          "name"
+          "name",
+          "status"
         ],
         "description": "Logical database backup details",
         "properties": {
@@ -178,7 +179,18 @@
             "type": "boolean"
           },
           "status": {
-            "$ref": "#/components/schemas/Status"
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "description": "Current state of the backup database"
           },
           "size": {
             "type": "integer",
@@ -394,6 +406,9 @@
             "items": {
               "$ref": "#/components/schemas/BackupExternalDatabaseResponse"
             }
+          },
+          "digest": {
+            "type": "string"
           }
         }
       },
@@ -1150,7 +1165,7 @@
             "$ref": "#/components/schemas/UUID"
           },
           "status": {
-            "$ref": "#/components/schemas/Status2",
+            "$ref": "#/components/schemas/Status1",
             "type": "string",
             "description": "This field contains the status of backup process of the specific adapter."
           },
@@ -1433,7 +1448,7 @@
             "$ref": "#/components/schemas/DatabasesBackup"
           },
           "status": {
-            "$ref": "#/components/schemas/Status2"
+            "$ref": "#/components/schemas/Status1"
           },
           "adapterId": {
             "type": "string"
@@ -1845,6 +1860,7 @@
           "logicalBackupName",
           "adapterId",
           "type",
+          "status",
           "backupDatabases"
         ],
         "description": "Logical backup details",
@@ -1863,7 +1879,18 @@
             "description": "Type of the adapter"
           },
           "status": {
-            "$ref": "#/components/schemas/Status"
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "description": "Current state of the backup databases of one adapter"
           },
           "errorMessage": {
             "type": "string"
@@ -1890,7 +1917,8 @@
           "logicalRestoreName",
           "adapterId",
           "type",
-          "restoreDatabases"
+          "restoreDatabases",
+          "status"
         ],
         "description": "Logical restore details",
         "properties": {
@@ -1922,10 +1950,19 @@
             "description": "List of logical restore databases"
           },
           "status": {
-            "$ref": "#/components/schemas/Status",
-            "type": "string",
-            "description": "Status of the logical restore (arbitrary key-value pairs)",
-            "example": "{\"phase\": \"running\", \"progress\": 50}"
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED",
+              "DELETED"
+            ],
+            "description": "Current state of the backup operation"
           },
           "errorMessage": {
             "type": "string",
@@ -2100,7 +2137,7 @@
             "description": "Data of backup process creation."
           },
           "status": {
-            "$ref": "#/components/schemas/Status1",
+            "$ref": "#/components/schemas/Status",
             "type": "string",
             "description": "Status of backup process. This field may contain: FAIL, ACTIVE, PROCEEDING, RESTORING, INVALIDATED, DELETION_FAILED"
           }
@@ -2149,7 +2186,7 @@
             "$ref": "#/components/schemas/Date"
           },
           "status": {
-            "$ref": "#/components/schemas/Status1"
+            "$ref": "#/components/schemas/Status"
           }
         }
       },
@@ -2169,7 +2206,7 @@
             }
           },
           "status": {
-            "$ref": "#/components/schemas/Status2"
+            "$ref": "#/components/schemas/Status1"
           }
         }
       },
@@ -2192,7 +2229,7 @@
             }
           },
           "status": {
-            "$ref": "#/components/schemas/Status2"
+            "$ref": "#/components/schemas/Status1"
           }
         }
       },
@@ -2894,7 +2931,8 @@
         "required": [
           "id",
           "logicalBackupId",
-          "name"
+          "name",
+          "status"
         ],
         "description": "Logical database restore details",
         "properties": {
@@ -2943,9 +2981,18 @@
             "description": "Blue-Green version of database"
           },
           "status": {
-            "$ref": "#/components/schemas/Status",
-            "type": "string",
-            "description": "Restore operation status"
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "description": "Current state of the restore database"
           },
           "duration": {
             "type": "integer",
@@ -3029,7 +3076,8 @@
       "RestoreResponse": {
         "type": "object",
         "required": [
-          "restoreName"
+          "restoreName",
+          "status"
         ],
         "description": "Response containing the restore operation details",
         "properties": {
@@ -3064,10 +3112,19 @@
             "description": "Mapping configuration for the restore"
           },
           "status": {
-            "$ref": "#/components/schemas/Status",
-            "type": "string",
-            "description": "Status of the restore operation (arbitrary key-value pairs)",
-            "example": "{\"phase\": \"completed\", \"duration\": \"5m\"}"
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED",
+              "DELETED"
+            ],
+            "description": "Current state of the backup operation"
           },
           "logicalRestores": {
             "type": "array",
@@ -3090,7 +3147,7 @@
             "description": "This object contains information about restoring the specific adapter."
           },
           "status": {
-            "$ref": "#/components/schemas/Status2",
+            "$ref": "#/components/schemas/Status1",
             "type": "string",
             "description": "The field contains the restore status of specific adapter."
           },
@@ -3124,7 +3181,6 @@
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED",
-              "DELETE_IN_PROGRESS",
               "DELETED"
             ],
             "description": "Current state of the restore operation"
@@ -3319,18 +3375,6 @@
       "Status": {
         "type": "string",
         "enum": [
-          "NOT_STARTED",
-          "PENDING",
-          "IN_PROGRESS",
-          "FAILED",
-          "COMPLETED",
-          "DELETE_IN_PROGRESS",
-          "DELETED"
-        ]
-      },
-      "Status1": {
-        "type": "string",
-        "enum": [
           "FAIL",
           "ACTIVE",
           "PROCEEDING",
@@ -3339,7 +3383,7 @@
           "DELETION_FAILED"
         ]
       },
-      "Status2": {
+      "Status1": {
         "type": "string",
         "enum": [
           "SUCCESS",
@@ -3839,6 +3883,9 @@
           "404": {
             "description": "The requested resource could not be found"
           },
+          "422": {
+            "description": "The request was accepted, but the server could`t process due to incompatible resource"
+          },
           "500": {
             "description": "An unexpected error occurred on the server"
           }
@@ -3968,8 +4015,14 @@
           "409": {
             "description": "The request could not be completed due to a conflict with the current state of the resource"
           },
+          "422": {
+            "description": "The request was accepted, but the server could`t process due to incompatible resource"
+          },
           "500": {
             "description": "An unexpected error occurred on the server"
+          },
+          "501": {
+            "description": "The server does not support the functionality required to fulfill the request"
           }
         },
         "security": [
@@ -4023,6 +4076,9 @@
           },
           "403": {
             "description": "The request was valid, but the server is refusing action"
+          },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource"
           },
           "500": {
             "description": "An unexpected error occurred on the server"
@@ -4108,8 +4164,17 @@
           "404": {
             "description": "The requested resource could not be found"
           },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource"
+          },
+          "422": {
+            "description": "The request was accepted, but the server could`t process due to incompatible resource"
+          },
           "500": {
             "description": "An unexpected error occurred on the server"
+          },
+          "501": {
+            "description": "The server does not support the functionality required to fulfill the request"
           }
         },
         "security": [

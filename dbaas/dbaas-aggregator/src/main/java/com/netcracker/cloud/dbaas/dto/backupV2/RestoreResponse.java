@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.enums.RestoreStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -47,10 +47,10 @@ public class RestoreResponse {
     private Mapping mapping;
 
     @Schema(
-            description = "Status of the restore operation (arbitrary key-value pairs)",
-            example = "{\"phase\": \"completed\", \"duration\": \"5m\"}"
-    )
-    private Status status;
+            description = "Current state of the backup operation",
+            required = true,
+            implementation = RestoreStatus.class)
+    private RestoreStatus status;
 
     @Schema(
             description = "List of logical restores"

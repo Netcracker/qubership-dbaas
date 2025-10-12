@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -26,6 +27,7 @@ public class BackupExternalDatabase {
     private UUID id;
 
     @ManyToOne
+    @JsonBackReference
     @JoinColumn(name = "backup_name")
     private Backup backup;
 

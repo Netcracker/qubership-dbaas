@@ -1,7 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
-import com.netcracker.cloud.dbaas.enums.Status;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -36,20 +37,22 @@ public class Backup {
     private ExternalDatabaseStrategy externalDatabaseStrategy;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private String filters;
+    @Column(name = "filter_criteria", columnDefinition = "jsonb")
+    private FilterCriteriaEntity filterCriteria;
 
     @ToString.Exclude
+    @JsonManagedReference
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalBackup> logicalBackups;
 
     @ToString.Exclude
+    @JsonManagedReference
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupExternalDatabase> externalDatabases;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private Status status = Status.NOT_STARTED;
+    private BackupStatus status = BackupStatus.NOT_STARTED;
 
     private Integer total;
 
@@ -65,11 +68,13 @@ public class Backup {
 
     private boolean imported;
 
-    public Backup(String name, String storageName, String blobPath, ExternalDatabaseStrategy externalDatabaseStrategy, String filters) {
+    private String digest;
+
+    public Backup(String name, String storageName, String blobPath, ExternalDatabaseStrategy externalDatabaseStrategy, FilterCriteriaEntity filterCriteria) {
         this.name = name;
         this.storageName = storageName;
         this.blobPath = blobPath;
         this.externalDatabaseStrategy = externalDatabaseStrategy;
-        this.filters = filters;
+        this.filterCriteria = filterCriteria;
     }
 }

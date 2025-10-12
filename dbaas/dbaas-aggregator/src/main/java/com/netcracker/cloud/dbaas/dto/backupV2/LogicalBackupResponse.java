@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -20,7 +20,11 @@ public class LogicalBackupResponse {
     @Schema(description = "Type of the adapter", required = true)
     private String type;
 
-    private Status status;
+    @Schema(
+            description = "Current state of the backup databases of one adapter",
+            required = true,
+            implementation = BackupTaskStatus.class)
+    private BackupTaskStatus status;
 
     private String errorMessage;
 
