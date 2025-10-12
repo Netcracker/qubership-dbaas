@@ -58,4 +58,12 @@ public interface BackupV2Mapper {
     RestoreResponse toRestoreResponse(Restore restore);
 
     RestoreStatusResponse toRestoreStatusResponse(Restore restore);
+
+    Filter toFilter(FilterEntity entity);
+
+    FilterEntity toFilterEntity(Filter dto);
+
+    FilterCriteria toFilterCriteria(FilterCriteriaEntity entity);
+
+    FilterCriteriaEntity toFilterCriteriaEntity(FilterCriteria dto);
 }
