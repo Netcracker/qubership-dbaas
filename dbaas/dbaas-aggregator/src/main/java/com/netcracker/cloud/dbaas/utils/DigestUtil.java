@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.netcracker.cloud.dbaas.exceptions.DigestCalculationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.security.MessageDigest;
@@ -34,7 +35,7 @@ public class DigestUtil {
             return ALGORITHM + "=" + base64Hash;
         } catch (JsonProcessingException | NoSuchAlgorithmException e) {
             log.error("Failed to calculate digest", e);
-            throw new RuntimeException("Failed to calculate digest", e);
+            throw new DigestCalculationException(e.getMessage());
         }
     }
 }
