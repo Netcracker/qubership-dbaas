@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.enums.RestoreStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -35,8 +35,8 @@ public class Restore {
     private String blobPath;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private String filters;
+    @Column(name = "filter_criteria", columnDefinition = "jsonb")
+    private FilterCriteriaEntity filterCriteria;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
@@ -48,7 +48,7 @@ public class Restore {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private Status status = Status.NOT_STARTED;
+    private RestoreStatus status = RestoreStatus.NOT_STARTED;
 
     private Integer total;
 
@@ -72,11 +72,11 @@ public class Restore {
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof Restore restore)) return false;
-        return Objects.equals(name, restore.name) && Objects.equals(backup, restore.backup) && Objects.equals(storageName, restore.storageName) && Objects.equals(blobPath, restore.blobPath) && Objects.equals(filters, restore.filters) && Objects.equals(mapping, restore.mapping) && Objects.equals(status, restore.status);
+        return Objects.equals(name, restore.name) && Objects.equals(backup, restore.backup) && Objects.equals(storageName, restore.storageName) && Objects.equals(blobPath, restore.blobPath) && Objects.equals(filterCriteria, restore.filterCriteria) && Objects.equals(mapping, restore.mapping) && Objects.equals(status, restore.status);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, backup, storageName, blobPath, filters, mapping, status);
+        return Objects.hash(name, backup, storageName, blobPath, filterCriteria, mapping, status);
     }
 }

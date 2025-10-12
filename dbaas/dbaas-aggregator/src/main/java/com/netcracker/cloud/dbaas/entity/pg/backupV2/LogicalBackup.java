@@ -1,6 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -27,6 +29,7 @@ public class LogicalBackup {
     private String logicalBackupName;
 
     @ManyToOne
+    @JsonBackReference
     @JoinColumn(name = "backup_name")
     private Backup backup;
 
@@ -36,12 +39,13 @@ public class LogicalBackup {
     private String type;
 
     @ToString.Exclude
+    @JsonManagedReference
     @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupDatabase> backupDatabases;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private Status status = Status.NOT_STARTED;
+    private BackupTaskStatus status = BackupTaskStatus.COMPLETED;
 
     @Column(name = "error_message")
     private String errorMessage;

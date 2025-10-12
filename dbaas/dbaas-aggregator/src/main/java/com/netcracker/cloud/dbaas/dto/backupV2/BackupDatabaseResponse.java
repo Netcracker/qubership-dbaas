@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -30,7 +30,11 @@ public class BackupDatabaseResponse {
 
     private boolean configurational;
 
-    private Status status;
+    @Schema(
+            description = "Current state of the backup database",
+            required = true,
+            implementation = BackupTaskStatus.class)
+    private BackupTaskStatus status;
 
     private long size;
 

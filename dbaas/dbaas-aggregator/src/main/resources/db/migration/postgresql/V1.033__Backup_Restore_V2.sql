@@ -4,14 +4,15 @@ create table v2_backup
     storage_name varchar not null,
     blob_path varchar not null,
     external_database_strategy varchar not null,
-    filters jsonb,
+    filter_criteria jsonb,
     status varchar,
     total int,
     completed int,
     size bigint,
     error_message varchar,
     attempt_count int default 0,
-    imported boolean
+    imported boolean,
+    digest varchar
 );
 
 create table v2_logical_backup
@@ -61,7 +62,7 @@ create table v2_restore
     backup_name varchar references v2_backup(name),
     storage_name varchar not null,
     blob_path varchar not null,
-    filters jsonb,
+    filter_criteria jsonb,
     mapping jsonb,
     status varchar,
     total int,

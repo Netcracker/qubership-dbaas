@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
-import jakarta.persistence.Column;
+import com.netcracker.cloud.dbaas.enums.RestoreStatus;
+import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -26,7 +26,6 @@ public class LogicalRestoreResponse {
 
     @Schema(description = "Name of the logical backup in adapter", required = true)
     private String logicalRestoreName;
-    ;
 
     @Schema(
             description = "Unique identifier of the adapter",
@@ -49,10 +48,10 @@ public class LogicalRestoreResponse {
     private List<RestoreDatabaseResponse> restoreDatabases;
 
     @Schema(
-            description = "Status of the logical restore (arbitrary key-value pairs)",
-            example = "{\"phase\": \"running\", \"progress\": 50}"
-    )
-    private Status status;
+            description = "Current state of the backup operation",
+            required = true,
+            implementation = RestoreStatus.class)
+    private RestoreTaskStatus status;
 
     @Schema(
             description = "Information about error message during restore process"

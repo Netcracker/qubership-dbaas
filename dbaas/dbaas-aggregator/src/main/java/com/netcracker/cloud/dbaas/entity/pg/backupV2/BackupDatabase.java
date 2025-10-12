@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.Status;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -29,6 +30,7 @@ public class BackupDatabase {
     private UUID id;
 
     @ManyToOne
+    @JsonBackReference
     @JoinColumn(name = "logical_backup_id")
     private LogicalBackup logicalBackup;
 
@@ -56,7 +58,7 @@ public class BackupDatabase {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private Status status;
+    private BackupTaskStatus status = BackupTaskStatus.NOT_STARTED;
 
     private long size;
 
