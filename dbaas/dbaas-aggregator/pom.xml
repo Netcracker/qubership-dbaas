@@ -202,6 +202,19 @@
             <artifactId>lombok-mapstruct-binding</artifactId>
             <version>${lombok-mapstruct-binding.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-jwt</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-jwt-build</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.netcracker.cloud.security.core.utils</groupId>
+            <artifactId>k8s-utils</artifactId>
+            <version>2.2.2-SNAPSHOT</version>
+        </dependency>
 
         <!-- Test dependencies -->
         <dependency>
@@ -252,6 +265,11 @@
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
             <version>1.21.3</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-oidc-server</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
