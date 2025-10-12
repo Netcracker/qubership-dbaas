@@ -235,7 +235,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4051(
             "CORE-DBAAS-4051",
             "Digest calculation failed",
-            "Failed to calculate digest for %s"
+            "Failed to calculate digest: %s"
     ),
 
     CORE_DBAAS_7002(
