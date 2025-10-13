@@ -231,6 +231,7 @@ public class DatabaseBackupV2Controller {
     @Path("/restore/{restoreName}")
     @DELETE
     public Response deleteRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
+        dbBackupV2Service.deleteRestore(restoreName);
         return Response.noContent().build();
     }
 

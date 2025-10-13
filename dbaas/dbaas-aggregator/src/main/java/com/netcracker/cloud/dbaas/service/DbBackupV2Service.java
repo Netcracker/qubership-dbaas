@@ -1091,6 +1091,29 @@ public class DbBackupV2Service {
         return mapper.toRestoreStatusResponse(getRestoreOrThrowException(restoreName));
     }
 
+    public void deleteRestore(String restoreName) {
+        log.info("delete restoration with name = {}", restoreName);
+        Restore restore = restoreRepository.findByIdOptional(restoreName)
+                .orElse(null);
+
+        if (restore == null)
+            return;
+
+        RestoreStatus status = restore.getStatus();
+        if (status == RestoreStatus.DELETED)
+            return;
+
+        if (status != RestoreStatus.COMPLETED && status != RestoreStatus.FAILED) {
+            throw new UnprocessableEntityException(
+                    restoreName,
+                    "has invalid status '" + status + "'. Only COMPLETED or FAILED restores can be processed.",
+                    Source.builder().build());
+        }
+
+        restore.setStatus(RestoreStatus.DELETED);
+        restoreRepository.save(restore);
+    }
+
     protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,
                                                                  boolean ignoreNotBackupableDatabases,
                                                                  ExternalDatabaseStrategy strategy) {
