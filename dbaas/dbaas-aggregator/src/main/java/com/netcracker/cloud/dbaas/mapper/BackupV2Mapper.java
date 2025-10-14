@@ -1,13 +1,19 @@
 package com.netcracker.cloud.dbaas.mapper;
 
+import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
+import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
+import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
+import com.netcracker.cloud.dbaas.exceptions.IllegalEntityStateException;
+import com.netcracker.cloud.dbaas.exceptions.UnprocessableEntityException;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 
 import java.util.List;
+import java.util.function.Function;
 
 
 @Mapper
@@ -66,4 +72,34 @@ public interface BackupV2Mapper {
     FilterCriteria toFilterCriteria(FilterCriteriaEntity entity);
 
     FilterCriteriaEntity toFilterCriteriaEntity(FilterCriteria dto);
+
+    default BackupTaskStatus toBackupTaskStatus(String status) {
+        return mapStatus(status, BackupTaskStatus::valueOf);
+    }
+
+    default RestoreTaskStatus toRestoreTaskStatus(String status) {
+        return mapStatus(status, RestoreTaskStatus::valueOf);
+    }
+
+    private static <T extends Enum<T>, R extends Enum<R>> R mapStatus(
+            String status,
+            Function<String, R> resultStatusGetter) {
+        if (status == null) {
+            throw new IllegalEntityStateException(
+                    "null status returned from adapter",
+                    Source.builder().build());
+        }
+
+        return switch (status) {
+            case "notStarted" -> resultStatusGetter.apply("NOT_STARTED");
+            case "pending" -> resultStatusGetter.apply("PENDING");
+            case "inProgress" -> resultStatusGetter.apply("IN_PROGRESS");
+            case "completed" -> resultStatusGetter.apply("COMPLETED");
+            case "failed" -> resultStatusGetter.apply("FAILED");
+            default -> throw new UnprocessableEntityException(
+                    status,
+                    "unknown status from adapter",
+                    Source.builder().build());
+        };
+    }
 }
