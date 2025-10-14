@@ -171,7 +171,7 @@ public class DatabaseBackupV2Controller {
         String calculatedDigest = DigestUtil.calculateDigest(backupResponse);
         if (!calculatedDigest.equals(digestHeader))
             throw new IllegalEntityStateException("Digest header mismatch", Source.builder().build());
-
+        backupResponse.setDigest(calculatedDigest);
         dbBackupV2Service.uploadBackupMetadata(backupResponse);
         return Response.ok().build();
     }
@@ -265,7 +265,10 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}/retry")
     @POST
-    public Response retryRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
+    public Response retryRestore(@Parameter(description = "Unique identifier of the restore operation", required = true)
+                                 @PathParam("restoreName")
+                                 String restoreName) {
+        dbBackupV2Service.retryRestore(restoreName);
         return Response.ok().build();
     }
 }

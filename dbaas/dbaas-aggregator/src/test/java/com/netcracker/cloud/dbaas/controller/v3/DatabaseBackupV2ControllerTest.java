@@ -34,10 +34,10 @@ import static org.hamcrest.Matchers.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.any;
 
+@Slf4j
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
 @TestHTTPEndpoint(DatabaseBackupV2Controller.class)
-@Slf4j
 class DatabaseBackupV2ControllerTest {
 
     @InjectMock
