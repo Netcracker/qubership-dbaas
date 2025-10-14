@@ -14,9 +14,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LogicalRestoreAdapterResponse {
-    private RestoreTaskStatus status;
+    private String status;
     private String errorMessage;
-    private String logicalRestoreName;
+    private String restoreId;
     private LocalDateTime creationTime;
     private LocalDateTime completionTime;
     private String storageName;
@@ -31,7 +31,7 @@ public class LogicalRestoreAdapterResponse {
         private String prefix;
         private String previousDatabaseName;
         private String databaseName;
-        private RestoreTaskStatus status;
+        private String status;
         private long duration;
         private String path;
         private String errorMessage;
