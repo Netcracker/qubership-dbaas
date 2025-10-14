@@ -12,9 +12,9 @@ class ServiceAccountRolesManagerTest {
     ServiceAccountRolesManager serviceAccountRolesManager;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() {
         serviceAccountRolesManager = new ServiceAccountRolesManager();
-        serviceAccountRolesManager.onStart(null, "./src/test/resources/roles-secret.yaml");
+        serviceAccountRolesManager.onStart(null, "./src/test/resources/service-account-roles-secret.yaml");
     }
 
     @Test
