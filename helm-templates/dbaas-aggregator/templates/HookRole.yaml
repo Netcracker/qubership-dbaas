@@ -9,7 +9,7 @@ metadata:
     "helm.sh/hook-delete-policy": "before-hook-creation, hook-succeeded"
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
-    deployment.qubership.org/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
     app.kubernetes.io/part-of: {{ .Values.APPLICATION_NAME | default "dbaas" }}
 subjects:
   - kind: ServiceAccount
@@ -31,7 +31,7 @@ metadata:
     "helm.sh/hook-delete-policy": "before-hook-creation, hook-succeeded"
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
-    deployment.qubership.org/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
     app.kubernetes.io/part-of: {{ .Values.APPLICATION_NAME | default "dbaas" }}
 rules:
   - apiGroups:
