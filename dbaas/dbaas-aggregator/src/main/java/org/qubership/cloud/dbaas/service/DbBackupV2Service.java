@@ -218,8 +218,8 @@ public class DbBackupV2Service {
     }
 
     protected void refreshLogicalBackupState(LogicalBackup logicalBackup, LogicalBackupAdapterResponse logicalBackupAdapterResponse) {
-        logicalBackup.setLogicalBackupName(logicalBackupAdapterResponse.getLogicalBackupName());
-        logicalBackup.setStatus(logicalBackupAdapterResponse.getStatus());
+        logicalBackup.setLogicalBackupName(logicalBackupAdapterResponse.getBackupId());
+        logicalBackup.setStatus(mapper.toBackupTaskStatus(logicalBackupAdapterResponse.getStatus()));
         logicalBackup.setErrorMessage(logicalBackupAdapterResponse.getErrorMessage());
         logicalBackup.setCreationTime(logicalBackupAdapterResponse.getCreationTime());
         logicalBackup.setCompletionTime(logicalBackupAdapterResponse.getCompletionTime());
@@ -230,7 +230,7 @@ public class DbBackupV2Service {
         logicalBackupAdapterResponse.getDatabases().forEach(db -> {
             BackupDatabase backupDb = backupDbMap.get(db.getDatabaseName());
             if (backupDb != null) {
-                backupDb.setStatus(db.getStatus());
+                backupDb.setStatus(mapper.toBackupTaskStatus(db.getStatus()));
                 backupDb.setSize(db.getSize());
                 backupDb.setDuration(db.getDuration());
                 backupDb.setCreationTime(db.getCreationTime());
@@ -294,7 +294,10 @@ public class DbBackupV2Service {
 
     private void fetchAndUpdateStatuses(Backup backup) {
         List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups().stream()
-                .filter(db -> BackupTaskStatus.IN_PROGRESS.equals(db.getStatus()))
+                .filter(db -> BackupTaskStatus.IN_PROGRESS == db.getStatus()
+                        || BackupTaskStatus.NOT_STARTED == db.getStatus()
+                        || BackupTaskStatus.PENDING == db.getStatus()
+                )
                 .toList();
 
         List<CompletableFuture<Void>> futures = notFinishedLogicalBackups.stream()
@@ -775,8 +778,8 @@ public class DbBackupV2Service {
     }
 
     private void refreshLogicalRestoreState(LogicalRestore logicalRestore, LogicalRestoreAdapterResponse response) {
-        logicalRestore.setLogicalRestoreName(response.getLogicalRestoreName());
-        logicalRestore.setStatus(response.getStatus());
+        logicalRestore.setLogicalRestoreName(response.getRestoreId());
+        logicalRestore.setStatus(mapper.toRestoreTaskStatus(response.getStatus()));
         logicalRestore.setErrorMessage(response.getErrorMessage());
         logicalRestore.setCreationTime(response.getCreationTime());
         logicalRestore.setCompletionTime(response.getCompletionTime());
@@ -787,7 +790,7 @@ public class DbBackupV2Service {
         response.getDatabases().forEach(db -> {
             RestoreDatabase restoreDatabase = restoreDbMap.get(db.getPreviousDatabaseName());
             if (restoreDatabase != null) {
-                restoreDatabase.setStatus(db.getStatus());
+                restoreDatabase.setStatus(mapper.toRestoreTaskStatus(db.getStatus()));
                 restoreDatabase.setDuration(db.getDuration());
                 restoreDatabase.setPath(db.getPath());
                 restoreDatabase.setErrorMessage(db.getErrorMessage());
@@ -913,7 +916,9 @@ public class DbBackupV2Service {
 
     private void fetchStatuses(Restore restore) {
         List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores().stream()
-                .filter(db -> RestoreTaskStatus.IN_PROGRESS.equals(db.getStatus()))
+                .filter(db -> RestoreTaskStatus.IN_PROGRESS == db.getStatus()
+                        || RestoreTaskStatus.NOT_STARTED == db.getStatus()
+                        || RestoreTaskStatus.PENDING == db.getStatus())
                 .toList();
 
         List<CompletableFuture<Void>> futures = notFinishedLogicalRestores.stream()

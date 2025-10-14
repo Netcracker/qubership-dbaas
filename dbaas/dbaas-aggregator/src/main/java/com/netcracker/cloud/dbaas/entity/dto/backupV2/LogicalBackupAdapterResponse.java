@@ -14,9 +14,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LogicalBackupAdapterResponse {
-    private BackupTaskStatus status;
+    private String status;
     private String errorMessage;
-    private String logicalBackupName;
+    private String backupId;
     private LocalDateTime creationTime;
     private LocalDateTime completionTime;
     private String storageName;
@@ -27,7 +27,7 @@ public class LogicalBackupAdapterResponse {
     @Builder
     public static class BackupDatabaseResponse {
         private String databaseName;
-        private BackupTaskStatus status;
+        private String status;
         private long size;
         private long duration;
         private String path;

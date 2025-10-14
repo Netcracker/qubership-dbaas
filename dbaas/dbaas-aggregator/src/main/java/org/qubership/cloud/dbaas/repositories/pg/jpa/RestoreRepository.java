@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.repositories.pg.jpa;
 
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.Restore;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
+import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
@@ -20,6 +21,6 @@ public class RestoreRepository implements PanacheRepositoryBase<Restore, String>
     }
 
     public List<Restore> findRestoresToAggregate() {
-        return list("status in ?1", List.of(RestoreStatus.PENDING, RestoreStatus.IN_PROGRESS));
+        return list("status in ?1", List.of(RestoreStatus.NOT_STARTED, RestoreStatus.PENDING, RestoreStatus.IN_PROGRESS));
     }
 }
