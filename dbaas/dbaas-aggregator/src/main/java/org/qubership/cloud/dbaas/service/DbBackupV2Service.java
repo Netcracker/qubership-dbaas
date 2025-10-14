@@ -17,7 +17,6 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
-import com.netcracker.cloud.dbaas.utils.DigestUtil;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -116,7 +115,7 @@ public class DbBackupV2Service {
         Backup backup = initializeFullBackupStructure(filteredDb, backupRequest);
         startBackup(backup);
         updateAggregatedStatus(backup);
-
+        backupRepository.save(backup);
         return mapper.toBackupOperationResponse(backup);
     }
 
@@ -161,7 +160,6 @@ public class DbBackupV2Service {
         // Persist and return
         backup.setExternalDatabases(externalDatabases);
         backup.setLogicalBackups(logicalBackups);
-        backup.setDigest(DigestUtil.calculateDigest(backup));
         backupRepository.save(backup);
         return backup;
     }
@@ -290,9 +288,7 @@ public class DbBackupV2Service {
             fetchAndUpdateStatuses(backup);
             updateAggregatedStatus(backup);
             backup.setAttemptCount(backup.getAttemptCount() + 1); // update track attempt
-            backup.setDigest(DigestUtil.calculateDigest(backup));
         }
-
         backupRepository.save(backup);
     }
 
@@ -469,28 +465,23 @@ public class DbBackupV2Service {
             return;
 
         BackupStatus status = backup.getStatus();
-        if (status == BackupStatus.DELETED)
-            return;
-
-
-        if (status != BackupStatus.COMPLETED && status != BackupStatus.FAILED) {
+        if (status != BackupStatus.COMPLETED && status != BackupStatus.FAILED && status != BackupStatus.DELETED) {
             throw new UnprocessableEntityException(
                     backupName,
-                    "has invalid status '" + status + "'. Only COMPLETED or FAILED backups can be processed.",
+                    String.format(
+                            "has invalid status '%s'. Only COMPLETED, DELETED or FAILED backups can be processed.",
+                            status),
                     Source.builder().build()
             );
         }
 
-
         if (!force) {
             backup.setStatus(BackupStatus.DELETED);
-            backup.setDigest(DigestUtil.calculateDigest(backup));
             backupRepository.save(backup);
             return;
         }
 
         backup.setStatus(BackupStatus.DELETE_IN_PROGRESS);
-        backup.setDigest(DigestUtil.calculateDigest(backup));
         backupRepository.save(backup);
 
         Map<String, String> errorHappenedAdapters = new ConcurrentHashMap<>();
@@ -531,7 +522,6 @@ public class DbBackupV2Service {
                     } else {
                         backup.setStatus(BackupStatus.DELETED);
                     }
-                    backup.setDigest(DigestUtil.calculateDigest(backup));
                     backupRepository.save(backup);
                 }));
     }
@@ -1114,6 +1104,10 @@ public class DbBackupV2Service {
         restoreRepository.save(restore);
     }
 
+    public RestoreResponse retryRestore(String restoreName) {
+        throw new FunctionalityNotImplemented("retry restore functionality not implemented yet");
+    }
+
     protected List<Database> validateAndFilterDatabasesForBackup(List<Database> databasesForBackup,
                                                                  boolean ignoreNotBackupableDatabases,
                                                                  ExternalDatabaseStrategy strategy) {
@@ -1193,12 +1187,12 @@ public class DbBackupV2Service {
 
     private Backup getBackupOrThrowException(String backupName) {
         return backupRepository.findByIdOptional(backupName)
-                .orElseThrow(() -> new BackupNotFoundException("Backup not found", Source.builder().build()));
+                .orElseThrow(() -> new BackupNotFoundException(backupName, Source.builder().build()));
     }
 
     private Restore getRestoreOrThrowException(String restoreName) {
         return restoreRepository.findByIdOptional(restoreName)
-                .orElseThrow(() -> new BackupNotFoundException("Restore not found", Source.builder().build()));
+                .orElseThrow(() -> new BackupNotFoundException(restoreName, Source.builder().build()));
     }
 
     private RetryPolicy<Object> buildRetryPolicy(String name, String operation) {
