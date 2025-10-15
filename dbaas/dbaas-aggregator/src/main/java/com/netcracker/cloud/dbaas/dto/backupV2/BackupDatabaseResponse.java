@@ -17,7 +17,13 @@ import java.util.SortedMap;
 @Schema(description = "Logical database backup details")
 public class BackupDatabaseResponse {
 
-    @Schema(description = "Name of the database", example = "mydb", required = true)
+    @Schema(
+            description = "Name of the database",
+            examples = {
+                    "mydb"
+            },
+            required = true
+    )
     private String name;
     @Schema(description = "List of database classifiers")
     private List<SortedMap<String, Object>> classifiers;

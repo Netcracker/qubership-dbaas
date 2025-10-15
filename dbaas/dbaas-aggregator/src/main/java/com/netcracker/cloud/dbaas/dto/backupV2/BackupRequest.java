@@ -14,15 +14,30 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 public class BackupRequest {
 
     @NotBlank
-    @Schema(description = "Unique name for the backup", example = "before-prod-update-20251013T1345-G5s8", required = true)
+    @Schema(
+            description = "Unique name for the backup",
+            examples = {
+                    "before-prod-update-20251013T1345-G5s8"
+            },
+            required = true)
     private String backupName;
 
     @NotBlank
-    @Schema(description = "Identifier of the storage backend", example = "s3-backend", required = true)
+    @Schema(
+            description = "Identifier of the storage backend",
+            examples = {
+                    "s3-backend"
+            },
+            required = true)
     private String storageName;
 
     @NotBlank
-    @Schema(description = "Path in the storage where backup will be stored", example = "/backups/before-prod-update-20251013T1345-G5s8/logical/dbaas/", required = true)
+    @Schema(
+            description = "Path in the storage where backup will be stored",
+            examples = {
+                    "/backups/before-prod-update-20251013T1345-G5s8/logical/dbaas/"
+            },
+            required = true)
     private String blobPath;
 
     @Schema(
@@ -33,7 +48,9 @@ public class BackupRequest {
 
     @Schema(
             description = "How to handle external databases during backup",
-            example = "FAIL",
+            examples = {
+                    "FAIL"
+            },
             implementation = ExternalDatabaseStrategy.class,
             defaultValue = "FAIL"
     )
@@ -43,7 +60,9 @@ public class BackupRequest {
     @NotNull
     @Schema(
             description = "Whether non-backupable databases should be ignored during backup",
-            example = "false",
+            examples = {
+                    "false"
+            },
             defaultValue = "false"
     )
     private Boolean ignoreNotBackupableDatabases = false;

@@ -19,7 +19,9 @@ public class LogicalRestoreResponse {
 
     @Schema(
             description = "Unique identifier of the logical restore",
-            example = "4e1e9922-e5bf-490d-bb57-18a14de593c6",
+            examples = {
+                    "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            },
             required = true
     )
     private UUID id;
@@ -29,14 +31,18 @@ public class LogicalRestoreResponse {
 
     @Schema(
             description = "Unique identifier of the adapter",
-            example = "4e1e9922-e5bf-490d-bb57-18a14de593c6",
+            examples = {
+                    "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            },
             required = true
     )
     private String adapterId;
 
     @Schema(
             description = "Type of the adapter",
-            example = "postgres",
+            examples = {
+                    "postgres"
+            },
             required = true
     )
     private String type;

@@ -16,12 +16,32 @@ public class BackupStatusResponse {
             required = true,
             implementation = BackupStatus.class)
     private BackupStatus status;
-    @Schema(description = "Total number of databases being backed up", example = "5")
+    @Schema(
+            description = "Total number of databases being backed up",
+            examples = {
+                    "5"
+            }
+    )
     private Integer total;
-    @Schema(description = "Number of databases successfully backed up", example = "3")
+    @Schema(
+            description = "Number of databases successfully backed up",
+            examples = {
+                    "3"
+            }
+    )
     private Integer completed;
-    @Schema(description = "Total size of the backup in bytes", example = "1073741824")
+    @Schema(
+            description = "Total size of the backup in bytes",
+            examples = {
+                    "1073741824"
+            }
+    )
     private Long size;
-    @Schema(description = "Error details if the backup failed", example = "Failed to connect to database")
+    @Schema(
+            description = "Error details if the backup failed",
+            examples = {
+                    "Failed to connect to database"
+            }
+    )
     private String errorMessage;
 }

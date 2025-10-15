@@ -124,7 +124,11 @@ public class DatabaseBackupV2Controller {
                             @Header(
                                     name = "Digest",
                                     description = "Digest header with SHA-256 checksum of the response body",
-                                    schema = @Schema(type = SchemaType.STRING, example = "SHA-256=abc123...")
+                                    schema = @Schema(
+                                            type = SchemaType.STRING,
+                                            examples = {
+                                                    "SHA-256=abc123..."
+                                            })
                             )
                     },
                     content = @Content(schema = @Schema(implementation = BackupResponse.class))
@@ -164,7 +168,11 @@ public class DatabaseBackupV2Controller {
                     description = "Digest header in format: sha-256=<base64-hash>",
                     required = true,
                     in = ParameterIn.HEADER,
-                    schema = @Schema(type = SchemaType.STRING, example = "sha-256=nOJRJg..."))
+                    schema = @Schema(
+                            type = SchemaType.STRING,
+                            examples = {
+                                    "sha-256=nOJRJg..."
+                            }))
             @HeaderParam("Digest") @NotNull String digestHeader,
             @RequestBody(description = "Backup metadata", required = true) @Valid BackupResponse backupResponse
     ) {
