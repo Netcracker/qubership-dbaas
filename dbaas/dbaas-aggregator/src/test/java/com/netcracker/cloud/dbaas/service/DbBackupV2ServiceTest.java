@@ -949,7 +949,8 @@ class DbBackupV2ServiceTest {
         List<LogicalBackup> logicalBackups = List.of(logicalBackup, logicalBackup1);
 
         Backup backup = createBackup(backupName, logicalBackups);
-
+        logicalBackup.setBackup(backup);
+        logicalBackup1.setBackup(backup);
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
 
         when(physicalDatabasesService.getAdapterById(adapterIdFirst))

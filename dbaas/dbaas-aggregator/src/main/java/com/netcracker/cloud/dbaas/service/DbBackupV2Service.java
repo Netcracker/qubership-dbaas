@@ -244,30 +244,34 @@ public class DbBackupV2Service {
         Backup backup = logicalBackup.getBackup();
         String storageName = backup.getStorageName();
         String blobPath = backup.getBlobPath();
+        String adapterId = logicalBackup.getAdapterId();
 
         List<Map<String, String>> dbNames = logicalBackup.getBackupDatabases().stream()
-                .map(backupDatabase -> Map.of("databaseName", backupDatabase.getName()))
+                .map(db -> Map.of("databaseName", db.getName()))
                 .toList();
-        String adapterId = logicalBackup.getAdapterId();
 
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), BACKUP_OPERATION);
 
         try {
-            return Failsafe.with(retryPolicy).get(() -> {
-                DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-                LogicalBackupAdapterResponse result = adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
-
-                if (result == null) {
-                    log.error("Empty result from backup operation for adapter: {}", adapterId);
-                    throw new BackupExecutionException("Empty result from backup operation for adapter " + adapterId,
-                            new Throwable());
-                }
-                return result;
-            });
+            return Failsafe.with(retryPolicy).get(() -> executeBackup(adapterId, storageName, blobPath, dbNames));
         } catch (Exception e) {
-            log.error("Failsafe execution failed", e);
+            log.error("Failsafe execution failed for adapterId {} and backup {}", adapterId, logicalBackup.getLogicalBackupName(), e);
             throw new BackupExecutionException("Failsafe execution failed", e);
         }
+    }
+
+    private LogicalBackupAdapterResponse executeBackup(
+            String adapterId, String storageName, String blobPath, List<Map<String, String>> dbNames) {
+
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+        LogicalBackupAdapterResponse result = adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
+
+        if (result == null) {
+            log.error("Empty result from backup operation for adapter: {}", adapterId);
+            throw new BackupExecutionException(String.format("Empty result from backup operation for adapter %s", adapterId), new Throwable());
+        }
+
+        return result;
     }
 
     @Scheduled(every = "${backup.aggregation.interval}", concurrentExecution = SKIP)
@@ -293,33 +297,59 @@ public class DbBackupV2Service {
     }
 
     private void fetchAndUpdateStatuses(Backup backup) {
-        List<LogicalBackup> notFinishedLogicalBackups = backup.getLogicalBackups().stream()
-                .filter(db -> BackupTaskStatus.IN_PROGRESS == db.getStatus()
-                        || BackupTaskStatus.NOT_STARTED == db.getStatus()
-                        || BackupTaskStatus.PENDING == db.getStatus()
-                )
-                .toList();
+        List<LogicalBackup> notFinishedBackups = getNotFinishedLogicalBackups(backup);
 
-        List<CompletableFuture<Void>> futures = notFinishedLogicalBackups.stream()
-                .map(logicalBackup -> {
-                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), TRACK_BACKUP_OPERATION);
-                    return CompletableFuture.supplyAsync(
-                                    asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy).get(() -> {
-                                        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
-                                        return adapter.trackBackupV2(logicalBackup.getLogicalBackupName(), backup.getStorageName(), backup.getBlobPath());
-                                    })), asyncOperations.getBackupPool())
-                            .thenAccept(response ->
-                                    refreshLogicalBackupState(logicalBackup, response))
-                            .exceptionally(throwable -> {
-                                logicalBackup.setStatus(BackupTaskStatus.FAILED);
-                                logicalBackup.setErrorMessage(extractErrorMessage(throwable));
-                                return null;
-                            });
-                })
+        List<CompletableFuture<Void>> futures = notFinishedBackups.stream()
+                .map(this::trackLogicalBackupAsync)
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
+
+    private List<LogicalBackup> getNotFinishedLogicalBackups(Backup backup) {
+        return backup.getLogicalBackups().stream()
+                .filter(db -> db.getStatus() == BackupTaskStatus.IN_PROGRESS
+                        || db.getStatus() == BackupTaskStatus.NOT_STARTED
+                        || db.getStatus() == BackupTaskStatus.PENDING)
+                .toList();
+    }
+
+    private CompletableFuture<Void> trackLogicalBackupAsync(LogicalBackup logicalBackup) {
+        RetryPolicy<Object> retryPolicy =
+                buildRetryPolicy(logicalBackup.getLogicalBackupName(), TRACK_BACKUP_OPERATION);
+
+        return CompletableFuture.supplyAsync(
+                        asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy)
+                                .get(() -> executeTrackBackup(logicalBackup))),
+                        asyncOperations.getBackupPool()
+                )
+                .thenAccept(response -> refreshLogicalBackupState(logicalBackup, response))
+                .exceptionally(throwable -> {
+                    logicalBackup.setStatus(BackupTaskStatus.FAILED);
+                    logicalBackup.setErrorMessage(extractErrorMessage(throwable));
+                    return null;
+                });
+    }
+
+    private LogicalBackupAdapterResponse executeTrackBackup(LogicalBackup logicalBackup) {
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
+        LogicalBackupAdapterResponse response = adapter.trackBackupV2(
+                logicalBackup.getLogicalBackupName(),
+                logicalBackup.getBackup().getStorageName(),
+                logicalBackup.getBackup().getBlobPath()
+        );
+
+        if (response == null) {
+            log.error("Empty response from trackBackupV2 for {}", logicalBackup.getLogicalBackupName());
+            throw new BackupExecutionException(
+                    String.format("Empty response from trackBackupV2 for %s", logicalBackup.getLogicalBackupName()),
+                    new Throwable()
+            );
+        }
+
+        return response;
+    }
+
 
     protected void updateAggregatedStatus(Backup backup) {
         log.info("Start aggregating for backupName: {}", backup.getName());
@@ -492,22 +522,11 @@ public class DbBackupV2Service {
 
 
     public void deleteBackup(String backupName, boolean force) {
-        Backup backup = backupRepository.findByIdOptional(backupName)
-                .orElse(null);
-
+        Backup backup = backupRepository.findByIdOptional(backupName).orElse(null);
         if (backup == null)
             return;
 
-        BackupStatus status = backup.getStatus();
-        if (status != BackupStatus.COMPLETED && status != BackupStatus.FAILED && status != BackupStatus.DELETED) {
-            throw new UnprocessableEntityException(
-                    backupName,
-                    String.format(
-                            "has invalid status '%s'. Only COMPLETED, DELETED or FAILED backups can be processed.",
-                            status),
-                    Source.builder().build()
-            );
-        }
+        validateBackupDeletable(backup);
 
         if (!force) {
             backup.setStatus(BackupStatus.DELETED);
@@ -515,49 +534,84 @@ public class DbBackupV2Service {
             return;
         }
 
+        performForcedBackupDeletion(backup);
+    }
+
+    private void validateBackupDeletable(Backup backup) {
+        BackupStatus status = backup.getStatus();
+        if (status != BackupStatus.COMPLETED
+                && status != BackupStatus.FAILED
+                && status != BackupStatus.DELETED) {
+            throw new UnprocessableEntityException(
+                    backup.getName(),
+                    String.format(
+                            "has invalid status '%s'. Only COMPLETED, DELETED or FAILED backups can be processed.",
+                            status),
+                    Source.builder().build()
+            );
+        }
+    }
+
+    private void performForcedBackupDeletion(Backup backup) {
         backup.setStatus(BackupStatus.DELETE_IN_PROGRESS);
         backupRepository.save(backup);
 
-        Map<String, String> errorHappenedAdapters = new ConcurrentHashMap<>();
-        List<CompletableFuture<Void>> futures = backup.getLogicalBackups().stream()
-                .map(logicalBackup -> {
-                    RetryPolicy<Object> retryPolicy = buildRetryPolicy(
-                            logicalBackup.getLogicalBackupName(),
-                            DELETE_BACKUP_OPERATION);
+        Map<String, String> failedAdapters = new ConcurrentHashMap<>();
 
-                    String adapterId = logicalBackup.getAdapterId();
-                    log.info("Backup with adapter id {} has {} databases to delete", adapterId,
-                            logicalBackup.getBackupDatabases().size());
-                    return CompletableFuture.runAsync(
-                                    asyncOperations.wrapWithContext(() ->
-                                            Failsafe.with(retryPolicy).run(() ->
-                                                    physicalDatabasesService.getAdapterById(adapterId)
-                                                            .deleteBackupV2(logicalBackup.getLogicalBackupName()))
-                                    ), asyncOperations.getBackupPool())
-                            .exceptionally(throwable -> {
-                                String exMessage = extractErrorMessage(throwable);
-                                log.error("Delete backup with adapter id {} (logicalBackup={}) failed: {}",
-                                        adapterId, logicalBackup.getLogicalBackupName(), exMessage);
-                                errorHappenedAdapters.put(adapterId, exMessage);
-                                return null;
-                            });
-                }).toList();
+        List<CompletableFuture<Void>> futures = backup.getLogicalBackups().stream()
+                .map(logicalBackup -> deleteLogicalBackupAsync(logicalBackup, failedAdapters))
+                .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .whenComplete(asyncOperations.wrapWithContext((res, ex) -> {
-                    if (!errorHappenedAdapters.isEmpty()) {
-                        String aggregatedError = String.format(
-                                "Not all backups were deleted successfully in backup %s, failed adapters: %s",
-                                backupName, errorHappenedAdapters
-                        );
-                        log.error(aggregatedError);
-                        backup.setStatus(BackupStatus.FAILED);
-                        backup.setErrorMessage(aggregatedError);
-                    } else {
-                        backup.setStatus(BackupStatus.DELETED);
-                    }
-                    backupRepository.save(backup);
-                }));
+                .whenComplete(asyncOperations.wrapWithContext((res, ex) ->
+                        finalizeBackupDeletion(backup, failedAdapters)));
+    }
+
+    private CompletableFuture<Void> deleteLogicalBackupAsync(
+            LogicalBackup logicalBackup,
+            Map<String, String> failedAdapters
+    ) {
+        String adapterId = logicalBackup.getAdapterId();
+        RetryPolicy<Object> retryPolicy =
+                buildRetryPolicy(logicalBackup.getLogicalBackupName(), DELETE_BACKUP_OPERATION);
+
+        log.info("Backup with adapter id {} has {} databases to delete",
+                adapterId, logicalBackup.getBackupDatabases().size());
+
+        return CompletableFuture.runAsync(
+                        asyncOperations.wrapWithContext(() ->
+                                Failsafe.with(retryPolicy).run(() ->
+                                        executeDeleteBackup(adapterId, logicalBackup.getLogicalBackupName()))),
+                        asyncOperations.getBackupPool()
+                )
+                .exceptionally(throwable -> {
+                    String errorMessage = extractErrorMessage(throwable);
+                    log.error("Delete backup with adapter id {} (logicalBackup={}) failed: {}",
+                            adapterId, logicalBackup.getLogicalBackupName(), errorMessage);
+                    failedAdapters.put(adapterId, errorMessage);
+                    return null;
+                });
+    }
+
+    private void executeDeleteBackup(String adapterId, String logicalBackupName) {
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+        adapter.deleteBackupV2(logicalBackupName);
+    }
+
+    private void finalizeBackupDeletion(Backup backup, Map<String, String> failedAdapters) {
+        if (failedAdapters.isEmpty()) {
+            backup.setStatus(BackupStatus.DELETED);
+            log.info("Backup {} deleted successfully", backup.getName());
+        } else {
+            String aggregatedError = String.format(
+                    "Not all backups were deleted successfully in backup %s, failed adapters: %s",
+                    backup.getName(), failedAdapters
+            );
+            log.error(aggregatedError);
+            backup.setStatus(BackupStatus.FAILED);
+            backup.setErrorMessage(aggregatedError);
+        }
+        backupRepository.save(backup);
     }
 
     public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
@@ -850,20 +904,38 @@ public class DbBackupV2Service {
         });
     }
 
-
     private LogicalRestoreAdapterResponse logicalRestore(LogicalRestore logicalRestore) {
-        String logicalBackupName = logicalRestore.getRestoreDatabases().getFirst().getBackupDatabase().getLogicalBackup().getLogicalBackupName();
+        String logicalBackupName = extractLogicalBackupName(logicalRestore);
+        List<Map<String, String>> databases = buildRestoreDatabases(logicalRestore);
 
-        List<Map<String, String>> databases = logicalRestore.getRestoreDatabases().stream()
+        Restore restore = logicalRestore.getRestore();
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), RESTORE_OPERATION);
+
+        try {
+            return Failsafe.with(retryPolicy)
+                    .get(() -> executeRestore(logicalRestore, logicalBackupName, restore, databases));
+        } catch (Exception e) {
+            log.error("Failsafe execution failed for logical restore {}", logicalRestore.getLogicalRestoreName(), e);
+            throw new BackupExecutionException("Failsafe execution failed", e);
+        }
+    }
+
+    private String extractLogicalBackupName(LogicalRestore logicalRestore) {
+        return logicalRestore.getRestoreDatabases().getFirst()
+                .getBackupDatabase()
+                .getLogicalBackup()
+                .getLogicalBackupName();
+    }
+
+    private List<Map<String, String>> buildRestoreDatabases(LogicalRestore logicalRestore) {
+        return logicalRestore.getRestoreDatabases().stream()
                 .map(restoreDatabase -> {
-                    String namespace = restoreDatabase.getClassifiers()
-                            .stream()
+                    String namespace = restoreDatabase.getClassifiers().stream()
                             .map(i -> (String) i.get("namespace"))
                             .findFirst()
                             .orElse("");
 
-                    String microserviceName = restoreDatabase.getClassifiers()
-                            .stream()
+                    String microserviceName = restoreDatabase.getClassifiers().stream()
                             .map(i -> (String) i.get("microserviceName"))
                             .findFirst()
                             .orElse("");
@@ -873,26 +945,34 @@ public class DbBackupV2Service {
                             "databaseName", restoreDatabase.getName(),
                             "namespace", namespace
                     );
-                }).toList();
+                })
+                .toList();
+    }
 
-        Restore restore = logicalRestore.getRestore();
-        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), RESTORE_OPERATION);
-        boolean dryRun = false; // temporary
-        try {
-            return Failsafe.with(retryPolicy).get(() -> {
-                DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                LogicalRestoreAdapterResponse result = adapter.restoreV2(logicalBackupName, dryRun, new RestoreAdapterRequest(restore.getStorageName(), restore.getBlobPath(), databases));
+    private LogicalRestoreAdapterResponse executeRestore(
+            LogicalRestore logicalRestore,
+            String logicalBackupName,
+            Restore restore,
+            List<Map<String, String>> databases
+    ) {
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
+        boolean dryRun = false; // TODO: make configurable
 
-                if (result == null) {
-                    log.error("Empty result from restore operation for adapter {}", logicalRestore.getAdapterId());
-                    throw new BackupExecutionException("Empty result from restore", new Throwable());
-                }
-                return result;
-            });
-        } catch (Exception e) {
-            log.error("Failsafe execution failed", e);
-            throw new BackupExecutionException("Failsafe execution failed", e);
+        LogicalRestoreAdapterResponse result = adapter.restoreV2(
+                logicalBackupName,
+                dryRun,
+                new RestoreAdapterRequest(restore.getStorageName(), restore.getBlobPath(), databases)
+        );
+
+        if (result == null) {
+            log.error("Empty result from restore operation for adapter {}", logicalRestore.getAdapterId());
+            throw new BackupExecutionException(
+                    String.format("Empty result from restore operation for adapter %s", logicalRestore.getAdapterId()),
+                    new Throwable()
+            );
         }
+
+        return result;
     }
 
 
