@@ -460,14 +460,24 @@ public class DbBackupV2Service {
 
         Backup existingBackup = optionalExisting.get();
 
+        String existingBackupDigest = existingBackup.getDigest();
+        String incomingBackupDigest = incomingBackup.getDigest();
+
         if (existingBackup.getStatus() == BackupStatus.DELETED) {
-            if (existingBackup.isImported() && Objects.equals(existingBackup.getDigest(), incomingBackup.getDigest())) {
-                existingBackup.setStatus(BackupStatus.COMPLETED);
-                backupRepository.save(existingBackup);
-                return;
+            if (existingBackup.isImported()) {
+                if (Objects.equals(existingBackupDigest, incomingBackupDigest)) {
+                    existingBackup.setStatus(BackupStatus.COMPLETED);
+                    backupRepository.save(existingBackup);
+                    return;
+                } else {
+                    throw new IntegrityViolationException(
+                            String.format("expected digest %s but got %s", existingBackupDigest, incomingBackupDigest),
+                            Source.builder().build()
+                    );
+                }
             } else {
                 throw new IllegalEntityStateException(
-                        "Cannot restore deleted backup: CRC mismatch or not imported",
+                        "can`t restore deleted backup that not imported",
                         Source.builder().build()
                 );
             }
@@ -516,7 +526,7 @@ public class DbBackupV2Service {
                             DELETE_BACKUP_OPERATION);
 
                     String adapterId = logicalBackup.getAdapterId();
-                    log.info("backup with adapter id {} has {} databases to delete", adapterId,
+                    log.info("Backup with adapter id {} has {} databases to delete", adapterId,
                             logicalBackup.getBackupDatabases().size());
                     return CompletableFuture.runAsync(
                                     asyncOperations.wrapWithContext(() ->
@@ -1126,7 +1136,7 @@ public class DbBackupV2Service {
     }
 
     public void deleteRestore(String restoreName) {
-        log.info("delete restoration with name = {}", restoreName);
+        log.info("Delete restoration with name = {}", restoreName);
         Restore restore = restoreRepository.findByIdOptional(restoreName)
                 .orElse(null);
 

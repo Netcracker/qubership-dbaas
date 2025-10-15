@@ -237,7 +237,11 @@ public enum ErrorCodes implements ErrorCode {
             "Digest calculation failed",
             "Failed to calculate digest: %s"
     ),
-
+    CORE_DBAAS_4052(
+            "CORE-DBAAS-4052",
+            "Digest mismatch",
+            "Digest header mismatch: %s"
+    ),
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",
             "trackingId not found",
