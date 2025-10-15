@@ -147,8 +147,10 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Name of the database",
-            "example": "mydb"
+            "examples": [
+              "mydb"
+            ],
+            "description": "Name of the database"
           },
           "classifiers": {
             "type": "array",
@@ -254,6 +256,7 @@
           "backupName",
           "storageName",
           "blobPath",
+          "filterCriteria",
           "externalDatabaseStrategy",
           "ignoreNotBackupableDatabases"
         ],
@@ -261,21 +264,27 @@
         "properties": {
           "backupName": {
             "type": "string",
+            "examples": [
+              "before-prod-update-20251013T1345-G5s8"
+            ],
             "pattern": "\\S",
-            "description": "Unique name for the backup",
-            "example": "before-prod-update-20251013T1345-G5s8"
+            "description": "Unique name for the backup"
           },
           "storageName": {
             "type": "string",
+            "examples": [
+              "s3-backend"
+            ],
             "pattern": "\\S",
-            "description": "Identifier of the storage backend",
-            "example": "s3-backend"
+            "description": "Identifier of the storage backend"
           },
           "blobPath": {
             "type": "string",
+            "examples": [
+              "/backups/before-prod-update-20251013T1345-G5s8/logical/dbaas/"
+            ],
             "pattern": "\\S",
-            "description": "Path in the storage where backup will be stored",
-            "example": "/backups/before-prod-update-20251013T1345-G5s8/logical/dbaas/"
+            "description": "Path in the storage where backup will be stored"
           },
           "filterCriteria": {
             "$ref": "#/components/schemas/FilterCriteria",
@@ -292,13 +301,19 @@
               "SKIP",
               "INCLUDE"
             ],
+            "examples": [
+              "FAIL"
+            ],
             "description": "How to handle external databases during backup",
-            "example": "fail"
+            "default": "FAIL"
           },
           "ignoreNotBackupableDatabases": {
             "type": "boolean",
+            "examples": [
+              false
+            ],
             "description": "Whether non-backupable databases should be ignored during backup",
-            "example": false
+            "default": false
           }
         }
       },
@@ -316,21 +331,27 @@
         "properties": {
           "backupName": {
             "type": "string",
+            "examples": [
+              "before-prod-update-20251013T1345-G5s8"
+            ],
             "pattern": "\\S",
-            "description": "Unique identifier of the backup",
-            "example": "before-prod-update-20251013T1345-G5s8"
+            "description": "Unique identifier of the backup"
           },
           "storageName": {
             "type": "string",
+            "examples": [
+              "s3-backend"
+            ],
             "pattern": "\\S",
-            "description": "Name of the storage backend containing the backup",
-            "example": "s3-backend"
+            "description": "Name of the storage backend containing the backup"
           },
           "blobPath": {
             "type": "string",
+            "examples": [
+              "/backups"
+            ],
             "pattern": "\\S",
-            "description": "Path to the backup file in the storage",
-            "example": "/backups"
+            "description": "Path to the backup file in the storage"
           },
           "externalDatabaseStrategy": {
             "type": [
@@ -342,13 +363,17 @@
               "SKIP",
               "INCLUDE"
             ],
-            "description": "How to handle external databases during backup",
-            "example": "fail"
+            "examples": [
+              "fail"
+            ],
+            "description": "How to handle external databases during backup"
           },
           "ignoreNotBackupableDatabases": {
             "type": "boolean",
-            "description": "Whether external databases were skipped during the backup",
-            "example": false
+            "examples": [
+              false
+            ],
+            "description": "Whether external databases were skipped during the backup"
           },
           "filterCriteria": {
             "$ref": "#/components/schemas/FilterCriteria",
@@ -374,25 +399,33 @@
           "total": {
             "type": "integer",
             "format": "int32",
-            "description": "Total number of databases being backed up",
-            "example": 5
+            "examples": [
+              5
+            ],
+            "description": "Total number of databases being backed up"
           },
           "completed": {
             "type": "integer",
             "format": "int32",
-            "description": "Number of databases successfully backed up",
-            "example": 3
+            "examples": [
+              3
+            ],
+            "description": "Number of databases successfully backed up"
           },
           "size": {
             "type": "integer",
             "format": "int64",
-            "description": "Total size of the backup in bytes",
-            "example": 1073741824
+            "examples": [
+              1073741824
+            ],
+            "description": "Total size of the backup in bytes"
           },
           "errorMessage": {
             "type": "string",
-            "description": "Error details if the backup failed",
-            "example": "Failed to connect to database"
+            "examples": [
+              "Failed to connect to database"
+            ],
+            "description": "Error details if the backup failed"
           },
           "logicalBackups": {
             "type": "array",
@@ -438,25 +471,33 @@
           "total": {
             "type": "integer",
             "format": "int32",
-            "description": "Total number of databases being backed up",
-            "example": 5
+            "examples": [
+              5
+            ],
+            "description": "Total number of databases being backed up"
           },
           "completed": {
             "type": "integer",
             "format": "int32",
-            "description": "Number of databases successfully backed up",
-            "example": 3
+            "examples": [
+              3
+            ],
+            "description": "Number of databases successfully backed up"
           },
           "size": {
             "type": "integer",
             "format": "int64",
-            "description": "Total size of the backup in bytes",
-            "example": 1073741824
+            "examples": [
+              1073741824
+            ],
+            "description": "Total size of the backup in bytes"
           },
           "errorMessage": {
             "type": "string",
-            "description": "Error details if the backup failed",
-            "example": "Failed to connect to database"
+            "examples": [
+              "Failed to connect to database"
+            ],
+            "description": "Error details if the backup failed"
           }
         }
       },
@@ -1672,6 +1713,7 @@
         "properties": {
           "filter": {
             "type": "array",
+            "minItems": 1,
             "items": {
               "$ref": "#/components/schemas/Filter"
             },
@@ -1871,8 +1913,10 @@
           },
           "adapterId": {
             "type": "string",
-            "description": "Unique identifier of the adapter",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            "examples": [
+              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            ],
+            "description": "Unique identifier of the adapter"
           },
           "type": {
             "type": "string",
@@ -1925,8 +1969,10 @@
           "id": {
             "$ref": "#/components/schemas/UUID",
             "type": "string",
-            "description": "Unique identifier of the logical restore",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            "examples": [
+              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            ],
+            "description": "Unique identifier of the logical restore"
           },
           "logicalRestoreName": {
             "type": "string",
@@ -1934,13 +1980,17 @@
           },
           "adapterId": {
             "type": "string",
-            "description": "Unique identifier of the adapter",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            "examples": [
+              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            ],
+            "description": "Unique identifier of the adapter"
           },
           "type": {
             "type": "string",
-            "description": "Type of the adapter",
-            "example": "postgres"
+            "examples": [
+              "postgres"
+            ],
+            "description": "Type of the adapter"
           },
           "restoreDatabases": {
             "type": "array",
@@ -1986,23 +2036,27 @@
         "properties": {
           "namespaces": {
             "type": "object",
+            "examples": [
+              {
+                "source-namespace": "target-namespace"
+              }
+            ],
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Mapping of source namespace to target namespace",
-            "example": {
-              "source-namespace": "target-namespace"
-            }
+            "description": "Mapping of source namespace to target namespace"
           },
           "tenants": {
             "type": "object",
+            "examples": [
+              {
+                "source-tenant": "target-tenant"
+              }
+            ],
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Mapping of source tenant to target tenant",
-            "example": {
-              "source-tenant": "target-tenant"
-            }
+            "description": "Mapping of source tenant to target tenant"
           }
         }
       },
@@ -2938,18 +2992,24 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique identifier of the logical restore",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            "examples": [
+              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            ],
+            "description": "Unique identifier of the logical restore"
           },
           "logicalBackupId": {
             "type": "string",
-            "description": "Unique identifier of the logical backup",
-            "example": "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            "examples": [
+              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            ],
+            "description": "Unique identifier of the logical backup"
           },
           "name": {
             "type": "string",
-            "description": "Name of the database",
-            "example": "mydb"
+            "examples": [
+              "mydb"
+            ],
+            "description": "Name of the database"
           },
           "classifiers": {
             "type": "array",
@@ -3042,24 +3102,31 @@
         "required": [
           "restoreName",
           "storageName",
-          "blobPath"
+          "blobPath",
+          "filterCriteria"
         ],
         "description": "Request to restore a database from a backup",
         "properties": {
           "restoreName": {
             "type": "string",
-            "description": "Unique identifier for the restore operation",
-            "example": "restore-before-prod-update-20251203T1020-4t6S"
+            "examples": [
+              "restore-before-prod-update-20251203T1020-4t6S"
+            ],
+            "description": "Unique identifier for the restore operation"
           },
           "storageName": {
             "type": "string",
-            "description": "Name of the storage backend containing the backup",
-            "example": "s3-backend"
+            "examples": [
+              "s3-backend"
+            ],
+            "description": "Name of the storage backend containing the backup"
           },
           "blobPath": {
             "type": "string",
-            "description": "Path to the backup file in the storage",
-            "example": "/backups"
+            "examples": [
+              "/backups"
+            ],
+            "description": "Path to the backup file in the storage"
           },
           "filterCriteria": {
             "$ref": "#/components/schemas/FilterCriteria",
@@ -3083,23 +3150,31 @@
         "properties": {
           "restoreName": {
             "type": "string",
-            "description": "Unique identifier for the restore operation",
-            "example": "restore-before-prod-update-20251203T1020-4t6S"
+            "examples": [
+              "restore-before-prod-update-20251203T1020-4t6S"
+            ],
+            "description": "Unique identifier for the restore operation"
           },
           "backupName": {
             "type": "string",
-            "description": "Unique identifier of the backup name",
-            "example": "before-prod-update-20251013T1345-G5s8"
+            "examples": [
+              "before-prod-update-20251013T1345-G5s8"
+            ],
+            "description": "Unique identifier of the backup name"
           },
           "storageName": {
             "type": "string",
-            "description": "Name of the storage backend containing the backup",
-            "example": "s3-backend"
+            "examples": [
+              "s3-backend"
+            ],
+            "description": "Name of the storage backend containing the backup"
           },
           "blobPath": {
             "type": "string",
-            "description": "Path to the backup file in the storage",
-            "example": "/backups"
+            "examples": [
+              "/backups"
+            ],
+            "description": "Path to the backup file in the storage"
           },
           "filterCriteria": {
             "$ref": "#/components/schemas/FilterCriteria",
@@ -3188,21 +3263,27 @@
           "total": {
             "type": "integer",
             "format": "int32",
+            "examples": [
+              5
+            ],
             "description": "Total number of databases to be restored",
-            "example": 5,
             "minimum": 0
           },
           "completed": {
             "type": "integer",
             "format": "int32",
+            "examples": [
+              3
+            ],
             "description": "Number of databases successfully restored",
-            "example": 3,
             "minimum": 0
           },
           "errorMessage": {
             "type": "string",
-            "description": "Error details if the restore failed",
-            "example": "Insufficient permissions to create database"
+            "examples": [
+              "Insufficient permissions to create database"
+            ],
+            "description": "Error details if the restore failed"
           }
         }
       },
@@ -3462,6 +3543,74 @@
             "type": "string"
           },
           "restoreId": {
+            "type": "string"
+          }
+        }
+      },
+      "TmfError": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "referenceError": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "source": {},
+          "meta": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "TmfErrorResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "referenceError": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "source": {},
+          "meta": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TmfError"
+            }
+          },
+          "@type": {
+            "type": "string"
+          },
+          "@schemaLocation": {
             "type": "string"
           }
         }
@@ -3770,10 +3919,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3820,10 +3983,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3862,7 +4039,9 @@
                 "description": "Digest header with SHA-256 checksum of the response body",
                 "schema": {
                   "type": "string",
-                  "example": "SHA-256\u003dabc123..."
+                  "examples": [
+                    "SHA-256\u003dabc123..."
+                  ]
                 }
               }
             },
@@ -3881,13 +4060,34 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource"
+            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3936,10 +4136,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4010,19 +4224,54 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "409": {
-            "description": "The request could not be completed due to a conflict with the current state of the resource"
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource"
+            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "501": {
-            "description": "The server does not support the functionality required to fulfill the request"
+            "description": "The server does not support the functionality required to fulfill the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4049,7 +4298,9 @@
             "required": true,
             "schema": {
               "type": "string",
-              "example": "sha-256\u003dnOJRJg..."
+              "examples": [
+                "sha-256\u003dnOJRJg..."
+              ]
             }
           }
         ],
@@ -4078,10 +4329,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "409": {
-            "description": "The request could not be completed due to a conflict with the current state of the resource"
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4162,19 +4427,54 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "409": {
-            "description": "The request could not be completed due to a conflict with the current state of the resource"
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource"
+            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "501": {
-            "description": "The server does not support the functionality required to fulfill the request"
+            "description": "The server does not support the functionality required to fulfill the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4223,10 +4523,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4265,10 +4579,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4326,10 +4654,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4378,10 +4720,24 @@
             "description": "The request was valid, but the server is refusing action"
           },
           "404": {
-            "description": "The requested resource could not be found"
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "500": {
-            "description": "An unexpected error occurred on the server"
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
