@@ -376,7 +376,26 @@ public class DbBackupV2Service {
     }
 
     protected List<Database> getAllDbByFilter(FilterCriteria filterCriteria) {
-        String namespace = filterCriteria.getFilter().getFirst().getNamespace().getFirst();
+        Filter filter = filterCriteria.getFilter().getFirst();
+
+        if (filter.getNamespace().isEmpty()) {
+            if (!filter.getMicroserviceName().isEmpty()) {
+                throw new FunctionalityNotImplemented("backup by microservice");
+            }
+            if (!filter.getDatabaseKind().isEmpty()) {
+                throw new FunctionalityNotImplemented("backup by databaseKind");
+            }
+            if (!filter.getDatabaseType().isEmpty()) {
+                throw new FunctionalityNotImplemented("backup by databaseType");
+            }
+            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
+        }
+        if (filter.getNamespace().size() > 1) {
+            throw new FunctionalityNotImplemented("backup by several namespace");
+        }
+
+        String namespace = filter.getNamespace().getFirst();
+
         List<Database> databasesForBackup = databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace);
 
         List<Database> filteredDatabase = databasesForBackup.stream().map(database -> {
@@ -563,7 +582,24 @@ public class DbBackupV2Service {
     }
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
-        String namespace = filterCriteria.getFilter().getFirst().getNamespace().getFirst();
+        Filter filter = filterCriteria.getFilter().getFirst();
+
+        if (filter.getNamespace().isEmpty()) {
+            if (!filter.getMicroserviceName().isEmpty()) {
+                throw new FunctionalityNotImplemented("restoration by microservice");
+            }
+            if (!filter.getDatabaseKind().isEmpty()) {
+                throw new FunctionalityNotImplemented("restoration by databaseKind");
+            }
+            if (!filter.getDatabaseType().isEmpty()) {
+                throw new FunctionalityNotImplemented("restoration by databaseType");
+            }
+            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
+        }
+        if (filter.getNamespace().size() > 1) {
+            throw new FunctionalityNotImplemented("restoration by several namespace");
+        }
+        String namespace = filter.getNamespace().getFirst();
 
         List<BackupDatabaseDelegate> databaseDelegateList = backupDatabasesToFilter.stream()
                 .map(backupDatabase -> {
@@ -932,6 +968,7 @@ public class DbBackupV2Service {
                             .thenAccept(response ->
                                     refreshLogicalRestoreState(logicalRestore, response))
                             .exceptionally(throwable -> {
+                                // TODO need to do something with that status
                                 logicalRestore.setStatus(RestoreTaskStatus.FAILED);
                                 logicalRestore.setErrorMessage(throwable.getCause() != null
                                         ? throwable.getCause().getMessage() : throwable.getMessage());

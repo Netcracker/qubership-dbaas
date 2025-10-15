@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -26,16 +27,24 @@ public class BackupRequest {
 
     @Schema(
             description = "Filter criteria")
+    @Valid
+    @NotNull
     private FilterCriteria filterCriteria;
 
     @Schema(
             description = "How to handle external databases during backup",
-            example = "fail",
-            implementation = ExternalDatabaseStrategy.class)
+            example = "FAIL",
+            implementation = ExternalDatabaseStrategy.class,
+            defaultValue = "FAIL"
+    )
     @NotNull
-    private ExternalDatabaseStrategy externalDatabaseStrategy;
+    private ExternalDatabaseStrategy externalDatabaseStrategy = ExternalDatabaseStrategy.FAIL;
 
     @NotNull
-    @Schema(description = "Whether non-backupable databases should be ignored during backup", example = "false")
-    private Boolean ignoreNotBackupableDatabases;
+    @Schema(
+            description = "Whether non-backupable databases should be ignored during backup",
+            example = "false",
+            defaultValue = "false"
+    )
+    private Boolean ignoreNotBackupableDatabases = false;
 }

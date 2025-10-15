@@ -1,5 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -17,6 +19,8 @@ public class RestoreRequest {
     @Schema(
             description = "Filter criteria"
     )
+    @Valid
+    @NotNull
     private FilterCriteria filterCriteria;
     @Schema(
             description = "Mapping to use for the restore operation")
