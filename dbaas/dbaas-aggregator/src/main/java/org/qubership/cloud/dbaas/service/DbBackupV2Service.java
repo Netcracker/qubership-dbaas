@@ -400,13 +400,7 @@ public class DbBackupV2Service {
 
         List<Database> filteredDatabase = databasesForBackup.stream().map(database -> {
                     List<DatabaseRegistry> databaseRegistries = database.getDatabaseRegistry().stream()
-                            .filter(registry ->
-                                    !registry.getClassifier().containsKey(MARKED_FOR_DROP) &&
-                                            namespace.equals(registry.getClassifier().get("namespace")) &&
-                                            namespace.equals(registry.getNamespace()) &&
-                                            !registry.isMarkedForDrop() &&
-                                            CREATED.equals(registry.getDbState().getDatabaseState())
-                            )
+                            .filter(registry -> isValidRegistry(registry, namespace))
                             .map(registry -> new DatabaseRegistry(registry, registry.getNamespace()))
                             .toList();
 
@@ -427,6 +421,14 @@ public class DbBackupV2Service {
         }
 
         return filteredDatabase;
+    }
+
+    private boolean isValidRegistry(DatabaseRegistry registry, String namespace) {
+        return !registry.isMarkedForDrop()
+                && !registry.getClassifier().containsKey(MARKED_FOR_DROP)
+                && namespace.equals(registry.getClassifier().get("namespace"))
+                && namespace.equals(registry.getNamespace())
+                && CREATED.equals(registry.getDbState().getDatabaseState());
     }
 
     public BackupResponse getBackup(String backupName) {
