@@ -31,14 +31,6 @@ class ServiceAccountRolesAugmentorTest {
     @InjectMocks
     ServiceAccountRolesAugmentor augmentor;
 
-    @BeforeEach
-    void setUp() {
-    }
-
-    @AfterEach
-    void tearDown() {
-    }
-
     @Test
     void augment() {
         ArrayList<ServiceAccountWithRoles> serviceAccounts = new ArrayList<>();

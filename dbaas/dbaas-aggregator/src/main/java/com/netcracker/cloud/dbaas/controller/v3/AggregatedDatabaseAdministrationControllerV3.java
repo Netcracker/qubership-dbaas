@@ -206,7 +206,6 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                             @PathParam(NAMESPACE_PARAMETER) String namespace,
                                             @Parameter(description = "The type of base in which the database was created. For example PostgreSQL  or MongoDB", required = true)
                                             @PathParam("type") String type) {
-        checkOriginService(classifierRequest);
         if (!dBaaService.isValidClassifierV3(classifierRequest.getClassifier()) || !namespaceValidator.checkNamespaceFromClassifier(securityContext, classifierRequest.getClassifier())) {
             throw new InvalidClassifierException("Invalid V3 classifier", classifierRequest.getClassifier(), Source.builder().pointer("").build());
         }

@@ -25,11 +25,10 @@ import java.util.concurrent.TimeUnit;
 public class DbaasAdapterRESTClientFactory {
     @Inject
     @ConfigProperty(name = "dbaas.security.k8s.jwt.enabled")
-    boolean isJwtEnabled;
+    boolean jwtEnabled;
 
     @Inject
     TimeMeasurementManager timeMeasurementManager;
-    KubernetesTokenAuthFilter kubernetesTokenAuthFilter;
 
     public DbaasAdapter createDbaasAdapterClient(String username, String password, String adapterAddress, String type,
                                                  String identifier, AdapterActionTrackerClient tracker) {
@@ -46,7 +45,8 @@ public class DbaasAdapterRESTClientFactory {
     public DbaasAdapter createDbaasAdapterClientV2(String username, String password, String adapterAddress, String type,
                                                    String identifier, AdapterActionTrackerClient tracker, ApiVersion apiVersions) {
         BasicAuthFilter basicAuthFilter = new BasicAuthFilter(username, password);
-        if (isJwtEnabled) {
+        KubernetesTokenAuthFilter kubernetesTokenAuthFilter = null;
+        if (jwtEnabled) {
             kubernetesTokenAuthFilter = new KubernetesTokenAuthFilter(KubernetesServiceAccountToken::getToken);
         }
         DynamicAuthFilter dynamicAuthFilter = new DynamicAuthFilter(kubernetesTokenAuthFilter != null ? kubernetesTokenAuthFilter : basicAuthFilter);
@@ -58,7 +58,7 @@ public class DbaasAdapterRESTClientFactory {
                 .readTimeout(3, TimeUnit.MINUTES)
                 .build(DbaasAdapterRestClientV2.class);
 
-        SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, isJwtEnabled);
+        SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, jwtEnabled);
 
         return (DbaasAdapter) Proxy.newProxyInstance(DbaasAdapter.class.getClassLoader(), new Class[]{DbaasAdapter.class},
                 timeMeasurementManager.provideTimeMeasurementInvocationHandler(new DbaasAdapterRESTClientV2(adapterAddress, type, secureRestClient, identifier, tracker, apiVersions)));

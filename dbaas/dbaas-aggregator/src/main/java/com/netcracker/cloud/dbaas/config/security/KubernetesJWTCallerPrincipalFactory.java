@@ -22,10 +22,10 @@ public class KubernetesJWTCallerPrincipalFactory extends JWTCallerPrincipalFacto
 
     @Inject
     public KubernetesJWTCallerPrincipalFactory(
-            @ConfigProperty(name = "dbaas.security.k8s.jwt.enabled") boolean isJwtEnabled,
+            @ConfigProperty(name = "dbaas.security.k8s.jwt.enabled") boolean jwtEnabled,
             @ConfigProperty(name = "dbaas.security.k8s.jwt.audience") String jwtAudience
     ) {
-        if (!isJwtEnabled) {
+        if (!jwtEnabled) {
             log.info("JWT not enabled, skipping verifier initialization");
             this.verifier = null;
             return;
@@ -48,8 +48,7 @@ public class KubernetesJWTCallerPrincipalFactory extends JWTCallerPrincipalFacto
     @Override
     public JWTCallerPrincipal parse(String token, JWTAuthContextInfo authContextInfo) throws ParseException {
         try {
-            var prin = new DefaultJWTCallerPrincipal(verifier.verify(token));
-            return prin;
+            return new DefaultJWTCallerPrincipal(verifier.verify(token));
         } catch (KubernetesTokenVerificationException e) {
             throw new ParseException("failed to parse kubernetes projected volume token", e);
         }
