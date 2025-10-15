@@ -1,5 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -18,6 +20,8 @@ public class FilterCriteria {
             description = "Apply the filter to the remaining databases",
             required = true
     )
+    @NotNull
+    @Size(min = 1)
     private List<Filter> filter;
     @Schema(
             description = "Include databases that match any of the filters in the list"

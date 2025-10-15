@@ -81,6 +81,7 @@ class DatabaseBackupV2ControllerTest {
         invalidBackupRequest.setBlobPath("BlobPath");
         invalidBackupRequest.setStorageName("storage name");
         invalidBackupRequest.setIgnoreNotBackupableDatabases(false);
+        invalidBackupRequest.setFilterCriteria(new FilterCriteria());
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
@@ -90,7 +91,7 @@ class DatabaseBackupV2ControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", allOf(
                         containsString("backupName: must not be blank"),
-                        containsString("externalDatabaseStrategy: must not be null")
+                        containsString("filter: must not be null")
                 ));
 
         verify(dbBackupV2Service, times(0)).backup(any(), anyBoolean());
