@@ -13,7 +13,10 @@ import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.integration.config.MockOidcTestResource;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.integration.config.SecurityTestProfile;
+import com.netcracker.cloud.dbaas.integration.utils.TestJwtUtils;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
@@ -22,6 +25,7 @@ import com.netcracker.cloud.dbaas.service.*;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.junit.mockito.MockitoConfig;
 import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
@@ -49,6 +53,8 @@ import static org.mockito.Mockito.when;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
+@QuarkusTestResource(MockOidcTestResource.class)
+@TestProfile(SecurityTestProfile.class)
 class SecurityTest {
 
     private static final String TEST_TYPE = "mongodbtest";
@@ -76,6 +82,8 @@ class SecurityTest {
     ProcessConnectionPropertiesService processConnectionPropertiesService;
     @Inject
     PasswordEncryption passwordEncryption;
+    @Inject
+    TestJwtUtils jwtUtils;
 
     @BeforeEach
     void prepareMock() {
@@ -245,6 +253,18 @@ class SecurityTest {
         getByClassifier("discr-tool-user", "someDefaultPassword", classifier).statusCode(OK.getStatusCode());
     }
 
+    @Test
+    void testCreateDatabaseWithKubernetesToken() {
+        createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace"))
+                .statusCode(CREATED.getStatusCode());
+    }
+
+    @Test
+    void testCreateDatabaseWithInvalidKubernetesToken() {
+        createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace")+"pad-to-make-invalid-signature")
+                .statusCode(UNAUTHORIZED.getStatusCode());
+    }
+
     private ValidatableResponse updateClassifier(String user, String password, UpdateClassifierRequestV3 updateClassifierRequest, String namespace, String type) throws JsonProcessingException {
         return given().auth().preemptive().basic(user, password)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -265,6 +285,15 @@ class SecurityTest {
 
     private ValidatableResponse createDatabase(String user, String password) {
         return given().auth().preemptive().basic(user, password)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"type\":\"" + TEST_TYPE + "\", \"classifier\":{\"scope\":\"service\", \"microserviceName\":\"test-name\", \"namespace\":\"unit-test-namespace\"}, \"originService\":\"test-name\"}")
+                .accept(MediaType.APPLICATION_JSON)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then();
+    }
+
+    private ValidatableResponse createDatabaseWithKubernetesToken(String token) {
+        return given().auth().preemptive().oauth2(token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"type\":\"" + TEST_TYPE + "\", \"classifier\":{\"scope\":\"service\", \"microserviceName\":\"test-name\", \"namespace\":\"unit-test-namespace\"}, \"originService\":\"test-name\"}")
                 .accept(MediaType.APPLICATION_JSON)

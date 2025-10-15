@@ -33,6 +33,9 @@ spec:
             -   name: dbaas-security-configuration-volume
                 secret:
                     secretName: 'dbaas-security-configuration-secret'
+            -   name: dbaas-security-service-account-roles-volume
+                secret:
+                  secretName: 'dbaas-security-service-account-roles-secret'
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
@@ -54,6 +57,9 @@ spec:
                 image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
                 volumeMounts:
                 -   name: dbaas-security-configuration-volume
+                    mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+                    readOnly: true
+                -   name: dbaas-security-service-account-roles-volume
                     mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
                     readOnly: true
             {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
