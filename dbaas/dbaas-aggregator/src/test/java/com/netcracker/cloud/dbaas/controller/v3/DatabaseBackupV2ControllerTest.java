@@ -267,15 +267,16 @@ class DatabaseBackupV2ControllerTest {
         backupResponse.setBlobPath("path");
         backupResponse.setStorageName("storageName");
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
-
+        String expectedDigest = DigestUtil.calculateDigest(backupResponse);
+        String incomingDigest = "SHA-256=abc";
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
-                .header("Digest", "SHA-256=abc")
+                .header("Digest", incomingDigest)
                 .body(backupResponse)
                 .when().post("/operation/uploadMetadata")
                 .then()
                 .statusCode(CONFLICT.getStatusCode())
-                .body("message", equalTo("Entity has illegal state: Digest header mismatch"))
+                .body("message", equalTo(String.format("Digest header mismatch: expected digest %s but got %s", expectedDigest, incomingDigest)))
                 .extract().response().prettyPrint();
     }
 

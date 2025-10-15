@@ -1,8 +1,9 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
+import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.exceptions.IllegalEntityStateException;
+import com.netcracker.cloud.dbaas.exceptions.IntegrityViolationException;
 import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
 import com.netcracker.cloud.dbaas.utils.DigestUtil;
 import jakarta.annotation.security.RolesAllowed;
@@ -55,11 +56,16 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served"),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource"),
-            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server"),
-            @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/operation/backup")
     @POST
@@ -74,8 +80,10 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = BackupResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup/{backupName}")
     @GET
@@ -88,8 +96,10 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "204", description = "Backup deleted successfully"),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup/{backupName}")
     @DELETE
@@ -106,8 +116,10 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = BackupStatusResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup/{backupName}/status")
     @GET
@@ -135,9 +147,12 @@ public class DatabaseBackupV2Controller {
             ),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup/{backupName}/metadata")
     @GET
@@ -157,8 +172,10 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served"),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/operation/uploadMetadata")
     @POST
@@ -178,7 +195,9 @@ public class DatabaseBackupV2Controller {
     ) {
         String calculatedDigest = DigestUtil.calculateDigest(backupResponse);
         if (!calculatedDigest.equals(digestHeader))
-            throw new IllegalEntityStateException("Digest header mismatch", Source.builder().build());
+            throw new IntegrityViolationException(
+                    String.format("expected digest %s but got %s", calculatedDigest, digestHeader),
+                    Source.builder().build());
         backupResponse.setDigest(calculatedDigest);
         dbBackupV2Service.uploadBackupMetadata(backupResponse);
         return Response.ok().build();
@@ -195,11 +214,16 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served"),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource"),
-            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server"),
-            @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/restore/{backupName}")
     @POST
@@ -217,8 +241,10 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/restore/{restoreName}")
     @GET
@@ -233,8 +259,10 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "204", description = "Restore operation deleted successfully"),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/restore/{restoreName}")
     @DELETE
@@ -249,8 +277,10 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = RestoreStatusResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/restore/{restoreName}/status")
     @GET
@@ -268,8 +298,10 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found"),
-            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server")
+            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/restore/{restoreName}/retry")
     @POST
