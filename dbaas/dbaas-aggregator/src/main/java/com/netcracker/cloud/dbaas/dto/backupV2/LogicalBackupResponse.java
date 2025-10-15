@@ -15,7 +15,13 @@ public class LogicalBackupResponse {
 
     @Schema(description = "Name of the logical backup in adapter", required = true)
     String logicalBackupName;
-    @Schema(description = "Unique identifier of the adapter", example = "4e1e9922-e5bf-490d-bb57-18a14de593c6", required = true)
+    @Schema(
+            description = "Unique identifier of the adapter",
+            examples = {
+                    "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            },
+            required = true
+    )
     private String adapterId;
     @Schema(description = "Type of the adapter", required = true)
     private String type;

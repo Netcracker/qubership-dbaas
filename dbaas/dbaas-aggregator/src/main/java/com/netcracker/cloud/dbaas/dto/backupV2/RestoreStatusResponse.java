@@ -17,21 +17,27 @@ public class RestoreStatusResponse {
 
     @Schema(
             description = "Total number of databases to be restored",
-            example = "5",
+            examples = {
+                    "5"
+            },
             minimum = "0"
     )
     private Integer total;
 
     @Schema(
             description = "Number of databases successfully restored",
-            example = "3",
+            examples = {
+                    "3"
+            },
             minimum = "0"
     )
     private Integer completed;
 
     @Schema(
             description = "Error details if the restore failed",
-            example = "Insufficient permissions to create database"
+            examples = {
+                    "Insufficient permissions to create database"
+            }
     )
     private String errorMessage;
 }

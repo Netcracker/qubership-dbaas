@@ -13,26 +13,34 @@ import java.util.List;
 public class RestoreResponse {
     @Schema(
             description = "Unique identifier for the restore operation",
-            example = "restore-before-prod-update-20251203T1020-4t6S",
+            examples = {
+                    "restore-before-prod-update-20251203T1020-4t6S"
+            },
             required = true
     )
     private String restoreName;
 
     @Schema(
             description = "Unique identifier of the backup name",
-            example = "before-prod-update-20251013T1345-G5s8"
+            examples = {
+                    "before-prod-update-20251013T1345-G5s8"
+            }
     )
     private String backupName;
 
     @Schema(
             description = "Name of the storage backend containing the backup",
-            example = "s3-backend"
+            examples = {
+                    "s3-backend"
+            }
     )
     private String storageName;
 
     @Schema(
             description = "Path to the backup file in the storage",
-            example = "/backups"
+            examples = {
+                    "/backups"
+            }
     )
     private String blobPath;
 
