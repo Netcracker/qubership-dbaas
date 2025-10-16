@@ -5,7 +5,7 @@ metadata:
     name: '{{ .Values.SERVICE_NAME }}'
     labels:
         app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
-        deployment.qubership.org/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
     ports:
     -   name: web

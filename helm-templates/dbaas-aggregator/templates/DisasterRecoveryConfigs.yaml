@@ -4,8 +4,8 @@ kind: ConfigMap
 metadata:
   name: replication-configuration
   labels:
-    qubership.cloud/part-of: disaster-recovery
-    qubership.cloud/used-by: cluster-replicator
+    netcracker.cloud/part-of: disaster-recovery
+    netcracker.cloud/used-by: cluster-replicator
     managedBy: cluster-replicator
 data: {}
 ---
@@ -14,8 +14,8 @@ kind: ConfigMap
 metadata:
   name: dbaas-dr-profile
   labels:
-    qubership.cloud/part-of: disaster-recovery
-    qubership.cloud/used-by: cluster-replicator
+    netcracker.cloud/part-of: disaster-recovery
+    netcracker.cloud/used-by: cluster-replicator
     profiles-package-type: default
 data:
   hot-standby: |-

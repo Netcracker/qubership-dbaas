@@ -9,7 +9,7 @@ metadata:
     labels:
         name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
-        deployment.qubership.org/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
     replicas: {{ .Values.REPLICAS | default 1 }}
     strategy:
