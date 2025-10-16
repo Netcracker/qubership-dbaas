@@ -475,6 +475,56 @@
       "examples": [
         "- topologyKey: kubernetes.io/hostname"
       ]
+    },
+    "DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT",
+      "type": "string",
+      "title": "The DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT schema",
+      "description": "Parameter specifies the default amount of time the lock should be kept in case the executing node dies",
+      "default": "PT10M",
+      "examples": [
+        "PT10M"
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_CHECK_INTERVAL": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_CHECK_INTERVAL",
+      "type": "string",
+      "title": "The DBAAS_BACKUP_RESTORE_CHECK_INTERVAL schema",
+      "description": "Parameter specifies the period of backup or restore check",
+      "default": "1m",
+      "examples": [
+        "1m"
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS",
+      "type": "integer",
+      "title": "The DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS schema",
+      "description": "Parameter specifies max number of attempts to check backup or restore",
+      "default": 10,
+      "examples": [
+        10
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS",
+      "type": "integer",
+      "title": "The DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS schema",
+      "description": "Parameter specifies the delay between retries in seconds",
+      "default": 3,
+      "examples": [
+        3
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS",
+      "type": "integer",
+      "title": "The DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS schema",
+      "description": "Parameter specifies max number of retries to check backup or restore",
+      "default": 3,
+      "examples": [
+        3
+      ]
     }
   },
   "additionalProperties": true
