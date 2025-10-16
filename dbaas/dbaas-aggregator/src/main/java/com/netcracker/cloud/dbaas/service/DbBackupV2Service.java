@@ -982,7 +982,7 @@ public class DbBackupV2Service {
     }
 
 
-    @Scheduled(every = "${restore.aggregation.interval}", concurrentExecution = SKIP)
+    @Scheduled(every = "${dbaas.backup-restore.check.interval}", concurrentExecution = SKIP)
     @SchedulerLock(name = "checkRestoresAsync")
     protected void checkRestoresAsync() {
         LockAssert.assertLocked();
