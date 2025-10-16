@@ -4181,7 +4181,7 @@ Response model for recreate existing database API. The model contains successful
 
 
 ### UpdateClassifierRequest
-Contains primary or source ("from") classifier by which a database record will be found and changed to target classifier ("from")
+Contains primary or source ("from") classifier by which a database record will be found and changed to target classifier ("to")
 
 | Name                               | Description                                                                     | Schema                 |
 |------------------------------------|---------------------------------------------------------------------------------|------------------------|
