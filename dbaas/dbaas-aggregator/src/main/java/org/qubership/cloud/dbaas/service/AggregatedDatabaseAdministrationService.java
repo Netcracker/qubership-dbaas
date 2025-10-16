@@ -134,7 +134,9 @@ public class AggregatedDatabaseAdministrationService {
         boolean isOwner = Objects.equals(createRequest.getOriginService(), createRequest.getClassifier().get(MICROSERVICE_NAME));
         if (!isOwner && !serviceRole.equals(Role.ADMIN.toString())) {
             databaseRegistryDbaasRepository.delete(databaseRegistry);
-            throw new NotSupportedServiceRoleException();
+            throw new NotSupportedServiceRoleException(createRequest.getUserRole(),
+                    createRequest.getClassifier().get(MICROSERVICE_NAME).toString(),
+                    createRequest.getOriginService());
         }
         return createNewDatabase(createRequest, namespace, password, serviceRole,
                 // current databaseRegistry entity belongs to other transaction - we need to get new entity from repository

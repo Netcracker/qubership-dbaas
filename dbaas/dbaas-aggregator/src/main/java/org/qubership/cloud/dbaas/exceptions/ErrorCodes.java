@@ -103,7 +103,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4023(
             "CORE-DBAAS-4023",
             "Requested role is not allowed by service",
-            "Requested role is not allowed = %s"),
+            "Requested role '%s' from '%s' service cannot be accessed by '%s' service"),
     CORE_DBAAS_4024(
             "CORE-DBAAS-4024",
             "Connection properties doesn't contain field 'role'",
