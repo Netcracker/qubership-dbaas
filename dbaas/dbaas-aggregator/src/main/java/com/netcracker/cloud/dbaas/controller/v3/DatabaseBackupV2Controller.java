@@ -3,6 +3,8 @@ package com.netcracker.cloud.dbaas.controller.v3;
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
+import com.netcracker.cloud.dbaas.enums.BackupStatus;
+import com.netcracker.cloud.dbaas.enums.RestoreStatus;
 import com.netcracker.cloud.dbaas.exceptions.IntegrityViolationException;
 import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
 import com.netcracker.cloud.dbaas.utils.DigestUtil;
@@ -71,7 +73,11 @@ public class DatabaseBackupV2Controller {
     @POST
     public Response initiateBackup(@RequestBody(description = "Backup request", required = true) @Valid BackupRequest backupRequest,
                                    @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        return Response.ok(dbBackupV2Service.backup(backupRequest, dryRun)).build();
+        BackupOperationResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
+        BackupStatus status = response.getDryRun().getStatus();
+        if (status == BackupStatus.COMPLETED || status == BackupStatus.FAILED)
+            return Response.ok(response).build();
+        return Response.accepted(response).build();
     }
 
     @Operation(summary = "Get backup details", description = "Retrieve details about a specific backup operation")
@@ -232,7 +238,11 @@ public class DatabaseBackupV2Controller {
                                   @NotBlank String backupName,
                                   @RequestBody(description = "Restore request", required = true) RestoreRequest restoreRequest,
                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        return Response.ok(dbBackupV2Service.restore(backupName, restoreRequest, dryRun)).build();
+        RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, dryRun);
+        RestoreStatus status = response.getStatus();
+        if (status == RestoreStatus.COMPLETED || status == RestoreStatus.FAILED)
+            return Response.ok(response).build();
+        return Response.accepted(response).build();
     }
 
     @Operation(summary = "Get restore details", description = "Retrieve details about a specific restore operation")
