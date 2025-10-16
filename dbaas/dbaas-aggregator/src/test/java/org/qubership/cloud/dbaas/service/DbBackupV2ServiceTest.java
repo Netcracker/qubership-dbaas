@@ -232,6 +232,129 @@ class DbBackupV2ServiceTest {
         Mockito.verify(adapterTwo, times(1)).backupV2(any());
 
     }
+    // TODO
+    @Test
+    void backup_externalStrategySkip_shouldExcludeExternalDatabasesFromMetadataAndLogicalBackups() {
+        String namespace = "test-namespace";
+        String adapterOneName = "1";
+        String adapterTwoName = "2";
+        String dbName = "db-name";
+        String logicalBackupNameOne = "logicalBackupName1";
+        String logicalBackupNameTwo = "logicalBackupName2";
+        String backupName = "backup123";
+
+        BackupRequest backupRequest = createBackupRequest(backupName, namespace);
+        backupRequest.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        List<Database> registries = getDatabases(dbName, namespace);
+
+        // Mark one of the databases as externally managed
+        registries.stream()
+                .filter(db -> db.getName().equals(dbName + 0))
+                .findAny()
+                .ifPresent(db -> db.setExternallyManageable(true));
+
+        registries.forEach(db -> db.setBgVersion("bgVersion"));
+
+        LogicalBackupAdapterResponse adapterResponseFirst = new LogicalBackupAdapterResponse(
+                "failed",
+                null,
+                logicalBackupNameOne,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                "storageName",
+                "blobPath",
+                List.of(LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
+                        .status("failed")
+                        .size(1L)
+                        .databaseName(dbName + 2)
+                        .build())
+        );
+
+        LogicalBackupAdapterResponse adapterResponseSecond = new LogicalBackupAdapterResponse(
+                "failed",
+                null,
+                logicalBackupNameTwo,
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                "storageName",
+                "blobPath",
+                List.of(
+                        LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
+                                .status("completed")
+                                .size(1L)
+                                .databaseName(dbName + 1)
+                                .build(),
+                        LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
+                                .status("completed")
+                                .size(1L)
+                                .databaseName(dbName + 3)
+                                .build())
+        );
+
+        DbaasAdapter adapterOne = mock(DbaasAdapter.class);
+        DbaasAdapter adapterTwo = mock(DbaasAdapter.class);
+
+        when(databaseDbaasRepository.findAnyLogDbTypeByNamespace(namespace))
+                .thenReturn(registries);
+        when(physicalDatabasesService.getAdapterById(adapterOneName))
+                .thenReturn(adapterOne);
+        when(physicalDatabasesService.getAdapterById(adapterTwoName))
+                .thenReturn(adapterTwo);
+
+        when(adapterOne.type()).thenReturn("postgresql");
+        when(adapterTwo.type()).thenReturn("mongodb");
+
+        when(adapterOne.backupV2(any())).thenReturn(adapterResponseFirst);
+        when(adapterOne.isBackupRestoreSupported()).thenReturn(true);
+        when(adapterTwo.backupV2(any())).thenReturn(adapterResponseSecond);
+        when(adapterTwo.isBackupRestoreSupported()).thenReturn(true);
+
+        BackupOperationResponse response = dbBackupV2Service.backup(backupRequest, false);
+        BackupResponse backupResponse = response.getDryRun();
+
+        // Verify that metadata contains information for 3 databases
+        // and does not include external databases when strategy = SKIP
+        assertEquals(3, backupResponse.getTotal());
+        assertTrue(backupResponse.getExternalDatabases().isEmpty());
+
+        List<LogicalBackup> logicalBackups = logicalBackupRepository.getByBackupName(backupName);
+
+        LogicalBackup logicalBackupFirst = logicalBackups.stream()
+                .filter(db -> db.getLogicalBackupName().equals(logicalBackupNameOne))
+                .findFirst()
+                .orElse(null);
+        LogicalBackup logicalBackupSecond = logicalBackups.stream()
+                .filter(db -> db.getLogicalBackupName().equals(logicalBackupNameTwo))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(logicalBackupFirst);
+        assertNotNull(logicalBackupSecond);
+        assertNotNull(logicalBackupFirst.getBackupDatabases());
+
+        // Verify that the first logical backup contains only one database
+        assertEquals(1, logicalBackupFirst.getBackupDatabases().size());
+
+        // Verify that the external database (dbName0) was excluded
+        BackupDatabase db0 = logicalBackupFirst.getBackupDatabases().stream()
+                .filter(db -> db.getName().equals(dbName + 0))
+                .findFirst()
+                .orElse(null);
+        assertNull(db0);
+
+        db0 = logicalBackupSecond.getBackupDatabases().stream()
+                .filter(db -> db.getName().equals(dbName + 0))
+                .findFirst()
+                .orElse(null);
+        assertNull(db0);
+
+        Backup backup = backupRepository.findById(backupName);
+        assertTrue(backup.getExternalDatabases().isEmpty());
+
+        Mockito.verify(adapterOne, times(1)).backupV2(any());
+        Mockito.verify(adapterTwo, times(1)).backupV2(any());
+    }
+
 
     @Test
     void getAllDbByFilter_shouldFilterRegistriesAndCreateCopy() {
