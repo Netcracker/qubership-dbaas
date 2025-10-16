@@ -64,7 +64,7 @@ public class Backup {
     private String errorMessage;
 
     @Column(name = "attempt_count")
-    private int attemptCount;
+    private int attemptCount = 0;
 
     private boolean imported;
 
@@ -76,5 +76,9 @@ public class Backup {
         this.blobPath = blobPath;
         this.externalDatabaseStrategy = externalDatabaseStrategy;
         this.filterCriteria = filterCriteria;
+    }
+
+    public void incrementAttempt() {
+        this.attemptCount++;
     }
 }
