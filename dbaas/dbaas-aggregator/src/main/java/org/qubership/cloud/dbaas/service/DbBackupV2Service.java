@@ -174,6 +174,13 @@ public class DbBackupV2Service {
     private LogicalBackup createLogicalBackup(String adapterId, List<Database> databases, Backup backup) {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
 
+        if (!isBackupRestoreSupported(adapter)) {
+            log.error("Adapter {} not support backup operation", adapterId);
+            throw new DatabaseBackupNotSupportedException(
+                    String.format("Adapter %s not support backup operation", adapterId),
+                    Source.builder().build());
+        }
+
         LogicalBackup logicalBackup = LogicalBackup.builder()
                 .backup(backup)
                 .adapterId(adapterId)
@@ -237,7 +244,7 @@ public class DbBackupV2Service {
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), BACKUP_OPERATION);
 
         try {
-            return Failsafe.with(retryPolicy).get(() -> executeBackup(adapterId, storageName, blobPath, dbNames));
+            return Failsafe.with(retryPolicy).get(() -> executeBackup(adapterId, storageName, blobPath, dbNames, backup.getName()));
         } catch (Exception e) {
             log.error("Failsafe execution failed for adapterId {} and backup {}", adapterId, logicalBackup.getLogicalBackupName(), e);
             throw new BackupExecutionException("Failsafe execution failed", e);
@@ -245,12 +252,12 @@ public class DbBackupV2Service {
     }
 
     private LogicalBackupAdapterResponse executeBackup(
-            String adapterId, String storageName, String blobPath, List<Map<String, String>> dbNames) {
+            String adapterId, String storageName, String blobPath, List<Map<String, String>> dbNames, String backupName) {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
         LogicalBackupAdapterResponse result = adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
 
         if (result == null) {
-            log.error("Empty result from backup operation for adapter: {}", adapterId);
+            log.error("Empty result from backup operation for adapter: {}, backup: {}", adapterId, backupName);
             throw new BackupExecutionException(String.format("Empty result from backup operation for adapter %s", adapterId), new Throwable());
         }
 
@@ -707,10 +714,11 @@ public class DbBackupV2Service {
         //Check adapters are backupable
         groupedByTypeAndAdapter.keySet().forEach(physicalDatabase -> {
             String adapterId = physicalDatabase.getAdapter().getAdapterId();
-            if (!physicalDatabasesService.getAdapterById(adapterId).isBackupRestoreSupported()) {
-                log.error("Adapter {} not support backup/restore operation", adapterId);
+            DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+            if (!isBackupRestoreSupported(adapter)) {
+                log.error("Adapter {} not support restore operation", adapterId);
                 throw new DatabaseBackupNotSupportedException(
-                        String.format("Adapter %s not support backup/restore operation", adapterId),
+                        String.format("Adapter %s not support restore operation", adapterId),
                         Source.builder().build());
             }
         });
@@ -1272,9 +1280,7 @@ public class DbBackupV2Service {
                         return true;
                     }
                     if (db.getAdapterId() != null) {
-                        return !physicalDatabasesService
-                                .getAdapterById(db.getAdapterId())
-                                .isBackupRestoreSupported();
+                        return !isBackupRestoreSupported(physicalDatabasesService.getAdapterById(db.getAdapterId()));
                     }
                     return false;
                 })
@@ -1306,6 +1312,10 @@ public class DbBackupV2Service {
             filteredDatabases.addAll(externalDatabases);
 
         return filteredDatabases;
+    }
+
+    private boolean isBackupRestoreSupported(DbaasAdapter adapter) {
+        return adapter.isBackupRestoreSupported();
     }
 
     private void backupExistenceCheck(String backupName) {

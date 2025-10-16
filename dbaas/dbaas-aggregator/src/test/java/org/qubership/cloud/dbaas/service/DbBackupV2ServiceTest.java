@@ -784,7 +784,8 @@ class DbBackupV2ServiceTest {
                 .thenReturn(adapter);
         when(adapter.type())
                 .thenReturn("psql");
-
+        when(adapter.isBackupRestoreSupported())
+                .thenReturn(true);
         //then
         dbBackupV2Service.initializeFullBackupStructure(databaseList, backupRequest);
 
