@@ -297,7 +297,7 @@ public class DbBackupV2Service {
         } else {
             fetchAndUpdateStatuses(backup);
             updateAggregatedStatus(backup);
-            backup.setAttemptCount(backup.getAttemptCount() + 1); // update track attempt
+            backup.incrementAttempt(); // update track attempt
         }
         backupRepository.save(backup);
     }
@@ -1029,11 +1029,11 @@ public class DbBackupV2Service {
         if (restore.getAttemptCount() > retryCount) {
             log.warn("The number of attempts of track restore {} exceeded {}", restore.getName(), retryCount);
             restore.setStatus(RestoreStatus.FAILED);
-            restore.setErrorMessage("The number of attempts exceeded " + retryCount);
+            restore.setErrorMessage(String.format("The number of attempts exceeded %s", retryCount));
         } else {
             fetchStatuses(restore);
             aggregateRestoreStatus(restore);
-            restore.setAttemptCount(restore.getAttemptCount() + 1); // update track attempt
+            restore.incrementAttempt(); // update track attempt
         }
 
         restoreRepository.save(restore);

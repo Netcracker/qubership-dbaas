@@ -58,7 +58,7 @@ public class Restore {
     private String errorMessage;
 
     @Column(name = "attempt_count")
-    private int attemptCount;
+    private int attemptCount = 0;
 
     @Data
     @Builder
@@ -67,6 +67,10 @@ public class Restore {
     public static class Mapping {
         Map<String, String> namespaces;
         Map<String, String> tenants;
+    }
+
+    public void incrementAttempt() {
+        this.attemptCount++;
     }
 
     @Override
