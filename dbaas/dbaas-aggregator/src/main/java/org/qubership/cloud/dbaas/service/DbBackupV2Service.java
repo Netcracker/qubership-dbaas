@@ -51,6 +51,12 @@ public class DbBackupV2Service {
     private static final String ENSURE_USER_OPERATION = "ensureUser";
     private static final String TRACK_RESTORE_OPERATION = "trackRestoreV2";
 
+    private static final String USERNAME = "username";
+    private static final String ROLE = "role";
+    private static final String NAMESPACE = "namespace";
+    private static final String MICROSERVICE_NAME = "microserviceName";
+    private static final String DATABASE_NAME = "databaseName";
+
     private final BackupRepository backupRepository;
     private final RestoreRepository restoreRepository;
     private final PhysicalDatabasesService physicalDatabasesService;
@@ -193,8 +199,8 @@ public class DbBackupV2Service {
         return connectionProperties.stream()
                 .map(entry ->
                         new BackupDatabase.User(
-                                (String) entry.get("username"),
-                                (String) entry.get("role")
+                                (String) entry.get(USERNAME),
+                                (String) entry.get(ROLE)
                         )
                 ).toList();
     }
@@ -225,7 +231,7 @@ public class DbBackupV2Service {
         String adapterId = logicalBackup.getAdapterId();
 
         List<Map<String, String>> dbNames = logicalBackup.getBackupDatabases().stream()
-                .map(db -> Map.of("databaseName", db.getName()))
+                .map(db -> Map.of(DATABASE_NAME, db.getName()))
                 .toList();
 
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), BACKUP_OPERATION);
@@ -287,7 +293,7 @@ public class DbBackupV2Service {
         if (backup.getAttemptCount() > retryCount) {
             log.warn("The number of attempts to track backup {} exceeded {}", backup.getName(), retryCount);
             backup.setStatus(BackupStatus.FAILED);
-            backup.setErrorMessage("The number of attempts exceeded " + retryCount);
+            backup.setErrorMessage(String.format("The number of attempts exceeded %s", retryCount));
         } else {
             fetchAndUpdateStatuses(backup);
             updateAggregatedStatus(backup);
@@ -335,9 +341,9 @@ public class DbBackupV2Service {
         );
 
         if (response == null) {
-            log.error("Empty response from trackBackupV2 for {}", logicalBackup.getLogicalBackupName());
+            log.error("Empty response from {} for {}", TRACK_BACKUP_OPERATION, logicalBackup.getLogicalBackupName());
             throw new BackupExecutionException(
-                    String.format("Empty response from trackBackupV2 for %s", logicalBackup.getLogicalBackupName()),
+                    String.format("Empty response from %s for %s", TRACK_BACKUP_OPERATION, logicalBackup.getLogicalBackupName()),
                     new Throwable()
             );
         }
@@ -449,7 +455,7 @@ public class DbBackupV2Service {
     private boolean isValidRegistry(DatabaseRegistry registry, String namespace) {
         return !registry.isMarkedForDrop()
                 && !registry.getClassifier().containsKey(MARKED_FOR_DROP)
-                && namespace.equals(registry.getClassifier().get("namespace"))
+                && namespace.equals(registry.getClassifier().get(NAMESPACE))
                 && namespace.equals(registry.getNamespace())
                 && CREATED.equals(registry.getDbState().getDatabaseState());
     }
@@ -500,7 +506,7 @@ public class DbBackupV2Service {
                 }
             } else {
                 throw new IllegalEntityStateException(
-                        "can`t restore deleted backup that not imported",
+                        String.format("can`t restore %s backup that not imported", BackupStatus.DELETED),
                         Source.builder().build()
                 );
             }
@@ -508,7 +514,7 @@ public class DbBackupV2Service {
 
         // if backup status not DELETED
         throw new IllegalEntityStateException(
-                "Backup already exists and is not DELETED status",
+                String.format("backup already exists and is not %s status", BackupStatus.DELETED),
                 Source.builder().build()
         );
     }
@@ -537,8 +543,8 @@ public class DbBackupV2Service {
             throw new UnprocessableEntityException(
                     backup.getName(),
                     String.format(
-                            "has invalid status '%s'. Only COMPLETED, DELETED or FAILED backups can be processed.",
-                            status),
+                            "has invalid status '%s'. Only %s, %s or %s backups can be processed.",
+                            status, BackupStatus.COMPLETED, BackupStatus.FAILED, BackupStatus.DELETED),
                     Source.builder().build()
             );
         }
@@ -622,7 +628,7 @@ public class DbBackupV2Service {
         BackupStatus backupStatus = backup.getStatus();
         if (BackupStatus.COMPLETED != backupStatus) {
             throw new UnprocessableEntityException(
-                    backupName, "restore can`t process due to backup status " + backupStatus,
+                    backupName, String.format("restore can`t process due to backup status %s", backupStatus),
                     Source.builder().build());
         }
 
@@ -662,7 +668,7 @@ public class DbBackupV2Service {
         List<BackupDatabaseDelegate> databaseDelegateList = backupDatabasesToFilter.stream()
                 .map(backupDatabase -> {
                             List<SortedMap<String, Object>> filteredClassifiers = backupDatabase.getClassifiers().stream()
-                                    .filter(classifier -> namespace.equals(classifier.get("namespace")))
+                                    .filter(classifier -> namespace.equals(classifier.get(NAMESPACE)))
                                     .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
                                     .toList();
 
@@ -760,8 +766,8 @@ public class DbBackupV2Service {
                                 SortedMap<String, Object> updatedClassifier = updateClassifierNamespace(classifier, namespacesMap);
                                 // to prevent collision
                                 if (uniqueClassifiers.contains(updatedClassifier)) {
-                                    String oldNamespace = (String) classifier.get("namespace");
-                                    String updateNamespace = (String) updatedClassifier.get("namespace");
+                                    String oldNamespace = (String) classifier.get(NAMESPACE);
+                                    String updateNamespace = (String) updatedClassifier.get(NAMESPACE);
                                     throw new IllegalEntityStateException(
                                             String.format(
                                                     "classifier with namespace '%s' conflicts with existing classifier '%s'. " +
@@ -775,7 +781,7 @@ public class DbBackupV2Service {
                             .toList();
 
                     BackupDatabase backupDatabase = delegatedBackupDatabase.backupDatabase();
-                    String namespace = (String) classifiers.getFirst().get("namespace");
+                    String namespace = (String) classifiers.getFirst().get(NAMESPACE);
                     String bgVersion = null;
                     if (backupDatabase.isConfigurational()) {
                         Optional<BgNamespace> bgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(namespace);
@@ -804,11 +810,11 @@ public class DbBackupV2Service {
             SortedMap<String, Object> classifier,
             Map<String, String> namespacesMap
     ) {
-        String oldNamespace = (String) classifier.get("namespace");
+        String oldNamespace = (String) classifier.get(NAMESPACE);
         String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
 
         SortedMap<String, Object> updatedClassifier = new TreeMap<>(classifier);
-        updatedClassifier.put("namespace", targetNamespace);
+        updatedClassifier.put(NAMESPACE, targetNamespace);
         return updatedClassifier;
     }
 
@@ -824,8 +830,8 @@ public class DbBackupV2Service {
 
                     // 1) find classifier, that namespace exists in mapping
                     for (var c : classifiers) {
-                        String oldNamespace = (String) c.get("namespace");
-                        microserviceName = (String) c.get("microserviceName");
+                        String oldNamespace = (String) c.get(NAMESPACE);
+                        microserviceName = (String) c.get(MICROSERVICE_NAME);
                         if (namespacesMap.containsKey(oldNamespace)) {
                             targetNamespace = namespacesMap.get(oldNamespace);
                             break;
@@ -834,7 +840,7 @@ public class DbBackupV2Service {
 
                     // 2) if in case namespace not exists in mapping
                     if (targetNamespace == null) {
-                        targetNamespace = (String) classifiers.getFirst().get("namespace");
+                        targetNamespace = (String) classifiers.getFirst().get(NAMESPACE);
                     }
 
                     String type = db.backupDatabase().getLogicalBackup().getType();
@@ -923,19 +929,19 @@ public class DbBackupV2Service {
         return logicalRestore.getRestoreDatabases().stream()
                 .map(restoreDatabase -> {
                     String namespace = restoreDatabase.getClassifiers().stream()
-                            .map(i -> (String) i.get("namespace"))
+                            .map(i -> (String) i.get(NAMESPACE))
                             .findFirst()
                             .orElse("");
 
                     String microserviceName = restoreDatabase.getClassifiers().stream()
-                            .map(i -> (String) i.get("microserviceName"))
+                            .map(i -> (String) i.get(MICROSERVICE_NAME))
                             .findFirst()
                             .orElse("");
 
                     return Map.of(
-                            "microserviceName", microserviceName,
-                            "databaseName", restoreDatabase.getName(),
-                            "namespace", namespace
+                            MICROSERVICE_NAME, microserviceName,
+                            DATABASE_NAME, restoreDatabase.getName(),
+                            NAMESPACE, namespace
                     );
                 })
                 .toList();
@@ -1011,7 +1017,8 @@ public class DbBackupV2Service {
                                         .get(() -> adapter.ensureUser(user.getName(), null, dbName, user.getRole()));
                             } catch (Exception e) {
                                 log.error("Failed to ensure user {} in database {}", user.getName(), dbName, e);
-                                throw new BackupExecutionException("Failed to ensure user " + user.getName(), e);
+                                throw new BackupExecutionException(
+                                        String.format("Failed to ensure user %s", user.getName()), e);
                             }
                         })
                         .toList()
@@ -1065,36 +1072,33 @@ public class DbBackupV2Service {
 
         List<LogicalRestore> logicalRestoreList = restore.getLogicalRestores();
         Set<RestoreTaskStatus> statusSet = new HashSet<>();
+
         int totalDbCount = 0;
         int countCompletedDb = 0;
-        StringBuilder sb = new StringBuilder();
+        List<String> errorMessages = new ArrayList<>();
 
         for (LogicalRestore lr : logicalRestoreList) {
             statusSet.add(lr.getStatus());
-
-            List<RestoreDatabase> dbs = lr.getRestoreDatabases();
-            totalDbCount += dbs.size();
-            countCompletedDb += (int) dbs.stream()
-                    .filter(db -> RestoreTaskStatus.COMPLETED.equals(db.getStatus()))
-                    .count();
 
             String errorMessage = lr.getErrorMessage();
             if (errorMessage != null && !errorMessage.isBlank()) {
                 String warn = String.format("LogicalRestore %s failed: %s",
                         lr.getLogicalRestoreName(), errorMessage);
                 log.warn(warn);
-
-                if (!sb.isEmpty()) {
-                    sb.append("; ");
-                }
-                sb.append(warn);
+                errorMessages.add(errorMessage);
             }
+
+            List<RestoreDatabase> dbs = lr.getRestoreDatabases();
+            totalDbCount += dbs.size();
+            countCompletedDb += (int) dbs.stream()
+                    .filter(db -> RestoreTaskStatus.COMPLETED.equals(db.getStatus()))
+                    .count();
         }
 
         restore.setStatus(aggregateRestoreStatus(statusSet));
         restore.setTotal(totalDbCount);
         restore.setCompleted(countCompletedDb);
-        restore.setErrorMessage(sb.toString());
+        restore.setErrorMessage(String.join("; ", errorMessages));
     }
 
     @Transactional
@@ -1150,7 +1154,7 @@ public class DbBackupV2Service {
             restore.setStatus(RestoreStatus.COMPLETED);
             log.info("Finished initializing logical databases from restore {}", restore.getName());
         } catch (Exception e) {
-            log.error("Some exception occurred during restore process", e);
+            log.error("Exception occurred during restore process", e);
             restore.setStatus(RestoreStatus.FAILED);
             restore.setErrorMessage(e.getMessage());
         }
@@ -1179,7 +1183,7 @@ public class DbBackupV2Service {
         database.setPhysicalDatabaseId(physicalDatabaseId);
 
         classifiers.forEach(classifier -> {
-            String namespace = (String) classifier.get("namespace");
+            String namespace = (String) classifier.get(NAMESPACE);
             DatabaseRegistry databaseRegistry = new DatabaseRegistry();
             databaseRegistry.setClassifier(classifier);
             databaseRegistry.setNamespace(namespace);
@@ -1219,7 +1223,10 @@ public class DbBackupV2Service {
         if (status != RestoreStatus.COMPLETED && status != RestoreStatus.FAILED) {
             throw new UnprocessableEntityException(
                     restoreName,
-                    "has invalid status '" + status + "'. Only COMPLETED or FAILED restores can be processed.",
+                    String.format(
+                            "has invalid status '%s'. Only %s or %s restores can be processed.",
+                            status, RestoreStatus.COMPLETED, RestoreStatus.FAILED
+                    ),
                     Source.builder().build());
         }
 
@@ -1246,9 +1253,9 @@ public class DbBackupV2Service {
 
             switch (strategy) {
                 case FAIL:
-                    log.error("External databases present but strategy=FAIL: {}", externalNames);
+                    log.error("External databases present but strategy={}: {}", ExternalDatabaseStrategy.FAIL, externalNames);
                     throw new DatabaseBackupNotSupportedException(
-                            "External databases not allowed by strategy=FAIL: " + externalNames,
+                            String.format("External databases not allowed by strategy=%s: %s", ExternalDatabaseStrategy.FAIL, externalNames),
                             Source.builder().parameter("ExternalDatabaseStrategy").build()
                     );
                 case SKIP:
@@ -1282,9 +1289,9 @@ public class DbBackupV2Service {
             if (ignoreNotBackupableDatabases) {
                 log.info("Excluding not backupable databases: {}", dbNames);
             } else {
-                log.error("Backup validation failed: Backup operation unsupported for databases: {}", dbNames);
+                log.error("Backup operation unsupported for databases: {}", dbNames);
                 throw new DatabaseBackupNotSupportedException(
-                        "Backup operation unsupported for databases: " + dbNames,
+                        String.format("Backup operation unsupported for databases: %s", dbNames),
                         Source.builder().parameter("ignoreNotBackupableDatabases").build()
                 );
             }
@@ -1315,7 +1322,7 @@ public class DbBackupV2Service {
 
     private Restore getRestoreOrThrowException(String restoreName) {
         return restoreRepository.findByIdOptional(restoreName)
-                .orElseThrow(() -> new BackupNotFoundException(restoreName, Source.builder().build()));
+                .orElseThrow(() -> new BackupRestorationNotFoundException(restoreName, Source.builder().build()));
     }
 
     private RetryPolicy<Object> buildRetryPolicy(String name, String operation) {
