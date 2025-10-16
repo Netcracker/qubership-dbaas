@@ -11,4 +11,8 @@ public class BackupNotFoundException extends ValidationException {
     public BackupNotFoundException(UUID backupId, Source source) {
         super(ErrorCodes.CORE_DBAAS_4012, ErrorCodes.CORE_DBAAS_4012.getDetail(String.valueOf(backupId)), source);
     }
+
+    public BackupNotFoundException(String backupName, Source source){
+        super(ErrorCodes.CORE_DBAAS_4012, ErrorCodes.CORE_DBAAS_4012.getDetail(backupName), source);
+    }
 }

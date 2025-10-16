@@ -22,7 +22,7 @@ public class Utils {
     static final String ERRORS_PORTAL_URL = "https://errors-portal.qubership.org/error/";
     static final String WARNING_MESSAGE = "{} happened during request to {}. Error: {}";
 
-    static Response buildResponse(Response.Status status,
+    static Response buildResponse(Response.StatusType status,
                                   Supplier<TmfErrorResponse> tmfResponseSupplier) {
         return Response.status(status).entity(tmfResponseSupplier.get()).build();
     }
@@ -33,7 +33,7 @@ public class Utils {
         return Response.status(status).entity(tmfResponseSupplier.get()).location(location).build();
     }
 
-    static TmfErrorResponse.TmfErrorResponseBuilder tmfResponseBuilder(ErrorCodeException e, Response.Status status) {
+    static TmfErrorResponse.TmfErrorResponseBuilder tmfResponseBuilder(ErrorCodeException e, Response.StatusType status) {
         return TmfErrorResponse.builder()
                 .id(e.getId())
                 .code(e.getErrorCode().getCode())
@@ -52,7 +52,7 @@ public class Utils {
                 .status(String.valueOf(status.getStatusCode()));
     }
 
-    static Response buildDefaultResponse(UriInfo requestUri, ErrorCodeException e, Response.Status status) {
+    static Response buildDefaultResponse(UriInfo requestUri, ErrorCodeException e, Response.StatusType status) {
         if (status.getFamily() == SERVER_ERROR) {
             log.error(WARNING_MESSAGE, e.getClass().getSimpleName(), requestUri.getPath(), e, e);
         } else {

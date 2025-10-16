@@ -25,13 +25,15 @@ public class ApiVersionController {
     private static final int API_BLUE_GREEN_MINOR = 4;
     private static final int API_DECLARATIVE_MINOR = 0;
     private static final int API_COMPOSITE_MINOR = 0;
+    private static final int API_BACKUPS_MINOR = 0;
 
     private final ApiVersionInfo API_VERSION_INFO =
             new ApiVersionInfo(List.of(
                     new ApiVersionInfo.ApiVersionElement("/api", 3, API_MINOR, List.of(3)),
                     new ApiVersionInfo.ApiVersionElement("/api/bluegreen", 1, API_BLUE_GREEN_MINOR, List.of(1)),
                     new ApiVersionInfo.ApiVersionElement("/api/declarations", 1, API_DECLARATIVE_MINOR, List.of(1)),
-                    new ApiVersionInfo.ApiVersionElement("/api/composite", 1, API_COMPOSITE_MINOR, List.of(1))
+                    new ApiVersionInfo.ApiVersionElement("/api/composite", 1, API_COMPOSITE_MINOR, List.of(1)),
+                    new ApiVersionInfo.ApiVersionElement("/api/backups", 1, API_BACKUPS_MINOR, List.of(1))
             ));
 
     @APIResponse(responseCode = "200",

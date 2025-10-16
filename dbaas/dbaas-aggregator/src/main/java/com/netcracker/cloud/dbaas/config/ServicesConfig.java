@@ -18,9 +18,13 @@ import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.util.List;
 
 import static com.netcracker.cloud.dbaas.JdbcUtils.PROCESS_ORCHESTRATOR_DATASOURCE;
@@ -58,4 +62,14 @@ public class ServicesConfig {
         return new LogicalDbSettingsService(List.of(defaultDbSettingsHandler, postgresqlSettingsHandler));
     }
 
+    @Produces
+    @Singleton
+    public LockProvider lockProvider(@Named(PROCESS_ORCHESTRATOR_DATASOURCE) DataSource dataSource) throws SQLException {
+        return new JdbcTemplateLockProvider(
+                JdbcTemplateLockProvider.Configuration.builder()
+                        .withJdbcTemplate(new JdbcTemplate(dataSource))
+                        .usingDbTime()
+                        .build()
+        );
+    }
 }
