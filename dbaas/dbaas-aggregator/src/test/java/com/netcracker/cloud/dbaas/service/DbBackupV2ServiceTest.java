@@ -828,7 +828,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void findAndStartAggregateBackup_shouldNotRunInParallelAcrossNodes() throws Exception {
+    void checkBackupsAsync_shouldNotRunInParallelAcrossNodes() throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch latch = new CountDownLatch(2);
         AtomicInteger executions = new AtomicInteger();
@@ -838,21 +838,21 @@ class DbBackupV2ServiceTest {
 
         LockConfiguration config = new LockConfiguration(
                 Instant.now(),
-                "findAndStartAggregateBackup",
+                "checkBackupsAsync",
                 Duration.ofMinutes(5),
                 Duration.ofMinutes(1)
         );
 
         Runnable pod1Job = () -> {
             assertTrue(pod1LockProvider.lock(config).isPresent(), "pod1LockProvider don`t present");
-            dbBackupV2Service.findAndStartAggregateBackup();
+            dbBackupV2Service.checkBackupsAsync();
             executions.incrementAndGet();
             latch.countDown();
         };
 
         Runnable pod2Job = () -> {
             assertTrue(pod2LockProvider.lock(config).isPresent(), "pod2LockProvider don`t present");
-            dbBackupV2Service.findAndStartAggregateBackup();
+            dbBackupV2Service.checkBackupsAsync();
             executions.incrementAndGet();
             latch.countDown();
         };
