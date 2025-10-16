@@ -53,6 +53,7 @@ class DatabaseBackupV2ControllerTest {
         BackupResponse backupResponse = new BackupResponse();
         backupResponse.setBackupName(backupName);
         backupResponse.setStorageName("storageName");
+        backupResponse.setStatus(BackupStatus.IN_PROGRESS);
 
         BackupOperationResponse response = new BackupOperationResponse(
                 backupName,
@@ -67,7 +68,7 @@ class DatabaseBackupV2ControllerTest {
                 .body(backupRequest)
                 .when().post("/operation/backup")
                 .then()
-                .statusCode(OK.getStatusCode())
+                .statusCode(ACCEPTED.getStatusCode())
                 .body("backupName", equalTo(backupName))
                 .body("dryRun.backupName", equalTo(backupName))
                 .body("dryRun.storageName", equalTo(backupResponse.getStorageName()));
