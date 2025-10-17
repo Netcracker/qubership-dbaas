@@ -3973,6 +3973,9 @@
           }
         ],
         "responses": {
+          "202": {
+            "description": "Backup delete initialized successfully"
+          },
           "204": {
             "description": "Backup deleted successfully"
           },
@@ -4215,7 +4218,14 @@
             }
           },
           "400": {
-            "description": "The request was invalid or cannot be served"
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Authentication is required and has failed or has not been provided"
@@ -4320,7 +4330,14 @@
             "description": "Backup metadata uploaded successfully"
           },
           "400": {
-            "description": "The request was invalid or cannot be served"
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Authentication is required and has failed or has not been provided"
@@ -4418,7 +4435,14 @@
             }
           },
           "400": {
-            "description": "The request was invalid or cannot be served"
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Authentication is required and has failed or has not been provided"
