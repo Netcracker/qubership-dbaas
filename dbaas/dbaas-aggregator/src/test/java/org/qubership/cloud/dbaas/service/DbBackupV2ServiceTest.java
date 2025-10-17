@@ -998,7 +998,7 @@ class DbBackupV2ServiceTest {
         String logicalBackupName2 = "mock-second-name";
 
         LogicalBackupAdapterResponse adapterResponse = new LogicalBackupAdapterResponse(
-                "pending",
+                "inProgress",
                 null,
                 logicalBackupName1,
                 LocalDateTime.now(),
@@ -1011,14 +1011,14 @@ class DbBackupV2ServiceTest {
                                 .size(2)
                                 .build(),
                         LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
-                                .status("pending")
+                                .status("notStarted")
                                 .databaseName("db2")
                                 .size(1)
                                 .build()
                 )
         );
         LogicalBackupAdapterResponse adapterResponse2 = new LogicalBackupAdapterResponse(
-                "pending",
+                "inProgress",
                 null,
                 logicalBackupName2,
                 LocalDateTime.now(),
@@ -1031,7 +1031,7 @@ class DbBackupV2ServiceTest {
                                 .size(2)
                                 .build(),
                         LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
-                                .status("pending")
+                                .status("notStarted")
                                 .databaseName("db2")
                                 .size(1)
                                 .build()
@@ -1096,7 +1096,7 @@ class DbBackupV2ServiceTest {
 
         assertNotNull(expectedBackup);
         assertEquals(1, backup.getAttemptCount());
-        assertEquals(BackupStatus.PENDING, expectedBackup.getStatus());
+        assertEquals(BackupStatus.IN_PROGRESS, expectedBackup.getStatus());
         assertEquals(4, expectedBackup.getTotal());
         assertEquals(6, expectedBackup.getSize());
         assertEquals(2, expectedBackup.getCompleted());
@@ -1145,7 +1145,7 @@ class DbBackupV2ServiceTest {
         LogicalBackup logicalBackup = new LogicalBackup();
         logicalBackup.setLogicalBackupName(logicalBackupName1);
         logicalBackup.setAdapterId(adapterIdFirst);
-        logicalBackup.setStatus(BackupTaskStatus.PENDING);
+        logicalBackup.setStatus(BackupTaskStatus.IN_PROGRESS);
         logicalBackup.setType("postgresql");
         logicalBackup.setBackupDatabases(List.of(BackupDatabase.builder()
                         .name("db1")
@@ -1164,19 +1164,19 @@ class DbBackupV2ServiceTest {
 
         LogicalBackup logicalBackup1 = new LogicalBackup();
         logicalBackup1.setLogicalBackupName(logicalBackupName2);
-        logicalBackup1.setStatus(BackupTaskStatus.PENDING);
+        logicalBackup1.setStatus(BackupTaskStatus.IN_PROGRESS);
         logicalBackup1.setAdapterId(adapterIdSecond);
         logicalBackup1.setType("postgresql");
         logicalBackup1.setBackupDatabases(List.of(BackupDatabase.builder()
                         .name("db1")
-                        .status(BackupTaskStatus.PENDING)
+                        .status(BackupTaskStatus.IN_PROGRESS)
                         .size(1)
                         .users(List.of())
                         .classifiers(List.of())
                         .build(),
                 BackupDatabase.builder()
                         .name("db2")
-                        .status(BackupTaskStatus.PENDING)
+                        .status(BackupTaskStatus.IN_PROGRESS)
                         .size(2)
                         .users(List.of())
                         .classifiers(List.of())
@@ -1196,7 +1196,7 @@ class DbBackupV2ServiceTest {
                 .collect(Collectors.joining("; "));
 
         //check
-        assertEquals(BackupStatus.PENDING, backup.getStatus());
+        assertEquals(BackupStatus.IN_PROGRESS, backup.getStatus());
         assertEquals(4, backup.getTotal());
         assertEquals(2, backup.getCompleted());
         assertEquals(6, backup.getSize());
@@ -1204,8 +1204,8 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void aggregateStatus_shouldReturnProceeding_whenContainAllStatuses() {
-        Set<BackupTaskStatus> statusSet = Set.of(BackupTaskStatus.NOT_STARTED, BackupTaskStatus.PENDING, BackupTaskStatus.IN_PROGRESS, BackupTaskStatus.FAILED, BackupTaskStatus.COMPLETED);
+    void aggregateStatus_shouldReturnInProgress_whenContainAllStatuses() {
+        Set<BackupTaskStatus> statusSet = Set.of(BackupTaskStatus.NOT_STARTED, BackupTaskStatus.IN_PROGRESS, BackupTaskStatus.FAILED, BackupTaskStatus.COMPLETED);
         BackupStatus backupStatus = dbBackupV2Service.aggregateBackupStatus(statusSet);
 
         assertNotNull(backupStatus);
@@ -1213,16 +1213,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void aggregateStatus_shouldReturnProceeding_whenInputPendingFailSuccess() {
-        Set<BackupTaskStatus> statusSet = Set.of(BackupTaskStatus.PENDING, BackupTaskStatus.FAILED, BackupTaskStatus.COMPLETED);
-        BackupStatus backupStatus = dbBackupV2Service.aggregateBackupStatus(statusSet);
-
-        assertNotNull(backupStatus);
-        assertEquals(BackupStatus.IN_PROGRESS, backupStatus);
-    }
-
-    @Test
-    void aggregateStatus_shouldReturnProceeding_whenInputInProgressFailSuccess() {
+    void aggregateStatus_shouldReturnInProgress_whenInputInProgressFailedCompleted() {
         Set<BackupTaskStatus> statusSet = Set.of(BackupTaskStatus.IN_PROGRESS, BackupTaskStatus.FAILED, BackupTaskStatus.COMPLETED);
         BackupStatus backupStatus = dbBackupV2Service.aggregateBackupStatus(statusSet);
 
@@ -1231,7 +1222,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void aggregateStatus_shouldReturnProceeding_whenInputNotStartedFailSuccess() {
+    void aggregateStatus_shouldReturnInProgress_whenInputNotStartedFailedCompleted() {
         Set<BackupTaskStatus> statusSet = Set.of(BackupTaskStatus.NOT_STARTED, BackupTaskStatus.FAILED, BackupTaskStatus.COMPLETED);
         BackupStatus backupStatus = dbBackupV2Service.aggregateBackupStatus(statusSet);
 
@@ -1240,7 +1231,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void aggregateStatus_shouldReturnProceeding_whenInputFailSuccess() {
+    void aggregateStatus_shouldReturnFailed_whenInputFailedCompleted() {
         Set<BackupTaskStatus> statusSet = Set.of(BackupTaskStatus.FAILED, BackupTaskStatus.COMPLETED);
         BackupStatus backupStatus = dbBackupV2Service.aggregateBackupStatus(statusSet);
 
@@ -1249,7 +1240,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void aggregateStatus_shouldReturnProceeding_whenInputSuccess() {
+    void aggregateStatus_shouldReturnCompleted_whenInputCompleted() {
         Set<BackupTaskStatus> statusSet = Set.of(BackupTaskStatus.COMPLETED);
         BackupStatus backupStatus = dbBackupV2Service.aggregateBackupStatus(statusSet);
 
