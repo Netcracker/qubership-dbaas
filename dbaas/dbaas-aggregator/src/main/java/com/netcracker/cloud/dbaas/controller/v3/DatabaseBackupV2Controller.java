@@ -55,7 +55,8 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = BackupOperationResponse.class))),
             @APIResponse(responseCode = "202", description = "Backup operation initiated successfully",
                     content = @Content(schema = @Schema(implementation = BackupOperationResponse.class))),
-            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served"),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found",
@@ -99,6 +100,7 @@ public class DatabaseBackupV2Controller {
 
     @Operation(summary = "Delete backup", description = "Delete the backup operation")
     @APIResponses({
+            @APIResponse(responseCode = "202", description = "Backup delete initialized successfully"),
             @APIResponse(responseCode = "204", description = "Backup deleted successfully"),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
@@ -113,6 +115,8 @@ public class DatabaseBackupV2Controller {
                                  @PathParam("backupName") String backupName,
                                  @QueryParam("force") @DefaultValue("false") boolean force) {
         dbBackupV2Service.deleteBackup(backupName, force);
+        if (force)
+            return Response.accepted().build();
         return Response.noContent().build();
     }
 
@@ -175,7 +179,8 @@ public class DatabaseBackupV2Controller {
     @Operation(summary = "Upload backup metadata", description = "Metadata upload done")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Backup metadata uploaded successfully"),
-            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served"),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource",
@@ -217,7 +222,8 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "202", description = "Restore operation initiated successfully",
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
-            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served"),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found",
