@@ -26,11 +26,15 @@ import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
+import net.javacrumbs.shedlock.core.LockConfiguration;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.core.SimpleLock;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -68,6 +72,7 @@ public class DbBackupV2Service {
     private final DBaaService dBaaService;
     private final PasswordEncryption encryption;
     private final BgNamespaceRepository bgNamespaceRepository;
+    private final LockProvider lockProvider;
 
     private final Duration retryDelay;
     private final int retryAttempts;
@@ -85,6 +90,7 @@ public class DbBackupV2Service {
                              DBaaService dBaaService,
                              PasswordEncryption encryption,
                              BgNamespaceRepository bgNamespaceRepository,
+                             LockProvider lockProvider,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.attempts") int retryAttempts,
                              @ConfigProperty(name = "dbaas.backup-restore.check.attempts") int retryCount
@@ -100,12 +106,13 @@ public class DbBackupV2Service {
         this.dBaaService = dBaaService;
         this.encryption = encryption;
         this.bgNamespaceRepository = bgNamespaceRepository;
+        this.lockProvider = lockProvider;
         this.retryDelay = retryDelay;
         this.retryAttempts = retryAttempts;
         this.retryCount = retryCount;
     }
 
-    public BackupOperationResponse backup(BackupRequest backupRequest, boolean dryRun) {
+    public BackupResponse backup(BackupRequest backupRequest, boolean dryRun) {
         if (dryRun)
             throw new FunctionalityNotImplemented("Dry-run mode");
 
@@ -123,7 +130,7 @@ public class DbBackupV2Service {
         startBackup(backup);
         updateAggregatedStatus(backup);
         backupRepository.save(backup);
-        return mapper.toBackupOperationResponse(backup);
+        return mapper.toBackupResponse(backup);
     }
 
     protected Backup initializeFullBackupStructure(List<Database> databasesForBackup, BackupRequest backupRequest) {
@@ -246,7 +253,7 @@ public class DbBackupV2Service {
         try {
             return Failsafe.with(retryPolicy).get(() -> executeBackup(adapterId, storageName, blobPath, dbNames, backup.getName()));
         } catch (Exception e) {
-            log.error("Failsafe execution failed for adapterId {} and backup {}", adapterId, logicalBackup.getLogicalBackupName(), e);
+            log.error("Logical backup startup for adapterId {} and backup {}", adapterId, backup.getName(), e);
             throw new BackupExecutionException("Failsafe execution failed", e);
         }
     }
@@ -291,6 +298,7 @@ public class DbBackupV2Service {
     @SchedulerLock(name = "checkBackupsAsync")
     protected void checkBackupsAsync() {
         //TODO propagate correct business id
+        log.info("Starting backup scheduler");
         LockAssert.assertLocked();
         List<Backup> backupsToAggregate = backupRepository.findBackupsToAggregate();
         backupsToAggregate.forEach(this::trackAndAggregate);
@@ -312,8 +320,7 @@ public class DbBackupV2Service {
     private void fetchAndUpdateStatuses(Backup backup) {
         List<LogicalBackup> notFinishedBackups = backup.getLogicalBackups().stream()
                 .filter(db -> db.getStatus() == BackupTaskStatus.IN_PROGRESS
-                        || db.getStatus() == BackupTaskStatus.NOT_STARTED
-                        || db.getStatus() == BackupTaskStatus.PENDING)
+                        || db.getStatus() == BackupTaskStatus.NOT_STARTED)
                 .toList();
 
         List<CompletableFuture<Void>> futures = notFinishedBackups.stream()
@@ -512,7 +519,7 @@ public class DbBackupV2Service {
                     );
                 }
             } else {
-                throw new IllegalEntityStateException(
+                throw new IllegalResourceStateException(
                         String.format("can`t restore %s backup that not imported", BackupStatus.DELETED),
                         Source.builder().build()
                 );
@@ -520,7 +527,7 @@ public class DbBackupV2Service {
         }
 
         // if backup status not DELETED
-        throw new IllegalEntityStateException(
+        throw new IllegalResourceStateException(
                 String.format("backup already exists and is not %s status", BackupStatus.DELETED),
                 Source.builder().build()
         );
@@ -531,18 +538,6 @@ public class DbBackupV2Service {
         if (backup == null)
             return;
 
-        validateBackupDeletable(backup);
-
-        if (!force) {
-            backup.setStatus(BackupStatus.DELETED);
-            backupRepository.save(backup);
-            return;
-        }
-
-        performForcedBackupDeletion(backup);
-    }
-
-    private void validateBackupDeletable(Backup backup) {
         BackupStatus status = backup.getStatus();
         if (status != BackupStatus.COMPLETED
                 && status != BackupStatus.FAILED
@@ -555,9 +550,13 @@ public class DbBackupV2Service {
                     Source.builder().build()
             );
         }
-    }
 
-    private void performForcedBackupDeletion(Backup backup) {
+        if (!force) {
+            backup.setStatus(BackupStatus.DELETED);
+            backupRepository.save(backup);
+            return;
+        }
+
         backup.setStatus(BackupStatus.DELETE_IN_PROGRESS);
         backupRepository.save(backup);
 
@@ -585,8 +584,11 @@ public class DbBackupV2Service {
 
         return CompletableFuture.runAsync(
                         asyncOperations.wrapWithContext(() ->
-                                Failsafe.with(retryPolicy).run(() ->
-                                        executeDeleteBackup(adapterId, logicalBackup.getLogicalBackupName()))),
+                                Failsafe.with(retryPolicy).run(() -> {
+                                            DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+                                            adapter.deleteBackupV2(logicalBackup.getLogicalBackupName());
+                                        }
+                                )),
                         asyncOperations.getBackupPool()
                 )
                 .exceptionally(throwable -> {
@@ -596,11 +598,6 @@ public class DbBackupV2Service {
                     failedAdapters.put(adapterId, errorMessage);
                     return null;
                 });
-    }
-
-    private void executeDeleteBackup(String adapterId, String logicalBackupName) {
-        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-        adapter.deleteBackupV2(logicalBackupName);
     }
 
     private void finalizeBackupDeletion(Backup backup, Map<String, String> failedAdapters) {
@@ -623,33 +620,62 @@ public class DbBackupV2Service {
         if (dryRun)
             throw new FunctionalityNotImplemented("dryRun");
 
-        String restoreName = restoreRequest.getRestoreName();
-        if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
-            log.error("Restore with name {} already exists", restoreName);
-            throw new ResourceAlreadyExistsException(restoreName, Source.builder().build());
+        LockConfiguration config = new LockConfiguration(
+                Instant.now(),
+                "restore",
+                Duration.ofMinutes(2),
+                Duration.ofMinutes(1)
+        );
+
+        Optional<SimpleLock> optLock = lockProvider.lock(config);
+
+        if (optLock.isEmpty())
+            throw new IllegalResourceStateException("restore already running", Source.builder().build());
+
+        SimpleLock lock = optLock.get();
+        boolean unlocked = false;
+
+        try {
+            if (restoreRepository.countNotCompletedRestores() > 0)
+                throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
+
+            String restoreName = restoreRequest.getRestoreName();
+            if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
+                log.error("Restore with name {} already exists", restoreName);
+                throw new ResourceAlreadyExistsException(restoreName, Source.builder().build());
+            }
+
+            log.info("Start restore for backup {}", backupName);
+            Backup backup = getBackupOrThrowException(backupName);
+
+            BackupStatus backupStatus = backup.getStatus();
+            if (BackupStatus.COMPLETED != backupStatus) {
+                throw new UnprocessableEntityException(
+                        backupName, String.format("restore can`t process due to backup status %s", backupStatus),
+                        Source.builder().build());
+            }
+
+            List<BackupDatabase> backupDatabasesToFilter = backup.getLogicalBackups().stream()
+                    .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
+                    .toList();
+
+            List<BackupDatabaseDelegate> filteredBackupDbs = getAllDbByFilter(backupDatabasesToFilter, restoreRequest.getFilterCriteria());
+
+            Restore restore = initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
+            restoreRepository.save(restore);
+
+            lock.unlock();
+            unlocked = true;
+
+            startRestore(restore);
+            aggregateRestoreStatus(restore);
+
+            return mapper.toRestoreResponse(restore);
+        } finally {
+            if (!unlocked) {
+                lock.unlock();
+            }
         }
-
-        log.info("Start restore for backup {}", backupName);
-        Backup backup = getBackupOrThrowException(backupName);
-
-        BackupStatus backupStatus = backup.getStatus();
-        if (BackupStatus.COMPLETED != backupStatus) {
-            throw new UnprocessableEntityException(
-                    backupName, String.format("restore can`t process due to backup status %s", backupStatus),
-                    Source.builder().build());
-        }
-
-        List<BackupDatabase> backupDatabasesToFilter = backup.getLogicalBackups().stream()
-                .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
-                .toList();
-
-        List<BackupDatabaseDelegate> filteredBackupDbs = getAllDbByFilter(backupDatabasesToFilter, restoreRequest.getFilterCriteria());
-
-        Restore restore = initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
-        startRestore(restore);
-        aggregateRestoreStatus(restore);
-
-        return mapper.toRestoreResponse(restore);
     }
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
@@ -776,7 +802,7 @@ public class DbBackupV2Service {
                                 if (uniqueClassifiers.contains(updatedClassifier)) {
                                     String oldNamespace = (String) classifier.get(NAMESPACE);
                                     String updateNamespace = (String) updatedClassifier.get(NAMESPACE);
-                                    throw new IllegalEntityStateException(
+                                    throw new IllegalResourceStateException(
                                             String.format(
                                                     "classifier with namespace '%s' conflicts with existing classifier '%s'. " +
                                                             "Please ensure all classifier namespaces are unique.",
@@ -985,6 +1011,7 @@ public class DbBackupV2Service {
     @Scheduled(every = "${dbaas.backup-restore.check.interval}", concurrentExecution = SKIP)
     @SchedulerLock(name = "checkRestoresAsync")
     protected void checkRestoresAsync() {
+        log.info("Starting restore scheduler");
         LockAssert.assertLocked();
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToAggregate();
         restoresToAggregate.forEach(this::trackAndAggregateRestore);
@@ -1051,8 +1078,7 @@ public class DbBackupV2Service {
     private void fetchStatuses(Restore restore) {
         List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores().stream()
                 .filter(db -> RestoreTaskStatus.IN_PROGRESS == db.getStatus()
-                        || RestoreTaskStatus.NOT_STARTED == db.getStatus()
-                        || RestoreTaskStatus.PENDING == db.getStatus())
+                        || RestoreTaskStatus.NOT_STARTED == db.getStatus())
                 .toList();
 
         List<CompletableFuture<Void>> futures = notFinishedLogicalRestores.stream()
@@ -1370,16 +1396,10 @@ public class DbBackupV2Service {
         if (statusSet.contains(taskStatusGetter.apply("NOT_STARTED")) && statusSet.size() == 1)
             return resultStatusGetter.apply("NOT_STARTED");
 
-        if (statusSet.contains(taskStatusGetter.apply("PENDING")) && statusSet.size() == 1)
-            return resultStatusGetter.apply("PENDING");
-
         if (statusSet.contains(taskStatusGetter.apply("NOT_STARTED")) && statusSet.size() > 1)
             return resultStatusGetter.apply("IN_PROGRESS");
 
         if (statusSet.contains(taskStatusGetter.apply("IN_PROGRESS")))
-            return resultStatusGetter.apply("IN_PROGRESS");
-
-        if (statusSet.contains(taskStatusGetter.apply("PENDING")) && statusSet.size() > 1)
             return resultStatusGetter.apply("IN_PROGRESS");
 
         if (statusSet.contains(taskStatusGetter.apply("FAILED")))
