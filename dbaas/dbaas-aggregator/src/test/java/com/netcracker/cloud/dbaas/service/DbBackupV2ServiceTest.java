@@ -194,18 +194,15 @@ class DbBackupV2ServiceTest {
         when(adapterTwo.isBackupRestoreSupported())
                 .thenReturn(true);
 
-        BackupOperationResponse response = dbBackupV2Service.backup(backupRequest, false);
+        BackupResponse response = dbBackupV2Service.backup(backupRequest, false);
 
         assertEquals(backupName, response.getBackupName());
-        assertNotNull(response.getDryRun());
-
-        BackupResponse backupResponse = response.getDryRun();
-        assertEquals(BackupStatus.FAILED, backupResponse.getStatus());
-        assertEquals("storageName", backupResponse.getStorageName());
-        assertEquals("blobPath", backupResponse.getBlobPath());
-        assertEquals(4, backupResponse.getTotal());
-        assertEquals(2, backupResponse.getCompleted());
-        assertEquals(4, backupResponse.getSize());
+        assertEquals(BackupStatus.FAILED, response.getStatus());
+        assertEquals("storageName", response.getStorageName());
+        assertEquals("blobPath", response.getBlobPath());
+        assertEquals(4, response.getTotal());
+        assertEquals(2, response.getCompleted());
+        assertEquals(4, response.getSize());
 
         List<LogicalBackup> logicalBackups = logicalBackupRepository.getByBackupName(backupName);
 
@@ -232,6 +229,7 @@ class DbBackupV2ServiceTest {
         Mockito.verify(adapterTwo, times(1)).backupV2(any());
 
     }
+
     // TODO
     @Test
     void backup_externalStrategySkip_shouldExcludeExternalDatabasesFromMetadataAndLogicalBackups() {
@@ -309,13 +307,12 @@ class DbBackupV2ServiceTest {
         when(adapterTwo.backupV2(any())).thenReturn(adapterResponseSecond);
         when(adapterTwo.isBackupRestoreSupported()).thenReturn(true);
 
-        BackupOperationResponse response = dbBackupV2Service.backup(backupRequest, false);
-        BackupResponse backupResponse = response.getDryRun();
+        BackupResponse response = dbBackupV2Service.backup(backupRequest, false);
 
         // Verify that metadata contains information for 3 databases
         // and does not include external databases when strategy = SKIP
-        assertEquals(3, backupResponse.getTotal());
-        assertTrue(backupResponse.getExternalDatabases().isEmpty());
+        assertEquals(3, response.getTotal());
+        assertTrue(response.getExternalDatabases().isEmpty());
 
         List<LogicalBackup> logicalBackups = logicalBackupRepository.getByBackupName(backupName);
 
@@ -1304,7 +1301,7 @@ class DbBackupV2ServiceTest {
         when(physicalDatabasesService.getAdapterById("1"))
                 .thenReturn(adapter1);
 
-        doThrow(new IllegalEntityStateException(backupName, Source.builder().build()))
+        doThrow(new IllegalResourceStateException(backupName, Source.builder().build()))
                 .when(adapter1).deleteBackupV2(any());
 
         assertThrows(UnprocessableEntityException.class,
@@ -1439,7 +1436,7 @@ class DbBackupV2ServiceTest {
 
         BackupResponse backupResponse = generateBackupResponse(backupName, namespace);
 
-        assertThrows(IllegalEntityStateException.class,
+        assertThrows(IllegalResourceStateException.class,
                 () -> dbBackupV2Service.uploadBackupMetadata(backupResponse));
     }
 
