@@ -220,7 +220,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4048(
             "CORE-DBAAS-4048",
             "Illegal state of entity",
-            "Entity has illegal state: %s"
+            "Resource has illegal state: %s"
     ),
     CORE_DBAAS_4049(
             "CORE-DBAAS-4049",

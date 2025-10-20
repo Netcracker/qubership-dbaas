@@ -5,7 +5,7 @@ import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
-import com.netcracker.cloud.dbaas.exceptions.IllegalEntityStateException;
+import com.netcracker.cloud.dbaas.exceptions.IllegalResourceStateException;
 import com.netcracker.cloud.dbaas.exceptions.UnprocessableEntityException;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
@@ -85,20 +85,19 @@ public interface BackupV2Mapper {
             String status,
             Function<String, R> resultStatusGetter) {
         if (status == null) {
-            throw new IllegalEntityStateException(
+            throw new IllegalResourceStateException(
                     "null status returned from adapter",
                     Source.builder().build());
         }
 
         return switch (status) {
             case "notStarted" -> resultStatusGetter.apply("NOT_STARTED");
-            case "pending" -> resultStatusGetter.apply("PENDING");
             case "inProgress" -> resultStatusGetter.apply("IN_PROGRESS");
             case "completed" -> resultStatusGetter.apply("COMPLETED");
             case "failed" -> resultStatusGetter.apply("FAILED");
             default -> throw new UnprocessableEntityException(
                     status,
-                    "unknown status from adapter",
+                    "unknown status returned from adapter",
                     Source.builder().build());
         };
     }
