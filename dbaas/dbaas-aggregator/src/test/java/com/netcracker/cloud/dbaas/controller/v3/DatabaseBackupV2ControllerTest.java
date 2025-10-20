@@ -55,23 +55,17 @@ class DatabaseBackupV2ControllerTest {
         backupResponse.setStorageName("storageName");
         backupResponse.setStatus(BackupStatus.IN_PROGRESS);
 
-        BackupOperationResponse response = new BackupOperationResponse(
-                backupName,
-                backupResponse
-        );
-
         when(dbBackupV2Service.backup(backupRequest, false))
-                .thenReturn(response);
+                .thenReturn(backupResponse);
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .body(backupRequest)
-                .when().post("/operation/backup")
+                .when().post("/backup")
                 .then()
                 .statusCode(ACCEPTED.getStatusCode())
                 .body("backupName", equalTo(backupName))
-                .body("dryRun.backupName", equalTo(backupName))
-                .body("dryRun.storageName", equalTo(backupResponse.getStorageName()));
+                .body("storageName", equalTo(backupResponse.getStorageName()));
 
         verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
@@ -87,7 +81,7 @@ class DatabaseBackupV2ControllerTest {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .body(invalidBackupRequest)
-                .when().post("/operation/backup")
+                .when().post("/backup")
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", allOf(
@@ -114,7 +108,7 @@ class DatabaseBackupV2ControllerTest {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .body(backupRequest)
-                .when().post("/operation/backup")
+                .when().post("/backup")
                 .then()
                 .statusCode(422)
                 .body("reason", equalTo("Backup not allowed"))
@@ -136,7 +130,7 @@ class DatabaseBackupV2ControllerTest {
         given().auth().preemptive().basic("backup_manager", "backup_manager")
                 .contentType(ContentType.JSON)
                 .body(backupRequest)
-                .when().post("/operation/backup")
+                .when().post("/backup")
                 .then()
                 .statusCode(CONFLICT.getStatusCode())
                 .body("reason", equalTo("Resource already exists"))
