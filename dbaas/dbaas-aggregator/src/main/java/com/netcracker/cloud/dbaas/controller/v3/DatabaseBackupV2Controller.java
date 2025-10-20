@@ -70,12 +70,12 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
-    @Path("/operation/backup")
+    @Path("/backup")
     @POST
     public Response initiateBackup(@RequestBody(description = "Backup request", required = true) @Valid BackupRequest backupRequest,
                                    @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        BackupOperationResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
-        BackupStatus status = response.getDryRun().getStatus();
+        BackupResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
+        BackupStatus status = response.getStatus();
         if (status == BackupStatus.COMPLETED || status == BackupStatus.FAILED)
             return Response.ok(response).build();
         return Response.accepted(response).build();
@@ -237,11 +237,10 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
-    @Path("/restore/{backupName}")
+    @Path("/backup/{backupName}/restore")
     @POST
     public Response restoreBackup(@Parameter(description = "Unique identifier of the backup", required = true)
-                                  @PathParam("backupName")
-                                  @NotBlank String backupName,
+                                  @PathParam("backupName") @NotBlank String backupName,
                                   @RequestBody(description = "Restore request", required = true) RestoreRequest restoreRequest,
                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, dryRun);
