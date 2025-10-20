@@ -31,7 +31,7 @@
         <quarkus.platform.version>3.20.3</quarkus.platform.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
         <!-- Quarkus Qubership        -->
-        <qs.quarkus.core.version>7.2.1</qs.quarkus.core.version>
+        <qs.quarkus.core.version>7.3.0</qs.quarkus.core.version>
         <!--End Quarkus Qubership section -->
         <lombok.version>1.18.40</lombok.version>
         <junit.version>5.13.2</junit.version>
