@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;

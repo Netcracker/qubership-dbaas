@@ -460,7 +460,7 @@ public class DbBackupV2Service {
 
         if (filteredDatabase.isEmpty()) {
             log.warn("Databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
+            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build()); //TODO make appropriate exception
         }
 
         return filteredDatabase;
@@ -631,7 +631,7 @@ public class DbBackupV2Service {
 
         BackupStatus backupStatus = backup.getStatus();
         if (BackupStatus.COMPLETED != backupStatus) {
-            log.error("restore can`t process due to backup status %s", backupStatus);
+            log.error("restore can`t process due to backup status {}", backupStatus);
             throw new UnprocessableEntityException(
                     backupName, String.format("restore can`t process due to backup status %s", backupStatus),
                     Source.builder().build());
@@ -656,13 +656,7 @@ public class DbBackupV2Service {
             if (restoreRepository.countNotCompletedRestores() > 0)
                 throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
 
-            List<BackupDatabase> backupDatabasesToFilter = backup.getLogicalBackups().stream()
-                    .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
-                    .toList();
-
-            List<BackupDatabaseDelegate> filteredBackupDbs = getAllDbByFilter(backupDatabasesToFilter, restoreRequest.getFilterCriteria());
-
-            Restore restore = initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
+            Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
             restoreRepository.save(restore);
             // unlock method after save restore
             lock.unlock();
@@ -680,7 +674,7 @@ public class DbBackupV2Service {
     }
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
-        if(filterCriteria == null || filterCriteria.getFilter() == null || filterCriteria.getFilter().isEmpty())
+        if (filterCriteria == null || filterCriteria.getFilter() == null || filterCriteria.getFilter().isEmpty())
             return backupDatabasesToFilter.stream().map(db -> new BackupDatabaseDelegate(db, db.getClassifiers()))
                     .toList();
 
@@ -724,20 +718,25 @@ public class DbBackupV2Service {
 
         if (databaseDelegateList.isEmpty()) {
             log.warn("Databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
+            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build()); //TODO make appropriate exception
         }
         return databaseDelegateList;
     }
 
     protected Restore initializeFullRestoreStructure(
             Backup backup,
-            List<BackupDatabaseDelegate> backupDatabases,
             RestoreRequest restoreRequest
     ) {
-        log.info("Initializing restore structure: restoreName={}, backupName={}, backupDatabases={}",
+        log.info("Initializing restore structure: restoreName={}, backupName={}",
                 restoreRequest.getRestoreName(),
-                backup.getName(),
-                backupDatabases.stream().map(db -> db.backupDatabase().getName()).toList());
+                backup.getName());
+
+        // Filtering classifiers
+        List<BackupDatabaseDelegate> backupDatabases = getAllDbByFilter(
+                backup.getLogicalBackups().stream()
+                        .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
+                        .toList(),
+                restoreRequest.getFilterCriteria());
 
         Map<String, String> namespacesMap = Optional.ofNullable(restoreRequest.getMapping())
                 .map(Mapping::getNamespaces)
