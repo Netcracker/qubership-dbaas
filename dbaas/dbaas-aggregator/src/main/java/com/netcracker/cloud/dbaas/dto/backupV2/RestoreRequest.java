@@ -38,7 +38,6 @@ public class RestoreRequest {
             description = "Filter criteria"
     )
     @Valid
-    @NotNull
     private FilterCriteria filterCriteria;
     @Schema(
             description = "Mapping to use for the restore operation")

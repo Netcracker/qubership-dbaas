@@ -1,9 +1,12 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
+import com.netcracker.cloud.dbaas.utils.validation.BackupGroup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.groups.ConvertGroup;
+import jakarta.validation.groups.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -44,6 +47,7 @@ public class BackupRequest {
             description = "Filter criteria")
     @Valid
     @NotNull
+    @ConvertGroup(from = Default.class, to = BackupGroup.class)
     private FilterCriteria filterCriteria;
 
     @Schema(
