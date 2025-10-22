@@ -620,6 +620,23 @@ public class DbBackupV2Service {
         if (dryRun)
             throw new FunctionalityNotImplemented("dryRun");
 
+        String restoreName = restoreRequest.getRestoreName();
+        if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
+            log.error("Restore with name {} already exists", restoreName);
+            throw new ResourceAlreadyExistsException(restoreName, Source.builder().build());
+        }
+
+        log.info("Start restore for backup {}", backupName);
+        Backup backup = getBackupOrThrowException(backupName);
+
+        BackupStatus backupStatus = backup.getStatus();
+        if (BackupStatus.COMPLETED != backupStatus) {
+            log.error("restore can`t process due to backup status %s", backupStatus);
+            throw new UnprocessableEntityException(
+                    backupName, String.format("restore can`t process due to backup status %s", backupStatus),
+                    Source.builder().build());
+        }
+
         LockConfiguration config = new LockConfiguration(
                 Instant.now(),
                 "restore",
@@ -639,22 +656,6 @@ public class DbBackupV2Service {
             if (restoreRepository.countNotCompletedRestores() > 0)
                 throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
 
-            String restoreName = restoreRequest.getRestoreName();
-            if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
-                log.error("Restore with name {} already exists", restoreName);
-                throw new ResourceAlreadyExistsException(restoreName, Source.builder().build());
-            }
-
-            log.info("Start restore for backup {}", backupName);
-            Backup backup = getBackupOrThrowException(backupName);
-
-            BackupStatus backupStatus = backup.getStatus();
-            if (BackupStatus.COMPLETED != backupStatus) {
-                throw new UnprocessableEntityException(
-                        backupName, String.format("restore can`t process due to backup status %s", backupStatus),
-                        Source.builder().build());
-            }
-
             List<BackupDatabase> backupDatabasesToFilter = backup.getLogicalBackups().stream()
                     .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
                     .toList();
@@ -663,13 +664,13 @@ public class DbBackupV2Service {
 
             Restore restore = initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
             restoreRepository.save(restore);
-
+            // unlock method after save restore
             lock.unlock();
             unlocked = true;
 
             startRestore(restore);
             aggregateRestoreStatus(restore);
-
+            restoreRepository.save(restore);
             return mapper.toRestoreResponse(restore);
         } finally {
             if (!unlocked) {
@@ -729,6 +730,11 @@ public class DbBackupV2Service {
             List<BackupDatabaseDelegate> backupDatabases,
             RestoreRequest restoreRequest
     ) {
+        log.info("Initializing restore structure: restoreName={}, backupName={}, backupDatabases={}",
+                restoreRequest.getRestoreName(),
+                backup.getName(),
+                backupDatabases.stream().map(db -> db.backupDatabase().getName()).toList());
+
         Map<String, String> namespacesMap = Optional.ofNullable(restoreRequest.getMapping())
                 .map(Mapping::getNamespaces)
                 .orElseGet(HashMap::new);
@@ -758,6 +764,8 @@ public class DbBackupV2Service {
 
                     List<RestoreDatabase> restoreDatabases =
                             createRestoreDatabases(entry.getValue(), namespacesMap);
+                    log.debug("Initialized restoreDatabase names {}",
+                            restoreDatabases.stream().map(RestoreDatabase::getName).toList());
                     logicalRestore.setRestoreDatabases(restoreDatabases);
                     restoreDatabases.forEach(rd -> rd.setLogicalRestore(logicalRestore));
                     return logicalRestore;
@@ -782,6 +790,14 @@ public class DbBackupV2Service {
 
         // set up relation
         logicalRestores.forEach(lr -> lr.setRestore(restore));
+
+        int totalDatabases = logicalRestores.stream()
+                .mapToInt(lr -> lr.getRestoreDatabases().size())
+                .sum();
+
+        log.info("Restore structure initialized: restoreName={}, logicalRestores={}, totalDatabases={}",
+                restore.getName(), logicalRestores.size(), totalDatabases);
+
         return restore;
     }
 
@@ -802,6 +818,9 @@ public class DbBackupV2Service {
                                 if (uniqueClassifiers.contains(updatedClassifier)) {
                                     String oldNamespace = (String) classifier.get(NAMESPACE);
                                     String updateNamespace = (String) updatedClassifier.get(NAMESPACE);
+                                    log.error("classifier with namespace '{}' conflicts with existing classifier '{}'. " +
+                                                    "Please ensure all classifier namespaces are unique.",
+                                            updateNamespace, oldNamespace);
                                     throw new IllegalResourceStateException(
                                             String.format(
                                                     "classifier with namespace '%s' conflicts with existing classifier '%s'. " +
@@ -892,7 +911,8 @@ public class DbBackupV2Service {
 
     protected void startRestore(Restore restore) {
         List<LogicalRestore> logicalRestores = restore.getLogicalRestores();
-
+        log.info("Starting requesting adapters to restore process: restoreId={}, logicalRestoreCount={}",
+                restore.getName(), restore.getLogicalRestores().size());
         List<CompletableFuture<Void>> futures = logicalRestores.stream()
                 .map(logicalRestore ->
                         CompletableFuture.supplyAsync(asyncOperations.wrapWithContext(() ->
@@ -902,6 +922,8 @@ public class DbBackupV2Service {
                                 .exceptionally(throwable -> {
                                     logicalRestore.setStatus(RestoreTaskStatus.FAILED);
                                     logicalRestore.setErrorMessage(extractErrorMessage(throwable));
+                                    log.error("Logical restore failed: id={}, error={}",
+                                            logicalRestore.getLogicalRestoreName(), logicalRestore.getErrorMessage());
                                     return null;
                                 })
                 )
@@ -912,11 +934,15 @@ public class DbBackupV2Service {
     }
 
     private void refreshLogicalRestoreState(LogicalRestore logicalRestore, LogicalRestoreAdapterResponse response) {
+        log.info("Start updating LogicalRestore state: restoreId={}", response.getRestoreId());
         logicalRestore.setLogicalRestoreName(response.getRestoreId());
         logicalRestore.setStatus(mapper.toRestoreTaskStatus(response.getStatus()));
         logicalRestore.setErrorMessage(response.getErrorMessage());
         logicalRestore.setCreationTime(response.getCreationTime());
         logicalRestore.setCompletionTime(response.getCompletionTime());
+
+        log.debug("Updated LogicalRestore: status={}, error message={}",
+                logicalRestore.getStatus(), logicalRestore.getErrorMessage());
 
         Map<String, RestoreDatabase> restoreDbMap = logicalRestore.getRestoreDatabases().stream()
                 .collect(Collectors.toMap(RestoreDatabase::getName, Function.identity()));
@@ -932,6 +958,20 @@ public class DbBackupV2Service {
 
                 if (db.getDatabaseName() != null)
                     restoreDatabase.setName(db.getDatabaseName());
+                log.debug("Database updated: old name={}, new name={}, error message={}, path={}",
+                        db.getPreviousDatabaseName(), restoreDatabase.getName(),
+                        restoreDatabase.getErrorMessage(), restoreDatabase.getPath());
+            } else {
+                List<String> existingDbNames = logicalRestore.getRestoreDatabases().stream()
+                        .map(RestoreDatabase::getName)
+                        .toList();
+                log.warn(
+                        "Database from adapter response not found in current LogicalRestore databases. " +
+                                "logicalRestoreName: {} adapterReportedDb: {} knownDatabases: {}",
+                        logicalRestore.getLogicalRestoreName(),
+                        db.getPreviousDatabaseName(),
+                        existingDbNames
+                );
             }
         });
     }
@@ -1014,6 +1054,10 @@ public class DbBackupV2Service {
         log.info("Starting restore scheduler");
         LockAssert.assertLocked();
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToAggregate();
+
+        log.info("Founded restores to aggregate {}",
+                restoresToAggregate.stream().map(Restore::getName).toList());
+
         restoresToAggregate.forEach(this::trackAndAggregateRestore);
         restoresToAggregate.forEach(restore -> {
             if (!Objects.equals(restore.getTotal(), restore.getCompleted())) {
@@ -1080,6 +1124,11 @@ public class DbBackupV2Service {
                 .filter(db -> RestoreTaskStatus.IN_PROGRESS == db.getStatus()
                         || RestoreTaskStatus.NOT_STARTED == db.getStatus())
                 .toList();
+        log.debug("Checking status for logical restores still in progress: restoreId={}, logicalRestores={}",
+                restore.getName(),
+                notFinishedLogicalRestores.stream()
+                        .map(LogicalRestore::getLogicalRestoreName)
+                        .toList());
 
         List<CompletableFuture<Void>> futures = notFinishedLogicalRestores.stream()
                 .map(logicalRestore -> {
@@ -1102,7 +1151,7 @@ public class DbBackupV2Service {
     }
 
     private void aggregateRestoreStatus(Restore restore) {
-        log.info("Start aggregating for restore: {}", restore.getName());
+        log.info("Start aggregating restore status: restoreName={}", restore.getName());
 
         List<LogicalRestore> logicalRestoreList = restore.getLogicalRestores();
         Set<RestoreTaskStatus> statusSet = new HashSet<>();
@@ -1133,6 +1182,8 @@ public class DbBackupV2Service {
         restore.setTotal(totalDbCount);
         restore.setCompleted(countCompletedDb);
         restore.setErrorMessage(String.join("; ", errorMessages));
+        log.info("Aggregated restore status: restoreName={}, status={}, totalDb={}, completed={}, errorMessage={}",
+                restore.getName(), restore.getStatus(), restore.getTotal(), restore.getCompleted(), restore.getErrorMessage());
     }
 
     @Transactional
@@ -1405,6 +1456,8 @@ public class DbBackupV2Service {
         if (statusSet.contains(taskStatusGetter.apply("FAILED")))
             return resultStatusGetter.apply("FAILED");
 
-        return resultStatusGetter.apply("COMPLETED");
+        if (statusSet.contains(taskStatusGetter.apply("COMPLETED")))
+            return resultStatusGetter.apply("COMPLETED");
+        return null;
     }
 }
