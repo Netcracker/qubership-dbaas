@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dbaas-global-permissions-configuration
+  labels:
+    app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
+    app.kubernetes.io/part-of: {{ .Values.APPLICATION_NAME | default "dbaas" }}
+data:
+  "services.json": "{}"

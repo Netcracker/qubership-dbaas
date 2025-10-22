@@ -9,7 +9,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.io.FileUtils;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -31,7 +30,7 @@ public class DbaasUsersLoader {
         if (usersStream == null) {
             usersStream = FileUtils.openInputStream(FileUtils.getFile(usersConfigurationLocation));
         }
-        Map<String, UserConfig> userConfiguration = objectMapper.readValue(usersStream, new TypeReference<Map<String, UserConfig>>() {
+        Map<String, UserConfig> userConfiguration = objectMapper.readValue(usersStream, new TypeReference<>() {
         });
         userConfiguration.forEach((username, userConfig) -> {
             DbaasUser dbaasUser = new DbaasUser();
@@ -40,6 +39,7 @@ public class DbaasUsersLoader {
             dbaasUser.setRoles(userConfig.getRoles());
             usersRepository.persist(dbaasUser);
         });
+        usersStream.close();
         log.info("{} users loaded", userConfiguration.size());
     }
 }
