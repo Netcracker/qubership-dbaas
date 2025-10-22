@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.utils.validation.BackupGroup;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -20,8 +21,8 @@ public class FilterCriteria {
             description = "Apply the filter to the remaining databases",
             required = true
     )
-    @NotNull
-    @Size(min = 1)
+    @NotNull(groups = {BackupGroup.class})
+    @Size(min = 1, groups = {BackupGroup.class})
     private List<Filter> filter;
     @Schema(
             description = "Include databases that match any of the filters in the list"
