@@ -746,17 +746,6 @@ public class DbBackupV2Service {
         Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupedByTypeAndAdapter =
                 groupBackupDatabasesByTypeAndAdapter(backupDatabases, namespacesMap);
 
-        //Check adapters are backupable
-        groupedByTypeAndAdapter.keySet().forEach(physicalDatabase -> {
-            String adapterId = physicalDatabase.getAdapter().getAdapterId();
-            DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-            if (!isBackupRestoreSupported(adapter)) {
-                log.error("Adapter {} not support restore operation", adapterId);
-                throw new DatabaseBackupNotSupportedException(
-                        String.format("Adapter %s not support restore operation", adapterId),
-                        Source.builder().build());
-            }
-        });
 
         // Build logicalRestores for each new adapter
         List<LogicalRestore> logicalRestores = groupedByTypeAndAdapter.entrySet().stream()
@@ -766,7 +755,7 @@ public class DbBackupV2Service {
                     logicalRestore.setAdapterId(entry.getKey().getAdapter().getAdapterId());
 
                     List<RestoreDatabase> restoreDatabases =
-                            createRestoreDatabases(entry.getValue(), namespacesMap);
+                            createRestoreDatabases(entry.getValue());
                     log.debug("Initialized restoreDatabase names {}",
                             restoreDatabases.stream().map(RestoreDatabase::getName).toList());
                     logicalRestore.setRestoreDatabases(restoreDatabases);
@@ -806,37 +795,12 @@ public class DbBackupV2Service {
 
 
     private List<RestoreDatabase> createRestoreDatabases(
-            List<BackupDatabaseDelegate> backupDatabases,
-            Map<String, String> namespacesMap
+            List<BackupDatabaseDelegate> backupDatabases
     ) {
-        Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
-
         return backupDatabases.stream()
                 .map(delegatedBackupDatabase -> {
-                    // updated classifiers
-                    List<SortedMap<String, Object>> classifiers = delegatedBackupDatabase.filteredClassifiers().stream()
-                            .map(classifier -> {
-                                SortedMap<String, Object> updatedClassifier = updateClassifierNamespace(classifier, namespacesMap);
-                                // to prevent collision
-                                if (uniqueClassifiers.contains(updatedClassifier)) {
-                                    String oldNamespace = (String) classifier.get(NAMESPACE);
-                                    String updateNamespace = (String) updatedClassifier.get(NAMESPACE);
-                                    log.error("classifier with namespace '{}' conflicts with existing classifier '{}'. " +
-                                                    "Please ensure all classifier namespaces are unique.",
-                                            updateNamespace, oldNamespace);
-                                    throw new IllegalResourceStateException(
-                                            String.format(
-                                                    "classifier with namespace '%s' conflicts with existing classifier '%s'. " +
-                                                            "Please ensure all classifier namespaces are unique.",
-                                                    updateNamespace, oldNamespace
-                                            ), Source.builder().build());
-                                }
-                                uniqueClassifiers.add(updatedClassifier);
-                                return updatedClassifier;
-                            })
-                            .toList();
-
                     BackupDatabase backupDatabase = delegatedBackupDatabase.backupDatabase();
+                    List<SortedMap<String, Object>> classifiers = delegatedBackupDatabase.classifiers();
                     String namespace = (String) classifiers.getFirst().get(NAMESPACE);
                     String bgVersion = null;
                     if (backupDatabase.isConfigurational()) {
@@ -876,41 +840,74 @@ public class DbBackupV2Service {
 
     private Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupBackupDatabasesByTypeAndAdapter(
             List<BackupDatabaseDelegate> backupDatabases,
-            Map<String, String> namespacesMap
-    ) {
+            Map<String, String> namespacesMap) {
+
         return backupDatabases.stream()
-                .map(db -> {
-                    List<SortedMap<String, Object>> classifiers = db.filteredClassifiers();
-                    String targetNamespace = null;
-                    String microserviceName = null;
-
-                    // 1) find classifier, that namespace exists in mapping
-                    for (var c : classifiers) {
-                        String oldNamespace = (String) c.get(NAMESPACE);
-                        microserviceName = (String) c.get(MICROSERVICE_NAME);
-                        if (namespacesMap.containsKey(oldNamespace)) {
-                            targetNamespace = namespacesMap.get(oldNamespace);
-                            break;
-                        }
-                    }
-
-                    // 2) if in case namespace not exists in mapping
-                    if (targetNamespace == null) {
-                        targetNamespace = (String) classifiers.getFirst().get(NAMESPACE);
-                    }
-
-                    String type = db.backupDatabase().getLogicalBackup().getType();
-                    PhysicalDatabase physicalDatabase = balancingRulesService
-                            .applyBalancingRules(type, targetNamespace, microserviceName);
-
-                    return Map.entry(physicalDatabase, db);
-                })
+                .map(db -> mapToPhysicalDatabaseEntry(db, namespacesMap))
+                .filter(Objects::nonNull)
                 .collect(Collectors.groupingBy(
                         Map.Entry::getKey,
                         Collectors.mapping(Map.Entry::getValue, Collectors.toList())
                 ));
     }
 
+    private Map.Entry<PhysicalDatabase, BackupDatabaseDelegate> mapToPhysicalDatabaseEntry(
+            BackupDatabaseDelegate db, Map<String, String> namespacesMap) {
+
+        // Mapping classifiers
+        Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
+        List<SortedMap<String, Object>> updatedClassifiers = db.classifiers().stream()
+                .map(classifier -> updateAndValidateClassifier(classifier, namespacesMap, uniqueClassifiers))
+                .toList();
+
+        if (updatedClassifiers.isEmpty()) {
+            return null;
+        }
+
+        // Find the first classifier whose namespace exists in the mapping
+        SortedMap<String, Object> matchedClassifier = updatedClassifiers.stream()
+                .filter(c -> namespacesMap.containsKey((String) c.get(NAMESPACE)))
+                .findFirst()
+                .orElse(updatedClassifiers.getFirst());
+
+        String oldNamespace = (String) matchedClassifier.get(NAMESPACE);
+        String targetNamespace = namespacesMap.getOrDefault(oldNamespace, oldNamespace);
+        String microserviceName = (String) matchedClassifier.get(MICROSERVICE_NAME);
+
+        String type = db.backupDatabase().getLogicalBackup().getType();
+        PhysicalDatabase physicalDatabase = balancingRulesService
+                .applyBalancingRules(type, targetNamespace, microserviceName);
+
+        // Checking adapter support backup restore
+        String adapterId = physicalDatabase.getAdapter().getAdapterId();
+        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+        if (!isBackupRestoreSupported(adapter)) {
+            throw new DatabaseBackupNotSupportedException(
+                    String.format("Adapter %s does not support restore operation", adapterId),
+                    Source.builder().build());
+        }
+
+        return Map.entry(physicalDatabase, new BackupDatabaseDelegate(db.backupDatabase(), updatedClassifiers));
+    }
+
+    private SortedMap<String, Object> updateAndValidateClassifier(
+            SortedMap<String, Object> classifier,
+            Map<String, String> namespacesMap,
+            Set<SortedMap<String, Object>> uniqueClassifiers) {
+        SortedMap<String, Object> updatedClassifier = updateClassifierNamespace(classifier, namespacesMap);
+
+        if (!uniqueClassifiers.add(updatedClassifier)) {
+            String oldNs = (String) classifier.get(NAMESPACE);
+            String newNs = (String) updatedClassifier.get(NAMESPACE);
+            String msg = String.format(
+                    "Classifier with namespace '%s' conflicts with existing classifier '%s'. " +
+                            "Ensure all classifier namespaces are unique.",
+                    newNs, oldNs);
+            log.error(msg);
+            throw new IllegalResourceStateException(msg, Source.builder().build());
+        }
+        return updatedClassifier;
+    }
 
     protected void startRestore(Restore restore) {
         List<LogicalRestore> logicalRestores = restore.getLogicalRestores();

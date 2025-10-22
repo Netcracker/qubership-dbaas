@@ -1765,9 +1765,9 @@ class DbBackupV2ServiceTest {
 
         assertEquals("db1", delegate.backupDatabase().getName());
 
-        assertEquals(1, delegate.filteredClassifiers().size());
+        assertEquals(1, delegate.classifiers().size());
 
-        SortedMap<String, Object> classifier = delegate.filteredClassifiers().get(0);
+        SortedMap<String, Object> classifier = delegate.classifiers().get(0);
         assertEquals(namespace, classifier.get("namespace"));
         assertEquals("microserviceName1", classifier.get("microserviceName"));
     }
@@ -1896,15 +1896,6 @@ class DbBackupV2ServiceTest {
                 .thenReturn(adapter4);
         when(adapter4.isBackupRestoreSupported())
                 .thenReturn(true);
-
-        List<BackupDatabaseDelegate> filteredBackupDbs = backup.getLogicalBackups().stream().flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
-                .map(backupDatabase -> new BackupDatabaseDelegate(
-                                backupDatabase,
-                                backupDatabase.getClassifiers().stream()
-                                        .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
-                                        .toList()
-                        )
-                ).toList();
 
         Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
 
