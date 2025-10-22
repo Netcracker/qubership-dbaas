@@ -1906,7 +1906,7 @@ class DbBackupV2ServiceTest {
                         )
                 ).toList();
 
-        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
+        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
 
         assertNotNull(restore);
         assertEquals(backup, restore.getBackup());
@@ -2045,7 +2045,7 @@ class DbBackupV2ServiceTest {
                         )
                 ).toList();
 
-        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, filteredBackupDbs, restoreRequest);
+        Restore restore = dbBackupV2Service.initializeFullRestoreStructure(backup, restoreRequest);
 
         assertNotNull(restore);
         assertEquals(backup, restore.getBackup());
