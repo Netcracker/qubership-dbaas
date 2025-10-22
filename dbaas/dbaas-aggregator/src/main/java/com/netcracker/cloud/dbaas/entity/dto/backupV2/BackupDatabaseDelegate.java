@@ -7,4 +7,4 @@ import java.util.SortedMap;
 
 
 public record BackupDatabaseDelegate(BackupDatabase backupDatabase,
-                                     List<SortedMap<String, Object>> filteredClassifiers) {}
+                                     List<SortedMap<String, Object>> classifiers) {}

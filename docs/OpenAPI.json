@@ -187,7 +187,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED"
@@ -387,7 +386,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED",
@@ -459,7 +457,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED",
@@ -1713,7 +1710,6 @@
         "properties": {
           "filter": {
             "type": "array",
-            "minItems": 1,
             "items": {
               "$ref": "#/components/schemas/Filter"
             },
@@ -1929,7 +1925,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED"
@@ -2006,7 +2001,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED",
@@ -3047,7 +3041,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED"
@@ -3102,8 +3095,7 @@
         "required": [
           "restoreName",
           "storageName",
-          "blobPath",
-          "filterCriteria"
+          "blobPath"
         ],
         "description": "Request to restore a database from a backup",
         "properties": {
@@ -3193,7 +3185,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED",
@@ -3252,7 +3243,6 @@
             ],
             "enum": [
               "NOT_STARTED",
-              "PENDING",
               "IN_PROGRESS",
               "FAILED",
               "COMPLETED",
@@ -3883,6 +3873,131 @@
         "summary": "Api Version Info"
       }
     },
+    "/api/backups/v1/backup": {
+      "post": {
+        "summary": "Initiate database backup",
+        "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup identifier that can be used to track progress.",
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Backup request",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backup operation completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupOperationResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Backup operation initiated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not support the functionality required to fulfill the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
+          }
+        ]
+      }
+    },
     "/api/backups/v1/backup/{backupName}": {
       "get": {
         "summary": "Get backup details",
@@ -4102,280 +4217,7 @@
         ]
       }
     },
-    "/api/backups/v1/backup/{backupName}/status": {
-      "get": {
-        "summary": "Get backup status",
-        "description": "Retrieve the current status of a backup operation",
-        "tags": [
-          "Backup \u0026 Restore"
-        ],
-        "parameters": [
-          {
-            "description": "Unique identifier of the backup",
-            "required": true,
-            "name": "backupName",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "pattern": "\\S"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Backup status retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BackupStatusResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is required and has failed or has not been provided"
-          },
-          "403": {
-            "description": "The request was valid, but the server is refusing action"
-          },
-          "404": {
-            "description": "The requested resource could not be found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An unexpected error occurred on the server",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "SecurityScheme": [
-              "BACKUP_MANAGER"
-            ]
-          }
-        ]
-      }
-    },
-    "/api/backups/v1/operation/backup": {
-      "post": {
-        "summary": "Initiate database backup",
-        "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup identifier that can be used to track progress.",
-        "tags": [
-          "Backup \u0026 Restore"
-        ],
-        "parameters": [
-          {
-            "name": "dryRun",
-            "in": "query",
-            "schema": {
-              "type": "boolean",
-              "default": false
-            }
-          }
-        ],
-        "requestBody": {
-          "description": "Backup request",
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BackupRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Backup operation completed successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BackupOperationResponse"
-                }
-              }
-            }
-          },
-          "202": {
-            "description": "Backup operation initiated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BackupOperationResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request was invalid or cannot be served",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is required and has failed or has not been provided"
-          },
-          "403": {
-            "description": "The request was valid, but the server is refusing action"
-          },
-          "404": {
-            "description": "The requested resource could not be found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request could not be completed due to a conflict with the current state of the resource",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An unexpected error occurred on the server",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not support the functionality required to fulfill the request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "SecurityScheme": [
-              "BACKUP_MANAGER"
-            ]
-          }
-        ]
-      }
-    },
-    "/api/backups/v1/operation/uploadMetadata": {
-      "post": {
-        "summary": "Upload backup metadata",
-        "description": "Metadata upload done",
-        "tags": [
-          "Backup \u0026 Restore"
-        ],
-        "parameters": [
-          {
-            "description": "Digest header in format: sha-256\u003d\u003cbase64-hash\u003e",
-            "in": "header",
-            "name": "Digest",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "examples": [
-                "sha-256\u003dnOJRJg..."
-              ]
-            }
-          }
-        ],
-        "requestBody": {
-          "description": "Backup metadata",
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BackupResponse"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Backup metadata uploaded successfully"
-          },
-          "400": {
-            "description": "The request was invalid or cannot be served",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is required and has failed or has not been provided"
-          },
-          "403": {
-            "description": "The request was valid, but the server is refusing action"
-          },
-          "409": {
-            "description": "The request could not be completed due to a conflict with the current state of the resource",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An unexpected error occurred on the server",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "SecurityScheme": [
-              "BACKUP_MANAGER"
-            ]
-          }
-        ]
-      }
-    },
-    "/api/backups/v1/restore/{backupName}": {
+    "/api/backups/v1/backup/{backupName}/restore": {
       "post": {
         "summary": "Restore from backup",
         "description": "Initiate a database restore operation from an existing backup.This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress.Operation is not idempotent",
@@ -4492,6 +4334,154 @@
           },
           "501": {
             "description": "The server does not support the functionality required to fulfill the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/backup/{backupName}/status": {
+      "get": {
+        "summary": "Get backup status",
+        "description": "Retrieve the current status of a backup operation",
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "parameters": [
+          {
+            "description": "Unique identifier of the backup",
+            "required": true,
+            "name": "backupName",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "404": {
+            "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": [
+              "BACKUP_MANAGER"
+            ]
+          }
+        ]
+      }
+    },
+    "/api/backups/v1/operation/uploadMetadata": {
+      "post": {
+        "summary": "Upload backup metadata",
+        "description": "Metadata upload done",
+        "tags": [
+          "Backup \u0026 Restore"
+        ],
+        "parameters": [
+          {
+            "description": "Digest header in format: sha-256\u003d\u003cbase64-hash\u003e",
+            "in": "header",
+            "name": "Digest",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "examples": [
+                "sha-256\u003dnOJRJg..."
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Backup metadata",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupResponse"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backup metadata uploaded successfully"
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
+          },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected error occurred on the server",
             "content": {
               "application/json": {
                 "schema": {
