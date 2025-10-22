@@ -641,7 +641,7 @@ public class DbBackupV2Service {
                 Instant.now(),
                 "restore",
                 Duration.ofMinutes(2),
-                Duration.ofMinutes(1)
+                Duration.ofMinutes(0)
         );
 
         Optional<SimpleLock> optLock = lockProvider.lock(config);
@@ -680,6 +680,10 @@ public class DbBackupV2Service {
     }
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
+        if(filterCriteria == null || filterCriteria.getFilter() == null || filterCriteria.getFilter().isEmpty())
+            return backupDatabasesToFilter.stream().map(db -> new BackupDatabaseDelegate(db, db.getClassifiers()))
+                    .toList();
+
         Filter filter = filterCriteria.getFilter().getFirst();
 
         if (filter.getNamespace().isEmpty()) {
