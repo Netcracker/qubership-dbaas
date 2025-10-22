@@ -50,10 +50,6 @@ public interface BackupV2Mapper {
 
     LogicalBackup toLogicalBackup(LogicalBackupResponse logicalBackupResponse);
 
-    @Mapping(target = "dryRun", source = ".")
-    @Mapping(target = "backupName", source = "name")
-    BackupOperationResponse toBackupOperationResponse(Backup backup);
-
     @Mapping(target = "logicalBackupId", source = "backupDatabase.id")
     RestoreDatabaseResponse toLogicalRestoreDatabaseResponse(RestoreDatabase restoreDatabase);
 

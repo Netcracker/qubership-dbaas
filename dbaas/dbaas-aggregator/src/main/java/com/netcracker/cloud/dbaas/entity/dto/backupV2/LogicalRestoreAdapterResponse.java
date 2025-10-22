@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,14 +25,14 @@ public class LogicalRestoreAdapterResponse {
     @Data
     @Builder
     public static class RestoreDatabaseResponse {
-        private String microserviceName;
-        private String namespace;
-        private String prefix;
         private String previousDatabaseName;
         private String databaseName;
         private String status;
-        private long duration;
         private String path;
+        private String microserviceName;
+        private String namespace;
+        private String prefix;
+        private long duration;
         private String errorMessage;
         private LocalDateTime creationTime;
     }
