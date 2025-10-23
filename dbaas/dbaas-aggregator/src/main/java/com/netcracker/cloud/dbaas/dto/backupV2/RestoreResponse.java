@@ -1,6 +1,8 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -43,6 +45,16 @@ public class RestoreResponse {
             }
     )
     private String blobPath;
+
+    @Schema(
+            description = "How to handle external databases during restore",
+            examples = {
+                    "FAIL"
+            },
+            implementation = ExternalDatabaseStrategy.class
+    )
+    @NotNull
+    private ExternalDatabaseStrategy externalDatabaseStrategy;
 
     @Schema(
             description = "Criteria used to filter restore operations"
