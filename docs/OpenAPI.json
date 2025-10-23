@@ -363,7 +363,7 @@
               "INCLUDE"
             ],
             "examples": [
-              "fail"
+              "FAIL"
             ],
             "description": "How to handle external databases during backup"
           },
@@ -436,7 +436,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BackupExternalDatabaseResponse"
-            }
+            },
+            "description": "List of external databases"
           },
           "digest": {
             "type": "string"
@@ -3067,6 +3068,25 @@
           }
         }
       },
+      "RestoreExternalDatabaseResponse": {
+        "type": "object",
+        "description": "External database details",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          }
+        }
+      },
       "RestorePasswordRequest": {
         "type": "object",
         "required": [
@@ -3095,7 +3115,8 @@
         "required": [
           "restoreName",
           "storageName",
-          "blobPath"
+          "blobPath",
+          "externalDatabaseStrategy"
         ],
         "description": "Request to restore a database from a backup",
         "properties": {
@@ -3129,6 +3150,22 @@
             "$ref": "#/components/schemas/Mapping",
             "type": "object",
             "description": "Mapping to use for the restore operation"
+          },
+          "externalDatabaseStrategy": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "FAIL",
+              "SKIP",
+              "INCLUDE"
+            ],
+            "examples": [
+              "FAIL"
+            ],
+            "description": "How to handle external databases during restore",
+            "default": "FAIL"
           }
         }
       },
@@ -3136,6 +3173,7 @@
         "type": "object",
         "required": [
           "restoreName",
+          "externalDatabaseStrategy",
           "status"
         ],
         "description": "Response containing the restore operation details",
@@ -3168,6 +3206,21 @@
             ],
             "description": "Path to the backup file in the storage"
           },
+          "externalDatabaseStrategy": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "FAIL",
+              "SKIP",
+              "INCLUDE"
+            ],
+            "examples": [
+              "FAIL"
+            ],
+            "description": "How to handle external databases during restore"
+          },
           "filterCriteria": {
             "$ref": "#/components/schemas/FilterCriteria",
             "type": "object",
@@ -3198,6 +3251,13 @@
               "$ref": "#/components/schemas/LogicalRestoreResponse"
             },
             "description": "List of logical restores"
+          },
+          "externalDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreExternalDatabaseResponse"
+            },
+            "description": "List of external databases"
           }
         }
       },
