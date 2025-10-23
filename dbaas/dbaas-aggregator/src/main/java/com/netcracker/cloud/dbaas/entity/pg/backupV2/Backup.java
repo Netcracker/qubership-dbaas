@@ -70,12 +70,21 @@ public class Backup {
 
     private String digest;
 
-    public Backup(String name, String storageName, String blobPath, ExternalDatabaseStrategy externalDatabaseStrategy, FilterCriteriaEntity filterCriteria) {
+    @Column(name = "ignore_not_backupable_databases")
+    private boolean ignoreNotBackupableDatabases;
+
+    public Backup(String name,
+                  String storageName,
+                  String blobPath,
+                  ExternalDatabaseStrategy externalDatabaseStrategy,
+                  FilterCriteriaEntity filterCriteria,
+                  boolean ignoreNotBackupableDatabases) {
         this.name = name;
         this.storageName = storageName;
         this.blobPath = blobPath;
         this.externalDatabaseStrategy = externalDatabaseStrategy;
         this.filterCriteria = filterCriteria;
+        this.ignoreNotBackupableDatabases = ignoreNotBackupableDatabases;
     }
 
     public void incrementAttempt() {
