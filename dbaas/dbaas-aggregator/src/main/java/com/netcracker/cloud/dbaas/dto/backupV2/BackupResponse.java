@@ -48,7 +48,7 @@ public class BackupResponse {
     @Schema(
             description = "How to handle external databases during backup",
             examples = {
-                    "fail"
+                    "FAIL"
             },
             implementation = ExternalDatabaseStrategy.class
     )
