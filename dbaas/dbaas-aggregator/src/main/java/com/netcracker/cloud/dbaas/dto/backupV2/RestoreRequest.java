@@ -1,6 +1,8 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -41,4 +43,15 @@ public class RestoreRequest {
     @Schema(
             description = "Mapping to use for the restore operation")
     private Mapping mapping;
+
+    @Schema(
+            description = "How to handle external databases during restore",
+            examples = {
+                    "FAIL"
+            },
+            implementation = ExternalDatabaseStrategy.class,
+            defaultValue = "FAIL"
+    )
+    @NotNull
+    private ExternalDatabaseStrategy externalDatabaseStrategy = ExternalDatabaseStrategy.FAIL;
 }
