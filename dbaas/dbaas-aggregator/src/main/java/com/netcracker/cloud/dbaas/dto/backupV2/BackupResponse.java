@@ -108,6 +108,9 @@ public class BackupResponse {
     )
     private List<LogicalBackupResponse> logicalBackups;
 
+    @Schema(
+            description = "List of external databases"
+    )
     private List<BackupExternalDatabaseResponse> externalDatabases;
 
     private String digest;

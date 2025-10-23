@@ -1,5 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
@@ -45,6 +47,14 @@ public class Restore {
     @ToString.Exclude
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalRestore> logicalRestores;
+    @NotNull
+    @Column(name = "external_database_strategy")
+    private ExternalDatabaseStrategy externalDatabaseStrategy;
+
+    @ToString.Exclude
+    @JsonManagedReference
+    @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    private List<RestoreExternalDatabase> externalDatabases;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")

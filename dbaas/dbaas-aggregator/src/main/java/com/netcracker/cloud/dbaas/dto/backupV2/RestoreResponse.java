@@ -64,4 +64,9 @@ public class RestoreResponse {
             description = "List of logical restores"
     )
     private List<LogicalRestoreResponse> logicalRestores;
+
+    @Schema(
+            description = "List of external databases"
+    )
+    private List<RestoreExternalDatabaseResponse> externalDatabases;
 }

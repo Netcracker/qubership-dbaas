@@ -97,4 +97,7 @@ public interface BackupV2Mapper {
                     Source.builder().build());
         };
     }
+
+    @Mapping(target = "id", ignore = true)
+    List<RestoreExternalDatabase> toRestoreExternalDatabases(List<BackupExternalDatabase> backupExternalDatabases);
 }
