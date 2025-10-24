@@ -25,7 +25,7 @@ public class DbaasUsersLoader {
                        H2DbaasUserRepository usersRepository,
                        @ConfigProperty(name = "dbaas.security.users.configuration.location") String usersConfigurationLocation) throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
-        log.info("Start user loading from {}", usersConfigurationLocation);
+        log.info("Start user loading from {}...", usersConfigurationLocation);
         InputStream usersStream = getClass().getResourceAsStream(usersConfigurationLocation);
         if (usersStream == null) {
             usersStream = FileUtils.openInputStream(FileUtils.getFile(usersConfigurationLocation));

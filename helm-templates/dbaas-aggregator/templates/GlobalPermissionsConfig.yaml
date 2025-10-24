@@ -7,4 +7,5 @@ metadata:
     app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
     app.kubernetes.io/part-of: {{ .Values.APPLICATION_NAME | default "dbaas" }}
 data:
-  "services.json": "{}"
+  services.json: |
+    {}
