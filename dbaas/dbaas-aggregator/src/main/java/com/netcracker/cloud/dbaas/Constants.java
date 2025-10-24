@@ -18,6 +18,7 @@ public class Constants {
             PG_DATASOURCE = "pgDataSource",
             PG_ENTITY_MANAGER = "pgEntityManager",
             ROLE = "role",
+            USERNAME = "username",
             MICROSERVICE_NAME = "microserviceName",
             SCOPE = "scope",
             TENANT_ID = "tenantId",
