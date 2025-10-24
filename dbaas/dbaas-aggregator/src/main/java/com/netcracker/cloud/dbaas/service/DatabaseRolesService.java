@@ -7,6 +7,7 @@ import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
+import com.netcracker.cloud.dbaas.security.GlobalPermissionsConfigLoader;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,8 @@ public class DatabaseRolesService {
 
     @Inject
     DatabaseRolesDbaasRepository databaseRolesDbaasRepository;
+    @Inject
+    GlobalPermissionsConfigLoader globalPermissionsConfigLoader;
 
     public void saveRequestedRoles(String namespace, String serviceName, RolesRegistration rolesRegistrationRequest) {
         databaseRolesDbaasRepository.save(new DatabaseRole(rolesRegistrationRequest, serviceName, namespace, new Date()));
@@ -67,9 +70,9 @@ public class DatabaseRolesService {
         if (supportedRole == null) {
             if (databaseRole == null || !databaseRole.getDisableGlobalPermissions()) {
                 requestedUserRole = requestedUserRole == null ? Role.ADMIN.toString() : requestedUserRole.toLowerCase();
-                if (DatabaseRole.getGlobalPermissions().get(originService) == null)
+                if (globalPermissionsConfigLoader.getGlobalPermissionConfiguration().get(originService) == null)
                     return null;
-                if (DatabaseRole.getGlobalPermissions().get(originService).contains(requestedUserRole)) {
+                if (globalPermissionsConfigLoader.getGlobalPermissionConfiguration().get(originService).contains(requestedUserRole)) {
                     supportedRole = requestedUserRole;
                 }
             }
