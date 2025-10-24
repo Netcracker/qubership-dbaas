@@ -11,4 +11,8 @@ public class BackupRestorationNotFoundException extends ValidationException {
     public BackupRestorationNotFoundException(UUID restorationId, Source source) {
         super(ErrorCodes.CORE_DBAAS_4015, ErrorCodes.CORE_DBAAS_4015.getDetail(String.valueOf(restorationId)), source);
     }
+
+    public BackupRestorationNotFoundException(String restorationName, Source source) {
+        super(ErrorCodes.CORE_DBAAS_4015, ErrorCodes.CORE_DBAAS_4015.getDetail(restorationName), source);
+    }
 }

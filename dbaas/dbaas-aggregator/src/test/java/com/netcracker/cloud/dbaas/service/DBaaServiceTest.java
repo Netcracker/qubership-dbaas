@@ -1097,7 +1097,7 @@ class DBaaServiceTest {
         PhysicalDatabase physicalDatabase = Mockito.mock(PhysicalDatabase.class);
         when(physicalDatabase.getPhysicalDatabaseIdentifier()).thenReturn(adapterId);
         when(physicalDatabase.getAdapter()).thenReturn(adapterRegistrationEntry);
-        when(balancingRulesService.applyNamespaceBalancingRule(eq(namespace), eq(createRequest.getType()))).thenReturn(physicalDatabase);
+        when(balancingRulesService.applyBalancingRules(eq(createRequest.getType()), eq(namespace), eq(microserviceName))).thenReturn(physicalDatabase);
         when(physicalDatabasesService.getAdapterById(eq(adapterId))).thenReturn(testAdapter);
 
         createRequest.setOriginService(microserviceName);
@@ -1110,7 +1110,6 @@ class DBaaServiceTest {
     }
 
     @Test
-
     void updateFromOldClassifierToClassifierTestException() {
         String type = "test-type";
         SortedMap<String, Object> classifier1 = new TreeMap<>(testClassifier());
@@ -1177,7 +1176,7 @@ class DBaaServiceTest {
             put("microserviceName", microserviceName);
         }});
 
-        when(balancingRulesService.applyNamespaceBalancingRule(eq(namespace), eq(createRequest.getType()))).thenReturn(null);
+        when(balancingRulesService.applyBalancingRules(eq(createRequest.getType()), eq(namespace), eq(microserviceName))).thenThrow(NoBalancingRuleException.class);
 
         createRequest.setOriginService(microserviceName);
         createRequest.setUserRole(Role.ADMIN.toString());
