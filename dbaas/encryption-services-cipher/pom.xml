@@ -48,12 +48,12 @@
         <dependency>
             <groupId>jakarta.xml.bind</groupId>
             <artifactId>jakarta.xml.bind-api</artifactId>
-            <version>4.0.2</version>
+            <version>4.0.4</version>
         </dependency>
         <dependency>
             <groupId>org.glassfish.jaxb</groupId>
             <artifactId>jaxb-runtime</artifactId>
-            <version>4.0.5</version>
+            <version>4.0.6</version>
         </dependency>
         <dependency>
             <groupId>org.bouncycastle</groupId>
@@ -73,12 +73,12 @@
         <dependency>
             <groupId>com.sun.xml.bind</groupId>
             <artifactId>jaxb-core</artifactId>
-            <version>4.0.5</version>
+            <version>4.0.6</version>
         </dependency>
         <dependency>
             <groupId>com.sun.xml.bind</groupId>
             <artifactId>jaxb-impl</artifactId>
-            <version>4.0.5</version>
+            <version>4.0.6</version>
         </dependency>
         <dependency>
             <groupId>org.javassist</groupId>
