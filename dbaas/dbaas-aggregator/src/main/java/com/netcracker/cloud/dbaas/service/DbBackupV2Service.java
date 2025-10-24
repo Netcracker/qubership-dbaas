@@ -57,8 +57,6 @@ public class DbBackupV2Service {
     private static final String RESTORE = "restore";
     private static final String DATABASE_NAME = "databaseName";
 
-    private static final String USERNAME = "username";
-
     private final BackupRepository backupRepository;
     private final RestoreRepository restoreRepository;
     private final PhysicalDatabasesService physicalDatabasesService;
@@ -108,9 +106,6 @@ public class DbBackupV2Service {
     }
 
     public BackupResponse backup(BackupRequest backupRequest, boolean dryRun) {
-        if (dryRun)
-            throw new FunctionalityNotImplemented("Dry-run mode");
-
         String backupName = backupRequest.getBackupName();
         backupExistenceCheck(backupName);
 
@@ -122,11 +117,12 @@ public class DbBackupV2Service {
         );
 
         Backup backup = initializeFullBackupStructure(filteredDb, backupRequest);
-        startBackup(backup);
+        if (!dryRun)
+            startBackup(backup);
         updateAggregatedStatus(backup);
-        backupRepository.save(backup);
+        if (!dryRun)
+            backupRepository.save(backup);
         return mapper.toBackupResponse(backup);
-        //todo if dryRun then no startBackup,  backupRepository.save(backup);
     }
 
     protected Backup initializeFullBackupStructure(Map<Database, List<DatabaseRegistry>> databasesForBackup, BackupRequest backupRequest) {
@@ -455,15 +451,13 @@ public class DbBackupV2Service {
                 .filter(this::isValidRegistry)
                 .toList();
 
-        Map<Database, List<DatabaseRegistry>> databaseToRegistries = databasesRegistriesForBackup.stream()
-                .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
-
-        if (databaseToRegistries.isEmpty()) {
+        if (databasesRegistriesForBackup.isEmpty()) {
             log.warn("Databases that match filterCriteria not found");
             throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build()); //TODO make appropriate exception
         }
 
-        return databaseToRegistries;
+        return databasesRegistriesForBackup.stream()
+                .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
     }
 
     private boolean isValidRegistry(DatabaseRegistry registry) {
