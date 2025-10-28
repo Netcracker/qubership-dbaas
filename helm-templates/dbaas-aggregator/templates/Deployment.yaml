@@ -34,8 +34,8 @@ spec:
                 secret:
                     secretName: 'dbaas-security-configuration-secret'
             -   name: dbaas-global-permissions-configuration-volume
-                configMap:
-                    name: 'dbaas-global-permissions-configuration'
+                secret:
+                    secretName: 'dbaas-global-permissions-configuration-secret'
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
