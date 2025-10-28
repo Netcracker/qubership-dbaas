@@ -23,7 +23,7 @@ public class GlobalPermissionsConfigLoader {
     private Map<String, List<String>> globalPermissionConfiguration;
 
     void loadGlobalPermissionsConfig(@Observes StartupEvent event,
-                                     @ConfigProperty(name = "dbaas.global.permissions.configuration.location") String location) throws IOException {
+                                     @ConfigProperty(name = "dbaas.global-permissions.configuration.location") String location) throws IOException {
         log.info("Start global permissions configuration loading from {}...", location);
         InputStream configStream = getClass().getResourceAsStream(location);
         if (configStream == null) {
