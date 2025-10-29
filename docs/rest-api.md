@@ -794,8 +794,9 @@ This controller contains API for operations with already created databases, user
 
 ### Change user password
 The API changes password of a user that is related to the specified database. A password will be changed 
-to a random value.If classifier is not passed then all passwords of databases in the namespace and type 
-will be changed.
+to a random value.
+
+If classifier is not passed then all passwords of databases in the namespace and type will be changed.
 
 * **URI:**  `POST {dbaas_host}/api/v3/dbaas/namespaces/{namespace}/password-changes`
 * **Headers:**  
@@ -4181,7 +4182,7 @@ Response model for recreate existing database API. The model contains successful
 
 
 ### UpdateClassifierRequest
-Contains primary or source ("from") classifier by which a database record will be found and changed to target classifier ("from")
+Contains primary or source ("from") classifier by which a database record will be found and changed to target classifier ("to")
 
 | Name                               | Description                                                                     | Schema                 |
 |------------------------------------|---------------------------------------------------------------------------------|------------------------|
