@@ -9,7 +9,7 @@ metadata:
     labels:
         name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
-        deployment.qubership.org/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
     replicas: {{ .Values.REPLICAS | default 1 }}
     strategy:
@@ -33,6 +33,9 @@ spec:
             -   name: dbaas-security-configuration-volume
                 secret:
                     secretName: 'dbaas-security-configuration-secret'
+            -   name: dbaas-global-permissions-configuration-volume
+                secret:
+                    secretName: 'dbaas-global-permissions-configuration-secret'
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
@@ -55,6 +58,9 @@ spec:
                 volumeMounts:
                 -   name: dbaas-security-configuration-volume
                     mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+                    readOnly: true
+                -   name: dbaas-global-permissions-configuration-volume
+                    mountPath: '{{ .Values.DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION }}'
                     readOnly: true
             {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
                 -   name: tmp

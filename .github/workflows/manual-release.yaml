@@ -1,5 +1,5 @@
 ---
-name: Manual Docker & Github Release
+name: Maven, Docker & Github Release
 
 on:
   workflow_dispatch:
@@ -20,40 +20,8 @@ permissions:
   packages: write
 
 jobs:
-  create-tag:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create Tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
-        with:
-          ref: ${{ github.ref }}
-          tag-name: v${{ github.event.inputs.version }}
-          check-tag: true
-
-  build-and-publish:
-    needs: create-tag
-    uses: ./.github/workflows/docker-build-publish.yaml
+  release:
+    uses: netcracker/qubership-core-infra/.github/workflows/java-service-release.yaml@v1.1.1
     with:
-      ref: v${{ github.event.inputs.version }}
-      docker-tags: v${{ github.event.inputs.version }}
-      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
-
-  cleanup-on-dry-run:
-    needs: build-and-publish
-    if: ${{ github.event.inputs.dry-run == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete Tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@v1.0.3
-        with:
-          ref: ${{ github.ref }}
-          tag-name: v${{ github.event.inputs.version }}
-          delete-tag: true
-
-  github-release:
-    needs: [ build-and-publish ]
-    if: ${{ github.event.inputs.dry-run == 'false' }}
-    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v1.0.3
-    with:
-      version: ${{ github.event.inputs.version }}
-      publish: true
+      version: "${{ inputs.version }}"
+      dry-run: ${{ inputs.dry-run }}

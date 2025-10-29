@@ -2,7 +2,7 @@ package db.migration.postgresql;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.qubership.cloud.dbaas.JdbcUtils;
+import com.netcracker.cloud.dbaas.JdbcUtils;
 import lombok.Data;
 import lombok.Getter;
 import lombok.NonNull;
@@ -18,7 +18,7 @@ import java.sql.PreparedStatement;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.qubership.cloud.dbaas.Constants.V3_TRANSFORMATION;
+import static com.netcracker.cloud.dbaas.Constants.V3_TRANSFORMATION;
 
 @Slf4j
 public class V1_008__TransformClassifier extends BaseJavaMigration {
@@ -132,7 +132,7 @@ public class V1_008__TransformClassifier extends BaseJavaMigration {
     }
 
     private Map<String, Object> migrateV2ClassifierToV3(Map<String, Object> classifier, String namespace) {
-        Map<String, Object> classifierV3 = null;
+        Map<String, Object> classifierV3;
         classifierV3 = new TreeMap<>(classifier);
         Object isService = classifierV3.get("isServiceDb");
         if (isService == null) {

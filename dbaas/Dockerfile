@@ -1,10 +1,10 @@
-FROM ghcr.io/netcracker/qubership/java-base:1.1.1
+FROM ghcr.io/netcracker/qubership/java-base:1.2.2
 LABEL maintainer="qubership"
 
 ARG BASE_PATH=.
 
-COPY --chown=10001:0 $BASE_PATH/lib/* /app/lib/
-COPY --chown=10001:0 $BASE_PATH/dbaas-aggregator-*-runner.jar /app/dbaas-aggregator.jar
+COPY --chown=10001:0 $BASE_PATH/dbaas-aggregator/target/lib/* /app/lib/
+COPY --chown=10001:0 $BASE_PATH/dbaas-aggregator/target/dbaas-aggregator-*-runner.jar /app/dbaas-aggregator.jar
 EXPOSE 8080
 
 WORKDIR /app

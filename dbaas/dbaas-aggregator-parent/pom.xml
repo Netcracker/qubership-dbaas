@@ -3,7 +3,7 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-    <groupId>org.qubership.cloud</groupId>
+    <groupId>com.netcracker.cloud</groupId>
     <version>2.0.0-SNAPSHOT</version>
     <modelVersion>4.0.0</modelVersion>
     <packaging>pom</packaging>
@@ -23,19 +23,17 @@
         <maven.compiler.parameters>true</maven.compiler.parameters>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <compiler-plugin.version>3.13.0</compiler-plugin.version>
-        <surefire-plugin.version>3.5.2</surefire-plugin.version>
-        <jacoco.plugin.version>0.8.12</jacoco.plugin.version>
+        <compiler-plugin.version>3.14.1</compiler-plugin.version>
+        <surefire-plugin.version>3.5.4</surefire-plugin.version>
+        <jacoco.plugin.version>0.8.14</jacoco.plugin.version>
 
-        <jackson-bom.version>2.18.4.1</jackson-bom.version>
-        <quarkus.platform.version>3.15.5</quarkus.platform.version>
+        <jackson-bom.version>2.19.2</jackson-bom.version>
+        <quarkus.platform.version>3.20.3</quarkus.platform.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
         <!-- Quarkus Qubership        -->
-        <qs.quarkus.core.version>7.1.0</qs.quarkus.core.version>
+        <qs.quarkus.core.version>7.3.1</qs.quarkus.core.version>
         <!--End Quarkus Qubership section -->
-        <quarkus.platform.artifact-id>quarkus-universe-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.group-id>io.quarkus</quarkus.platform.group-id>
-        <lombok.version>1.18.38</lombok.version>
+        <lombok.version>1.18.42</lombok.version>
         <junit.version>5.13.2</junit.version>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${project.basedir}/../dbaas-report-aggregate/target/site/jacoco-aggregate/jacoco.xml
@@ -52,15 +50,15 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>org.qubership.cloud.quarkus</groupId>
+                <groupId>com.netcracker.cloud.quarkus</groupId>
                 <artifactId>cloud-core-quarkus-bom-publish</artifactId>
                 <version>${qs.quarkus.core.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>${quarkus.platform.group-id}</groupId>
-                <artifactId>${quarkus.platform.artifact-id}</artifactId>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-bom</artifactId>
                 <version>${quarkus.platform.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
@@ -74,7 +72,6 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
-
 
     <dependencies>
         <dependency>
@@ -100,7 +97,7 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.13.1</version>
+            <version>2.13.2</version>
             <scope>test</scope>
         </dependency>
 

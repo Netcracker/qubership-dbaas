@@ -7,7 +7,6 @@
   "default": {},
   "examples": [
     {
-      "CERTIFICATE_BUNDLE_MD5SUM": "d41d8cd98f00b204e9800998ecf8427e",
       "PAAS_PLATFORM": "KUBERNETES",
       "IMAGE_REPOSITORY": "",
       "NAMESPACE": "",
@@ -19,6 +18,7 @@
       "POSTGRES_HOST": "pg-patroni.postgresql",
       "DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES": "",
       "DBAAS_SECURITY_CONFIGURATION_LOCATION": "/etc/dbaas/security",
+      "DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION": "/etc/dbaas/global_permissions",
       "MEM_ARGS": "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=64M -XX:CodeCacheMinimumFreeSpace=4M -XX:CompressedClassSpaceSize=32M -XX:MinMetaspaceExpansion=1M -XX:MaxMetaspaceExpansion=8M -XX:CodeCacheExpansionSize=256k",
       "MEMORY_LIMIT": "904Mi",
       "REPLICA_ROLLING_TIMEOUT_SECONDS": 600,
@@ -53,15 +53,6 @@
     }
   },
   "properties": {
-    "CERTIFICATE_BUNDLE_MD5SUM": {
-      "$id": "#/properties/CERTIFICATE_BUNDLE_MD5SUM",
-      "type": "string",
-      "title": "The CERTIFICATE_BUNDLE_MD5SUM schema",
-      "examples": [
-        "d41d8cd98f00b204e9800998ecf8427e"
-      ],
-      "internal": true
-    },
     "PAAS_PLATFORM": {
       "$id": "#/properties/PAAS_PLATFORM",
       "type": "string",
@@ -169,6 +160,13 @@
       "type": "string",
       "title": "The DBAAS_SECURITY_CONFIGURATION_LOCATION schema",
       "description": "Location to save security configuration such as users.",
+      "internal": true
+    },
+    "DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION": {
+      "$id": "#/properties/DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION",
+      "type": "string",
+      "title": "The DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION schema",
+      "description": "Location to save global permissions configuration such as services and their roles.",
       "internal": true
     },
     "DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED": {
