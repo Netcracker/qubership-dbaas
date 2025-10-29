@@ -216,6 +216,20 @@ public class BalancingRulesService {
         return physicalDatabase;
     }
 
+    public PhysicalDatabase applyBalancingRules(String type, String namespace, String microserviceName) {
+        PhysicalDatabase physicalDatabase = applyMicroserviceBalancingRule(namespace, microserviceName, type);
+        if (physicalDatabase == null) {
+            log.debug("Per microservice rule is not exist, try to apply per namespace rule");
+            physicalDatabase = applyNamespaceBalancingRule(namespace, type);
+        }
+
+        if (physicalDatabase == null) {
+            log.error("Unable to determine physical database from rules for microservice '{}' in namespace '{}'", microserviceName, namespace);
+            throw new NoBalancingRuleException(ErrorCodes.CORE_DBAAS_4033, ErrorCodes.CORE_DBAAS_4033.getDetail(microserviceName, namespace));
+        }
+        return physicalDatabase;
+    }
+
     private PhysicalDatabase getDatabaseForNamespace(String namespace, String databaseType) {
         List<PerNamespaceRule> perNamespaceRule = balancingRulesDbaasRepository.findByNamespaceAndRuleType(namespace, RuleType.NAMESPACE).stream()
                 .filter(rule -> databaseType.equalsIgnoreCase(rule.getDatabaseType())).collect(Collectors.toList());
