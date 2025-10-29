@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -350,7 +350,7 @@ class DatabaseBackupV2ControllerTest {
                 1,
                 "path",
                 null,
-                LocalDateTime.now()
+                Instant.now()
         );
 
         LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(

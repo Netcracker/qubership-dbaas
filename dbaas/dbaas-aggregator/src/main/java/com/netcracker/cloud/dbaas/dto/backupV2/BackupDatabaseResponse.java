@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -50,7 +50,7 @@ public class BackupDatabaseResponse {
 
     private String errorMessage;
 
-    private LocalDateTime creationTime;
+    private Instant creationTime;
 
     @Data
     @Builder

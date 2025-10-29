@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -70,7 +70,10 @@ public class RestoreDatabase {
     private String errorMessage;
 
     @Column(name = "creation_time")
-    private LocalDateTime creationTime;
+    private Instant creationTime;
+
+    @Column(name = "completion_time")
+    private Instant completionTime;
 
     @Data
     @NoArgsConstructor

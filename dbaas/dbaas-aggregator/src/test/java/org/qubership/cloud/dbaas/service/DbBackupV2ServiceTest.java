@@ -33,7 +33,6 @@ import org.mockito.Mockito;
 import javax.sql.DataSource;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -135,8 +134,8 @@ class DbBackupV2ServiceTest {
                 "failed",
                 null,
                 logicalBackupNameOne,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 "storageName",
                 "blobPath",
                 List.of(LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
@@ -155,8 +154,8 @@ class DbBackupV2ServiceTest {
                 "failed",
                 null,
                 logicalBackupNameTwo,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 "storageName",
                 "blobPath",
                 List.of(
@@ -259,8 +258,8 @@ class DbBackupV2ServiceTest {
                 "failed",
                 null,
                 logicalBackupNameOne,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 "storageName",
                 "blobPath",
                 List.of(LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
@@ -274,8 +273,8 @@ class DbBackupV2ServiceTest {
                 "failed",
                 null,
                 logicalBackupNameTwo,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 "storageName",
                 "blobPath",
                 List.of(
@@ -1017,8 +1016,8 @@ class DbBackupV2ServiceTest {
                 "inProgress",
                 null,
                 logicalBackupName1,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 "storageName",
                 "blobPath",
                 List.of(LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
@@ -1037,8 +1036,8 @@ class DbBackupV2ServiceTest {
                 "inProgress",
                 null,
                 logicalBackupName2,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 "storageName",
                 "blobPath",
                 List.of(LogicalBackupAdapterResponse.BackupDatabaseResponse.builder()
@@ -1551,8 +1550,8 @@ class DbBackupV2ServiceTest {
                 "completed",
                 null,
                 logicalBackupName1,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 storageName,
                 blobPath,
                 List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
@@ -1575,8 +1574,8 @@ class DbBackupV2ServiceTest {
                 "completed",
                 null,
                 logicalBackupName2,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 storageName,
                 blobPath,
                 List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
@@ -2182,8 +2181,8 @@ class DbBackupV2ServiceTest {
                 "completed",
                 null,
                 logicalRestoreName,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 storageName,
                 blobPath,
                 List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
@@ -2335,8 +2334,8 @@ class DbBackupV2ServiceTest {
                 "completed",
                 null,
                 logicalRestoreName,
-                LocalDateTime.now(),
-                LocalDateTime.now(),
+                Instant.now(),
+                Instant.now(),
                 storageName,
                 blobPath,
                 List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
@@ -2615,7 +2614,7 @@ class DbBackupV2ServiceTest {
                 1,
                 "path",
                 null,
-                LocalDateTime.now()
+                Instant.now()
         );
 
         LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(

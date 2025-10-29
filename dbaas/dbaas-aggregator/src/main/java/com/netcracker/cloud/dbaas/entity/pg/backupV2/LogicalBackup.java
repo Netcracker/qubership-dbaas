@@ -7,7 +7,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -45,16 +45,16 @@ public class LogicalBackup {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private BackupTaskStatus status = BackupTaskStatus.COMPLETED;
+    private BackupTaskStatus status = BackupTaskStatus.NOT_STARTED;
 
     @Column(name = "error_message")
     private String errorMessage;
 
     @Column(name = "creation_time")
-    private LocalDateTime creationTime;
+    private Instant creationTime;
 
     @Column(name = "completion_time")
-    private LocalDateTime completionTime;
+    private Instant completionTime;
 
     @Override
     public boolean equals(Object o) {

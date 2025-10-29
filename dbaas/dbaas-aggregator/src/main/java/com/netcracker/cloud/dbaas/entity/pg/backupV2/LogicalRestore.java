@@ -4,7 +4,7 @@ import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -45,10 +45,10 @@ public class LogicalRestore {
     private String errorMessage;
 
     @Column(name = "creation_time")
-    private LocalDateTime creationTime;
+    private Instant creationTime;
 
     @Column(name = "completion_time")
-    private LocalDateTime completionTime;
+    private Instant completionTime;
 
     @Override
     public boolean equals(Object o) {

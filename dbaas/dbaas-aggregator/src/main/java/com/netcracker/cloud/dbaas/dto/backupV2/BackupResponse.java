@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import jakarta.validation.constraints.NotBlank;
@@ -113,6 +114,7 @@ public class BackupResponse {
     )
     private List<BackupExternalDatabaseResponse> externalDatabases;
 
+    @JsonIgnore
     private String digest;
     //TODO need granular validation for fields
 }

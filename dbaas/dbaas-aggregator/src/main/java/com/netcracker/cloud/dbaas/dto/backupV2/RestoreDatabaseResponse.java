@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -92,7 +92,12 @@ public class RestoreDatabaseResponse {
     @Schema(
             description = "Information about creation time of database in adapter"
     )
-    private LocalDateTime creationTime;
+    private Instant creationTime;
+
+    @Schema(
+            description = "Information about completion time of database in adapter"
+    )
+    private Instant completionTime;
 
     @Data
     @NoArgsConstructor

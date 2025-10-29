@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -16,8 +16,8 @@ public class LogicalRestoreAdapterResponse {
     private String status;
     private String errorMessage;
     private String restoreId;
-    private LocalDateTime creationTime;
-    private LocalDateTime completionTime;
+    private Instant creationTime;
+    private Instant completionTime;
     private String storageName;
     private String blobPath;
     private List<LogicalRestoreAdapterResponse.RestoreDatabaseResponse> databases;
@@ -34,6 +34,6 @@ public class LogicalRestoreAdapterResponse {
         private String prefix;
         private long duration;
         private String errorMessage;
-        private LocalDateTime creationTime;
+        private Instant creationTime;
     }
 }

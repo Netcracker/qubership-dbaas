@@ -5,7 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -34,9 +34,9 @@ public class LogicalBackupResponse {
 
     private String errorMessage;
 
-    private LocalDateTime creationTime;
+    private Instant creationTime;
 
-    private LocalDateTime completionTime;
+    private Instant completionTime;
 
     @Schema(
             description = "List of logical backup databases",

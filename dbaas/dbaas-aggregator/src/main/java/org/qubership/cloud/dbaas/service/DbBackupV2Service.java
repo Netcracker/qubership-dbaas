@@ -257,24 +257,21 @@ public class DbBackupV2Service {
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalBackup.getLogicalBackupName(), BACKUP_OPERATION);
 
         try {
-            return Failsafe.with(retryPolicy).get(() -> executeBackup(adapterId, storageName, blobPath, dbNames, backup.getName()));
+            return Failsafe.with(retryPolicy).get(() -> {
+                DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
+                LogicalBackupAdapterResponse result = adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
+
+                if (result == null) {
+                    log.error("Empty result from backup operation for adapter: {}, backup: {}", adapterId, backup.getName());
+                    throw new BackupExecutionException(String.format("Empty result from backup operation for adapter %s", adapterId), new Throwable());
+                }
+
+                return result;
+            });
         } catch (Exception e) {
-            log.error("Logical backup startup for adapterId {} and backup {}", adapterId, backup.getName(), e);
+            log.error("Logical backup startup for adapterId '{}' and backup with name '{}' failed", adapterId, backup.getName());
             throw new BackupExecutionException("Failsafe execution failed", e);
         }
-    }
-
-    private LogicalBackupAdapterResponse executeBackup(
-            String adapterId, String storageName, String blobPath, List<Map<String, String>> dbNames, String backupName) {
-        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-        LogicalBackupAdapterResponse result = adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
-
-        if (result == null) {
-            log.error("Empty result from backup operation for adapter: {}, backup: {}", adapterId, backupName);
-            throw new BackupExecutionException(String.format("Empty result from backup operation for adapter %s", adapterId), new Throwable());
-        }
-
-        return result;
     }
 
     protected void refreshLogicalBackupState(LogicalBackup logicalBackup, LogicalBackupAdapterResponse logicalBackupAdapterResponse) {
@@ -302,7 +299,7 @@ public class DbBackupV2Service {
 
     @Scheduled(every = "${dbaas.backup-restore.check.interval}", concurrentExecution = SKIP)
     @SchedulerLock(name = "checkBackupsAsync")
-    protected void checkBackupsAsync() {
+    public void checkBackupsAsync() {
         //TODO propagate correct business id
         log.info("Starting backup scheduler");
         LockAssert.assertLocked();
@@ -797,7 +794,7 @@ public class DbBackupV2Service {
     private List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
                                                                       ExternalDatabaseStrategy strategy,
                                                                       FilterCriteria filterCriteria) {
-        if (externalDatabases.isEmpty())
+        if (externalDatabases == null || externalDatabases.isEmpty())
             return List.of();
 
         String externalNames = externalDatabases.stream()
@@ -1415,7 +1412,7 @@ public class DbBackupV2Service {
         Map<Database, List<DatabaseRegistry>> externalDatabases = partitioned.get(true);
         Map<Database, List<DatabaseRegistry>> internalDatabases = partitioned.get(false);
 
-        if (!externalDatabases.isEmpty()) {
+        if (externalDatabases != null && !externalDatabases.isEmpty()) {
             String externalNames = externalDatabases.keySet().stream()
                     .map(Database::getName)
                     .collect(Collectors.joining(", "));
