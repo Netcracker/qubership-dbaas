@@ -7,6 +7,7 @@ import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRolesDbaasRepository;
+import com.netcracker.cloud.dbaas.security.GlobalPermissionsConfigLoader;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -117,18 +118,24 @@ class DatabaseRolesServiceTest {
 
     @Test
     void testGetSupportedRoleFromRequest_CheckGlobalPermissions() {
-        DatabaseRolesDbaasRepository databaseRolesDbaasRepositoryMock = mock(DatabaseRolesDbaasRepository.class);
+        String anotherService = "anotherService";
+        String globalService = "globalService";
 
-        doReturn(null).when(databaseRolesDbaasRepositoryMock).findAllByMicroserviceNameAndNamespace("another-service", TEST_NAMESPACE);
+        DatabaseRolesDbaasRepository databaseRolesDbaasRepositoryMock = mock(DatabaseRolesDbaasRepository.class);
+        doReturn(null).when(databaseRolesDbaasRepositoryMock).findAllByMicroserviceNameAndNamespace(anotherService, TEST_NAMESPACE);
+        GlobalPermissionsConfigLoader globalPermissionsConfigLoaderMock = mock(GlobalPermissionsConfigLoader.class);
+        when(globalPermissionsConfigLoaderMock.getGlobalPermissionConfiguration()).thenReturn(Map.of(
+                globalService, List.of("streaming")
+        ));
         databaseRolesService.databaseRolesDbaasRepository = databaseRolesDbaasRepositoryMock;
+        databaseRolesService.globalPermissionsConfigLoader = globalPermissionsConfigLoaderMock;
 
         DatabaseCreateRequestV3 databaseCreateRequestV3 = new DatabaseCreateRequestV3();
-
         databaseCreateRequestV3.setOriginService(TEST_MICROSERVICE_NAME);
         HashMap<String, Object> classifier = new HashMap<>();
-        classifier.put(MICROSERVICE_NAME, "another-service");
+        classifier.put(MICROSERVICE_NAME, anotherService);
         databaseCreateRequestV3.setClassifier(classifier);
-        databaseCreateRequestV3.setOriginService("cdc-streaming-platform");
+        databaseCreateRequestV3.setOriginService(globalService);
         databaseCreateRequestV3.setType(POSTGRESQL_TYPE);
         databaseCreateRequestV3.setUserRole("streaming");
 
@@ -137,7 +144,9 @@ class DatabaseRolesServiceTest {
 
     @Test
     void testGetSupportedRoleFromRequest_CheckGlobalPermissionsWhenDisabled() {
-        DatabaseRolesDbaasRepository databaseRolesDbaasRepositoryMock = mock(DatabaseRolesDbaasRepository.class);
+        String anotherService = "anotherService";
+        String globalService = "globalService";
+
         List<PolicyRole> policyRoleList = Collections.singletonList(createPolicyRole(POSTGRESQL_TYPE));
 
         ServiceRole serviceRole = new ServiceRole();
@@ -147,16 +156,16 @@ class DatabaseRolesServiceTest {
         DatabaseRole databaseRole = createDatabaseRole(policyRoleList, serviceRoleList);
         databaseRole.setDisableGlobalPermissions(true);
 
-        doReturn(List.of(databaseRole)).when(databaseRolesDbaasRepositoryMock).findAllByMicroserviceNameAndNamespace("another-service", TEST_NAMESPACE);
+        DatabaseRolesDbaasRepository databaseRolesDbaasRepositoryMock = mock(DatabaseRolesDbaasRepository.class);
+        doReturn(List.of(databaseRole)).when(databaseRolesDbaasRepositoryMock).findAllByMicroserviceNameAndNamespace(anotherService, TEST_NAMESPACE);
         databaseRolesService.databaseRolesDbaasRepository = databaseRolesDbaasRepositoryMock;
 
         DatabaseCreateRequestV3 databaseCreateRequestV3 = new DatabaseCreateRequestV3();
-
         databaseCreateRequestV3.setOriginService(TEST_MICROSERVICE_NAME);
         HashMap<String, Object> classifier = new HashMap<>();
-        classifier.put(MICROSERVICE_NAME, "another-service");
+        classifier.put(MICROSERVICE_NAME, anotherService);
         databaseCreateRequestV3.setClassifier(classifier);
-        databaseCreateRequestV3.setOriginService("cdc-streaming-platform");
+        databaseCreateRequestV3.setOriginService(globalService);
         databaseCreateRequestV3.setType(POSTGRESQL_TYPE);
         databaseCreateRequestV3.setUserRole("streaming");
 
