@@ -1,4 +1,5 @@
 # ============== DEPLOYMENT VARIABLES ============================
+APPLICATION_NAME: dbaas
 CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
 READONLY_CONTAINER_FILE_SYSTEM_ENABLED: false
 REPLICA_ROLLING_TIMEOUT_SECONDS: 600

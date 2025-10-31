@@ -7,7 +7,13 @@ cat << EOF | kubectl apply -f - --namespace="${NAMESPACE}"
       "apiVersion": "v1",
       "kind": "Secret",
       "metadata": {
-        "name": "dbaas-storage-credentials"
+        "name": "dbaas-storage-credentials",
+        "labels": {
+            "app.kubernetes.io/name": "${SERVICE_NAME}",
+            "app.kubernetes.io/part-of": "${APPLICATION_NAME}",
+            "app.kubernetes.io/managed-by": "${MANAGED_BY}",
+            "deployment.netcracker.com/sessionId": "${DEPLOYMENT_SESSION_ID:-"unimplemented"}",
+        }
       },
       "data": {
         "username": "$(echo -n "${2}" | base64 -w 0)",
@@ -112,7 +118,13 @@ print(encryptedDefaultKey);")
   \"apiVersion\": \"v1\", \
   \"kind\": \"Secret\", \
   \"metadata\": { \
-    \"name\": \"${service}-encryption-secret\" \
+    \"name\": \"${service}-encryption-secret\", \
+    \"labels\": { \
+        \"app.kubernetes.io/name\": \"${SERVICE_NAME}\", \
+        \"app.kubernetes.io/part-of\": \"${APPLICATION_NAME}\", \
+        \"app.kubernetes.io/managed-by\": \"${MANAGED_BY}\", \
+        \"deployment.netcracker.com/sessionId\": \"${DEPLOYMENT_SESSION_ID:-"unimplemented"}\", \
+    } \
   }, \
   \"data\": { \
     \"sym-key\": \"${SYM_KEY_VALUE_B64}\", \
