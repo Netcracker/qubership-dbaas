@@ -1,5 +1,6 @@
 # ============== DEPLOYMENT VARIABLES ============================
 APPLICATION_NAME: dbaas
+SERVICE_NAME: dbaas-aggregator
 CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
 READONLY_CONTAINER_FILE_SYSTEM_ENABLED: false
 REPLICA_ROLLING_TIMEOUT_SECONDS: 600
