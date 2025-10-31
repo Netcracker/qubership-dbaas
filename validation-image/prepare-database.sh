@@ -55,7 +55,7 @@ kill_process(){
 
 isSecretExist() {
   echo "Entered isSecretExist func with secret name ${1}"
-  SECRET=$(kubectl get secret $1 --output=go-template='{{ .metadata.name }}')
+  SECRET=$(kubectl get secret $1 --namespace="${NAMESPACE}" --output=go-template='{{ .metadata.name }}')
 
   if [ -z $SECRET ]
   then
@@ -67,11 +67,11 @@ isSecretExist() {
 
 ensure-encryption-secret() {
   echo "Check [encryption-secret]"
-  service=${ENV_SERVICE:=dbaas-aggregator}
+  service=${SERVICE_NAME:=dbaas-aggregator}
 
   # 1. Secrets
   # 1.1 Get secret SYM_KEY_VALUE
-  SECRET=$(kubectl get secret ${service}-encryption-secret --namespace="$ENV_NAMESPACE" --output=go-template='{{ .metadata.name }}')
+  SECRET=$(kubectl get secret ${service}-encryption-secret --namespace="$NAMESPACE" --output=go-template='{{ .metadata.name }}')
 
   # 1.2 Check secrets
   if [ -z $SECRET ]
@@ -137,7 +137,7 @@ print(encryptedDefaultKey);")
   #exit
 
   # 1.4 Create secret from json
-  echo "$SECRET_JSON" | kubectl apply -f - --namespace="${ENV_NAMESPACE}"
+  echo "$SECRET_JSON" | kubectl apply -f - --namespace="${NAMESPACE}"
   else
      echo "The Secret [$SECRET] already exists."
   fi
