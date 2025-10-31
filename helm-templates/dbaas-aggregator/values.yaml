@@ -23,7 +23,7 @@ DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION: '/etc/dbaas/global_permissions'
 DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES: ''
 DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED: false
 
-MEM_ARGS: "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=64M -XX:CompressedClassSpaceSize=32M -XX:MinMetaspaceExpansion=1M -XX:MaxMetaspaceExpansion=8M -XX:CodeCacheExpansionSize=256k -XX:MaxDirectMemorySize=10m -XX:+UseParallelGC -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90"
+MEM_ARGS: "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=136m -XX:MaxMetaspaceSize=136m -XX:ReservedCodeCacheSize=64M -XX:CompressedClassSpaceSize=32M -XX:MinMetaspaceExpansion=1M -XX:MaxMetaspaceExpansion=8M -XX:CodeCacheExpansionSize=256k -XX:MaxDirectMemorySize=10m -XX:+UseParallelGC -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90"
 MEMORY_LIMIT: "520Mi"
 CPU_LIMIT: "2"
 CPU_REQUEST: "100m"
