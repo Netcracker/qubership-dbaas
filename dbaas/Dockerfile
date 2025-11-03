@@ -1,4 +1,4 @@
-FROM ghcr.io/netcracker/qubership/java-base:1.2.2
+FROM ghcr.io/netcracker/qubership/java-base:62-merge-20251103072647-278
 LABEL maintainer="qubership"
 
 ARG BASE_PATH=.
