@@ -628,7 +628,7 @@ class DbBackupV2ServiceTest {
         databaseThird.setDatabaseRegistry(List.of(databaseRegistryThird));
         databaseThird.setSettings(Map.of("key", "value"));
 
-        DatabaseBackupNotSupportedException ex = assertThrows(DatabaseBackupNotSupportedException.class,
+        DatabaseBackupRestoreNotSupportedException ex = assertThrows(DatabaseBackupRestoreNotSupportedException.class,
                 () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(
                         Map.of(databaseThird, databaseThird.getDatabaseRegistry()),
                         false,
@@ -769,7 +769,7 @@ class DbBackupV2ServiceTest {
         when(physicalDatabasesService.getAdapterById("1"))
                 .thenReturn(adapter1);
 
-        DatabaseBackupNotSupportedException ex = assertThrows(DatabaseBackupNotSupportedException.class,
+        DatabaseBackupRestoreNotSupportedException ex = assertThrows(DatabaseBackupRestoreNotSupportedException.class,
                 () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(
                         Map.of(databaseFirst, databaseFirst.getDatabaseRegistry()),
                         false,
@@ -1320,7 +1320,7 @@ class DbBackupV2ServiceTest {
                 .thenReturn(adapter1);
 
         doThrow(new IllegalResourceStateException(backupName, Source.builder().build()))
-                .when(adapter1).deleteBackupV2(any());
+                .when(adapter1).deleteBackupV2(any(), any());
 
         assertThrows(UnprocessableEntityException.class,
                 () -> dbBackupV2Service.deleteBackup(backupName, force));
@@ -2208,7 +2208,7 @@ class DbBackupV2ServiceTest {
         when(adapter.restoreV2(any(), anyBoolean(), any()))
                 .thenReturn(response);
 
-        dbBackupV2Service.startRestore(restore);
+        dbBackupV2Service.startRestore(restore, false);
 
         Restore actualRestore = restoreRepository.findById(restoreName);
         assertNotNull(actualRestore);
@@ -2543,8 +2543,9 @@ class DbBackupV2ServiceTest {
         });
 
         Map<String, List<EnsuredUser>> dbNameToEnsuredUsers = restore.getLogicalRestores().stream().flatMap(lr -> lr.getRestoreDatabases().stream()
-                        .map(rd -> dbBackupV2Service.ensureUsers(lr.getAdapterId(), rd.getName(), rd.getUsers())))
-                .flatMap(m -> m.entrySet().stream())
+                        .map(rd -> Map.entry(
+                                rd.getName(),
+                                dbBackupV2Service.ensureUsers(lr.getAdapterId(), rd.getName(), rd.getUsers()))))
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
                         Map.Entry::getValue
