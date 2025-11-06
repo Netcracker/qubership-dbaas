@@ -76,7 +76,7 @@ public class DatabaseBackupV2Controller {
                                    @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         BackupResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
         BackupStatus status = response.getStatus();
-        if (status == BackupStatus.COMPLETED || status == BackupStatus.FAILED)
+        if (status == BackupStatus.COMPLETED || status == BackupStatus.FAILED || dryRun)
             return Response.ok(response).build();
         return Response.accepted(response).build();
     }

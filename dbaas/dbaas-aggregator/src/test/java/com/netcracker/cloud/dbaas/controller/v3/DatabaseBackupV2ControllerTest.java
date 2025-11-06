@@ -6,7 +6,7 @@ import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
-import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupNotSupportedException;
+import com.netcracker.cloud.dbaas.exceptions.DatabaseBackupRestoreNotSupportedException;
 import com.netcracker.cloud.dbaas.exceptions.ResourceAlreadyExistsException;
 import com.netcracker.cloud.dbaas.exceptions.UnprocessableEntityException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
@@ -100,7 +100,7 @@ class DatabaseBackupV2ControllerTest {
         BackupRequest backupRequest = createBackupRequest(namespace, backupName);
 
         List<String> dbNames = List.of("db1", "db2");
-        doThrow(new DatabaseBackupNotSupportedException(
+        doThrow(new DatabaseBackupRestoreNotSupportedException(
                 "Backup operation unsupported for databases: " + dbNames,
                 Source.builder().parameter("ignoreNotBackupableDatabases").build()))
                 .when(dbBackupV2Service).backup(backupRequest, false);
@@ -112,7 +112,7 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(422)
                 .body("reason", equalTo("Backup not allowed"))
-                .body("message", equalTo("The backup request can`t be processed. Backup operation unsupported for databases: " + dbNames));
+                .body("message", equalTo("The backup/restore request can`t be processed. Backup operation unsupported for databases: " + dbNames));
         verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
 
