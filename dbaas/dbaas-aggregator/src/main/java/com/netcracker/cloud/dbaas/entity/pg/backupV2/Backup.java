@@ -33,6 +33,7 @@ public class Backup {
     private String blobPath;
 
     @NotNull
+    @Enumerated(EnumType.STRING)
     @Column(name = "external_database_strategy")
     private ExternalDatabaseStrategy externalDatabaseStrategy;
 

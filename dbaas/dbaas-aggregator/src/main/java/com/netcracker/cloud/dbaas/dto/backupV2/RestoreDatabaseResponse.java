@@ -94,11 +94,6 @@ public class RestoreDatabaseResponse {
     )
     private Instant creationTime;
 
-    @Schema(
-            description = "Information about completion time of database in adapter"
-    )
-    private Instant completionTime;
-
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

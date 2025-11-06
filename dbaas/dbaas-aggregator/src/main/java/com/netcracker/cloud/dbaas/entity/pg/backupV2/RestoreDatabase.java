@@ -72,9 +72,6 @@ public class RestoreDatabase {
     @Column(name = "creation_time")
     private Instant creationTime;
 
-    @Column(name = "completion_time")
-    private Instant completionTime;
-
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

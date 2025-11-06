@@ -73,6 +73,32 @@ public class RestoreResponse {
     private RestoreStatus status;
 
     @Schema(
+            description = "Total database count to restore operation",
+            required = true
+    )
+    private Integer total;
+
+    @Schema(
+            description = "Completed databases restore operation"
+    )
+    private Integer completed;
+
+    @Schema(
+            description = "Aggregated error messages during restore operation"
+    )
+    private String errorMessage;
+
+    @Schema(
+            description = "Aggregated duration of databases"
+    )
+
+    private Long duration;
+    @Schema(
+            description = "Total number of adapter requests"
+    )
+    private int attemptCount;
+
+    @Schema(
             description = "List of logical restores"
     )
     private List<LogicalRestoreResponse> logicalRestores;

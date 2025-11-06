@@ -67,6 +67,8 @@ public interface BackupV2Mapper {
 
     FilterCriteria toFilterCriteria(FilterCriteriaEntity entity);
 
+    Restore.MappingEntity toMappingEntity(com.netcracker.cloud.dbaas.dto.backupV2.Mapping mapping);
+
     FilterCriteriaEntity toFilterCriteriaEntity(FilterCriteria dto);
 
     default BackupTaskStatus toBackupTaskStatus(String status) {
@@ -99,5 +101,7 @@ public interface BackupV2Mapper {
     }
 
     @Mapping(target = "id", ignore = true)
+    RestoreExternalDatabase toRestoreExternalDatabase(BackupExternalDatabase backupExternalDatabase);
+
     List<RestoreExternalDatabase> toRestoreExternalDatabases(List<BackupExternalDatabase> backupExternalDatabases);
 }

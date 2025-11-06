@@ -42,12 +42,13 @@ public class Restore {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private Mapping mapping;
+    private MappingEntity mapping;
 
     @ToString.Exclude
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalRestore> logicalRestores;
     @NotNull
+    @Enumerated(EnumType.STRING)
     @Column(name = "external_database_strategy")
     private ExternalDatabaseStrategy externalDatabaseStrategy;
 
@@ -64,6 +65,8 @@ public class Restore {
 
     private Integer completed;
 
+    private Long duration;
+
     @Column(name = "error_message")
     private String errorMessage;
 
@@ -74,7 +77,7 @@ public class Restore {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class Mapping {
+    public static class MappingEntity {
         Map<String, String> namespaces;
         Map<String, String> tenants;
     }

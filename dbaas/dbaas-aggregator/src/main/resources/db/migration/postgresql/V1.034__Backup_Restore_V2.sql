@@ -24,7 +24,7 @@ create table v2_logical_backup
     type varchar not null,
     status varchar,
     error_message varchar,
-    creation_time timestamp with time zone default now(),
+    creation_time timestamp with time zone,
     completion_time timestamp with time zone
 );
 create table v2_backup_database
@@ -42,8 +42,7 @@ create table v2_backup_database
     duration bigint,
     path varchar,
     error_message varchar,
-    creation_time timestamp with time zone default now(),
-    completion_time timestamp with time zone
+    creation_time timestamp with time zone
 );
 create table v2_backup_external_database
 (
@@ -65,7 +64,7 @@ create table v2_restore
     status varchar,
     total int,
     completed int,
-    size bigint,
+    duration bigint,
     error_message varchar,
     attempt_count int default 0
 );
@@ -78,7 +77,7 @@ create table v2_logical_restore
     type varchar not null,
     status varchar,
     error_message varchar,
-    creation_time timestamp with time zone default now(),
+    creation_time timestamp with time zone,
     completion_time timestamp with time zone
 );
 create table v2_restore_database
@@ -93,12 +92,10 @@ create table v2_restore_database
     settings jsonb,
     bgVersion varchar,
     status varchar,
-    size bigint,
     duration bigint,
     path varchar,
     error_message varchar,
-    creation_time timestamp with time zone default now(),
-    completion_time timestamp with time zone
+    creation_time timestamp with time zone
 );
 create table v2_restore_external_database
 (
