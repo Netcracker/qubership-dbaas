@@ -141,8 +141,8 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     }
 
     @Override
-    public void deleteBackupV2(String logicalBackupName) {
-        restClient.deleteBackupV2(type(), logicalBackupName);
+    public void deleteBackupV2(String logicalBackupName, String blobPath) {
+        restClient.deleteBackupV2(type(), logicalBackupName, blobPath);
     }
 
 

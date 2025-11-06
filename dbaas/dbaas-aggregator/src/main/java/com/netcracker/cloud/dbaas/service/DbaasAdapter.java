@@ -48,7 +48,7 @@ public interface DbaasAdapter {
 
     LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName, String storageName, String blobPath);
 
-    void deleteBackupV2(String logicalBackupName);
+    void deleteBackupV2(String logicalBackupName, String blobPath);
 
     String type();
 

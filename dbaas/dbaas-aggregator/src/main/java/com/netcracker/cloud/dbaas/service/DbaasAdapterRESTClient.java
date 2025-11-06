@@ -118,7 +118,7 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     }
 
     @Override
-    public void deleteBackupV2(String logicalBackupName) {
+    public void deleteBackupV2(String logicalBackupName, String blobPath) {
 
     }
 

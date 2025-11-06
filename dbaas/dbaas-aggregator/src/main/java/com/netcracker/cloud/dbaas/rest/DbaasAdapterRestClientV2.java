@@ -87,7 +87,9 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @DELETE
     @Path("/api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}")
     @Produces(MediaType.APPLICATION_JSON)
-    void deleteBackupV2(@PathParam("dbType") String dbType, @PathParam("backupId") String logicalBackupName);
+    void deleteBackupV2(@PathParam("dbType") String dbType,
+                        @PathParam("backupId") String logicalBackupName,
+                        @QueryParam("blobPath") String blobPath);
 
     @POST
     @Path("/api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}/restore")
