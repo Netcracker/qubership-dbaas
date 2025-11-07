@@ -455,8 +455,8 @@ public class DbBackupV2Service {
                 .toList();
 
         if (databasesRegistriesForBackup.isEmpty()) {
-            log.warn("Databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build()); //TODO make appropriate exception
+            log.warn("During backup databases that match filterCriteria not found");
+            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
         }
 
         return databasesRegistriesForBackup.stream()
@@ -515,7 +515,7 @@ public class DbBackupV2Service {
                 }
             } else {
                 throw new IllegalResourceStateException(
-                        String.format("can`t restore %s backup that not imported", BackupStatus.DELETED),
+                            String.format("can`t restore %s backup that not imported", BackupStatus.DELETED),
                         Source.builder().build()
                 );
             }
@@ -535,9 +535,9 @@ public class DbBackupV2Service {
             return;
 
         BackupStatus status = backup.getStatus();
-        if (status != BackupStatus.COMPLETED
-                && status != BackupStatus.FAILED
-                && status != BackupStatus.DELETED) {
+        if (status != BackupStatus.COMPLETED &&
+                status != BackupStatus.FAILED &&
+                status != BackupStatus.DELETED) {
             log.error("Backup has invalid status={}. Only {}, {} or {} backups can be processed.",
                     status, BackupStatus.COMPLETED, BackupStatus.FAILED, BackupStatus.DELETED);
             throw new UnprocessableEntityException(
@@ -723,8 +723,8 @@ public class DbBackupV2Service {
                 .toList();
 
         if (databaseDelegateList.isEmpty()) {
-            log.warn("Databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build()); //TODO make appropriate exception
+            log.warn("During restore databases that match filterCriteria not found");
+            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
         }
         return databaseDelegateList;
     }
@@ -1429,7 +1429,6 @@ public class DbBackupV2Service {
                     ),
                     Source.builder().build());
         }
-
         restore.setStatus(RestoreStatus.DELETED);
         restoreRepository.save(restore);
     }

@@ -1040,7 +1040,7 @@ class DbBackupV2ServiceTest {
 
 
         BackupDatabase backupDatabase1 = getBackupDatabase(dbName1, List.of(getClassifier(namespace, microserviceName1, tenantId)), false, BackupTaskStatus.COMPLETED, null);
-        BackupDatabase backupDatabase2 = getBackupDatabase(dbName2, List.of( getClassifier(namespace, microserviceName2, tenantId)), false, BackupTaskStatus.COMPLETED, null);
+        BackupDatabase backupDatabase2 = getBackupDatabase(dbName2, List.of(getClassifier(namespace, microserviceName2, tenantId)), false, BackupTaskStatus.COMPLETED, null);
 
         LogicalBackup logicalBackup1 = getLogicalBackup(logicalBackupName1, adapterId1, postgresqlType, List.of(backupDatabase1), BackupTaskStatus.COMPLETED, null);
         LogicalBackup logicalBackup2 = getLogicalBackup(logicalBackupName2, adapterId2, postgresqlType, List.of(backupDatabase2), BackupTaskStatus.COMPLETED, null);
@@ -1857,7 +1857,153 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getCurrentStatus() {
+    void getBackup() {
+        String backupName = "backupName";
+        String namespace = "namespace";
+
+        String logicalBackupName1 = "logicalBackupName0";
+        String logicalBackupName2 = "logicalBackupName1";
+
+        String dbName1 = "db0";
+        String dbName2 = "db1";
+        String dbName3 = "db2";
+
+        Backup backup = getBackup(backupName, namespace);
+        backupRepository.save(backup);
+
+        BackupResponse response = dbBackupV2Service.getBackup(backupName);
+        assertNotNull(response);
+        assertEquals(backupName, response.getBackupName());
+        assertEquals(BLOB_PATH, response.getBlobPath());
+        assertEquals(STORAGE_NAME, response.getStorageName());
+        assertEquals(ExternalDatabaseStrategy.INCLUDE, response.getExternalDatabaseStrategy());
+        assertEquals(BackupStatus.NOT_STARTED, response.getStatus());
+
+        FilterCriteria responseFilterCriteria = response.getFilterCriteria();
+        assertNotNull(responseFilterCriteria);
+        assertEquals(1, responseFilterCriteria.getFilter().size());
+        assertEquals(namespace, responseFilterCriteria.getFilter().getFirst().getNamespace().getFirst());
+
+        List<BackupExternalDatabase> externalDatabases = backup.getExternalDatabases();
+        assertNull(externalDatabases);
+
+        List<LogicalBackupResponse> logicalBackups = response.getLogicalBackups();
+        assertEquals(2, logicalBackups.size());
+
+        LogicalBackupResponse logicalBackup1 = logicalBackups.stream().filter(db -> logicalBackupName1.equals(db.getLogicalBackupName()))
+                .findAny().orElse(null);
+        assertNotNull(logicalBackup1, String.format("Logical backup with name '%s' not found", logicalBackupName1));
+        assertEquals("0", logicalBackup1.getAdapterId());
+        assertEquals("postgresql", logicalBackup1.getType());
+        assertNull(logicalBackup1.getErrorMessage());
+        assertEquals(2, logicalBackup1.getBackupDatabases().size());
+
+        BackupDatabaseResponse backupDatabase1 = logicalBackup1.getBackupDatabases().stream()
+                .filter(db -> dbName1.equals(db.getName()))
+                .findAny().orElse(null);
+
+        assertNotNull(backupDatabase1);
+        assertFalse(backupDatabase1.isConfigurational());
+        assertEquals("path", backupDatabase1.getPath());
+
+        BackupDatabaseResponse backupDatabase2 = logicalBackup1.getBackupDatabases().stream()
+                .filter(db -> dbName2.equals(db.getName()))
+                .findAny().orElse(null);
+
+        assertNotNull(backupDatabase2);
+        assertFalse(backupDatabase2.isConfigurational());
+        assertEquals("path", backupDatabase2.getPath());
+
+        LogicalBackupResponse logicalBackup2 = logicalBackups.stream()
+                .filter(db -> logicalBackupName2.equals(db.getLogicalBackupName()))
+                .findAny().orElse(null);
+        assertNotNull(logicalBackup2, String.format("Logical backup with name '%s' not found", logicalBackupName2));
+        assertEquals("1", logicalBackup2.getAdapterId());
+        assertEquals("postgresql", logicalBackup2.getType());
+        assertNull(logicalBackup2.getErrorMessage());
+        assertEquals(1, logicalBackup2.getBackupDatabases().size());
+
+        BackupDatabaseResponse backupDatabase3 = logicalBackup2.getBackupDatabases().stream()
+                .filter(db -> dbName3.equals(db.getName()))
+                .findAny().orElse(null);
+        assertNotNull(backupDatabase3);
+        assertFalse(backupDatabase3.isConfigurational());
+        assertEquals("path", backupDatabase3.getPath());
+    }
+
+    @Test
+    void getRestore() {
+        String restoreName = "restoreName";
+        String namespace = "namespace";
+
+        String logicalRestoreName1 = "logicalRestoreName0";
+        String logicalRestoreName2 = "logicalRestoreName1";
+
+        String dbName1 = "db0";
+        String dbName2 = "db1";
+        String dbName3 = "db2";
+
+        Restore restore = getRestore(restoreName, namespace);
+        restoreRepository.save(restore);
+
+        RestoreResponse response = dbBackupV2Service.getRestore(restoreName);
+        assertNotNull(response);
+        assertEquals(BLOB_PATH, response.getBlobPath());
+        assertEquals(STORAGE_NAME, response.getStorageName());
+        assertEquals(ExternalDatabaseStrategy.INCLUDE, response.getExternalDatabaseStrategy());
+        assertEquals(RestoreStatus.NOT_STARTED, response.getStatus());
+
+        FilterCriteria responseFilterCriteria = response.getFilterCriteria();
+        assertNotNull(responseFilterCriteria);
+        assertEquals(1, responseFilterCriteria.getFilter().size());
+        assertEquals(namespace, responseFilterCriteria.getFilter().getFirst().getNamespace().getFirst());
+
+        List<RestoreExternalDatabase> externalDatabases = restore.getExternalDatabases();
+        assertNull(externalDatabases);
+
+        List<LogicalRestoreResponse> logicalRestores = response.getLogicalRestores();
+        assertEquals(2, logicalRestores.size());
+
+        LogicalRestoreResponse logicalRestore1 = logicalRestores.stream().filter(db -> logicalRestoreName1.equals(db.getLogicalRestoreName()))
+                .findAny().orElse(null);
+        assertNotNull(logicalRestore1, String.format("Logical backup with name '%s' not found", logicalRestoreName1));
+        assertEquals("0", logicalRestore1.getAdapterId());
+        assertEquals("postgresql", logicalRestore1.getType());
+        assertNull(logicalRestore1.getErrorMessage());
+        assertEquals(2, logicalRestore1.getRestoreDatabases().size());
+
+        RestoreDatabaseResponse restoreDatabase1 = logicalRestore1.getRestoreDatabases().stream()
+                .filter(db -> dbName1.equals(db.getName()))
+                .findAny().orElse(null);
+
+        assertNotNull(restoreDatabase1);
+        assertEquals("path", restoreDatabase1.getPath());
+
+        RestoreDatabaseResponse restoreDatabase2 = logicalRestore1.getRestoreDatabases().stream()
+                .filter(db -> dbName2.equals(db.getName()))
+                .findAny().orElse(null);
+
+        assertNotNull(restoreDatabase2);
+        assertEquals("path", restoreDatabase2.getPath());
+
+        LogicalRestoreResponse logicalRestore2 = logicalRestores.stream()
+                .filter(db -> logicalRestoreName2.equals(db.getLogicalRestoreName()))
+                .findAny().orElse(null);
+        assertNotNull(logicalRestore2, String.format("Logical backup with name '%s' not found", logicalRestoreName2));
+        assertEquals("1", logicalRestore2.getAdapterId());
+        assertEquals("postgresql", logicalRestore2.getType());
+        assertNull(logicalRestore2.getErrorMessage());
+        assertEquals(1, logicalRestore2.getRestoreDatabases().size());
+
+        RestoreDatabaseResponse restoreDatabase3 = logicalRestore2.getRestoreDatabases().stream()
+                .filter(db -> dbName3.equals(db.getName()))
+                .findAny().orElse(null);
+        assertNotNull(restoreDatabase3);
+        assertEquals("path", restoreDatabase3.getPath());
+    }
+
+    @Test
+    void getBackupStatus() {
         String backupName = "backupName";
         Backup backup = getBackup(backupName, "namespace");
         backup.setStatus(BackupStatus.COMPLETED);
@@ -1875,10 +2021,33 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getCurrentStatus_whenBackupDeleted() {
+    void getBackupStatus_whenBackupDeleted() {
         String backupName = "backupName";
         assertThrows(BackupNotFoundException.class,
                 () -> dbBackupV2Service.getCurrentStatus(backupName));
+    }
+
+    @Test
+    void getRestoreStatus() {
+        String restoreName = "restoreName";
+        Restore restore = getRestore(restoreName, "namespace");
+        restore.setStatus(RestoreStatus.COMPLETED);
+        restore.setTotal(3);
+        restore.setCompleted(3);
+
+        restoreRepository.save(restore);
+
+        RestoreStatusResponse response = dbBackupV2Service.getRestoreStatus(restoreName);
+        assertEquals(RestoreStatus.COMPLETED, response.getStatus());
+        assertEquals(3, response.getTotal());
+        assertEquals(3, response.getCompleted());
+    }
+
+    @Test
+    void getRestoreStatus_whenRestoreDeleted() {
+        String restoreName = "restoreName";
+        assertThrows(BackupRestorationNotFoundException.class,
+                () -> dbBackupV2Service.getRestoreStatus(restoreName));
     }
 
     @Test
@@ -1924,6 +2093,83 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void uploadBackupMetadata_uploadToNewEnvironment() {
+        String backupName = "backupName";
+        String namespace = "namespace";
+        BackupResponse backupResponse = getBackupResponse(backupName, namespace);
+        dbBackupV2Service.uploadBackupMetadata(backupResponse);
+        Backup backup = backupRepository.findById(backupName);
+        assertNotNull(backup);
+        assertTrue(backup.isImported());
+    }
+
+    @Test
+    void uploadBackupMetadata_restoreDeletedBackup() {
+        String backupName = "backupName";
+        String namespace = "namespace";
+        String digest = "digest";
+
+        Backup expectedBackup = getBackup(backupName, namespace);
+        expectedBackup.setStatus(BackupStatus.DELETED);
+        expectedBackup.setImported(true);
+        expectedBackup.setDigest(digest);
+        backupRepository.save(expectedBackup);
+
+        BackupResponse backupResponse = getBackupResponse(backupName, namespace);
+        backupResponse.setDigest(digest);
+
+        dbBackupV2Service.uploadBackupMetadata(backupResponse);
+
+        Backup actualBackup = backupRepository.findById(backupName);
+        assertNotNull(actualBackup);
+        assertEquals(BackupStatus.COMPLETED, actualBackup.getStatus());
+    }
+
+    @Test
+    void uploadBackupMetadata_restoreDeletedBackup_digestMismatch() {
+        String backupName = "backupName";
+        String namespace = "namespace";
+        String digest = "digest";
+        String anotherDigest = "anotherDigest";
+
+        Backup expectedBackup = getBackup(backupName, namespace);
+        expectedBackup.setStatus(BackupStatus.DELETED);
+        expectedBackup.setImported(true);
+        expectedBackup.setDigest(digest);
+        backupRepository.save(expectedBackup);
+
+        BackupResponse backupResponse = getBackupResponse(backupName, namespace);
+        backupResponse.setDigest(anotherDigest);
+
+        IntegrityViolationException ex = assertThrows(IntegrityViolationException.class,
+                () -> dbBackupV2Service.uploadBackupMetadata(backupResponse));
+        assertEquals(
+                String.format("Digest header mismatch: expected digest %s but got %s",
+                        digest, anotherDigest),
+                ex.getDetail());
+    }
+
+    @Test
+    void uploadBackupMetadata_restoreDeletedBackup_backupNotImported() {
+        String backupName = "backupName";
+        String namespace = "namespace";
+
+        Backup expectedBackup = getBackup(backupName, namespace);
+        expectedBackup.setStatus(BackupStatus.DELETED);
+        backupRepository.save(expectedBackup);
+
+        BackupResponse backupResponse = getBackupResponse(backupName, namespace);
+
+        IllegalResourceStateException ex = assertThrows(IllegalResourceStateException.class,
+                () -> dbBackupV2Service.uploadBackupMetadata(backupResponse));
+
+        assertEquals(
+                String.format("Resource has illegal state: can`t restore %s backup that not imported",
+                        BackupStatus.DELETED),
+                ex.getDetail());
+    }
+
+    @Test
     void deleteBackup_forceTrue() {
         String backupName = "backupName";
         String adapter1Name = "0";
@@ -1954,8 +2200,28 @@ class DbBackupV2ServiceTest {
         );
     }
 
-    private static Database getDatabase(String adapterId, String name, boolean isExternal, boolean isBackupDisabled,
-                                        String bgVersion) {
+    @Test
+    void deleteRestore() {
+        String restoreName = "restoreName";
+        Restore restore = getRestore(restoreName, "namespace");
+        restore.setStatus(RestoreStatus.COMPLETED);
+        restoreRepository.save(restore);
+        dbBackupV2Service.deleteRestore(restoreName);
+        Restore response = restoreRepository.findById(restoreName);
+        assertNotNull(response);
+        assertEquals(RestoreStatus.DELETED, response
+                .getStatus());
+    }
+
+    @Test
+    void deleteRestore_whenRestoreStatusUnprocessable() {
+        String restoreName = "restoreName";
+        restoreRepository.save(getRestore(restoreName, "namespace"));
+        assertThrows(UnprocessableEntityException.class,
+                () -> dbBackupV2Service.deleteRestore(restoreName));
+    }
+
+    private Database getDatabase(String adapterId, String name, boolean isExternal, boolean isBackupDisabled, String bgVersion) {
         DbState dbState = new DbState();
         dbState.setId(UUID.randomUUID());
         dbState.setState(AbstractDbState.DatabaseStateStatus.CREATED);
@@ -1982,10 +2248,10 @@ class DbBackupV2ServiceTest {
         return database;
     }
 
-    private static DatabaseRegistry getDatabaseRegistry(Database database,
-                                                        String namespace,
-                                                        String microserviceName,
-                                                        String tenantId, String type) {
+    private DatabaseRegistry getDatabaseRegistry(Database database,
+                                                 String namespace,
+                                                 String microserviceName,
+                                                 String tenantId, String type) {
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setId(UUID.randomUUID());
         databaseRegistry.setNamespace(namespace);
@@ -1996,7 +2262,7 @@ class DbBackupV2ServiceTest {
         return databaseRegistry;
     }
 
-    private static SortedMap<String, Object> getClassifier(String namespace, String microserviceName, String tenantId) {
+    private SortedMap<String, Object> getClassifier(String namespace, String microserviceName, String tenantId) {
         SortedMap<String, Object> classifier = new TreeMap<>();
         classifier.put("namespace", namespace);
         classifier.put("microserviceName", microserviceName);
@@ -2008,7 +2274,7 @@ class DbBackupV2ServiceTest {
         return classifier;
     }
 
-    private static BackupExternalDatabase getBackupExternalDatabase(String name, String type, List<SortedMap<String, Object>> classifiers) {
+    private BackupExternalDatabase getBackupExternalDatabase(String name, String type, List<SortedMap<String, Object>> classifiers) {
         return BackupExternalDatabase.builder()
                 .name(name)
                 .type(type)
@@ -2016,11 +2282,11 @@ class DbBackupV2ServiceTest {
                 .build();
     }
 
-    private static BackupDatabase getBackupDatabase(String dbName,
-                                                    List<SortedMap<String, Object>> classifiers,
-                                                    boolean configurational,
-                                                    BackupTaskStatus status,
-                                                    String errorMessage) {
+    private BackupDatabase getBackupDatabase(String dbName,
+                                             List<SortedMap<String, Object>> classifiers,
+                                             boolean configurational,
+                                             BackupTaskStatus status,
+                                             String errorMessage) {
         return BackupDatabase.builder()
                 .name(dbName)
                 .classifiers(classifiers)
@@ -2036,12 +2302,12 @@ class DbBackupV2ServiceTest {
                 .build();
     }
 
-    private static LogicalBackup getLogicalBackup(String logicalBackupName,
-                                                  String adapterId,
-                                                  String type,
-                                                  List<BackupDatabase> backupDatabases,
-                                                  BackupTaskStatus status,
-                                                  String errorMsg
+    private LogicalBackup getLogicalBackup(String logicalBackupName,
+                                           String adapterId,
+                                           String type,
+                                           List<BackupDatabase> backupDatabases,
+                                           BackupTaskStatus status,
+                                           String errorMsg
     ) {
         LogicalBackup logicalBackup = LogicalBackup.builder()
                 .logicalBackupName(logicalBackupName)
@@ -2056,13 +2322,13 @@ class DbBackupV2ServiceTest {
         return logicalBackup;
     }
 
-    private static Backup getBackup(String name,
-                                    ExternalDatabaseStrategy strategy,
-                                    FilterCriteriaEntity filterCriteria,
-                                    List<LogicalBackup> logicalBackups,
-                                    List<BackupExternalDatabase> externalDatabases,
-                                    BackupStatus status,
-                                    String errorMsg
+    private Backup getBackup(String name,
+                             ExternalDatabaseStrategy strategy,
+                             FilterCriteriaEntity filterCriteria,
+                             List<LogicalBackup> logicalBackups,
+                             List<BackupExternalDatabase> externalDatabases,
+                             BackupStatus status,
+                             String errorMsg
     ) {
         Backup backup = Backup.builder()
                 .name(name)
@@ -2090,7 +2356,7 @@ class DbBackupV2ServiceTest {
         return backup;
     }
 
-    private static Backup getBackup(String backupName, String namespace) {
+    private Backup getBackup(String backupName, String namespace) {
         SortedMap<String, Object> classifier = new TreeMap<>();
         classifier.put("namespace", namespace);
 
@@ -2104,6 +2370,7 @@ class DbBackupV2ServiceTest {
                                     .role("role")
                                     .build()
                     ))
+                    .path("path")
                     .classifiers(List.of(classifier))
                     .build();
             backupDatabases.add(backupDatabase);
@@ -2130,21 +2397,83 @@ class DbBackupV2ServiceTest {
         secondLogical.setBackupDatabases(second);
         second.forEach(db -> db.setLogicalBackup(secondLogical));
 
-        FilterCriteriaEntity criteriaEntity = FilterCriteriaEntity.builder().build();
+        FilterEntity filter = FilterEntity.builder()
+                .namespace(List.of(namespace))
+                .build();
+        FilterCriteriaEntity criteriaEntity = FilterCriteriaEntity.builder()
+                .filter(List.of(filter))
+                .build();
 
         Backup backup = new Backup();
         backup.setName(backupName);
         backup.setLogicalBackups(logicalBackups);
         backup.setFilterCriteria(criteriaEntity);
-        backup.setBlobPath("blobPath");
-        backup.setStorageName("storageName");
+        backup.setBlobPath(BLOB_PATH);
+        backup.setStorageName(STORAGE_NAME);
         backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE);
 
         logicalBackups.forEach(db -> db.setBackup(backup));
         return backup;
     }
 
-    private static Map<Database, List<DatabaseRegistry>> getDatabase(Map<String, String> dbNameToAdapter, String namespace) {
+    private Restore getRestore(String restoreName, String namespace) {
+        SortedMap<String, Object> classifier = new TreeMap<>();
+        classifier.put("namespace", namespace);
+
+        List<RestoreDatabase> restoreDatabases = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            RestoreDatabase restoreDatabase = RestoreDatabase.builder()
+                    .name("db" + i)
+                    .users(List.of(
+                            new RestoreDatabase.User("username", "admin")
+                    ))
+                    .path("path")
+                    .classifiers(List.of(classifier))
+                    .build();
+            restoreDatabases.add(restoreDatabase);
+        }
+
+        List<LogicalRestore> logicalRestores = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            LogicalRestore logicalRestore = LogicalRestore.builder()
+                    .logicalRestoreName("logicalRestoreName" + i)
+                    .adapterId(Integer.toString(i))
+                    .type("postgresql")
+                    .build();
+            logicalRestores.add(logicalRestore);
+        }
+
+        List<RestoreDatabase> first = restoreDatabases.subList(0, 2);
+        List<RestoreDatabase> second = restoreDatabases.subList(2, restoreDatabases.size());
+
+        LogicalRestore firstLogical = logicalRestores.get(0);
+        firstLogical.setRestoreDatabases(first);
+        first.forEach(db -> db.setLogicalRestore(firstLogical));
+
+        LogicalRestore secondLogical = logicalRestores.get(1);
+        secondLogical.setRestoreDatabases(second);
+        second.forEach(db -> db.setLogicalRestore(secondLogical));
+
+        FilterEntity filter = FilterEntity.builder()
+                .namespace(List.of(namespace))
+                .build();
+        FilterCriteriaEntity criteriaEntity = FilterCriteriaEntity.builder()
+                .filter(List.of(filter))
+                .build();
+
+        Restore restore = new Restore();
+        restore.setName(restoreName);
+        restore.setLogicalRestores(logicalRestores);
+        restore.setFilterCriteria(criteriaEntity);
+        restore.setBlobPath(BLOB_PATH);
+        restore.setStorageName(STORAGE_NAME);
+        restore.setExternalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE);
+
+        logicalRestores.forEach(db -> db.setRestore(restore));
+        return restore;
+    }
+
+    private Map<Database, List<DatabaseRegistry>> getDatabase(Map<String, String> dbNameToAdapter, String namespace) {
         List<Database> databases = new ArrayList<>();
         SortedMap<String, Object> classifier = new TreeMap<>();
         classifier.put("namespace", namespace);
@@ -2180,14 +2509,14 @@ class DbBackupV2ServiceTest {
                 ));
     }
 
-    private static RestoreDatabase getRestoreDatabase(BackupDatabase backupDatabase,
-                                                      String dbName,
-                                                      List<SortedMap<String, Object>> classifiers,
-                                                      Map<String, Object> settings,
-                                                      String bgVersion,
-                                                      RestoreTaskStatus status,
-                                                      long duration,
-                                                      String errorMessage) {
+    private RestoreDatabase getRestoreDatabase(BackupDatabase backupDatabase,
+                                               String dbName,
+                                               List<SortedMap<String, Object>> classifiers,
+                                               Map<String, Object> settings,
+                                               String bgVersion,
+                                               RestoreTaskStatus status,
+                                               long duration,
+                                               String errorMessage) {
         return RestoreDatabase.builder()
                 .backupDatabase(backupDatabase)
                 .name(dbName)
@@ -2202,12 +2531,12 @@ class DbBackupV2ServiceTest {
                 .build();
     }
 
-    private static LogicalRestore getLogicalRestore(String logicalRestoreName,
-                                                    String adapterId,
-                                                    String type,
-                                                    List<RestoreDatabase> restoreDatabases,
-                                                    RestoreTaskStatus status,
-                                                    String errorMsg) {
+    private LogicalRestore getLogicalRestore(String logicalRestoreName,
+                                             String adapterId,
+                                             String type,
+                                             List<RestoreDatabase> restoreDatabases,
+                                             RestoreTaskStatus status,
+                                             String errorMsg) {
         LogicalRestore logicalRestore = LogicalRestore.builder()
                 .logicalRestoreName(logicalRestoreName)
                 .adapterId(adapterId)
@@ -2221,15 +2550,15 @@ class DbBackupV2ServiceTest {
         return logicalRestore;
     }
 
-    private static Restore getRestore(Backup backup,
-                                      String name,
-                                      FilterCriteriaEntity filterCriteria,
-                                      Restore.MappingEntity mapping,
-                                      List<LogicalRestore> logicalRestores,
-                                      ExternalDatabaseStrategy strategy,
-                                      List<RestoreExternalDatabase> externalDatabases,
-                                      RestoreStatus status,
-                                      String errorMsg) {
+    private Restore getRestore(Backup backup,
+                               String name,
+                               FilterCriteriaEntity filterCriteria,
+                               Restore.MappingEntity mapping,
+                               List<LogicalRestore> logicalRestores,
+                               ExternalDatabaseStrategy strategy,
+                               List<RestoreExternalDatabase> externalDatabases,
+                               RestoreStatus status,
+                               String errorMsg) {
         Restore restore = Restore.builder()
                 .name(name)
                 .backup(backup)
@@ -2249,10 +2578,10 @@ class DbBackupV2ServiceTest {
         return restore;
     }
 
-    private static BackupRequest getBackupRequest(String backupName,
-                                                  List<String> namespaces,
-                                                  ExternalDatabaseStrategy strategy,
-                                                  boolean ignoreNotBackupableDatabases
+    private BackupRequest getBackupRequest(String backupName,
+                                           List<String> namespaces,
+                                           ExternalDatabaseStrategy strategy,
+                                           boolean ignoreNotBackupableDatabases
     ) {
         Filter filter = new Filter();
         filter.setNamespace(namespaces);
@@ -2270,7 +2599,7 @@ class DbBackupV2ServiceTest {
         return dto;
     }
 
-    private static RestoreRequest getRestoreRequest(
+    private RestoreRequest getRestoreRequest(
             String restoreName,
             List<String> namespaces,
             ExternalDatabaseStrategy strategy,
@@ -2297,7 +2626,73 @@ class DbBackupV2ServiceTest {
         return restoreRequest;
     }
 
-    private static FilterCriteriaEntity getFilterCriteriaEntity(List<String> namespaces) {
+    private BackupResponse getBackupResponse(String backupName, String namespace) {
+        SortedMap<String, Object> sortedMap = new TreeMap<>();
+        sortedMap.put("key-first", Map.of("inner-key", "inner-value"));
+        sortedMap.put("key-second", Map.of("inner-key", "inner-value"));
+
+        BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
+                "backup-database",
+                List.of(sortedMap),
+                Map.of("settings-key", "settings-value"),
+                List.of(BackupDatabaseResponse.User.builder()
+                        .name("name")
+                        .role("role")
+                        .build()),
+                Map.of("key", "value"),
+                true,
+                BackupTaskStatus.COMPLETED,
+                1,
+                1,
+                "path",
+                null,
+                Instant.now()
+        );
+
+        LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+                "logicalBackupName",
+                "adapterID",
+                "type",
+                BackupTaskStatus.COMPLETED,
+                null,
+                null,
+                null,
+                List.of(backupDatabaseResponse)
+        );
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        SortedMap<String, Object> map = new TreeMap<>();
+        map.put("key", "value");
+
+        BackupExternalDatabaseResponse backupExternalDatabase = new BackupExternalDatabaseResponse();
+        backupExternalDatabase.setName("Name");
+        backupExternalDatabase.setType("postgresql");
+        backupExternalDatabase.setClassifiers(List.of(map));
+
+        BackupResponse backupResponse = new BackupResponse();
+        backupResponse.setBackupName(backupName);
+        backupResponse.setStatus(BackupStatus.COMPLETED);
+        backupResponse.setTotal(1);
+        backupResponse.setCompleted(1);
+        backupResponse.setSize(1L);
+        backupResponse.setErrorMessage(null);
+        backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
+        backupResponse.setBlobPath("BlobPath");
+        backupResponse.setStorageName("storageName");
+        backupResponse.setFilterCriteria(filterCriteria);
+        backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        backupResponse.setIgnoreNotBackupableDatabases(true);
+        backupResponse.setExternalDatabases(List.of(backupExternalDatabase));
+
+        return backupResponse;
+    }
+
+    private FilterCriteriaEntity getFilterCriteriaEntity(List<String> namespaces) {
         FilterEntity filter = FilterEntity.builder()
                 .namespace(namespaces)
                 .build();
