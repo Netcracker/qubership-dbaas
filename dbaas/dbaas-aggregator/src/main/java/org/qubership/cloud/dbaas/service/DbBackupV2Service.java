@@ -943,7 +943,7 @@ public class DbBackupV2Service {
         String targetNamespace = (String) firstClassifier.get(NAMESPACE);
         String microserviceName = (String) firstClassifier.get(MICROSERVICE_NAME);
 
-        // MappingEntity classifiers
+        // Mapping classifiers
         if (mapping != null && mapping.getNamespaces() != null) {
             Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
             classifiers = db.classifiers().stream()
@@ -984,12 +984,10 @@ public class DbBackupV2Service {
         SortedMap<String, Object> updatedClassifier = updateClassifier(classifier, mapping);
         // To prevent collision during mapping
         if (!uniqueClassifiers.add(updatedClassifier)) {
-            String oldNs = (String) classifier.get(NAMESPACE);
-            String newNs = (String) updatedClassifier.get(NAMESPACE);
             String msg = String.format(
-                    "Duplicate classifier detected after mapping: old namespace='%s', new namespace='%s'. " +
-                            "Ensure all classifier namespaces remain unique after mapping.",
-                    newNs, oldNs);
+                    "Duplicate classifier detected after mapping: classifier='%s', mapping='%s'. " +
+                            "Ensure all classifiers remain unique after mapping.",
+                    classifier, mapping);
             log.error(msg);
             throw new IllegalResourceStateException(msg, Source.builder().build());
         }
