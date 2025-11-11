@@ -1144,6 +1144,7 @@ public class DbBackupV2Service {
         restoresToAggregate.forEach(this::trackAndAggregateRestore);
         restoresToAggregate.forEach(restore -> {
             if (!Objects.equals(restore.getTotal(), restore.getCompleted()) && RestoreStatus.COMPLETED != restore.getStatus()) {
+                restoreRepository.save(restore);
                 return;
             }
             Map<String, List<EnsuredUser>> dbNameToEnsuredUsers = restore.getLogicalRestores().stream()
@@ -1156,6 +1157,7 @@ public class DbBackupV2Service {
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
             initializeLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
+            restoreRepository.save(restore);
         });
     }
 
@@ -1193,8 +1195,6 @@ public class DbBackupV2Service {
             aggregateRestoreStatus(restore);
             restore.incrementAttempt(); // update track attempt
         }
-
-        restoreRepository.save(restore);
     }
 
 
@@ -1330,8 +1330,8 @@ public class DbBackupV2Service {
             log.error("Exception occurred during restore process", e);
             restore.setStatus(RestoreStatus.FAILED);
             restore.setErrorMessage(e.getMessage());
+            throw e;
         }
-
     }
 
     private void findSimilarDbByClassifier(Set<SortedMap<String, Object>> uniqueClassifiers,
