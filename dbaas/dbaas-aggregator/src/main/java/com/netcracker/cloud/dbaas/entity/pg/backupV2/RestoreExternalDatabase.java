@@ -18,8 +18,8 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "restoreExternalDatabase")
-@Table(name = "v2_restore_external_database")
+@Entity(name = "restore_external_database")
+@Table(name = "restore_external_database")
 public class RestoreExternalDatabase {
 
     @Id

@@ -24,18 +24,18 @@ public interface BackupV2Mapper {
     @Mapping(source = "name", target = "backupName")
     BackupResponse toBackupResponse(Backup backup);
 
-    LogicalBackupResponse toLogicalBackupResponse(LogicalBackup logicalBackup);
+    BackupLogicalResponse toBackupLogicalResponse(BackupLogical backupLogical);
 
     @Mapping(source = "backupName", target = "name")
     Backup toBackup(BackupResponse backupResponse);
 
     @AfterMapping
     default void setRelations(@MappingTarget Backup backup) {
-        if (backup.getLogicalBackups() != null) {
-            backup.getLogicalBackups().forEach(lb -> {
+        if (backup.getBackupLogicals() != null) {
+            backup.getBackupLogicals().forEach(lb -> {
                 lb.setBackup(backup);
                 if (lb.getBackupDatabases() != null) {
-                    lb.getBackupDatabases().forEach(db -> db.setLogicalBackup(lb));
+                    lb.getBackupDatabases().forEach(db -> db.setBackupLogical(lb));
                 }
             });
         }
@@ -48,12 +48,12 @@ public interface BackupV2Mapper {
 
     List<BackupExternalDatabase> toBackupExternalDatabases(List<BackupExternalDatabaseResponse> responses);
 
-    LogicalBackup toLogicalBackup(LogicalBackupResponse logicalBackupResponse);
+    BackupLogical toBackupLogical(BackupLogicalResponse backupLogicalResponse);
 
-    @Mapping(target = "logicalBackupId", source = "backupDatabase.id")
-    RestoreDatabaseResponse toLogicalRestoreDatabaseResponse(RestoreDatabase restoreDatabase);
+    @Mapping(target = "backupDbId", source = "backupDatabase.id")
+    RestoreDatabaseResponse toRestoreDatabaseResponse(RestoreDatabase restoreDatabase);
 
-    List<LogicalRestoreResponse> toLogicalRestoreResponseList(List<LogicalRestore> logicalRestores);
+    List<RestoreLogicalResponse> toRestorelogicalResponseList(List<RestoreLogical> restoreLogicals);
 
     @Mapping(target = "restoreName", source = "name")
     @Mapping(target = "backupName", source = "backup.name")

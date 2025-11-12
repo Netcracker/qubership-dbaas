@@ -31,7 +31,7 @@ public class RestoreDatabaseResponse {
             },
             required = true
     )
-    private String logicalBackupId;
+    private String backupDbId;
 
     @Schema(
             description = "Name of the database",
@@ -56,11 +56,6 @@ public class RestoreDatabaseResponse {
             description = "Map of database settings"
     )
     private Map<String, Object> settings;
-
-    @Schema(
-            description = "Map of database resources"
-    )
-    private Map<String, Object> resources;
 
     @Schema(
             description = "Blue-Green version of database"

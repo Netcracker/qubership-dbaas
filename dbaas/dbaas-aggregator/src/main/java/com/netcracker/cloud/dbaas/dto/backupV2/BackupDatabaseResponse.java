@@ -31,8 +31,6 @@ public class BackupDatabaseResponse {
     private Map<String, Object> settings;
     @Schema(description = "List of database users")
     private List<User> users;
-    @Schema(description = "List of database resources")
-    private Map<String, Object> resources;
 
     private boolean configurational;
 

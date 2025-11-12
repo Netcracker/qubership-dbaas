@@ -22,7 +22,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity(name = "backup_database")
-@Table(name = "v2_backup_database")
+@Table(name = "backup_database")
 public class BackupDatabase {
 
     @Id
@@ -31,8 +31,8 @@ public class BackupDatabase {
 
     @ManyToOne
     @JsonBackReference
-    @JoinColumn(name = "logical_backup_id")
-    private LogicalBackup logicalBackup;
+    @JoinColumn(name = "backup_logical_id")
+    private BackupLogical backupLogical;
 
     private String name;
 
@@ -49,10 +49,6 @@ public class BackupDatabase {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private List<User> users;
-
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private Map<String, Object> resources;
 
     private boolean configurational;
 

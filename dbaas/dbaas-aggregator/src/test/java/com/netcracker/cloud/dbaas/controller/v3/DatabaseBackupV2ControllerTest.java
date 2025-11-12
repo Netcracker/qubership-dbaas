@@ -343,7 +343,6 @@ class DatabaseBackupV2ControllerTest {
                         .name("name")
                         .role("role")
                         .build()),
-                Map.of("key", "value"),
                 true,
                 BackupTaskStatus.COMPLETED,
                 1,
@@ -353,7 +352,7 @@ class DatabaseBackupV2ControllerTest {
                 Instant.now()
         );
 
-        LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+        BackupLogicalResponse backupLogicalResponse = new BackupLogicalResponse(
                 "logicalBackupName",
                 "adapterID",
                 "type",
@@ -387,7 +386,7 @@ class DatabaseBackupV2ControllerTest {
 
         BackupResponse backupResponse = new BackupResponse();
         backupResponse.setBackupName(backupName);
-        backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
+        backupResponse.setBackupLogicals(List.of(backupLogicalResponse));
         backupResponse.setStorageName(storageName);
         backupResponse.setStatus(BackupStatus.COMPLETED);
         backupResponse.setTotal(1);

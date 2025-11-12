@@ -107,7 +107,7 @@ public class BackupResponse {
     @Schema(
             description = "List of logical backups"
     )
-    private List<LogicalBackupResponse> logicalBackups;
+    private List<BackupLogicalResponse> backupLogicals;
 
     @Schema(
             description = "List of external databases"

@@ -1,5 +1,4 @@
-create table v2_backup
-(
+create table backup(
     name varchar primary key,
     storage_name varchar not null,
     blob_path varchar not null,
@@ -15,11 +14,11 @@ create table v2_backup
     digest varchar,
     ignore_not_backupable_databases boolean
 );
-create table v2_logical_backup
-(
+
+create table backup_logical(
     id uuid primary key,
-    logical_backup_name varchar,
-    backup_name varchar references v2_backup(name),
+    backup_logical_name varchar,
+    backup_name varchar references backup(name),
     adapter_id varchar,
     type varchar not null,
     status varchar,
@@ -27,15 +26,14 @@ create table v2_logical_backup
     creation_time timestamp with time zone,
     completion_time timestamp with time zone
 );
-create table v2_backup_database
-(
+
+create table backup_database(
     id uuid primary key,
-    logical_backup_id uuid references v2_logical_backup(id),
+    backup_logical_id uuid references backup_logical(id),
     name varchar,
     classifiers jsonb not null,
     settings jsonb,
     users jsonb not null,
-    resources jsonb,
     configurational boolean,
     status varchar,
     size bigint,
@@ -44,18 +42,18 @@ create table v2_backup_database
     error_message varchar,
     creation_time timestamp with time zone
 );
-create table v2_backup_external_database
-(
+
+create table backup_external_database(
     id uuid primary key,
-    backup_name varchar references v2_backup(name),
+    backup_name varchar references backup(name),
     name varchar not null,
     type varchar not null,
     classifiers jsonb not null
 );
-create table v2_restore
-(
+
+create table restore(
     name varchar primary key,
-    backup_name varchar references v2_backup(name),
+    backup_name varchar references backup(name),
     storage_name varchar not null,
     blob_path varchar not null,
     external_database_strategy varchar not null,
@@ -68,11 +66,11 @@ create table v2_restore
     error_message varchar,
     attempt_count int default 0
 );
-create table v2_logical_restore
-(
+
+create table restore_logical(
     id uuid primary key,
-    logical_restore_name varchar,
-    restore_name varchar references v2_restore(name),
+    restore_logical_name varchar,
+    restore_name varchar references restore(name),
     adapter_id varchar not null,
     type varchar not null,
     status varchar,
@@ -80,15 +78,14 @@ create table v2_logical_restore
     creation_time timestamp with time zone,
     completion_time timestamp with time zone
 );
-create table v2_restore_database
-(
+
+create table restore_database(
     id uuid primary key,
-    logical_restore_id uuid references v2_logical_restore(id),
-    backup_db_id uuid references v2_backup_database(id),
+    restore_logical_id uuid references restore_logical(id),
+    backup_db_id uuid references backup_database(id),
     name varchar,
     classifiers jsonb not null,
     users jsonb not null,
-    resources jsonb,
     settings jsonb,
     bgVersion varchar,
     status varchar,
@@ -97,11 +94,18 @@ create table v2_restore_database
     error_message varchar,
     creation_time timestamp with time zone
 );
-create table v2_restore_external_database
-(
+
+create table restore_external_database(
     id uuid primary key,
-    restore_name varchar references v2_restore(name),
+    restore_name varchar references restore(name),
     name varchar not null,
     type varchar not null,
     classifiers jsonb not null
+);
+
+create table shedlock(
+    name varchar(64) not null primary key,
+    lock_until timestamp not null,
+    locked_at timestamp not null,
+    locked_by varchar(255) not null
 );

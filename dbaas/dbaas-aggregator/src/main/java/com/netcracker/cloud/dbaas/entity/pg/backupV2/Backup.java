@@ -17,9 +17,8 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity(name = "backup")
-@Table(name = "v2_backup")
+@Table(name = "backup")
 public class Backup {
-
     @Id
     @NotNull
     private String name;
@@ -44,7 +43,7 @@ public class Backup {
     @ToString.Exclude
     @JsonManagedReference
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<LogicalBackup> logicalBackups;
+    private List<BackupLogical> backupLogicals;
 
     @ToString.Exclude
     @JsonManagedReference

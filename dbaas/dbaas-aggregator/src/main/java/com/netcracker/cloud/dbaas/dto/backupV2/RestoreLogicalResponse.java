@@ -15,7 +15,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Logical restore details")
-public class LogicalRestoreResponse {
+public class RestoreLogicalResponse {
 
     @Schema(
             description = "Unique identifier of the logical restore",
@@ -26,8 +26,8 @@ public class LogicalRestoreResponse {
     )
     private UUID id;
 
-    @Schema(description = "Name of the logical backup in adapter", required = true)
-    private String logicalRestoreName;
+    @Schema(description = "Name of the logical restore in adapter", required = true)
+    private String restoreLogicalName;
 
     @Schema(
             description = "Unique identifier of the adapter",

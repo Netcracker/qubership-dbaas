@@ -17,8 +17,8 @@ import java.util.Objects;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "Restore")
-@Table(name = "v2_restore")
+@Entity(name = "restore")
+@Table(name = "restore")
 public class Restore {
 
     @Id
@@ -46,7 +46,7 @@ public class Restore {
 
     @ToString.Exclude
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<LogicalRestore> logicalRestores;
+    private List<RestoreLogical> restoreLogicals;
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "external_database_strategy")

@@ -16,17 +16,17 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity(name = "logical_backup")
-@Table(name = "v2_logical_backup")
-public class LogicalBackup {
+@Entity(name = "backup_logical")
+@Table(name = "backup_logical")
+public class BackupLogical {
 
     @Id
     @GeneratedValue
     @Schema(description = "A unique identifier of the logical backup process.", required = true)
     private UUID id;
 
-    @Column(name = "logical_backup_name")
-    private String logicalBackupName;
+    @Column(name = "backup_logical_name")
+    private String backupLogicalName;
 
     @ManyToOne
     @JsonBackReference
@@ -40,7 +40,7 @@ public class LogicalBackup {
 
     @ToString.Exclude
     @JsonManagedReference
-    @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "backupLogical", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupDatabase> backupDatabases;
 
     @Enumerated(EnumType.STRING)
@@ -59,7 +59,7 @@ public class LogicalBackup {
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
-        LogicalBackup that = (LogicalBackup) o;
+        BackupLogical that = (BackupLogical) o;
         return Objects.equals(id, that.id) && Objects.equals(adapterId, that.adapterId) && Objects.equals(type, that.type) && Objects.equals(status, that.status);
     }
 

@@ -11,10 +11,10 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @Schema(description = "Logical backup details")
-public class LogicalBackupResponse {
+public class BackupLogicalResponse {
 
     @Schema(description = "Name of the logical backup in adapter", required = true)
-    String logicalBackupName;
+    String backupLogicalName;
     @Schema(
             description = "Unique identifier of the adapter",
             examples = {

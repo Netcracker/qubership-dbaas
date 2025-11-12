@@ -101,7 +101,7 @@ public class RestoreResponse {
     @Schema(
             description = "List of logical restores"
     )
-    private List<LogicalRestoreResponse> logicalRestores;
+    private List<RestoreLogicalResponse> restoreLogicals;
 
     @Schema(
             description = "List of external databases"

@@ -20,8 +20,8 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "RestoreDatabase")
-@Table(name = "v2_restore_database")
+@Entity(name = "restore_database")
+@Table(name = "restore_database")
 public class RestoreDatabase {
 
     @Id
@@ -29,8 +29,8 @@ public class RestoreDatabase {
     private UUID id;
 
     @ManyToOne
-    @JoinColumn(name = "logical_restore_id")
-    private LogicalRestore logicalRestore;
+    @JoinColumn(name = "restore_logical_id")
+    private RestoreLogical restoreLogical;
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "backup_db_id")
@@ -51,10 +51,6 @@ public class RestoreDatabase {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private List<User> users;
-
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private Map<String, Object> resources;
 
     private String bgVersion;
 
