@@ -52,9 +52,9 @@ public class DatabaseBackupV2Controller {
                     + " Returns immediately with a backup identifier that can be used to track progress.")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Backup operation completed successfully",
-                    content = @Content(schema = @Schema(implementation = BackupOperationResponse.class))),
+                    content = @Content(schema = @Schema(implementation = BackupResponse.class))),
             @APIResponse(responseCode = "202", description = "Backup operation initiated successfully",
-                    content = @Content(schema = @Schema(implementation = BackupOperationResponse.class))),
+                    content = @Content(schema = @Schema(implementation = BackupResponse.class))),
             @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),

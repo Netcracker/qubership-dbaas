@@ -226,24 +226,6 @@
           }
         }
       },
-      "BackupOperationResponse": {
-        "type": "object",
-        "required": [
-          "backupName"
-        ],
-        "description": "Response containing backup operation details",
-        "properties": {
-          "backupName": {
-            "type": "string",
-            "description": "Unique identifier of the backup"
-          },
-          "dryRun": {
-            "$ref": "#/components/schemas/BackupResponse",
-            "type": "object",
-            "description": "Response containing backup operation details"
-          }
-        }
-      },
       "BackupRequest": {
         "type": "object",
         "required": [
@@ -1987,8 +1969,7 @@
               "NOT_STARTED",
               "IN_PROGRESS",
               "FAILED",
-              "COMPLETED",
-              "DELETED"
+              "COMPLETED"
             ],
             "description": "Current state of the backup operation"
           },
@@ -3958,7 +3939,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BackupOperationResponse"
+                  "$ref": "#/components/schemas/BackupResponse"
                 }
               }
             }
@@ -3968,7 +3949,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BackupOperationResponse"
+                  "$ref": "#/components/schemas/BackupResponse"
                 }
               }
             }
