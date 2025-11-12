@@ -226,63 +226,6 @@
           }
         }
       },
-      "BackupLogicalResponse": {
-        "type": "object",
-        "required": [
-          "backupLogicalName",
-          "adapterId",
-          "type",
-          "status",
-          "backupDatabases"
-        ],
-        "description": "Logical backup details",
-        "properties": {
-          "backupLogicalName": {
-            "type": "string",
-            "description": "Name of the logical backup in adapter"
-          },
-          "adapterId": {
-            "type": "string",
-            "examples": [
-              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
-            ],
-            "description": "Unique identifier of the adapter"
-          },
-          "type": {
-            "type": "string",
-            "description": "Type of the adapter"
-          },
-          "status": {
-            "type": [
-              "string",
-              "object"
-            ],
-            "enum": [
-              "NOT_STARTED",
-              "IN_PROGRESS",
-              "FAILED",
-              "COMPLETED"
-            ],
-            "description": "Current state of the backup databases of one adapter"
-          },
-          "errorMessage": {
-            "type": "string"
-          },
-          "creationTime": {
-            "$ref": "#/components/schemas/Instant"
-          },
-          "completionTime": {
-            "$ref": "#/components/schemas/Instant"
-          },
-          "backupDatabases": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BackupDatabaseResponse"
-            },
-            "description": "List of logical backup databases"
-          }
-        }
-      },
       "BackupOperationResponse": {
         "type": "object",
         "required": [
@@ -477,10 +420,10 @@
             ],
             "description": "Error details if the backup failed"
           },
-          "backupLogicals": {
+          "logicalBackups": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/BackupLogicalResponse"
+              "$ref": "#/components/schemas/LogicalBackupResponse"
             },
             "description": "List of logical backups"
           },
@@ -1730,11 +1673,10 @@
               "type": "string",
               "enum": [
                 "POSTGRESQL",
-                "CASSANDRA",
-                "REDIS",
-                "OPENSEARCH",
                 "ARANGODB",
-                "UNKNOWN"
+                "CLICKHOUSE",
+                "MONGODB",
+                "CASSANDRA"
               ]
             },
             "description": "Filter by database types"
@@ -1940,6 +1882,129 @@
           "targetNamespace": {
             "type": "string",
             "description": "Namespace, to which databases will be linked"
+          }
+        }
+      },
+      "LogicalBackupResponse": {
+        "type": "object",
+        "required": [
+          "logicalBackupName",
+          "adapterId",
+          "type",
+          "status",
+          "backupDatabases"
+        ],
+        "description": "Logical backup details",
+        "properties": {
+          "logicalBackupName": {
+            "type": "string",
+            "description": "Name of the logical backup in adapter"
+          },
+          "adapterId": {
+            "type": "string",
+            "examples": [
+              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            ],
+            "description": "Unique identifier of the adapter"
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of the adapter"
+          },
+          "status": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED"
+            ],
+            "description": "Current state of the backup databases of one adapter"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "completionTime": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "backupDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupDatabaseResponse"
+            },
+            "description": "List of logical backup databases"
+          }
+        }
+      },
+      "LogicalRestoreResponse": {
+        "type": "object",
+        "required": [
+          "logicalRestoreName",
+          "adapterId",
+          "type",
+          "restoreDatabases",
+          "status"
+        ],
+        "description": "Logical restore details",
+        "properties": {
+          "logicalRestoreName": {
+            "type": "string",
+            "description": "Name of the logical restore in adapter"
+          },
+          "adapterId": {
+            "type": "string",
+            "examples": [
+              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
+            ],
+            "description": "Unique identifier of the adapter"
+          },
+          "type": {
+            "type": "string",
+            "examples": [
+              "postgres"
+            ],
+            "description": "Type of the adapter"
+          },
+          "restoreDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreDatabaseResponse"
+            },
+            "description": "List of logical restore databases"
+          },
+          "status": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "FAILED",
+              "COMPLETED",
+              "DELETED"
+            ],
+            "description": "Current state of the backup operation"
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Information about error message during restore process"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/Instant",
+            "type": "string",
+            "description": "Aggregated information about creation time of databases in adapter"
+          },
+          "completionTime": {
+            "$ref": "#/components/schemas/Instant",
+            "type": "string",
+            "description": "Aggregated information about completion time of databases in adapter"
           }
         }
       },
@@ -2896,27 +2961,11 @@
       "RestoreDatabaseResponse": {
         "type": "object",
         "required": [
-          "id",
-          "backupDbId",
           "name",
           "status"
         ],
         "description": "Logical database restore details",
         "properties": {
-          "id": {
-            "type": "string",
-            "examples": [
-              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
-            ],
-            "description": "Unique identifier of the logical restore"
-          },
-          "backupDbId": {
-            "type": "string",
-            "examples": [
-              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
-            ],
-            "description": "Unique identifier of the logical backup"
-          },
           "name": {
             "type": "string",
             "examples": [
@@ -2997,81 +3046,6 @@
               "type": "object",
               "additionalProperties": {}
             }
-          }
-        }
-      },
-      "RestoreLogicalResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "restoreLogicalName",
-          "adapterId",
-          "type",
-          "restoreDatabases",
-          "status"
-        ],
-        "description": "Logical restore details",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/UUID",
-            "type": "string",
-            "examples": [
-              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
-            ],
-            "description": "Unique identifier of the logical restore"
-          },
-          "restoreLogicalName": {
-            "type": "string",
-            "description": "Name of the logical restore in adapter"
-          },
-          "adapterId": {
-            "type": "string",
-            "examples": [
-              "4e1e9922-e5bf-490d-bb57-18a14de593c6"
-            ],
-            "description": "Unique identifier of the adapter"
-          },
-          "type": {
-            "type": "string",
-            "examples": [
-              "postgres"
-            ],
-            "description": "Type of the adapter"
-          },
-          "restoreDatabases": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RestoreDatabaseResponse"
-            },
-            "description": "List of logical restore databases"
-          },
-          "status": {
-            "type": [
-              "string",
-              "object"
-            ],
-            "enum": [
-              "NOT_STARTED",
-              "IN_PROGRESS",
-              "FAILED",
-              "COMPLETED",
-              "DELETED"
-            ],
-            "description": "Current state of the backup operation"
-          },
-          "errorMessage": {
-            "type": "string",
-            "description": "Information about error message during restore process"
-          },
-          "creationTime": {
-            "$ref": "#/components/schemas/Instant",
-            "type": "string",
-            "description": "Aggregated information about creation time of databases in adapter"
-          },
-          "completionTime": {
-            "$ref": "#/components/schemas/Instant",
-            "type": "string",
-            "description": "Aggregated information about completion time of databases in adapter"
           }
         }
       },
@@ -3258,10 +3232,10 @@
             "format": "int32",
             "description": "Total number of adapter requests"
           },
-          "restoreLogicals": {
+          "logicalRestores": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/RestoreLogicalResponse"
+              "$ref": "#/components/schemas/LogicalRestoreResponse"
             },
             "description": "List of logical restores"
           },
