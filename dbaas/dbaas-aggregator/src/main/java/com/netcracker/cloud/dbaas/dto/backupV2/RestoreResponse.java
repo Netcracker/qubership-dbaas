@@ -2,7 +2,11 @@ package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
+import com.netcracker.cloud.dbaas.utils.validation.RestoreGroup;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.groups.ConvertGroup;
+import jakarta.validation.groups.Default;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -59,6 +63,8 @@ public class RestoreResponse {
     @Schema(
             description = "Criteria used to filter restore operations"
     )
+    @Valid
+    @ConvertGroup(from = Default.class, to = RestoreGroup.class)
     private FilterCriteria filterCriteria;
 
     @Schema(
@@ -70,6 +76,7 @@ public class RestoreResponse {
             description = "Current state of the backup operation",
             required = true,
             implementation = RestoreStatus.class)
+    @NotNull
     private RestoreStatus status;
 
     @Schema(
@@ -96,7 +103,7 @@ public class RestoreResponse {
     @Schema(
             description = "Total number of adapter requests"
     )
-    private int attemptCount;
+    private Integer attemptCount;
 
     @Schema(
             description = "List of logical restores"

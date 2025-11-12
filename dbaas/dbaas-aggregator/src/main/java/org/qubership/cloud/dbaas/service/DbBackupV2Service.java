@@ -215,7 +215,6 @@ public class DbBackupV2Service {
                             .settings(db.getSettings())
                             .configurational(db.getBgVersion() != null && !db.getBgVersion().isBlank())
                             .build();
-                    //TODO fill backup database resource field
                 }).toList());
         return logicalBackup;
     }
@@ -733,7 +732,6 @@ public class DbBackupV2Service {
             Backup backup,
             RestoreRequest restoreRequest
     ) {
-        // TODO optimize filtering, mapping for external, inner DBs
         // Apply ExternalDatabaseStrategy to external databases, filter by FilterCriteria
         List<RestoreExternalDatabase> externalDatabases = validateAndFilterExternalDb(
                 backup.getExternalDatabases(),
@@ -1282,7 +1280,7 @@ public class DbBackupV2Service {
                     log.info("Processing restoreDatabase={}", restoreDatabase.getName());
                     findSimilarDbByClassifier(classifiers, restoreDatabase.getClassifiers(), type);
                     String adapterId = logicalRestore.getAdapterId();
-                    String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getPhysicalDatabaseIdentifier(); // TODO write assertions
+                    String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getPhysicalDatabaseIdentifier();
                     List<EnsuredUser> ensuredUsers = dbNameToEnsuredUsers.get(restoreDatabase.getName());
                     Database newDatabase = createLogicalDatabase(
                             restoreDatabase.getName(),
