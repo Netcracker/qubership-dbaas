@@ -89,7 +89,7 @@ class UserServiceTest {
         assertEquals("test-user", getOrCreateUserResponse.getConnectionProperties().get("username"));
         verify(adapter,
                 times(1)).createUser(eq(dbName), any(), eq(request.getUserRole()), eq(request.getUsernamePrefix()));
-        verify(databaseUserRepository, times(2)).save(any(DatabaseUser.class));
+        verify(databaseUserRepository, times(2)).persist(any(DatabaseUser.class));
         verify(databaseRegistryDbaasRepository).saveAnyTypeLogDb(any());
     }
 
