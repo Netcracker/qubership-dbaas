@@ -1,17 +1,15 @@
 package com.netcracker.cloud.dbaas.service;
 
-import com.netcracker.cloud.dbaas.dto.RestoreRequest;
-import com.netcracker.cloud.dbaas.dto.UpdateSettingsAdapterRequest;
-import com.netcracker.cloud.dbaas.dto.backup.*;
-import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
+import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
-import com.netcracker.cloud.dbaas.entity.pg.backup.*;
-import com.netcracker.cloud.dbaas.dto.EnsuredUser;
-import com.netcracker.cloud.dbaas.dto.Source;
-import com.netcracker.cloud.dbaas.dto.UserEnsureRequest;
-import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
 import com.netcracker.cloud.dbaas.exceptions.InteruptedPollingException;
 import com.netcracker.cloud.dbaas.exceptions.MultiValidationException;
@@ -24,14 +22,12 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.map.LinkedMap;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.*;
-
 import javax.annotation.Nullable;
+import java.util.*;
 
 @Slf4j
 public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
@@ -114,17 +110,17 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
 
         backup.getDatabases().forEach(dbName -> {
             Optional<DatabaseRegistry> registry = databases.stream()
-                .filter(r -> dbName.equals(DbaasBackupUtils.getDatabaseName(r)))
-                .findFirst();
+                    .filter(r -> dbName.equals(DbaasBackupUtils.getDatabaseName(r)))
+                    .findFirst();
 
             String microserviceName = registry.isPresent()
-                ? (String) registry.get().getClassifier().get(MICROSERVICE_NAME)
-                : DEFAULT_MS_NAME;
+                    ? (String) registry.get().getClassifier().get(MICROSERVICE_NAME)
+                    : DEFAULT_MS_NAME;
 
             String namePrefix = prefixMap.get(dbName);
 
             restoreRequest.getDatabases().add(new RestoreRequest.Database(
-                namespace, microserviceName, dbName, namePrefix
+                    namespace, microserviceName, dbName, namePrefix
             ));
         });
         if (regenerateNames) {
@@ -190,10 +186,6 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
             backup.setDatabases(databases);
         }
         return backup;
-    }
-
-    public LogicalBackupAdapterResponse backupV2(List<Map<String, String>> dbNames){
-        return null; //TODO
     }
 
     protected abstract String deleteBackup(String localId);
@@ -322,9 +314,9 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
         } catch (WebApplicationException e) {
             if (e.getResponse().getStatus() == Response.Status.METHOD_NOT_ALLOWED.getStatusCode()) {
                 throw new NotAllowedException(Response.status(Response.Status.METHOD_NOT_ALLOWED.getStatusCode(), e.getResponse().getStatusInfo().getReasonPhrase().concat(String.format(
-                        ". DbaaS adapter with address %s does not have 'GET /api/" + supportedVersion + "/dbaas/adapter/%s/databases' API (getDatabases). You need to contact cloud administrator and update this adapter to a newer version.",
-                        adapterAddress,
-                        type)))
+                                ". DbaaS adapter with address %s does not have 'GET /api/" + supportedVersion + "/dbaas/adapter/%s/databases' API (getDatabases). You need to contact cloud administrator and update this adapter to a newer version.",
+                                adapterAddress,
+                                type)))
                         .entity(e.getResponse().getEntity()).build());
             } else {
                 throw e;
