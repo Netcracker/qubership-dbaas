@@ -67,7 +67,7 @@ public class UserService {
     public GetOrCreateUserResponse createUser(GetOrCreateUserRequest request, Database db) {
         DatabaseUser preCreatedUser = new DatabaseUser(request, DatabaseUser.CreationMethod.ON_REQUEST, db);
         preCreatedUser.setStatus(DatabaseUser.Status.CREATING);
-        databaseUserRepository.persist(preCreatedUser);
+        databaseUserRepository.save(preCreatedUser);
         String physicalDbId = StringUtils.isNotBlank(request.getPhysicalDbId()) ?
                 request.getPhysicalDbId() :
                 db.getPhysicalDatabaseId();
@@ -130,7 +130,7 @@ public class UserService {
         user.setConnectionProperties(responseBody.getConnectionProperties());
         encryption.encryptUserPassword(user);
         user.setStatus(DatabaseUser.Status.CREATED);
-        databaseUserRepository.persist(user);
+        databaseUserRepository.save(user);
         database.getResources().addAll(responseBody.getResources());
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().get(0));
 

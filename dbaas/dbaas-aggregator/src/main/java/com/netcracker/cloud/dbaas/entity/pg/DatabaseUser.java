@@ -2,14 +2,13 @@ package com.netcracker.cloud.dbaas.entity.pg;
 
 import com.netcracker.cloud.dbaas.converter.ConnectionDescriptionConverter;
 import com.netcracker.cloud.dbaas.converter.MapConverter;
-import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
 import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
-import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
-
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -69,7 +68,6 @@ public class DatabaseUser implements Serializable {
             "Setting keys depends on the database type.")
     private Map<String, Object> connectionProperties;
 
-    @NotNull
     @Column(name = "created_date", updatable = false, nullable = false)
     @CreationTimestamp
     @Schema(description = "Time to create a user")

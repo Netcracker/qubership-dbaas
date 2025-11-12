@@ -14,4 +14,9 @@ public class DatabaseUserRepository implements PanacheRepositoryBase<DatabaseUse
         return list("database.id", logicalDatabaseId);
     }
 
+    public DatabaseUser save(DatabaseUser user) {
+        DatabaseUser managed = getEntityManager().merge(user);
+        getEntityManager().flush();
+        return managed;
+    }
 }
