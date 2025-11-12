@@ -20,7 +20,7 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "restore_database")
+@Entity
 @Table(name = "restore_database")
 public class RestoreDatabase {
 
@@ -29,7 +29,7 @@ public class RestoreDatabase {
     private UUID id;
 
     @ManyToOne
-    @JoinColumn(name = "restore_logical_id")
+    @JoinColumn(name = "logical_restore_id")
     private LogicalRestore logicalRestore;
 
     @OneToOne(cascade = CascadeType.ALL)

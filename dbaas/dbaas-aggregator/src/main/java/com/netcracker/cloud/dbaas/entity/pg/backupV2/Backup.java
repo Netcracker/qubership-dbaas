@@ -16,7 +16,7 @@ import java.util.List;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "backup")
+@Entity
 @Table(name = "backup")
 public class Backup {
     @Id

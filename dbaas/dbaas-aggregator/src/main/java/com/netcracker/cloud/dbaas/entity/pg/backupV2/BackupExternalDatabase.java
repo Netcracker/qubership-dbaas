@@ -18,7 +18,7 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "backup_external_database")
+@Entity
 @Table(name = "backup_external_database")
 public class BackupExternalDatabase {
 

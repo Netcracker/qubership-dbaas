@@ -16,7 +16,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity(name = "backup_logical")
+@Entity
 @Table(name = "backup_logical")
 public class LogicalBackup {
 
@@ -25,7 +25,7 @@ public class LogicalBackup {
     @Schema(description = "A unique identifier of the logical backup process.", required = true)
     private UUID id;
 
-    @Column(name = "backup_logical_name")
+    @Column(name = "logical_backup_name")
     private String logicalBackupName;
 
     @ManyToOne

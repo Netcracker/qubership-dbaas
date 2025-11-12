@@ -13,7 +13,7 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "restore_logical")
+@Entity
 @Table(name = "restore_logical")
 public class LogicalRestore {
 
@@ -21,7 +21,7 @@ public class LogicalRestore {
     @GeneratedValue
     private UUID id;
 
-    @Column(name = "restore_logical_name")
+    @Column(name = "logical_restore_name")
     private String logicalRestoreName;
 
     @ManyToOne

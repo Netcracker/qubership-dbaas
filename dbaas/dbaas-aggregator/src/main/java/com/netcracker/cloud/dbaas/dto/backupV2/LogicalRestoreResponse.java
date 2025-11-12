@@ -46,7 +46,7 @@ public class LogicalRestoreResponse {
     @Schema(
             description = "Current state of the backup operation",
             required = true,
-            implementation = RestoreStatus.class)
+            implementation = RestoreTaskStatus.class)
     private RestoreTaskStatus status;
 
     @Schema(

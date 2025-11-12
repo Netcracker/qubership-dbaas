@@ -21,7 +21,7 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "backup_database")
+@Entity
 @Table(name = "backup_database")
 public class BackupDatabase {
 
@@ -31,7 +31,7 @@ public class BackupDatabase {
 
     @ManyToOne
     @JsonBackReference
-    @JoinColumn(name = "backup_logical_id")
+    @JoinColumn(name = "logical_backup_id")
     private LogicalBackup logicalBackup;
 
     private String name;

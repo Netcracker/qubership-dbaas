@@ -17,7 +17,7 @@ create table backup(
 
 create table backup_logical(
     id uuid primary key,
-    backup_logical_name varchar,
+    logical_backup_name varchar,
     backup_name varchar references backup(name),
     adapter_id varchar,
     type varchar not null,
@@ -29,7 +29,7 @@ create table backup_logical(
 
 create table backup_database(
     id uuid primary key,
-    backup_logical_id uuid references backup_logical(id),
+    logical_backup_id uuid references backup_logical(id),
     name varchar,
     classifiers jsonb not null,
     settings jsonb,
@@ -69,7 +69,7 @@ create table restore(
 
 create table restore_logical(
     id uuid primary key,
-    restore_logical_name varchar,
+    logical_restore_name varchar,
     restore_name varchar references restore(name),
     adapter_id varchar not null,
     type varchar not null,
@@ -81,7 +81,7 @@ create table restore_logical(
 
 create table restore_database(
     id uuid primary key,
-    restore_logical_id uuid references restore_logical(id),
+    logical_restore_id uuid references restore_logical(id),
     backup_db_id uuid references backup_database(id),
     name varchar,
     classifiers jsonb not null,

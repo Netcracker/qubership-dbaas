@@ -17,7 +17,7 @@ import java.util.Objects;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
-@Entity(name = "restore")
+@Entity
 @Table(name = "restore")
 public class Restore {
 
