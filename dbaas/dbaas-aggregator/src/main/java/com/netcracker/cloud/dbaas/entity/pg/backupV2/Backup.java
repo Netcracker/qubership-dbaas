@@ -43,7 +43,7 @@ public class Backup {
     @ToString.Exclude
     @JsonManagedReference
     @OneToMany(mappedBy = "backup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<BackupLogical> backupLogicals;
+    private List<LogicalBackup> logicalBackups;
 
     @ToString.Exclude
     @JsonManagedReference

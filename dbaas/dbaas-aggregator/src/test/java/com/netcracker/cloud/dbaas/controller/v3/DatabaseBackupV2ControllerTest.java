@@ -352,7 +352,7 @@ class DatabaseBackupV2ControllerTest {
                 Instant.now()
         );
 
-        BackupLogicalResponse backupLogicalResponse = new BackupLogicalResponse(
+        LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
                 "logicalBackupName",
                 "adapterID",
                 "type",
@@ -386,7 +386,7 @@ class DatabaseBackupV2ControllerTest {
 
         BackupResponse backupResponse = new BackupResponse();
         backupResponse.setBackupName(backupName);
-        backupResponse.setBackupLogicals(List.of(backupLogicalResponse));
+        backupResponse.setLogicalBackups(List.of(logicalBackupResponse));
         backupResponse.setStorageName(storageName);
         backupResponse.setStatus(BackupStatus.COMPLETED);
         backupResponse.setTotal(1);

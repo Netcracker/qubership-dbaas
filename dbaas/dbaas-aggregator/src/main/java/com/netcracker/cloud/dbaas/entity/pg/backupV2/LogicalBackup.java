@@ -18,7 +18,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity(name = "backup_logical")
 @Table(name = "backup_logical")
-public class BackupLogical {
+public class LogicalBackup {
 
     @Id
     @GeneratedValue
@@ -26,7 +26,7 @@ public class BackupLogical {
     private UUID id;
 
     @Column(name = "backup_logical_name")
-    private String backupLogicalName;
+    private String logicalBackupName;
 
     @ManyToOne
     @JsonBackReference
@@ -40,7 +40,7 @@ public class BackupLogical {
 
     @ToString.Exclude
     @JsonManagedReference
-    @OneToMany(mappedBy = "backupLogical", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<BackupDatabase> backupDatabases;
 
     @Enumerated(EnumType.STRING)
@@ -59,7 +59,7 @@ public class BackupLogical {
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
-        BackupLogical that = (BackupLogical) o;
+        LogicalBackup that = (LogicalBackup) o;
         return Objects.equals(id, that.id) && Objects.equals(adapterId, that.adapterId) && Objects.equals(type, that.type) && Objects.equals(status, that.status);
     }
 

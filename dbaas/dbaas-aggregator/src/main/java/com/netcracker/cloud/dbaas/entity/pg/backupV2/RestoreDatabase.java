@@ -30,7 +30,7 @@ public class RestoreDatabase {
 
     @ManyToOne
     @JoinColumn(name = "restore_logical_id")
-    private RestoreLogical restoreLogical;
+    private LogicalRestore logicalRestore;
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "backup_db_id")

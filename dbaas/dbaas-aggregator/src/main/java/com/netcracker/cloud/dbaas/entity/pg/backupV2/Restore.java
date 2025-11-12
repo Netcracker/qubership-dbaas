@@ -46,7 +46,7 @@ public class Restore {
 
     @ToString.Exclude
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<RestoreLogical> restoreLogicals;
+    private List<LogicalRestore> logicalRestores;
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "external_database_strategy")

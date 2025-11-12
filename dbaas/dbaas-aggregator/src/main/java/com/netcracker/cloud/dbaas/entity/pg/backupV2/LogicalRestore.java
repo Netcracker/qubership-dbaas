@@ -15,14 +15,14 @@ import java.util.UUID;
 @NoArgsConstructor(force = true)
 @Entity(name = "restore_logical")
 @Table(name = "restore_logical")
-public class RestoreLogical {
+public class LogicalRestore {
 
     @Id
     @GeneratedValue
     private UUID id;
 
     @Column(name = "restore_logical_name")
-    private String restoreLogicalName;
+    private String logicalRestoreName;
 
     @ManyToOne
     @JoinColumn(name = "restore_name")
@@ -34,7 +34,7 @@ public class RestoreLogical {
     private String type;
 
     @ToString.Exclude
-    @OneToMany(mappedBy = "restoreLogical", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "logicalRestore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<RestoreDatabase> restoreDatabases;
 
     @Enumerated(EnumType.STRING)
@@ -52,12 +52,12 @@ public class RestoreLogical {
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof RestoreLogical that)) return false;
-        return Objects.equals(id, that.id) && Objects.equals(restoreLogicalName, that.restoreLogicalName) && Objects.equals(restore, that.restore) && Objects.equals(adapterId, that.adapterId) && Objects.equals(type, that.type) && Objects.equals(status, that.status);
+        if (!(o instanceof LogicalRestore that)) return false;
+        return Objects.equals(id, that.id) && Objects.equals(logicalRestoreName, that.logicalRestoreName) && Objects.equals(restore, that.restore) && Objects.equals(adapterId, that.adapterId) && Objects.equals(type, that.type) && Objects.equals(status, that.status);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, restoreLogicalName, restore, adapterId, type, status);
+        return Objects.hash(id, logicalRestoreName, restore, adapterId, type, status);
     }
 }

@@ -32,7 +32,7 @@ public class BackupDatabase {
     @ManyToOne
     @JsonBackReference
     @JoinColumn(name = "backup_logical_id")
-    private BackupLogical backupLogical;
+    private LogicalBackup logicalBackup;
 
     private String name;
 
