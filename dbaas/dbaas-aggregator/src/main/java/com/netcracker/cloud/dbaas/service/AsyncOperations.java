@@ -4,6 +4,7 @@ import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.*;
@@ -30,7 +31,7 @@ public class AsyncOperations {
                 new LinkedBlockingQueue<>(), new NamedThreadFactory("backups-"));
     }
 
-    public ExecutorService getBackupPool() {
+    public ThreadPoolExecutor getBackupPool() {
         return backupExecutor;
     }
 

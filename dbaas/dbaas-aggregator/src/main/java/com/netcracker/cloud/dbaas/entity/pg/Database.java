@@ -3,12 +3,12 @@ package com.netcracker.cloud.dbaas.entity.pg;
 import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
 import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.*;
 import java.util.stream.Collectors;
