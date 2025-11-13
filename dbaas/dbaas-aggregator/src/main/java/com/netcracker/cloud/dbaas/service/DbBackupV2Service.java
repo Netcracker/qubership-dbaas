@@ -629,7 +629,7 @@ public class DbBackupV2Service {
 
         BackupStatus backupStatus = backup.getStatus();
         if (BackupStatus.COMPLETED != backupStatus) {
-            log.error("restore can`t process due to backup status {}", backupStatus);
+            log.error("Restore can`t process due to backup status {}", backupStatus);
             throw new UnprocessableEntityException(
                     backupName, String.format("restore can`t process due to backup status %s", backupStatus),
                     Source.builder().build());
