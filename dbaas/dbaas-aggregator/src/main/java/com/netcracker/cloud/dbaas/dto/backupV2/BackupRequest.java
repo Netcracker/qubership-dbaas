@@ -18,7 +18,7 @@ public class BackupRequest {
 
     @NotBlank
     @Schema(
-            description = "Unique name for the backup",
+            description = "Unique identifier of the backup",
             examples = {
                     "before-prod-update-20251013T1345-G5s8"
             },
@@ -27,7 +27,7 @@ public class BackupRequest {
 
     @NotBlank
     @Schema(
-            description = "Identifier of the storage backend",
+            description = "Name of the storage backend containing the backup",
             examples = {
                     "s3-backend"
             },

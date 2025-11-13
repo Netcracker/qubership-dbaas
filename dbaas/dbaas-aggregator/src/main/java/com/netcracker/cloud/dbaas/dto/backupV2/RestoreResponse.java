@@ -18,7 +18,7 @@ import java.util.List;
 @Schema(description = "Response containing the restore operation details")
 public class RestoreResponse {
     @Schema(
-            description = "Unique identifier for the restore operation",
+            description = "Unique identifier of the restore",
             examples = {
                     "restore-before-prod-update-20251203T1020-4t6S"
             },
@@ -27,7 +27,7 @@ public class RestoreResponse {
     private String restoreName;
 
     @Schema(
-            description = "Unique identifier of the backup name",
+            description = "Unique identifier of the backup",
             examples = {
                     "before-prod-update-20251013T1345-G5s8"
             }

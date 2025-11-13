@@ -244,7 +244,7 @@
               "before-prod-update-20251013T1345-G5s8"
             ],
             "pattern": "\\S",
-            "description": "Unique name for the backup"
+            "description": "Unique identifier of the backup"
           },
           "storageName": {
             "type": "string",
@@ -252,7 +252,7 @@
               "s3-backend"
             ],
             "pattern": "\\S",
-            "description": "Identifier of the storage backend"
+            "description": "Name of the storage backend containing the backup"
           },
           "blobPath": {
             "type": "string",
@@ -3068,7 +3068,7 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
-            "description": "Unique identifier for the restore operation"
+            "description": "Unique identifier of the restore"
           },
           "storageName": {
             "type": "string",
@@ -3127,14 +3127,14 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
-            "description": "Unique identifier for the restore operation"
+            "description": "Unique identifier of the restore"
           },
           "backupName": {
             "type": "string",
             "examples": [
               "before-prod-update-20251013T1345-G5s8"
             ],
-            "description": "Unique identifier of the backup name"
+            "description": "Unique identifier of the backup"
           },
           "storageName": {
             "type": "string",
