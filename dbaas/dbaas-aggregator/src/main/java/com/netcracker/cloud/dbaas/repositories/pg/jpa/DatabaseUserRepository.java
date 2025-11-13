@@ -13,5 +13,4 @@ public class DatabaseUserRepository implements PanacheRepositoryBase<DatabaseUse
     public List<DatabaseUser> findByLogicalDatabaseId(UUID logicalDatabaseId) {
         return list("database.id", logicalDatabaseId);
     }
-
 }

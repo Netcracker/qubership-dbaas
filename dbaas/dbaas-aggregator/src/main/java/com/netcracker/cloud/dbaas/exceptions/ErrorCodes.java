@@ -208,7 +208,40 @@ public enum ErrorCodes implements ErrorCode {
             "Adapter address name has wrong format",
             "register request contains adapter address field, but it has wrong format: %s. " +
                     "Must be in format: <schema>://<service-name>.<namespace>:<port>, e.g.: http://dbaas-postgres-adapter.postgresql:8080"),
-
+    CORE_DBAAS_4046(
+            "CORE-DBAAS-4046",
+            "Resource already exists",
+            "Resource with name '%s' already exists"),
+    CORE_DBAAS_4047(
+            "CORE-DBAAS-4047",
+            "Backup not allowed",
+            "The backup/restore request can`t be processed. %s"
+    ),
+    CORE_DBAAS_4048(
+            "CORE-DBAAS-4048",
+            "Illegal state of entity",
+            "Resource has illegal state: %s"
+    ),
+    CORE_DBAAS_4049(
+            "CORE-DBAAS-4049",
+            "Unprocessable resource",
+            "Resource '%s' can`t be processed: %s"
+    ),
+    CORE_DBAAS_4050(
+            "CORE-DBAAS-4050",
+            "Operation not implemented",
+            "The requested functionality is not implemented: %s"
+    ),
+    CORE_DBAAS_4051(
+            "CORE-DBAAS-4051",
+            "Digest calculation failed",
+            "Failed to calculate digest: %s"
+    ),
+    CORE_DBAAS_4052(
+            "CORE-DBAAS-4052",
+            "Digest mismatch",
+            "Digest header mismatch: %s"
+    ),
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",
             "trackingId not found",

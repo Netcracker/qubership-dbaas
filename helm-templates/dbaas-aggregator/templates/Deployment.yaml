@@ -140,6 +140,16 @@ spec:
                     value: '{{ .Values.DISABLE_DEPRECATED_API }}'
                 -   name: DBAAS_LOG_LEVEL
                     value: '{{ .Values.DBAAS_LOG_LEVEL }}'
+                -   name: DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT }}'
+                -   name: DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_INTERVAL }}'
+                -   name: DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS }}'
+                -   name: DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS }}'
+                -   name: DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS }}'
                 resources:
                     requests:
                         cpu: '{{ .Values.CPU_REQUEST }}'

@@ -129,17 +129,7 @@ public class DBaaService {
             return Optional.of(physicalDatabasesService.getAdapterById(adapterId));
         }
 
-        PhysicalDatabase physicalDatabase = balancingRulesService.applyMicroserviceBalancingRule(namespace, microserviceName, type);
-        if (physicalDatabase == null) {
-            log.debug("Per microservice rule is not exist, try to apply per namespace rule");
-            physicalDatabase = balancingRulesService.applyNamespaceBalancingRule(namespace, type);
-        }
-
-        if (physicalDatabase == null) {
-            log.error("Unable to determine physical database from rules for microservice '{}' in namespace '{}'", microserviceName, namespace);
-            throw new NoBalancingRuleException(ErrorCodes.CORE_DBAAS_4033, ErrorCodes.CORE_DBAAS_4033.getDetail(microserviceName, namespace));
-        }
-
+        PhysicalDatabase physicalDatabase = balancingRulesService.applyBalancingRules(type, namespace, microserviceName );
         log.info("Returning adapter of physical database {}", physicalDatabase.getPhysicalDatabaseIdentifier());
         return Optional.ofNullable(physicalDatabasesService.getAdapterById(physicalDatabase.getAdapter().getAdapterId()));
     }
@@ -180,13 +170,17 @@ public class DBaaService {
     }
 
     public void markDatabasesAsOrphan(DatabaseRegistry databaseRegistry) {
-        databaseRegistry.getDatabaseRegistry().forEach(registry -> {
+        markDatabasesAsOrphan(databaseRegistry.getDatabase());
+    }
+
+    public void markDatabasesAsOrphan(Database database) {
+        database.getDatabaseRegistry().forEach(registry -> {
                     registry.getClassifier().put(MARKED_FOR_DROP, MARKED_FOR_DROP);
                 }
         );
-        databaseRegistry.getDatabase().setClassifier(databaseRegistry.getClassifier());
-        databaseRegistry.getDatabase().setMarkedForDrop(true);
-        databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
+        database.setClassifier(database.getDatabaseRegistry().getFirst().getClassifier());
+        database.setMarkedForDrop(true);
+        database.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
     }
 
     public void saveDatabaseRegistry(DatabaseRegistry databaseRegistry) {
