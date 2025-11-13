@@ -24,6 +24,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.util.List;
 
 import static com.netcracker.cloud.dbaas.JdbcUtils.PROCESS_ORCHESTRATOR_DATASOURCE;
