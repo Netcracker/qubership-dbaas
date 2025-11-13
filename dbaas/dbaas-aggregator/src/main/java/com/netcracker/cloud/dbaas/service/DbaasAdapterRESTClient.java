@@ -94,32 +94,31 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
 
     @Override
     public LogicalBackupAdapterResponse backupV2(BackupAdapterRequest backupAdapterRequest) {
-        return null;
+        throw new UnsupportedOperationException("New backup is not supported by V1 adapter API");
     }
 
     @Override
     public LogicalRestoreAdapterResponse restoreV2(String backupName, boolean dryRun, RestoreAdapterRequest restoreAdapterRequest) {
-        return null;
+        throw new UnsupportedOperationException("New restore is not supported by V1 adapter API");
     }
 
     @Override
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName, String storageName, String blobPath) {
+        throw new UnsupportedOperationException("New backup check status is not supported by V1 adapter API");
+    }
+    @Override
     public LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName, String storageName, String blobPath) {
-        return null;
+        throw new UnsupportedOperationException("New restore check status is not supported by V1 adapter API");
+    }
+
+    @Override
+    public void deleteBackupV2(String logicalBackupName, String blobPath) {
+        throw new UnsupportedOperationException("New delete backup is not supported by by V1 adapter API");
     }
 
     @Override
     public TrackedAction trackBackup(String action, String trackId) {
         return restClient.trackBackup(type(), action, trackId);
-    }
-
-    @Override
-    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName, String storageName, String blobPath) {
-        return null;
-    }
-
-    @Override
-    public void deleteBackupV2(String logicalBackupName, String blobPath) {
-
     }
 
     @Override
