@@ -9,6 +9,7 @@ import jakarta.validation.groups.ConvertGroup;
 import jakarta.validation.groups.Default;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
@@ -25,7 +26,6 @@ public class RestoreResponse {
             required = true
     )
     private String restoreName;
-
     @Schema(
             description = "Unique identifier of the backup",
             examples = {
@@ -33,23 +33,20 @@ public class RestoreResponse {
             }
     )
     private String backupName;
-
     @Schema(
-            description = "Name of the storage backend containing the backup",
+            description = "Name of the storage backend containing the restore",
             examples = {
                     "s3-backend"
             }
     )
     private String storageName;
-
     @Schema(
-            description = "Path to the backup file in the storage",
+            description = "Path to the restore file in the storage",
             examples = {
                     "/backups"
             }
     )
     private String blobPath;
-
     @Schema(
             description = "How to handle external databases during restore",
             examples = {
@@ -59,59 +56,53 @@ public class RestoreResponse {
     )
     @NotNull
     private ExternalDatabaseStrategy externalDatabaseStrategy;
-
     @Schema(
-            description = "Criteria used to filter restore operations"
+            description = "Criteria used to filter restore operations",
+            implementation = FilterCriteria.class
     )
     @Valid
     @ConvertGroup(from = Default.class, to = RestoreGroup.class)
     private FilterCriteria filterCriteria;
-
     @Schema(
-            description = "Mapping configuration for the restore"
+            description = "Mapping configuration for the restore",
+            implementation = Mapping.class
     )
     private Mapping mapping;
-
     @Schema(
-            description = "Current state of the backup operation",
+            description = "Current state of the restore operation",
             required = true,
             implementation = RestoreStatus.class)
     @NotNull
     private RestoreStatus status;
-
     @Schema(
-            description = "Total database count to restore operation",
-            required = true
+            description = "Total number of databases being restored",
+            examples = "5"
     )
     private Integer total;
-
     @Schema(
-            description = "Completed databases restore operation"
+            description = "Completed databases restore operation",
+            examples = "5"
     )
     private Integer completed;
-
     @Schema(
-            description = "Aggregated error messages during restore operation"
+            description = "Aggregated error messages during restore operation",
+            examples = "Backup Not Found"
     )
     private String errorMessage;
-
-    @Schema(
-            description = "Aggregated duration of databases"
-    )
-
+    @Schema(description = "Aggregated duration of databases", examples = "1200")
     private Long duration;
-    @Schema(
-            description = "Total number of adapter requests"
-    )
+    @Schema(description = "Total number of adapter requests", examples = "1")
     private Integer attemptCount;
-
     @Schema(
-            description = "List of logical restores"
+            description = "List of logical restores",
+            implementation = LogicalRestoreResponse.class,
+            type = SchemaType.ARRAY
     )
     private List<LogicalRestoreResponse> logicalRestores;
-
     @Schema(
-            description = "List of external databases"
+            description = "List of external databases",
+            implementation = RestoreExternalDatabaseResponse.class,
+            type = SchemaType.ARRAY
     )
     private List<RestoreExternalDatabaseResponse> externalDatabases;
 }

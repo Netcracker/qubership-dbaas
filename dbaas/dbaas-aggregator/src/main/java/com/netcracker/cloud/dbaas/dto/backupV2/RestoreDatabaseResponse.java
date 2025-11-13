@@ -22,59 +22,55 @@ public class RestoreDatabaseResponse {
             required = true
     )
     private String name;
-
     @Schema(
-            description = "Database classifier"
+            description = "List of database classifiers. Each classifier is a sorted map of attributes.",
+            examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]"
     )
     private List<Map<String, Object>> classifiers;
-
     @Schema(
-            description = "List of database users"
+            description = "List of database users",
+            examples = "[{\"name\":\"username\",\"role\":\"admin\"}"
     )
     private List<User> users;
-
     @Schema(
-            description = "Map of database settings"
+            description = "Database settings as a key-value map",
+            examples = "{\"key\":value, \"key\":value}"
     )
     private Map<String, Object> settings;
-
     @Schema(
-            description = "Blue-Green version of database"
+            description = "Blue-Green version of database",
+            examples = "v2.1.0"
     )
     private String bgVersion;
-
     @Schema(
             description = "Current state of the restore database",
             required = true,
             implementation = RestoreTaskStatus.class
     )
     private RestoreTaskStatus status;
-
-    @Schema(
-            description = "Duration of restore request"
-    )
+    @Schema(description = "Duration of the restore operation", examples = "12000")
     private long duration;
-
     @Schema(
-            description = "Information about path of database data in compatible storage"
+            description = "Path to the restore file in the storage",
+            examples = {
+                    "/backups/mydb-2025-11-13.bak"
+            },
+            required = true
     )
     private String path;
-
-    @Schema(
-            description = "Information about error during restore operation"
-    )
+    @Schema(description = "Error message if the backup failed",  examples = "Restore Not Found")
     private String errorMessage;
-
-    @Schema(
-            description = "Information about creation time of database in adapter"
-    )
+    @Schema(description = "Timestamp when the restore was created", examples = "2025-11-13T12:34:56Z")
     private Instant creationTime;
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
+    @Schema(description = "Database user information")
     public static class User {
+        @Schema(description = "Name of the database user", examples = "username")
         String name;
+        @Schema(description = "Role of the database user", examples = "admin")
         String role;
     }
 }

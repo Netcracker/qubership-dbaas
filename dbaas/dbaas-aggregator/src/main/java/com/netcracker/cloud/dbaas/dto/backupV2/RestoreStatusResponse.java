@@ -14,7 +14,6 @@ public class RestoreStatusResponse {
             required = true,
             implementation = RestoreStatus.class)
     private RestoreStatus status;
-
     @Schema(
             description = "Total number of databases to be restored",
             examples = {
@@ -23,7 +22,6 @@ public class RestoreStatusResponse {
             minimum = "0"
     )
     private Integer total;
-
     @Schema(
             description = "Number of databases successfully restored",
             examples = {
@@ -32,7 +30,6 @@ public class RestoreStatusResponse {
             minimum = "0"
     )
     private Integer completed;
-
     @Schema(
             description = "Error details if the restore failed",
             examples = {

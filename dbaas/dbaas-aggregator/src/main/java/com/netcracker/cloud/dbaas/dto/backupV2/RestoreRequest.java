@@ -23,7 +23,7 @@ public class RestoreRequest {
     )
     private String restoreName;
     @Schema(
-            description = "Name of the storage backend containing the backup",
+            description = "Name of the storage backend containing the restore",
             required = true,
             examples = {
                     "s3-backend"
@@ -31,7 +31,7 @@ public class RestoreRequest {
     )
     private String storageName;
     @Schema(
-            description = "Path to the backup file in the storage",
+            description = "Path to the restore file in the storage",
             required = true,
             examples = {
                     "/backups"
@@ -39,13 +39,16 @@ public class RestoreRequest {
     )
     private String blobPath;
     @Schema(
-            description = "Filter criteria"
+            description = "Filter criteria",
+            implementation = FilterCriteria.class
     )
     @Valid
     @ConvertGroup(from = Default.class, to = RestoreGroup.class)
     private FilterCriteria filterCriteria;
     @Schema(
-            description = "Mapping to use for the restore operation")
+            description = "Mapping to use for the restore operation",
+            implementation = Mapping.class
+    )
     private Mapping mapping;
 
     @Schema(

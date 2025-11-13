@@ -17,7 +17,6 @@ public class Mapping {
             }
     )
     private Map<String, String> namespaces;
-
     @Schema(
             description = "Mapping of source tenant to target tenant",
             examples = {

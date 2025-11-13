@@ -15,10 +15,8 @@ import java.util.List;
 @AllArgsConstructor
 @Schema(description = "Logical restore details")
 public class LogicalRestoreResponse {
-
     @Schema(description = "Name of the logical restore in adapter", required = true)
     private String logicalRestoreName;
-
     @Schema(
             description = "Unique identifier of the adapter",
             examples = {
@@ -27,7 +25,6 @@ public class LogicalRestoreResponse {
             required = true
     )
     private String adapterId;
-
     @Schema(
             description = "Type of the adapter",
             examples = {
@@ -36,29 +33,24 @@ public class LogicalRestoreResponse {
             required = true
     )
     private String type;
-
     @Schema(
             description = "List of logical restore databases",
             required = true
     )
     private List<RestoreDatabaseResponse> restoreDatabases;
-
     @Schema(
-            description = "Current state of the backup operation",
+            description = "Current state of the restore operation",
             required = true,
             implementation = RestoreTaskStatus.class)
     private RestoreTaskStatus status;
-
     @Schema(
             description = "Information about error message during restore process"
     )
     private String errorMessage;
-
     @Schema(
             description = "Aggregated information about creation time of databases in adapter"
     )
     private Instant creationTime;
-
     @Schema(
             description = "Aggregated information about completion time of databases in adapter"
     )

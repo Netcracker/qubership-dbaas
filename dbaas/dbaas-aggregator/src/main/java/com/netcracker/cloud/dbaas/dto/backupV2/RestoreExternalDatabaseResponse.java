@@ -11,8 +11,14 @@ import java.util.SortedMap;
 @NoArgsConstructor
 @Schema(description = "External database details")
 public class RestoreExternalDatabaseResponse {
+    @Schema(description = "Name of the external database", examples = "mydb", required = true)
     private String name;
+    @Schema(description = "Type of the database", examples = "postgresql")
     private String type;
+    @Schema(
+            description = "List of database classifiers. Each classifier is a sorted map of attributes.",
+            examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]"
+    )
     private List<SortedMap<String, Object>> classifiers;
 }
 

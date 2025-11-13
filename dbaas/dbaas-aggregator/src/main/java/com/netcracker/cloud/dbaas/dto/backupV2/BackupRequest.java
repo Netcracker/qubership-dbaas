@@ -15,7 +15,6 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @NoArgsConstructor
 @Schema(description = "Request to create a database backup")
 public class BackupRequest {
-
     @NotBlank
     @Schema(
             description = "Unique identifier of the backup",
@@ -24,7 +23,6 @@ public class BackupRequest {
             },
             required = true)
     private String backupName;
-
     @NotBlank
     @Schema(
             description = "Name of the storage backend containing the backup",
@@ -33,7 +31,6 @@ public class BackupRequest {
             },
             required = true)
     private String storageName;
-
     @NotBlank
     @Schema(
             description = "Path in the storage where backup will be stored",
@@ -42,14 +39,14 @@ public class BackupRequest {
             },
             required = true)
     private String blobPath;
-
     @Schema(
-            description = "Filter criteria")
+            description = "Filter criteria",
+            implementation = FilterCriteria.class
+    )
     @Valid
     @NotNull
     @ConvertGroup(from = Default.class, to = BackupGroup.class)
     private FilterCriteria filterCriteria;
-
     @Schema(
             description = "How to handle external databases during backup",
             examples = {
@@ -60,7 +57,6 @@ public class BackupRequest {
     )
     @NotNull
     private ExternalDatabaseStrategy externalDatabaseStrategy = ExternalDatabaseStrategy.FAIL;
-
     @NotNull
     @Schema(
             description = "Whether non-backupable databases should be ignored during backup",

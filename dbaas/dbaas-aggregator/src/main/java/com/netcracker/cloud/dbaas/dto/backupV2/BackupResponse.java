@@ -11,6 +11,7 @@ import jakarta.validation.groups.ConvertGroup;
 import jakarta.validation.groups.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
@@ -29,7 +30,6 @@ public class BackupResponse {
             required = true
     )
     private String backupName;
-
     @NotBlank
     @Schema(
             description = "Name of the storage backend containing the backup",
@@ -39,7 +39,6 @@ public class BackupResponse {
             required = true
     )
     private String storageName;
-
     @NotBlank
     @Schema(
             description = "Path to the backup file in the storage",
@@ -49,7 +48,6 @@ public class BackupResponse {
             required = true
     )
     private String blobPath;
-
     @Schema(
             description = "How to handle external databases during backup",
             examples = {
@@ -59,7 +57,6 @@ public class BackupResponse {
     )
     @NotNull
     private ExternalDatabaseStrategy externalDatabaseStrategy;
-
     @NotNull
     @Schema(
             description = "Whether external databases were skipped during the backup",
@@ -68,9 +65,9 @@ public class BackupResponse {
             }
     )
     private boolean ignoreNotBackupableDatabases;
-
     @Schema(
-            description = "Filter criteria"
+            description = "Filter criteria",
+            implementation = FilterCriteria.class
     )
     @Valid
     @ConvertGroup(from = Default.class, to = BackupGroup.class)
@@ -111,12 +108,16 @@ public class BackupResponse {
     private String errorMessage;
 
     @Schema(
-            description = "List of logical backups"
+            description = "List of logical backups",
+            implementation = LogicalBackupResponse.class,
+            type = SchemaType.ARRAY
     )
     private List<LogicalBackupResponse> logicalBackups;
 
     @Schema(
-            description = "List of external databases"
+            description = "List of external databases",
+            implementation = BackupExternalDatabaseResponse.class,
+            type = SchemaType.ARRAY
     )
     private List<BackupExternalDatabaseResponse> externalDatabases;
 

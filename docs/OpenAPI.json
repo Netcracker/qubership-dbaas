@@ -141,7 +141,8 @@
         "type": "object",
         "required": [
           "name",
-          "status"
+          "status",
+          "path"
         ],
         "description": "Logical database backup details",
         "properties": {
@@ -154,26 +155,45 @@
           },
           "classifiers": {
             "type": "array",
+            "examples": [
+              [
+                {
+                  "namespace": "namespace",
+                  "microserviceName": "microserviceName",
+                  "scope": "service"
+                }
+              ]
+            ],
             "items": {
               "type": "object",
               "additionalProperties": {}
             },
-            "description": "List of database classifiers"
+            "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           },
           "settings": {
             "type": "object",
+            "examples": [
+              "{\"key\":value, \"key\":value}"
+            ],
             "additionalProperties": {},
-            "description": "List of database settings"
+            "description": "Database settings as a key-value map"
           },
           "users": {
             "type": "array",
+            "examples": [
+              "[{\"name\":\"username\",\"role\":\"admin\"}"
+            ],
             "items": {
               "$ref": "#/components/schemas/User"
             },
             "description": "List of database users"
           },
           "configurational": {
-            "type": "boolean"
+            "type": "boolean",
+            "examples": [
+              true
+            ],
+            "description": "Indicates the type of the database"
           },
           "status": {
             "type": [
@@ -190,39 +210,81 @@
           },
           "size": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "examples": [
+              12256
+            ],
+            "description": "Size of the backup"
           },
           "duration": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "examples": [
+              12000
+            ],
+            "description": "Duration of the backup operation"
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "/backups/mydb-2025-11-13.bak"
+            ],
+            "description": "Path to the backup file in the storage"
           },
           "errorMessage": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "Backup Not Found"
+            ],
+            "description": "Error message if the backup failed"
           },
           "creationTime": {
-            "$ref": "#/components/schemas/Instant"
+            "$ref": "#/components/schemas/Instant",
+            "type": "string",
+            "examples": [
+              "2025-11-13T12:34:56Z"
+            ],
+            "description": "Timestamp when the backup was created"
           }
         }
       },
       "BackupExternalDatabaseResponse": {
         "type": "object",
+        "required": [
+          "name"
+        ],
         "description": "External database details",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "mydb"
+            ],
+            "description": "Name of the external database"
           },
           "type": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "postgresql"
+            ],
+            "description": "Type of the database"
           },
           "classifiers": {
             "type": "array",
+            "examples": [
+              [
+                {
+                  "namespace": "namespace",
+                  "microserviceName": "microserviceName",
+                  "scope": "service"
+                }
+              ]
+            ],
             "items": {
               "type": "object",
               "additionalProperties": {}
-            }
+            },
+            "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           }
         }
       },
@@ -263,9 +325,34 @@
             "description": "Path in the storage where backup will be stored"
           },
           "filterCriteria": {
-            "$ref": "#/components/schemas/FilterCriteria",
             "type": "object",
-            "description": "Filter criteria"
+            "required": [
+              "filter"
+            ],
+            "description": "Filter criteria",
+            "properties": {
+              "filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Apply the filter to the remaining databases"
+              },
+              "include": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Include databases that match any of the filters in the list"
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Exclude databases that match any of the filters in the list"
+              }
+            }
           },
           "externalDatabaseStrategy": {
             "type": [
@@ -352,9 +439,34 @@
             "description": "Whether external databases were skipped during the backup"
           },
           "filterCriteria": {
-            "$ref": "#/components/schemas/FilterCriteria",
             "type": "object",
-            "description": "Filter criteria"
+            "required": [
+              "filter"
+            ],
+            "description": "Filter criteria",
+            "properties": {
+              "filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Apply the filter to the remaining databases"
+              },
+              "include": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Include databases that match any of the filters in the list"
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Exclude databases that match any of the filters in the list"
+              }
+            }
           },
           "status": {
             "type": [
@@ -1681,7 +1793,7 @@
         "required": [
           "filter"
         ],
-        "description": "Group of filters for backup and restore operations. Filters are applied in the following order:\n\n1. `filter`: Apply the filter to the databases.\n2. `include`: Include databases that match any of the filters in the list.\n3. `exclude`: Exclude databases that match any of the filters in the list.",
+        "description": "Filter criteria",
         "properties": {
           "filter": {
             "type": "array",
@@ -1907,13 +2019,27 @@
             "description": "Current state of the backup databases of one adapter"
           },
           "errorMessage": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "Backup Not Found"
+            ],
+            "description": "Error message if backup failed"
           },
           "creationTime": {
-            "$ref": "#/components/schemas/Instant"
+            "$ref": "#/components/schemas/Instant",
+            "type": "string",
+            "examples": [
+              "2025-11-13T12:34:56Z"
+            ],
+            "description": "Timestamp when the backup was created"
           },
           "completionTime": {
-            "$ref": "#/components/schemas/Instant"
+            "$ref": "#/components/schemas/Instant",
+            "type": "string",
+            "examples": [
+              "2025-11-13T12:45:00Z"
+            ],
+            "description": "Timestamp when the backup completed"
           },
           "backupDatabases": {
             "type": "array",
@@ -1971,7 +2097,7 @@
               "FAILED",
               "COMPLETED"
             ],
-            "description": "Current state of the backup operation"
+            "description": "Current state of the restore operation"
           },
           "errorMessage": {
             "type": "string",
@@ -2943,7 +3069,8 @@
         "type": "object",
         "required": [
           "name",
-          "status"
+          "status",
+          "path"
         ],
         "description": "Logical database restore details",
         "properties": {
@@ -2956,14 +3083,26 @@
           },
           "classifiers": {
             "type": "array",
+            "examples": [
+              [
+                {
+                  "namespace": "namespace",
+                  "microserviceName": "microserviceName",
+                  "scope": "service"
+                }
+              ]
+            ],
             "items": {
               "type": "object",
               "additionalProperties": {}
             },
-            "description": "Database classifier"
+            "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           },
           "users": {
             "type": "array",
+            "examples": [
+              "[{\"name\":\"username\",\"role\":\"admin\"}"
+            ],
             "items": {
               "$ref": "#/components/schemas/User1"
             },
@@ -2971,11 +3110,17 @@
           },
           "settings": {
             "type": "object",
+            "examples": [
+              "{\"key\":value, \"key\":value}"
+            ],
             "additionalProperties": {},
-            "description": "Map of database settings"
+            "description": "Database settings as a key-value map"
           },
           "bgVersion": {
             "type": "string",
+            "examples": [
+              "v2.1.0"
+            ],
             "description": "Blue-Green version of database"
           },
           "status": {
@@ -2994,39 +3139,72 @@
           "duration": {
             "type": "integer",
             "format": "int64",
-            "description": "Duration of restore request"
+            "examples": [
+              12000
+            ],
+            "description": "Duration of the restore operation"
           },
           "path": {
             "type": "string",
-            "description": "Information about path of database data in compatible storage"
+            "examples": [
+              "/backups/mydb-2025-11-13.bak"
+            ],
+            "description": "Path to the restore file in the storage"
           },
           "errorMessage": {
             "type": "string",
-            "description": "Information about error during restore operation"
+            "examples": [
+              "Restore Not Found"
+            ],
+            "description": "Error message if the backup failed"
           },
           "creationTime": {
             "$ref": "#/components/schemas/Instant",
             "type": "string",
-            "description": "Information about creation time of database in adapter"
+            "examples": [
+              "2025-11-13T12:34:56Z"
+            ],
+            "description": "Timestamp when the restore was created"
           }
         }
       },
       "RestoreExternalDatabaseResponse": {
         "type": "object",
+        "required": [
+          "name"
+        ],
         "description": "External database details",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "mydb"
+            ],
+            "description": "Name of the external database"
           },
           "type": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "postgresql"
+            ],
+            "description": "Type of the database"
           },
           "classifiers": {
             "type": "array",
+            "examples": [
+              [
+                {
+                  "namespace": "namespace",
+                  "microserviceName": "microserviceName",
+                  "scope": "service"
+                }
+              ]
+            ],
             "items": {
               "type": "object",
               "additionalProperties": {}
-            }
+            },
+            "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           }
         }
       },
@@ -3075,24 +3253,74 @@
             "examples": [
               "s3-backend"
             ],
-            "description": "Name of the storage backend containing the backup"
+            "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
             "type": "string",
             "examples": [
               "/backups"
             ],
-            "description": "Path to the backup file in the storage"
+            "description": "Path to the restore file in the storage"
           },
           "filterCriteria": {
-            "$ref": "#/components/schemas/FilterCriteria",
             "type": "object",
-            "description": "Filter criteria"
+            "required": [
+              "filter"
+            ],
+            "description": "Filter criteria",
+            "properties": {
+              "filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Apply the filter to the remaining databases"
+              },
+              "include": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Include databases that match any of the filters in the list"
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Exclude databases that match any of the filters in the list"
+              }
+            }
           },
           "mapping": {
-            "$ref": "#/components/schemas/Mapping",
             "type": "object",
-            "description": "Mapping to use for the restore operation"
+            "description": "Mapping to use for the restore operation",
+            "properties": {
+              "namespaces": {
+                "type": "object",
+                "examples": [
+                  {
+                    "source-namespace": "target-namespace"
+                  }
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Mapping of source namespace to target namespace"
+              },
+              "tenants": {
+                "type": "object",
+                "examples": [
+                  {
+                    "source-tenant": "target-tenant"
+                  }
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Mapping of source tenant to target tenant"
+              }
+            }
           },
           "externalDatabaseStrategy": {
             "type": [
@@ -3117,8 +3345,7 @@
         "required": [
           "restoreName",
           "externalDatabaseStrategy",
-          "status",
-          "total"
+          "status"
         ],
         "description": "Response containing the restore operation details",
         "properties": {
@@ -3141,14 +3368,14 @@
             "examples": [
               "s3-backend"
             ],
-            "description": "Name of the storage backend containing the backup"
+            "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
             "type": "string",
             "examples": [
               "/backups"
             ],
-            "description": "Path to the backup file in the storage"
+            "description": "Path to the restore file in the storage"
           },
           "externalDatabaseStrategy": {
             "type": [
@@ -3166,14 +3393,64 @@
             "description": "How to handle external databases during restore"
           },
           "filterCriteria": {
-            "$ref": "#/components/schemas/FilterCriteria",
             "type": "object",
-            "description": "Criteria used to filter restore operations"
+            "required": [
+              "filter"
+            ],
+            "description": "Criteria used to filter restore operations",
+            "properties": {
+              "filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Apply the filter to the remaining databases"
+              },
+              "include": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Include databases that match any of the filters in the list"
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                "description": "Exclude databases that match any of the filters in the list"
+              }
+            }
           },
           "mapping": {
-            "$ref": "#/components/schemas/Mapping",
             "type": "object",
-            "description": "Mapping configuration for the restore"
+            "description": "Mapping configuration for the restore",
+            "properties": {
+              "namespaces": {
+                "type": "object",
+                "examples": [
+                  {
+                    "source-namespace": "target-namespace"
+                  }
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Mapping of source namespace to target namespace"
+              },
+              "tenants": {
+                "type": "object",
+                "examples": [
+                  {
+                    "source-tenant": "target-tenant"
+                  }
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Mapping of source tenant to target tenant"
+              }
+            }
           },
           "status": {
             "type": [
@@ -3187,30 +3464,45 @@
               "COMPLETED",
               "DELETED"
             ],
-            "description": "Current state of the backup operation"
+            "description": "Current state of the restore operation"
           },
           "total": {
             "type": "integer",
             "format": "int32",
-            "description": "Total database count to restore operation"
+            "examples": [
+              5
+            ],
+            "description": "Total number of databases being restored"
           },
           "completed": {
             "type": "integer",
             "format": "int32",
+            "examples": [
+              5
+            ],
             "description": "Completed databases restore operation"
           },
           "errorMessage": {
             "type": "string",
+            "examples": [
+              "Backup Not Found"
+            ],
             "description": "Aggregated error messages during restore operation"
           },
           "duration": {
             "type": "integer",
             "format": "int64",
+            "examples": [
+              1200
+            ],
             "description": "Aggregated duration of databases"
           },
           "attemptCount": {
             "type": "integer",
             "format": "int32",
+            "examples": [
+              1
+            ],
             "description": "Total number of adapter requests"
           },
           "logicalRestores": {
@@ -3772,23 +4064,41 @@
       },
       "User": {
         "type": "object",
+        "description": "Database user information",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "username"
+            ],
+            "description": "Name of the database user"
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "admin"
+            ],
+            "description": "Role of the database user"
           }
         }
       },
       "User1": {
         "type": "object",
+        "description": "Database user information",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "username"
+            ],
+            "description": "Name of the database user"
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "admin"
+            ],
+            "description": "Role of the database user"
           }
         }
       },
