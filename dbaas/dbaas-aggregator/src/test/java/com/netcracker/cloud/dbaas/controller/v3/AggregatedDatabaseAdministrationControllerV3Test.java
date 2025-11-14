@@ -1146,7 +1146,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         Map<String, Object> firstConnectionProperty = new HashMap<>();
         firstConnectionProperty.put(ROLE, ADMIN.toString());
         firstConnectionProperty.put("username", "user1");
-        firstConnectionProperty.put("password", "password1");
+        firstConnectionProperty.put("password", "test-password-1");
         oldConnectionProperties.add(firstConnectionProperty);
         ExternalDatabaseRequestV3 externalDatabaseRequest = getExternalDatabaseRequestObject();
         externalDatabaseRequest.setUpdateConnectionProperties(true);
@@ -1157,7 +1157,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         Map<String, Object> newConnectionProperty = new HashMap<>();
         newConnectionProperty.put(ROLE, ADMIN.toString());
         newConnectionProperty.put("username", "user2");
-        newConnectionProperty.put("password", "password2");
+        newConnectionProperty.put("password", "test-password-2");
         List<Map<String, Object>> newConnectionProperties = new ArrayList<>(oldConnectionProperties);
         newConnectionProperties.add(newConnectionProperty);
         externalDatabaseRequest.setConnectionProperties(newConnectionProperties);

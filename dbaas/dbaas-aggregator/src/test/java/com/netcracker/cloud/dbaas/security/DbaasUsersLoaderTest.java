@@ -27,10 +27,10 @@ class DbaasUsersLoaderTest {
     @Test
     void loadDbaasUser() throws IOException {
         UserConfig userConfig1 = new UserConfig();
-        userConfig1.setPassword("password1");
+        userConfig1.setPassword("test-password-1");
         userConfig1.setRoles(List.of("role1", "role2"));
         UserConfig userConfig2 = new UserConfig();
-        userConfig2.setPassword("password2");
+        userConfig2.setPassword("test-password-2");
         userConfig2.setRoles(List.of("role3", "role4"));
 
         Map<String, UserConfig> userConfiguration = Map.of(
