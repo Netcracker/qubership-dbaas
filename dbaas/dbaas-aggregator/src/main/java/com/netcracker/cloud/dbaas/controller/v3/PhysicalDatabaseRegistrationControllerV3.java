@@ -18,7 +18,6 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -33,10 +32,7 @@ import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
-import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
-import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
-import static jakarta.ws.rs.core.Response.Status.NOT_ACCEPTABLE;
-import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
+import static jakarta.ws.rs.core.Response.Status.*;
 
 @Slf4j
 @Path(DbaasApiPath.PHYSICAL_DATABASES_PATH_V3)
@@ -124,7 +120,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         String host = uri.getHost();
         String protocol = uri.getScheme();
 
-        if (host == null || protocol == null){
+        if (host == null || protocol == null) {
             throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4045,
                     ErrorCodes.CORE_DBAAS_4045.getDetail(parameters.getAdapterAddress()), Source.builder().pointer("/adapterAddress").build());
         }
@@ -246,13 +242,13 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                                            @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                                            @PathParam("phydbid") String phydbid) {
         PhysicalDatabase databaseForDeletion = physicalDatabasesService.getByPhysicalDatabaseIdentifier(phydbid);
-        List<PhysicalDatabase> registeredDatabases = physicalDatabasesService.getRegisteredDatabases(type);
         if (databaseForDeletion == null) {
-            String msg = String.format("No physical database of %s type  with phydbid %s is registered", type, phydbid);
+            String msg = String.format("No physical database of %s type with phydbid %s is registered", type, phydbid);
             log.error(msg);
             return Response.status(NOT_FOUND).entity(msg).build();
         }
-        if (databaseForDeletion.isGlobal() && registeredDatabases.size() > 1) {
+        List<PhysicalDatabase> registeredDatabasesSameType = physicalDatabasesService.getRegisteredDatabases(type);
+        if (databaseForDeletion.isGlobal() && registeredDatabasesSameType.size() > 1) {
             String msg = String.format("Can't delete physical db %s because it's global. Please move the global flag to another physical database before deletion", phydbid);
             log.error(msg);
             return Response.status(NOT_ACCEPTABLE).entity(msg).build();
