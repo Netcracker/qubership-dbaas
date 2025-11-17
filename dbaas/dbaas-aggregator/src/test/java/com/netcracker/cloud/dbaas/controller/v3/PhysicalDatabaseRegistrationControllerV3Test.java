@@ -352,6 +352,7 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .when().delete("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(OK.getStatusCode());
+        verify(physicalDatabasesService, times(1)).dropDatabase(physicalDatabase);
     }
 
     @Test
