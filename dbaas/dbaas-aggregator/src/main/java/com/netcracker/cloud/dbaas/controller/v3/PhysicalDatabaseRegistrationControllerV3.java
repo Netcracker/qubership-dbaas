@@ -246,18 +246,22 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                                            @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                                            @PathParam("phydbid") String phydbid) {
         PhysicalDatabase databaseForDeletion = physicalDatabasesService.getByPhysicalDatabaseIdentifier(phydbid);
+        List<PhysicalDatabase> registeredDatabases = physicalDatabasesService.getRegisteredDatabases(type);
         if (databaseForDeletion == null) {
-            log.error("No physical database of {} type  with phydbid {} is registered", type, phydbid);
-            return Response.status(NOT_FOUND).entity("No physical database of type " + type + " with id " + phydbid + " is registered").build();
+            String msg = String.format("No physical database of %s type  with phydbid %s is registered", type, phydbid);
+            log.error(msg);
+            return Response.status(NOT_FOUND).entity(msg).build();
         }
-        if (databaseForDeletion.isGlobal()) {
-            log.error("Can't delete db {}. This database is global", phydbid);
-            return Response.status(NOT_ACCEPTABLE).entity("Can't delete db " + phydbid + ". This database is global").build();
+        if (databaseForDeletion.isGlobal() && registeredDatabases.size() > 1) {
+            String msg = String.format("Can't delete physical db %s because it's global. Please move the global flag to another physical database before deletion", phydbid);
+            log.error(msg);
+            return Response.status(NOT_ACCEPTABLE).entity(msg).build();
         }
         boolean isConnectedDbsExist = physicalDatabasesService.checkContainsConnectedLogicalDb(databaseForDeletion);
         if (isConnectedDbsExist) {
-            log.error("Can't delete db {}. Connected logical databases still exist", phydbid);
-            return Response.status(NOT_ACCEPTABLE).entity("Can't delete db " + phydbid + ". Connected logical databases still exist").build();
+            String msg = String.format("Can't delete db %s. Connected logical databases still exist", phydbid);
+            log.error(msg);
+            return Response.status(NOT_ACCEPTABLE).entity(msg).build();
         }
         physicalDatabasesService.dropDatabase(databaseForDeletion);
         return Response.ok().build();
