@@ -18,7 +18,6 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -33,10 +32,7 @@ import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
-import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
-import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
-import static jakarta.ws.rs.core.Response.Status.NOT_ACCEPTABLE;
-import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
+import static jakarta.ws.rs.core.Response.Status.*;
 
 @Slf4j
 @Path(DbaasApiPath.PHYSICAL_DATABASES_PATH_V3)
@@ -124,7 +120,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         String host = uri.getHost();
         String protocol = uri.getScheme();
 
-        if (host == null || protocol == null){
+        if (host == null || protocol == null) {
             throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4045,
                     ErrorCodes.CORE_DBAAS_4045.getDetail(parameters.getAdapterAddress()), Source.builder().pointer("/adapterAddress").build());
         }
@@ -237,7 +233,9 @@ public class PhysicalDatabaseRegistrationControllerV3 {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Successfully deleted physical databases."),
             @APIResponse(responseCode = "406", description = "Database is marked as default or there are connected logical databases."),
-            @APIResponse(responseCode = "404", description = "Physical database with specific type and id was not found.")})
+            @APIResponse(responseCode = "404", description = "Physical database with specific type and id was not found."),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served")
+    })
     @Path("/{phydbid}")
     @DELETE
     @Transactional
@@ -247,17 +245,26 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                                            @PathParam("phydbid") String phydbid) {
         PhysicalDatabase databaseForDeletion = physicalDatabasesService.getByPhysicalDatabaseIdentifier(phydbid);
         if (databaseForDeletion == null) {
-            log.error("No physical database of {} type  with phydbid {} is registered", type, phydbid);
-            return Response.status(NOT_FOUND).entity("No physical database of type " + type + " with id " + phydbid + " is registered").build();
+            String msg = String.format("No physical database of %s type with phydbid %s is registered", type, phydbid);
+            log.error(msg);
+            return Response.status(NOT_FOUND).entity(msg).build();
         }
-        if (databaseForDeletion.isGlobal()) {
-            log.error("Can't delete db {}. This database is global", phydbid);
-            return Response.status(NOT_ACCEPTABLE).entity("Can't delete db " + phydbid + ". This database is global").build();
+        if (!type.equals(databaseForDeletion.getType())) {
+            String msg = String.format("Requested type %s does not match actual type %s of found physical database", type, databaseForDeletion.getType());
+            log.error(msg);
+            return Response.status(BAD_REQUEST).entity(msg).build();
+        }
+        List<PhysicalDatabase> registeredDatabasesSameType = physicalDatabasesService.getRegisteredDatabases(type);
+        if (databaseForDeletion.isGlobal() && registeredDatabasesSameType.size() > 1) {
+            String msg = String.format("Can't delete physical db %s because it's global. Please move the global flag to another physical database before deletion", phydbid);
+            log.error(msg);
+            return Response.status(NOT_ACCEPTABLE).entity(msg).build();
         }
         boolean isConnectedDbsExist = physicalDatabasesService.checkContainsConnectedLogicalDb(databaseForDeletion);
         if (isConnectedDbsExist) {
-            log.error("Can't delete db {}. Connected logical databases still exist", phydbid);
-            return Response.status(NOT_ACCEPTABLE).entity("Can't delete db " + phydbid + ". Connected logical databases still exist").build();
+            String msg = String.format("Can't delete db %s. Connected logical databases still exist", phydbid);
+            log.error(msg);
+            return Response.status(NOT_ACCEPTABLE).entity(msg).build();
         }
         physicalDatabasesService.dropDatabase(databaseForDeletion);
         return Response.ok().build();

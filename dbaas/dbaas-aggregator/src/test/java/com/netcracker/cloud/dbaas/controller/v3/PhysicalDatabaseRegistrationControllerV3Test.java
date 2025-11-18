@@ -333,12 +333,37 @@ class PhysicalDatabaseRegistrationControllerV3Test {
         final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
         physicalDatabase.setGlobal(true);
         when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(String.valueOf(PHYDBID))).thenReturn(physicalDatabase);
-
+        when(physicalDatabasesService.getRegisteredDatabases(TEST_TYPE)).thenReturn(List.of(physicalDatabase, getPhysicalDatabaseSample()));
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .when().delete("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(NOT_ACCEPTABLE.getStatusCode());
+    }
+
+    @Test
+    void testDeleteSingleGlobalDatabase() {
+        final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        physicalDatabase.setGlobal(true);
+        when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(String.valueOf(PHYDBID))).thenReturn(physicalDatabase);
+        when(physicalDatabasesService.getRegisteredDatabases(TEST_TYPE)).thenReturn(List.of(physicalDatabase));
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", TEST_TYPE)
+                .when().delete("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(OK.getStatusCode());
+        verify(physicalDatabasesService, times(1)).dropDatabase(physicalDatabase);
+    }
+
+    @Test
+    void testRequestedAndActualPhysicalDatabaseTypeMismatch() {
+        final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(String.valueOf(PHYDBID))).thenReturn(physicalDatabase);
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", "misType")
+                .when().delete("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode());
     }
 
     @Test
@@ -422,6 +447,7 @@ class PhysicalDatabaseRegistrationControllerV3Test {
         physicalDatabase.setId(PHYDBID.toString());
         physicalDatabase.setPhysicalDatabaseIdentifier(PHYDBID.toString());
         physicalDatabase.setRoles(Collections.singletonList(Role.ADMIN.toString()));
+        physicalDatabase.setType(TEST_TYPE);
         return physicalDatabase;
     }
 
