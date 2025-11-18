@@ -356,6 +356,17 @@ class PhysicalDatabaseRegistrationControllerV3Test {
     }
 
     @Test
+    void testRequestedAndActualPhysicalDatabaseTypeMismatch() {
+        final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(String.valueOf(PHYDBID))).thenReturn(physicalDatabase);
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", "misType")
+                .when().delete("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(NOT_FOUND.getStatusCode());
+    }
+
+    @Test
     void testCanNotDeleteNonExistentDatabase() {
         when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(String.valueOf(PHYDBID))).thenReturn(null);
 
