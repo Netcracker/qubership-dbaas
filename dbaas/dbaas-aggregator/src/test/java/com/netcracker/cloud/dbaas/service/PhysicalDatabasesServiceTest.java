@@ -9,6 +9,7 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -78,6 +79,12 @@ class PhysicalDatabasesServiceTest {
         PhysicalDatabase physicalDatabase = physicalDatabasesService.searchInPhysicalDatabaseCache("test-id");
         assertEquals(physicalDatabaseMock, physicalDatabase);
 
+    }
+
+    @Test
+    void testPhysicalDatabaseCache_dbNotFound() {
+        assertThrows(NotFoundException.class,
+                () -> physicalDatabasesService.searchInPhysicalDatabaseCache("phyDbId"));
     }
 
     @Test
