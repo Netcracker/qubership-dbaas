@@ -13,6 +13,7 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
@@ -326,7 +327,8 @@ public class PhysicalDatabasesService {
     }
 
     public PhysicalDatabase searchInPhysicalDatabaseCache(String phyDbId) {
-        return physicalDatabaseCache.computeIfAbsent(phyDbId, id -> getByPhysicalDatabaseIdentifier(phyDbId));
+        return Optional.ofNullable(physicalDatabaseCache.computeIfAbsent(phyDbId, id -> getByPhysicalDatabaseIdentifier(phyDbId)))
+                .orElseThrow(() -> new NotFoundException(String.format("Physical Database with phyDbId %s not found", phyDbId)));
     }
 
 
