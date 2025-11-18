@@ -2767,6 +2767,12 @@
             },
             "description": "Information about features this adapter supports."
           },
+          "features": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
           "supportedVersion": {
             "type": "string"
           },

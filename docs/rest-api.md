@@ -2155,6 +2155,10 @@ then all registered physical databases for all types will be shown.
           "backupRestore": true,
           "users": true,
           "describeDatabases": true
+        },
+        "features":  {
+          "tls": false,
+          "multiusers": true
         }
       },
       "core-elasticsearch": {
