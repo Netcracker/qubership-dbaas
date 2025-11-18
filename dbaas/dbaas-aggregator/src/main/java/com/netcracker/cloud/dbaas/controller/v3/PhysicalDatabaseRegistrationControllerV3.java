@@ -233,7 +233,9 @@ public class PhysicalDatabaseRegistrationControllerV3 {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Successfully deleted physical databases."),
             @APIResponse(responseCode = "406", description = "Database is marked as default or there are connected logical databases."),
-            @APIResponse(responseCode = "404", description = "Physical database with specific type and id was not found.")})
+            @APIResponse(responseCode = "404", description = "Physical database with specific type and id was not found."),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served")
+    })
     @Path("/{phydbid}")
     @DELETE
     @Transactional
