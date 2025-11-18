@@ -363,7 +363,7 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .pathParam("type", "misType")
                 .when().delete("/{phydbid}", PHYDBID)
                 .then()
-                .statusCode(NOT_FOUND.getStatusCode());
+                .statusCode(BAD_REQUEST.getStatusCode());
     }
 
     @Test

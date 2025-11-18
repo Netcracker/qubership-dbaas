@@ -250,7 +250,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         if (!type.equals(databaseForDeletion.getType())) {
             String msg = String.format("Requested type %s does not match actual type %s of found physical database", type, databaseForDeletion.getType());
             log.error(msg);
-            return Response.status(NOT_FOUND).entity(msg).build();
+            return Response.status(BAD_REQUEST).entity(msg).build();
         }
         List<PhysicalDatabase> registeredDatabasesSameType = physicalDatabasesService.getRegisteredDatabases(type);
         if (databaseForDeletion.isGlobal() && registeredDatabasesSameType.size() > 1) {
