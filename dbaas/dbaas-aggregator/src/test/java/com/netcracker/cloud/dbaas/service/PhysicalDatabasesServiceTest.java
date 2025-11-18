@@ -513,6 +513,7 @@ class PhysicalDatabasesServiceTest {
         String type = "test-type";
         Date registrationDate = new Date();
         List<String> roles = new ArrayList(Arrays.asList("admin", "ro", "rw"));
+        Map<String, Boolean> features = Map.of("tls", false, "multiusers", true);
         ExternalAdapterRegistrationEntry externalAdapterRegistrationEntry = mock(ExternalAdapterRegistrationEntry.class);
         HttpBasicCredentials httpBasicCredentials = new HttpBasicCredentials("test-username", "test-password");
         String address = "test.address";
@@ -528,6 +529,7 @@ class PhysicalDatabasesServiceTest {
         physicalDatabase.setAdapter(externalAdapterRegistrationEntry);
         physicalDatabase.setLabels(labels);
         physicalDatabase.setRoles(roles);
+        physicalDatabase.setFeatures(features);
         List<PhysicalDatabase> source = Stream.<PhysicalDatabase>builder()
                 .add(physicalDatabase).build().collect(Collectors.toList());
 
@@ -557,6 +559,7 @@ class PhysicalDatabasesServiceTest {
         assertEquals(supports, dto.getSupports());
         assertEquals(global, dto.isGlobal());
         assertTrue(roles.containsAll(dto.getSupportedRoles()));
+        assertEquals(features, dto.getFeatures());
     }
 
     @Test
