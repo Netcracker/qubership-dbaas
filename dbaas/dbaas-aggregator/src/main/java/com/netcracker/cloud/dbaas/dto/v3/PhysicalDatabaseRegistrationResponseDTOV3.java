@@ -26,6 +26,8 @@ public class PhysicalDatabaseRegistrationResponseDTOV3 {
     @Schema(required = true, description = "Information about features this adapter supports.")
     private Map<String, Boolean> supports;
     @Schema
+    private Map<String, Boolean> features;
+    @Schema
     private String supportedVersion;
     @Schema
     private List<String> supportedRoles;

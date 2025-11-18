@@ -388,6 +388,7 @@ public class PhysicalDatabasesService {
                 log.error("Failed to retrieve supports info from adapter: {}, type: {}, err: {}",
                         adapter.identifier(), adapter.type(), e.getMessage());
             }
+            dto.setFeatures(entity.getFeatures());
             identifiedMap.put(entity.getPhysicalDatabaseIdentifier(), dto);
         }
         getRegisteredResponse.setIdentified(identifiedMap);
