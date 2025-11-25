@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.dbaas.rest.AdapterResponseExceptionMapper;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
 import com.netcracker.cloud.dbaas.rest.BasicAuthFilter;
@@ -38,6 +39,7 @@ public class DbaasAdapterRESTClientFactory {
         DbaasAdapterRestClientV2 restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
                 .register(authFilter)
                 .register(new DbaasAdapterRestClientLoggingFilter())
+                .register(new AdapterResponseExceptionMapper())
                 .connectTimeout(3, TimeUnit.MINUTES)
                 .readTimeout(3, TimeUnit.MINUTES)
                 .build(DbaasAdapterRestClientV2.class);
