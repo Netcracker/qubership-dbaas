@@ -71,7 +71,7 @@ creates DBaaS user, DBaaS database, and gives DBaaS owner role to DBaaS user.
 | Parameter             | Default  | Recommended                                                                                              | 
 |-----------------------|----------|----------------------------------------------------------------------------------------------------------|
 | POSTGRES_DBA_USER     | postgres | We do not recommend to pass this parameter and use `POSTGRES_DBAAS_USER/POSTGRES_DBAAS_PASSWORD` instead | 
-| POSTGRES_DBA_PASSWORD | paSSw0rd | We do not recommend to pass this parameter and use `POSTGRES_DBAAS_USER/POSTGRES_DBAAS_PASSWORD` instead | 
+| POSTGRES_DBA_PASSWORD | password | We do not recommend to pass this parameter and use `POSTGRES_DBAAS_USER/POSTGRES_DBAAS_PASSWORD` instead | 
 
 #### POSTGRES_DBAAS_DATABASE_NAME / POSTGRES_DBAAS_USER / POSTGRES_DBAAS_PASSWORD
 

@@ -2155,6 +2155,10 @@ then all registered physical databases for all types will be shown.
           "backupRestore": true,
           "users": true,
           "describeDatabases": true
+        },
+        "features":  {
+          "tls": false,
+          "multiusers": true
         }
       },
       "core-elasticsearch": {
@@ -2193,6 +2197,7 @@ Deletes physical database by database type and physical database id
 
 | HTTP Code | Description                                                             | Schema     |
 |-----------|-------------------------------------------------------------------------|------------|
+| **400**   | The request was invalid or cannot be served.                            | No Content | 
 | **404**   | Physical database with specific type and id was not found.              | No Content |
 | **406**   | Database is marked as default or there are connected logical databases. | No Content |
 

@@ -2767,6 +2767,12 @@
             },
             "description": "Information about features this adapter supports."
           },
+          "features": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
           "supportedVersion": {
             "type": "string"
           },
@@ -8983,6 +8989,9 @@
           },
           "404": {
             "description": "Physical database with specific type and id was not found."
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served"
           },
           "401": {
             "description": "Not Authorized"
