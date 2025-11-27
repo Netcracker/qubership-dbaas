@@ -1,0 +1,51 @@
+name: 🤖 AI-Review using DeepSeek (centralized)
+
+on:
+  workflow_dispatch:
+    inputs:
+      review-command:
+        type: choice
+        default: run
+        options: [ run, run-inline, run-context, run-summary, run-inline-reply, run-summary-reply ]
+        description: "Review Type"
+      pull-request-number:
+        type: string
+        required: true
+        description: "Pull Number"
+env:
+  AI_REVIEW_CONFIG_FILE_YAML: ".ai-review-centralized.yml"
+
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download centralized configs of AI Review tool
+        run: |
+          curl -O https://raw.githubusercontent.com/exadmin/ai-review-configs/main/.ai-review-centralized.yml
+          curl -O https://raw.githubusercontent.com/exadmin/ai-review-configs/main/.prompt-summary-centralized.md
+
+      # Original code is placed at Nikita-Filonov's repository
+      # But Fork is used for safety reasons
+      # You can use any repository - thay are fully compatible
+      # - uses: Nikita-Filonov/ai-review@v0.43.0
+      - uses: exadmin/ai-review@v0.43.0
+        with:
+          review-command: ${{ inputs.review-command }}
+        env:
+          # --- LLM configuration ---
+          LLM__PROVIDER: "OPENAI"
+          LLM__HTTP_CLIENT__API_URL: "https://api.deepseek.com/v1"
+          LLM__HTTP_CLIENT__API_TOKEN: ${{ secrets.OPENAI_API_KEY }}
+
+          # --- GitHub integration ---
+          VCS__PROVIDER: "GITHUB"
+          VCS__PIPELINE__OWNER: ${{ github.repository_owner }}
+          VCS__PIPELINE__REPO: ${{ github.event.repository.name }}
+          VCS__PIPELINE__PULL_NUMBER: ${{ inputs.pull-request-number }}
+          VCS__HTTP_CLIENT__API_URL: "https://api.github.com"
+          VCS__HTTP_CLIENT__API_TOKEN: ${{ secrets.GH_PRS_REVIEW_ACCESS_TOKEN }}
