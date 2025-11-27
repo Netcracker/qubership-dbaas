@@ -242,6 +242,11 @@ public enum ErrorCodes implements ErrorCode {
             "Digest mismatch",
             "Digest header mismatch: %s"
     ),
+    CORE_DBAAS_4053(
+            "CORE-DBAAS-4053",
+            "Failed request to physical adapter",
+            "An error occurred during the request to adapter: %s"
+    ),
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",
             "trackingId not found",
