@@ -86,7 +86,7 @@ class DatabaseBackupV2ControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", allOf(
                         containsString("backupName: must not be blank"),
-                        containsString("filter: must not be null")
+                        containsString("filter: size must be between 1 and 2147483647")
                 ));
 
         verify(dbBackupV2Service, times(0)).backup(any(), anyBoolean());

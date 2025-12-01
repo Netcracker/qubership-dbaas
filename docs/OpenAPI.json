@@ -338,13 +338,6 @@
                 },
                 "description": "Apply the filter to the remaining databases"
               },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
-              },
               "exclude": {
                 "type": "array",
                 "items": {
@@ -451,13 +444,6 @@
                   "$ref": "#/components/schemas/Filter"
                 },
                 "description": "Apply the filter to the remaining databases"
-              },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
               },
               "exclude": {
                 "type": "array",
@@ -1801,13 +1787,6 @@
               "$ref": "#/components/schemas/Filter"
             },
             "description": "Apply the filter to the remaining databases"
-          },
-          "include": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Filter"
-            },
-            "description": "Include databases that match any of the filters in the list"
           },
           "exclude": {
             "type": "array",
@@ -3282,13 +3261,6 @@
                 },
                 "description": "Apply the filter to the remaining databases"
               },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
-              },
               "exclude": {
                 "type": "array",
                 "items": {
@@ -3411,13 +3383,6 @@
                   "$ref": "#/components/schemas/Filter"
                 },
                 "description": "Apply the filter to the remaining databases"
-              },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
               },
               "exclude": {
                 "type": "array",

@@ -1,5 +1,7 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
+import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseKind;
+import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseType;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -139,6 +141,14 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
 
     public List<DatabaseRegistry> findAllTransactionalDatabaseRegistries(String namespace) {
         return databaseRegistryRepository.findAllByNamespaceAndDatabase_BgVersionNull(namespace);
+    }
+
+    @Override
+    public List<DatabaseRegistry> findAllDatabasesByFilter(List<String> namespaces,
+                                                           List<String> microserviceName,
+                                                           List<DatabaseType> databaseType,
+                                                           List<DatabaseKind> databaseKind) {
+        return databaseRegistryRepository.findAllDatabasesByFilter(namespaces, microserviceName, databaseType, databaseKind);
     }
 
     @Override

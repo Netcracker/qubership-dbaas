@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -23,13 +24,10 @@ public class FilterCriteria {
     )
     @NotNull(groups = {BackupGroup.class})
     @Size(min = 1, groups = {BackupGroup.class})
-    private List<Filter> filter;
-    @Schema(
-            description = "Include databases that match any of the filters in the list"
-    )
-    private List<Filter> include;
+    private List<Filter> filter = new ArrayList<>();
+
     @Schema(
             description = "Exclude databases that match any of the filters in the list"
     )
-    private List<Filter> exclude;
+    private List<Filter> exclude = new ArrayList<>();
 }
