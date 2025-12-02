@@ -1579,6 +1579,136 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void getAllDbByFilter_() {
+        String namespace1 = "namespace1";
+        String namespace2 = "namespace2";
+        String namespace3 = "namespace3";
+        String namespace4 = "namespace4";
+
+        String microserviceName1 = "microserviceName1";
+        String microserviceName2 = "microserviceName2";
+        String microserviceName3 = "microserviceName3";
+        String microserviceName4 = "microserviceName4";
+        String microserviceName5 = "microserviceName5";
+        String microserviceName6 = "microserviceName6";
+
+        String postgresqlType = "postgresql";
+        String arangoDbType = "arangoDb";
+        String cassandraType = "cassandra";
+
+        String adapterId = "adapterId";
+
+        String dbName1 = "db1";
+        String dbName2 = "db2";
+        String dbName3 = "db3";
+        String dbName4 = "db4";
+        String dbName5 = "db5";
+
+        Database db1 = getDatabase(adapterId, dbName1, false, false, "");
+        Database db2 = getDatabase(adapterId, dbName2, false, false, "cfg");
+        Database db3 = getDatabase(adapterId, dbName3, false, false, "cfg");
+        Database db4 = getDatabase(adapterId, dbName4, false, false, "");
+        Database db5 = getDatabase(adapterId, dbName5, false, false, "");
+
+        DatabaseRegistry registry1 = getDatabaseRegistry(db1, namespace1, microserviceName1, "", postgresqlType);
+        DatabaseRegistry registry2 = getDatabaseRegistry(db1, namespace1, microserviceName2, "", postgresqlType);
+        DatabaseRegistry registry3 = getDatabaseRegistry(db2, namespace2, microserviceName3, "", cassandraType);
+        DatabaseRegistry registry4 = getDatabaseRegistry(db3, namespace2, microserviceName4, "", cassandraType);
+        DatabaseRegistry registry5 = getDatabaseRegistry(db4, namespace3, microserviceName5, "", arangoDbType);
+        DatabaseRegistry registry6 = getDatabaseRegistry(db5, namespace4, microserviceName6, "", arangoDbType);
+
+        Stream.of(registry1, registry2, registry3, registry4, registry5, registry6)
+                .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace1, namespace2));
+        filter.setMicroserviceName(List.of(microserviceName1, microserviceName4));
+        filter.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter.setDatabaseKind(List.of(DatabaseKind.TRANSACTIONAL));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        Map<Database, List<DatabaseRegistry>> dbToBackup = dbBackupV2Service.getAllDbByFilter(filterCriteria);
+        assertNotNull(dbToBackup);
+        assertEquals(1, dbToBackup.size());
+
+        dbToBackup.forEach((db, registryList) -> {
+            assertEquals(db1.getId(), db.getId());
+            assertEquals(1, registryList.size());
+            assertEquals(registry1, registryList.getFirst());
+        });
+    }
+
+    @Test
+    void getAllDbByFilter__() {
+        String namespace1 = "namespace1";
+        String namespace2 = "namespace2";
+        String namespace3 = "namespace3";
+        String namespace4 = "namespace4";
+
+        String microserviceName1 = "microserviceName1";
+        String microserviceName2 = "microserviceName2";
+        String microserviceName3 = "microserviceName3";
+        String microserviceName4 = "microserviceName4";
+        String microserviceName5 = "microserviceName5";
+        String microserviceName6 = "microserviceName6";
+
+        String postgresqlType = "postgresql";
+        String arangoDbType = "arangodb";
+        String cassandraType = "cassandra";
+        String adapterId = "adapterId";
+
+        String dbName1 = "db1";
+        String dbName2 = "db2";
+        String dbName3 = "db3";
+        String dbName4 = "db4";
+        String dbName5 = "db5";
+
+        Database db1 = getDatabase(adapterId, dbName1, false, false, "");
+        Database db2 = getDatabase(adapterId, dbName2, false, false, "cfg");
+        Database db3 = getDatabase(adapterId, dbName3, false, false, "cfg");
+        Database db4 = getDatabase(adapterId, dbName4, false, false, "");
+        Database db5 = getDatabase(adapterId, dbName5, false, false, "");
+
+        DatabaseRegistry registry1 = getDatabaseRegistry(db1, namespace1, microserviceName1, "", postgresqlType);
+        DatabaseRegistry registry2 = getDatabaseRegistry(db1, namespace1, microserviceName2, "", postgresqlType);
+        DatabaseRegistry registry3 = getDatabaseRegistry(db2, namespace2, microserviceName3, "", cassandraType);
+        DatabaseRegistry registry4 = getDatabaseRegistry(db3, namespace2, microserviceName4, "", cassandraType);
+        DatabaseRegistry registry5 = getDatabaseRegistry(db4, namespace3, microserviceName5, "", arangoDbType);
+        DatabaseRegistry registry6 = getDatabaseRegistry(db5, namespace4, microserviceName6, "", arangoDbType);
+
+        Stream.of(registry1, registry2, registry3, registry4, registry5, registry6)
+                .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
+
+        Filter filter1 = new Filter();
+        filter1.setNamespace(List.of(namespace1));
+        filter1.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+
+        Filter filter2 = new Filter();
+        filter2.setNamespace(List.of(namespace2));
+        filter2.setMicroserviceName(List.of(microserviceName3));
+        filter2.setDatabaseType(List.of(DatabaseType.ARANGODB, DatabaseType.CASSANDRA));
+
+        Filter exclude = new Filter();
+        exclude.setMicroserviceName(List.of(microserviceName1));
+        exclude.setDatabaseType(List.of(DatabaseType.CASSANDRA));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter1, filter2));
+        filterCriteria.setExclude(List.of(exclude));
+
+        Map<Database, List<DatabaseRegistry>> dbToBackup = dbBackupV2Service.getAllDbByFilter(filterCriteria);
+        assertNotNull(dbToBackup);
+        assertEquals(1, dbToBackup.size());
+
+        dbToBackup.forEach((db, registryList) -> {
+            assertEquals(db1.getId(), db.getId());
+            assertEquals(1, registryList.size());
+            assertEquals(registry2, registryList.getFirst());
+        });
+    }
+
+    @Test
     void getAllDbByFilter_whenDatabasesNotFound() {
         Filter filter = new Filter();
         filter.setNamespace(List.of("namespace"));
