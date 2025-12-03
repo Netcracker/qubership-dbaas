@@ -1,4 +1,4 @@
-create table backup
+create table if not exists backup
 (
     name                            varchar primary key,
     storage_name                    varchar not null,
@@ -16,7 +16,7 @@ create table backup
     ignore_not_backupable_databases boolean
 );
 
-create table backup_logical
+create table if not exists backup_logical
 (
     id                  uuid primary key,
     logical_backup_name varchar,
@@ -29,7 +29,7 @@ create table backup_logical
     completion_time     timestamp with time zone
 );
 
-create table backup_database
+create table if not exists backup_database
 (
     id                uuid primary key,
     logical_backup_id uuid references backup_logical(id),
@@ -46,7 +46,7 @@ create table backup_database
     creation_time     timestamp with time zone
 );
 
-create table backup_external_database
+create table if not exists backup_external_database
 (
     id          uuid primary key,
     backup_name varchar references backup(name),
@@ -55,7 +55,7 @@ create table backup_external_database
     classifiers jsonb not null
 );
 
-create table restore
+create table if not exists restore
 (
     name                       varchar primary key,
     backup_name                varchar references backup(name),
@@ -72,7 +72,7 @@ create table restore
     attempt_count              int default 0
 );
 
-create table restore_logical
+create table if not exists restore_logical
 (
     id                   uuid primary key,
     logical_restore_name  varchar,
@@ -85,7 +85,7 @@ create table restore_logical
     completion_time      timestamp with time zone
 );
 
-create table restore_database
+create table if not exists restore_database
 (
     id                 uuid primary key,
     logical_restore_id uuid references restore_logical(id),
@@ -102,7 +102,7 @@ create table restore_database
     creation_time      timestamp with time zone
 );
 
-create table restore_external_database
+create table if not exists restore_external_database
 (
     id           uuid primary key,
     restore_name varchar references restore(name),
@@ -111,7 +111,7 @@ create table restore_external_database
     classifiers  jsonb not null
 );
 
-create table shedlock
+create table if not exists shedlock
 (
     name       varchar(64) not null primary key,
     lock_until timestamp not null,
