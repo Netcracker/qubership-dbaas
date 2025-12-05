@@ -5,6 +5,7 @@ import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.entity.pg.backup.FilterData;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
@@ -427,39 +428,78 @@ public class DbBackupV2Service {
     }
 
     protected Map<Database, List<DatabaseRegistry>> getAllDbByFilter(FilterCriteria filterCriteria) {
-        Filter filter = filterCriteria.getFilter().getFirst();
+        List<DatabaseRegistry> databasesRegistriesForBackup = new ArrayList<>();
 
-        if (filter.getNamespace().isEmpty()) {
-            if (!filter.getMicroserviceName().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by microservice");
-            }
-            if (!filter.getDatabaseKind().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by databaseKind");
-            }
-            if (!filter.getDatabaseType().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by databaseType");
-            }
-            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
+        for (Filter filter : filterCriteria.getFilter()) {
+            databasesRegistriesForBackup.addAll(
+                    databaseRegistryDbaasRepository
+                            .findAllDatabasesByFilter(
+                                    filter.getNamespace(),
+                                    filter.getMicroserviceName(),
+                                    filter.getDatabaseType(),
+                                    filter.getDatabaseKind()
+                            )
+                            .stream()
+                            .filter(this::isValidRegistry)
+                            .toList()
+            );
         }
-        if (filter.getNamespace().size() > 1) {
-            throw new FunctionalityNotImplemented("backup by several namespace");
+        isEmptyDatabaseList(databasesRegistriesForBackup);
+
+        FilterData exclude = collectFilter(filterCriteria.getExclude());
+
+        if(exclude.databaseKinds().size() == 2) {
+            databasesRegistriesForBackup = List.of();
         }
 
-        String namespace = filter.getNamespace().getFirst();
-
-        List<DatabaseRegistry> databasesRegistriesForBackup = databaseRegistryDbaasRepository
-                .findAnyLogDbRegistryTypeByNamespace(namespace)
+        databasesRegistriesForBackup = databasesRegistriesForBackup
                 .stream()
-                .filter(this::isValidRegistry)
-                .toList();
+                .filter(databaseRegistry -> {
+                    if (!exclude.databaseKinds().isEmpty()) {
+                        DatabaseKind kind = exclude.databaseKinds().stream().toList().getFirst();
+                        String bgVersion = databaseRegistry.getDatabase().getBgVersion();
+                        boolean isConfig = bgVersion != null && !bgVersion.isBlank();
+                        boolean isTransactional = bgVersion == null || bgVersion.isBlank();
 
-        if (databasesRegistriesForBackup.isEmpty()) {
-            log.warn("During backup databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
-        }
+                        if (kind == DatabaseKind.CONFIGURATION && !isConfig) {
+                            return false;
+                        }
 
+                        if (kind == DatabaseKind.TRANSACTIONAL && !isTransactional) {
+                            return false;
+                        }
+                    }
+
+                    return !exclude.namespaces().contains(databaseRegistry.getNamespace()) &&
+                            !exclude.microserviceNames().contains((String) databaseRegistry.getClassifier().get(MICROSERVICE_NAME)) &&
+                            exclude.databaseTypes().stream().noneMatch(databaseType -> databaseType.getType().equals(databaseRegistry.getType()));
+                }).toList();
+
+        isEmptyDatabaseList(databasesRegistriesForBackup);
         return databasesRegistriesForBackup.stream()
                 .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
+    }
+
+    private void isEmptyDatabaseList(List<DatabaseRegistry> databaseRegistries) {
+        if (databaseRegistries.isEmpty()) {
+            log.warn("No databases matching the filtering criteria were found during the backup");
+            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
+        }
+    }
+
+    private FilterData collectFilter(List<Filter> filterList) {
+        Set<String> namespaces = new HashSet<>();
+        Set<String> microservices = new HashSet<>();
+        Set<DatabaseType> databaseTypes = new HashSet<>();
+        Set<DatabaseKind> databaseKinds = new HashSet<>();
+
+        for (Filter filter : filterList) {
+            namespaces.addAll(filter.getNamespace());
+            microservices.addAll(filter.getMicroserviceName());
+            databaseTypes.addAll(filter.getDatabaseType());
+            databaseKinds.addAll(filter.getDatabaseKind());
+        }
+        return new FilterData(namespaces, microservices, databaseTypes, databaseKinds);
     }
 
     private boolean isValidRegistry(DatabaseRegistry registry) {
@@ -1068,15 +1108,8 @@ public class DbBackupV2Service {
         Restore restore = logicalRestore.getRestore();
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), RESTORE_OPERATION);
 
-        try {
-            return Failsafe.with(retryPolicy)
-                    .get(() -> executeRestore(logicalRestore, logicalBackupName, restore, databases, dryRun));
-        } catch (Exception e) {
-            log.error("Logical restore startup for adapterId={} failed, restore={}", logicalRestore.getAdapterId(), restore.getName());
-            throw new BackupExecutionException(
-                    String.format("Logical restore startup for adapterId=%s failed, restore=%s",
-                            logicalRestore.getAdapterId(), restore.getName()), e);
-        }
+        return Failsafe.with(retryPolicy)
+                .get(() -> executeRestore(logicalRestore, logicalBackupName, restore, databases, dryRun));
     }
 
     private List<Map<String, String>> buildRestoreDatabases(LogicalRestore logicalRestore) {

@@ -1,14 +1,15 @@
 package com.netcracker.cloud.dbaas.repositories.dbaas;
 
+import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseKind;
+import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseType;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-
-import javax.annotation.Nullable;
 
 public interface DatabaseRegistryDbaasRepository {
     List<DatabaseRegistry> findAnyLogDbRegistryTypeByNamespace(String namespace);
@@ -63,4 +64,6 @@ public interface DatabaseRegistryDbaasRepository {
 
     List<DatabaseRegistry> findAllTransactionalDatabaseRegistries(String namespace);
 
+    List<DatabaseRegistry> findAllDatabasesByFilter(List<String> namespaces, List<String> microserviceName,
+                                                    List<DatabaseType> databaseType, List<DatabaseKind> databaseKind);
 }
