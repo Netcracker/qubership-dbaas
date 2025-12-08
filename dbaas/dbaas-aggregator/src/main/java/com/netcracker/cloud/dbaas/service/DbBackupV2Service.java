@@ -5,7 +5,6 @@ import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
-import com.netcracker.cloud.dbaas.entity.pg.backup.FilterData;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
@@ -43,7 +42,6 @@ import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
-import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 
 @Slf4j
@@ -428,84 +426,65 @@ public class DbBackupV2Service {
     }
 
     protected Map<Database, List<DatabaseRegistry>> getAllDbByFilter(FilterCriteria filterCriteria) {
-        List<DatabaseRegistry> databasesRegistriesForBackup = new ArrayList<>();
-
-        for (Filter filter : filterCriteria.getFilter()) {
-            databasesRegistriesForBackup.addAll(
-                    databaseRegistryDbaasRepository
-                            .findAllDatabasesByFilter(
-                                    filter.getNamespace(),
-                                    filter.getMicroserviceName(),
-                                    filter.getDatabaseType(),
-                                    filter.getDatabaseKind()
-                            )
-                            .stream()
-                            .filter(this::isValidRegistry)
-                            .toList()
-            );
-        }
-        isEmptyDatabaseList(databasesRegistriesForBackup);
-
-        FilterData exclude = collectFilter(filterCriteria.getExclude());
-
-        if(exclude.databaseKinds().size() == 2) {
-            databasesRegistriesForBackup = List.of();
-        }
-
-        databasesRegistriesForBackup = databasesRegistriesForBackup
-                .stream()
-                .filter(databaseRegistry -> {
-                    if (!exclude.databaseKinds().isEmpty()) {
-                        DatabaseKind kind = exclude.databaseKinds().stream().toList().getFirst();
-                        String bgVersion = databaseRegistry.getDatabase().getBgVersion();
-                        boolean isConfig = bgVersion != null && !bgVersion.isBlank();
-                        boolean isTransactional = bgVersion == null || bgVersion.isBlank();
-
-                        if (kind == DatabaseKind.CONFIGURATION && !isConfig) {
-                            return false;
-                        }
-
-                        if (kind == DatabaseKind.TRANSACTIONAL && !isTransactional) {
-                            return false;
-                        }
-                    }
-
-                    return !exclude.namespaces().contains(databaseRegistry.getNamespace()) &&
-                            !exclude.microserviceNames().contains((String) databaseRegistry.getClassifier().get(MICROSERVICE_NAME)) &&
-                            exclude.databaseTypes().stream().noneMatch(databaseType -> databaseType.getType().equals(databaseRegistry.getType()));
-                }).toList();
-
-        isEmptyDatabaseList(databasesRegistriesForBackup);
-        return databasesRegistriesForBackup.stream()
-                .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
-    }
-
-    private void isEmptyDatabaseList(List<DatabaseRegistry> databaseRegistries) {
-        if (databaseRegistries.isEmpty()) {
+        int uniqKinds = (int) filterCriteria.getExclude().stream()
+                .flatMap(exclude -> exclude.getDatabaseKind().stream())
+                .distinct()
+                .count();
+        if (uniqKinds == 2){
             log.warn("No databases matching the filtering criteria were found during the backup");
             throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
-    }
+        log.info(filterCriteria.toString());
+        List<DatabaseRegistry> filteredDatabases = databaseRegistryDbaasRepository
+                .findAllDatabasesByFilter(filterCriteria.getFilter())
+                .stream()
+                .filter(registry -> filterCriteria.getExclude().stream().noneMatch(exclude -> {
+                    boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
+                    return isMatches(exclude,
+                            (String) registry.getClassifier().get(NAMESPACE),
+                            (String) registry.getClassifier().get(MICROSERVICE_NAME),
+                            registry.getType(),
+                            configurational);
+                }))
+                .toList();
 
-    private FilterData collectFilter(List<Filter> filterList) {
-        Set<String> namespaces = new HashSet<>();
-        Set<String> microservices = new HashSet<>();
-        Set<DatabaseType> databaseTypes = new HashSet<>();
-        Set<DatabaseKind> databaseKinds = new HashSet<>();
-
-        for (Filter filter : filterList) {
-            namespaces.addAll(filter.getNamespace());
-            microservices.addAll(filter.getMicroserviceName());
-            databaseTypes.addAll(filter.getDatabaseType());
-            databaseKinds.addAll(filter.getDatabaseKind());
+        if (filteredDatabases.isEmpty()) {
+            log.warn("No databases matching the filtering criteria were found during the backup");
+            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
-        return new FilterData(namespaces, microservices, databaseTypes, databaseKinds);
+
+        return filteredDatabases.stream()
+                .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
     }
 
-    private boolean isValidRegistry(DatabaseRegistry registry) {
-        return !registry.isMarkedForDrop()
-                && !registry.getClassifier().containsKey(MARKED_FOR_DROP)
-                && CREATED.equals(registry.getDbState().getDatabaseState());
+    private boolean isMatches(Filter filter, String namespace, String microserviceName, String type, boolean configurational) {
+        if (!filter.getNamespace().isEmpty() &&
+                !filter.getNamespace().contains(namespace)) {
+            return false;
+        }
+
+        if (!filter.getMicroserviceName().isEmpty() &&
+                !filter.getMicroserviceName().contains(microserviceName)) {
+            return false;
+        }
+
+        if (!filter.getDatabaseType().isEmpty() &&
+                filter.getDatabaseType().stream().noneMatch(dt -> dt.getType().equals(type))) {
+            return false;
+        }
+
+        if (!filter.getDatabaseKind().isEmpty()) {
+            return isKindMatched(configurational, filter.getDatabaseKind().getFirst());
+        }
+        return true;
+    }
+
+    private boolean isKindMatched(boolean configurational, DatabaseKind kind) {
+        if (kind == DatabaseKind.CONFIGURATION)
+            return configurational;
+        if (kind == DatabaseKind.TRANSACTIONAL)
+            return !configurational;
+        return true;
     }
 
     public BackupResponse getBackup(String backupName) {
@@ -723,43 +702,29 @@ public class DbBackupV2Service {
             return backupDatabasesToFilter.stream().map(db -> new BackupDatabaseDelegate(db, db.getClassifiers()))
                     .toList();
 
-        Filter filter = filterCriteria.getFilter().getFirst();
-
-        if (filter.getNamespace().isEmpty()) {
-            if (!filter.getMicroserviceName().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by microservice");
-            }
-            if (!filter.getDatabaseKind().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by databaseKind");
-            }
-            if (!filter.getDatabaseType().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by databaseType");
-            }
-            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
-        }
-        if (filter.getNamespace().size() > 1) {
-            throw new FunctionalityNotImplemented("restoration by several namespace");
-        }
-        String namespace = filter.getNamespace().getFirst();
-        // Filter BackupDatabase by namespace
         List<BackupDatabaseDelegate> databaseDelegateList = backupDatabasesToFilter.stream()
-                .map(backupDatabase -> {
-                            List<SortedMap<String, Object>> filteredClassifiers = backupDatabase.getClassifiers().stream()
-                                    .filter(classifier -> namespace.equals(classifier.get(NAMESPACE)))
-                                    .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
-                                    .toList();
+                .map(db -> {
+                    List<SortedMap<String, Object>> filteredClassifiers = db.getClassifiers().stream()
+                            .filter(classifier -> {
+                                String namespace = (String) classifier.get(NAMESPACE);
+                                String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
+                                String type = db.getLogicalBackup().getType();
+                                boolean configurational = db.isConfigurational();
+                                return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
+                                        && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
+                            })
+                            .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
+                            .toList();
 
-                            if (filteredClassifiers.isEmpty())
-                                return null;
+                    if (filteredClassifiers.isEmpty()) {
+                        return null;
+                    }
 
-                            return new BackupDatabaseDelegate(
-                                    backupDatabase,
-                                    filteredClassifiers
-                            );
-                        }
-                )
+                    return new BackupDatabaseDelegate(db, filteredClassifiers);
+                })
                 .filter(Objects::nonNull)
                 .toList();
+
 
         if (databaseDelegateList.isEmpty()) {
             log.warn("During restore databases that match filterCriteria not found");

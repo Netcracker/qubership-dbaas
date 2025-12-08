@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.repositories.dbaas;
 
-import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseKind;
-import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseType;
+import com.netcracker.cloud.dbaas.dto.backupV2.Filter;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 
@@ -64,6 +63,5 @@ public interface DatabaseRegistryDbaasRepository {
 
     List<DatabaseRegistry> findAllTransactionalDatabaseRegistries(String namespace);
 
-    List<DatabaseRegistry> findAllDatabasesByFilter(List<String> namespaces, List<String> microserviceName,
-                                                    List<DatabaseType> databaseType, List<DatabaseKind> databaseKind);
+    List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters);
 }

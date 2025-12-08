@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseKind;
-import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseType;
+import com.netcracker.cloud.dbaas.dto.backupV2.Filter;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -14,23 +13,18 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.apache.commons.lang.StringUtils;
 
+import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import javax.annotation.Nullable;
-
-import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
-import static com.netcracker.cloud.dbaas.Constants.ROLE;
-import static com.netcracker.cloud.dbaas.Constants.SCOPE;
-import static com.netcracker.cloud.dbaas.Constants.SCOPE_VALUE_TENANT;
+import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.config.ServicesConfig.DBAAS_REPOSITORIES_MUTEX;
 import static jakarta.transaction.Transactional.TxType.REQUIRES_NEW;
 
@@ -144,11 +138,8 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     }
 
     @Override
-    public List<DatabaseRegistry> findAllDatabasesByFilter(List<String> namespaces,
-                                                           List<String> microserviceName,
-                                                           List<DatabaseType> databaseType,
-                                                           List<DatabaseKind> databaseKind) {
-        return databaseRegistryRepository.findAllDatabasesByFilter(namespaces, microserviceName, databaseType, databaseKind);
+    public List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters) {
+        return databaseRegistryRepository.findAllDatabasesByFilter(filters);
     }
 
     @Override
