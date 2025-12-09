@@ -2175,6 +2175,47 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void validateAndFilterExternalDb_testFiltering() {
+        String namespace1 = "namespace1";
+        String namespace2 = "namespace2";
+        String namespace3 = "namespace3";
+
+        String microserviceName1 = "microserviceName1";
+        String microserviceName2 = "microserviceName2";
+        String microserviceName3 = "microserviceName3";
+
+        String dbName1 = "db1";
+        String dbName2 = "db2";
+        String dbName3 = "db3";
+
+        String postgresqlType = "postgresql";
+        SortedMap<String, Object> classifier = getClassifier(namespace1, microserviceName1, null);
+
+        BackupExternalDatabase externalDatabase1 = getBackupExternalDatabase(dbName1, postgresqlType, List.of(classifier));
+        BackupExternalDatabase externalDatabase2 = getBackupExternalDatabase(dbName2, postgresqlType, List.of(getClassifier(namespace2, microserviceName2, null)));
+        BackupExternalDatabase externalDatabase3 = getBackupExternalDatabase(dbName3, postgresqlType, List.of(getClassifier(namespace3, microserviceName3, null)));
+
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace1, namespace2));
+
+        Filter exclude = new Filter();
+        exclude.setMicroserviceName(List.of(microserviceName2));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setExclude(List.of(exclude));
+
+        List<RestoreExternalDatabase> restoreExternalDatabases = dbBackupV2Service.validateAndFilterExternalDb(List.of(externalDatabase1, externalDatabase2, externalDatabase3), ExternalDatabaseStrategy.INCLUDE, filterCriteria);
+        assertEquals(1, restoreExternalDatabases.size());
+
+        RestoreExternalDatabase externalDb = restoreExternalDatabases.getFirst();
+        assertEquals(dbName1, externalDb.getName());
+        assertEquals(postgresqlType, externalDb.getType());
+        assertEquals(1, externalDb.getClassifiers().size());
+        assertEquals(classifier, externalDb.getClassifiers().getFirst());
+    }
+
+    @Test
     void validateAndFilterDatabasesForBackup_ExternalDatabaseStrategyInclude() {
         String namespace = "namespace";
         String db1Name = "db1";

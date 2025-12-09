@@ -814,7 +814,7 @@ public class DbBackupV2Service {
         return restore;
     }
 
-    private List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
+    protected List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
                                                                       ExternalDatabaseStrategy strategy,
                                                                       FilterCriteria filterCriteria) {
         if (externalDatabases == null || externalDatabases.isEmpty())
@@ -842,29 +842,27 @@ public class DbBackupV2Service {
                 if (isFilterEmpty(filterCriteria))
                     yield mapper.toRestoreExternalDatabases(externalDatabases);
 
-                Filter filter = filterCriteria.getFilter().getFirst();
+                yield externalDatabases.stream()
+                        .map(db -> {
+                            List<SortedMap<String, Object>> filteredClassifiers = db.getClassifiers().stream()
+                                    .filter(classifier -> {
+                                        String namespace = (String) classifier.get(NAMESPACE);
+                                        String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
+                                        String type = db.getType();
+                                        return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
+                                                && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
+                                    })
+                                    .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
+                                    .toList();
 
-                if (filter.getNamespace().isEmpty()) {
-                    if (!filter.getMicroserviceName().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by microservice");
-                    }
-                    if (!filter.getDatabaseKind().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by databaseKind");
-                    }
-                    if (!filter.getDatabaseType().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by databaseType");
-                    }
-                    throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
-                }
-                if (filter.getNamespace().size() > 1) {
-                    throw new FunctionalityNotImplemented("restoration by several namespace");
-                }
-                String namespace = filter.getNamespace().getFirst();
-                yield mapper.toRestoreExternalDatabases(externalDatabases).stream()
-                        .filter(db -> db.getClassifiers().stream()
-                                .anyMatch(classifier ->
-                                        namespace.equals(classifier.get(NAMESPACE)))
-                        ).toList();
+                            if (filteredClassifiers.isEmpty()) {
+                                return null;
+                            }
+
+                            return mapper.toRestoreExternalDatabase(db);
+                        })
+                        .filter(Objects::nonNull)
+                        .toList();
             }
         };
     }
@@ -1565,11 +1563,7 @@ public class DbBackupV2Service {
     }
 
     private boolean isFilterEmpty(FilterCriteria filterCriteria) {
-        if (filterCriteria == null || filterCriteria.getFilter() == null)
-            return true;
-
-        return filterCriteria.getFilter().isEmpty()
-                || filterCriteria.getFilter().stream().allMatch(this::isSingleFilterEmpty);
+        return filterCriteria == null || filterCriteria.getFilter() == null || filterCriteria.getFilter().isEmpty();
     }
 
     private boolean isSingleFilterEmpty(Filter f) {
