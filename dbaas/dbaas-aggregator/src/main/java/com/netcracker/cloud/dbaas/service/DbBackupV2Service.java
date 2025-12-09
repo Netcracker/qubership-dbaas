@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
+import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 
 @Slf4j
@@ -430,22 +431,25 @@ public class DbBackupV2Service {
                 .flatMap(exclude -> exclude.getDatabaseKind().stream())
                 .distinct()
                 .count();
-        if (uniqKinds == 2){
+        if (uniqKinds == 2) {
             log.warn("No databases matching the filtering criteria were found during the backup");
             throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
-        log.info(filterCriteria.toString());
         List<DatabaseRegistry> filteredDatabases = databaseRegistryDbaasRepository
                 .findAllDatabasesByFilter(filterCriteria.getFilter())
                 .stream()
-                .filter(registry -> filterCriteria.getExclude().stream().noneMatch(exclude -> {
-                    boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
-                    return isMatches(exclude,
-                            (String) registry.getClassifier().get(NAMESPACE),
-                            (String) registry.getClassifier().get(MICROSERVICE_NAME),
-                            registry.getType(),
-                            configurational);
-                }))
+                .filter(registry -> {
+                    if (!isValidRegistry(registry))
+                        return false;
+                    return filterCriteria.getExclude().stream().noneMatch(exclude -> {
+                        boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
+                        return isMatches(exclude,
+                                (String) registry.getClassifier().get(NAMESPACE),
+                                (String) registry.getClassifier().get(MICROSERVICE_NAME),
+                                registry.getType(),
+                                configurational);
+                    });
+                })
                 .toList();
 
         if (filteredDatabases.isEmpty()) {
@@ -455,6 +459,12 @@ public class DbBackupV2Service {
 
         return filteredDatabases.stream()
                 .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
+    }
+
+    private boolean isValidRegistry(DatabaseRegistry registry) {
+        return !registry.isMarkedForDrop()
+                && !registry.getClassifier().containsKey(MARKED_FOR_DROP)
+                && CREATED.equals(registry.getDbState().getDatabaseState());
     }
 
     private boolean isMatches(Filter filter, String namespace, String microserviceName, String type, boolean configurational) {

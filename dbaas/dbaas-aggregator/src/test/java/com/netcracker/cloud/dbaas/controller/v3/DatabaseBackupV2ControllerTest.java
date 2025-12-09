@@ -140,6 +140,49 @@ class DatabaseBackupV2ControllerTest {
     }
 
     @Test
+    void initiateBackup_emptyFilterCase(){
+        String namespace = "namespace";
+        String backupName = "backupName";
+
+        BackupRequest backupRequest = createBackupRequest(namespace, backupName);
+        FilterCriteria emptyFilterCriteria = backupRequest.getFilterCriteria();
+        emptyFilterCriteria.setFilter(List.of(new Filter()));
+        emptyFilterCriteria.setExclude(List.of(new Filter()));
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .body(backupRequest)
+                .when().post("/backup")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("reason", equalTo("Request does not contain required fields"))
+                .body("message", equalTo("filter[0]: Filter must have at least one non-null field"));
+        verify(dbBackupV2Service, times(0)).backup(backupRequest, false);
+    }
+
+    @Test
+    void restoreBackup_emptyFilterCase(){
+        String namespace = "namespace";
+        String restoreName = "restoreName";
+        String backupName = "backupName";
+
+        RestoreRequest restoreRequest = createRestoreRequest(namespace, restoreName);
+        FilterCriteria emptyFilterCriteria = restoreRequest.getFilterCriteria();
+        emptyFilterCriteria.setFilter(List.of(new Filter()));
+        emptyFilterCriteria.setExclude(List.of(new Filter()));
+
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(ContentType.JSON)
+                .body(restoreRequest)
+                .pathParam("backupName", backupName)
+                .when().post("/backup/{backupName}/restore")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("reason", equalTo("Request does not contain required fields"))
+                .body("message", equalTo("filter[0]: Filter must have at least one non-null field"));
+        verify(dbBackupV2Service, times(0)).restore(backupName, restoreRequest, false);
+    }
+    @Test
     void getBackupStatus_validBackupNameCase() {
         String backupName = "test-backup-name";
 
@@ -327,6 +370,22 @@ class DatabaseBackupV2ControllerTest {
         dto.setBlobPath("path");
         dto.setIgnoreNotBackupableDatabases(true);
         dto.setStorageName("e");
+        return dto;
+    }
+
+    public static RestoreRequest createRestoreRequest(String namespace, String restoreName) {
+        Filter filter = new Filter();
+        filter.setNamespace(List.of(namespace));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setFilter(List.of(filter));
+
+        RestoreRequest dto = new RestoreRequest();
+        dto.setRestoreName(restoreName);
+        dto.setFilterCriteria(filterCriteria);
+        dto.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
+        dto.setBlobPath("path");
+        dto.setStorageName("storageName");
         return dto;
     }
 

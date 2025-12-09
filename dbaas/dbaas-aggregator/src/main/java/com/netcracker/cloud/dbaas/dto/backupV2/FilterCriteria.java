@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.utils.validation.BackupGroup;
+import com.netcracker.cloud.dbaas.utils.validation.group.BackupGroup;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -24,6 +25,7 @@ public class FilterCriteria {
     )
     @NotNull(groups = {BackupGroup.class})
     @Size(min = 1, groups = {BackupGroup.class})
+    @Valid
     private List<Filter> filter = new ArrayList<>();
 
     @Schema(
