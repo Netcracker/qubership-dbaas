@@ -3,9 +3,9 @@
       {
         "name": "default",
         "file": "dbaas/Dockerfile",
-        "context": "./artifacts/dbaas",
+        "context": "./artifacts",
         "download-artifact": true,
-        "download-artifact-path": "./artifacts/dbaas"
+        "download-artifact-path": "./artifacts"
       },
       {
         "name": "qubership-dbaas-validation-image",
