@@ -427,38 +427,37 @@ public class DbBackupV2Service {
     }
 
     protected Map<Database, List<DatabaseRegistry>> getAllDbByFilter(FilterCriteria filterCriteria) {
-        Filter filter = filterCriteria.getFilter().getFirst();
-
-        if (filter.getNamespace().isEmpty()) {
-            if (!filter.getMicroserviceName().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by microservice");
-            }
-            if (!filter.getDatabaseKind().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by databaseKind");
-            }
-            if (!filter.getDatabaseType().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by databaseType");
-            }
-            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
+        int uniqKinds = (int) filterCriteria.getExclude().stream()
+                .flatMap(exclude -> exclude.getDatabaseKind().stream())
+                .distinct()
+                .count();
+        if (uniqKinds == 2) {
+            log.warn("No databases matching the filtering criteria were found during the backup");
+            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
-        if (filter.getNamespace().size() > 1) {
-            throw new FunctionalityNotImplemented("backup by several namespace");
-        }
-
-        String namespace = filter.getNamespace().getFirst();
-
-        List<DatabaseRegistry> databasesRegistriesForBackup = databaseRegistryDbaasRepository
-                .findAnyLogDbRegistryTypeByNamespace(namespace)
+        List<DatabaseRegistry> filteredDatabases = databaseRegistryDbaasRepository
+                .findAllDatabasesByFilter(filterCriteria.getFilter())
                 .stream()
-                .filter(this::isValidRegistry)
+                .filter(registry -> {
+                    if (!isValidRegistry(registry))
+                        return false;
+                    return filterCriteria.getExclude().stream().noneMatch(exclude -> {
+                        boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
+                        return isMatches(exclude,
+                                (String) registry.getClassifier().get(NAMESPACE),
+                                (String) registry.getClassifier().get(MICROSERVICE_NAME),
+                                registry.getType(),
+                                configurational);
+                    });
+                })
                 .toList();
 
-        if (databasesRegistriesForBackup.isEmpty()) {
-            log.warn("During backup databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
+        if (filteredDatabases.isEmpty()) {
+            log.warn("No databases matching the filtering criteria were found during the backup");
+            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
 
-        return databasesRegistriesForBackup.stream()
+        return filteredDatabases.stream()
                 .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
     }
 
@@ -466,6 +465,36 @@ public class DbBackupV2Service {
         return !registry.isMarkedForDrop()
                 && !registry.getClassifier().containsKey(MARKED_FOR_DROP)
                 && CREATED.equals(registry.getDbState().getDatabaseState());
+    }
+
+    private boolean isMatches(Filter filter, String namespace, String microserviceName, String type, boolean configurational) {
+        if (!filter.getNamespace().isEmpty() &&
+                !filter.getNamespace().contains(namespace)) {
+            return false;
+        }
+
+        if (!filter.getMicroserviceName().isEmpty() &&
+                !filter.getMicroserviceName().contains(microserviceName)) {
+            return false;
+        }
+
+        if (!filter.getDatabaseType().isEmpty() &&
+                filter.getDatabaseType().stream().noneMatch(dt -> dt.getType().equals(type))) {
+            return false;
+        }
+
+        if (!filter.getDatabaseKind().isEmpty()) {
+            return isKindMatched(configurational, filter.getDatabaseKind().getFirst());
+        }
+        return true;
+    }
+
+    private boolean isKindMatched(boolean configurational, DatabaseKind kind) {
+        if (kind == DatabaseKind.CONFIGURATION)
+            return configurational;
+        if (kind == DatabaseKind.TRANSACTIONAL)
+            return !configurational;
+        return true;
     }
 
     public BackupResponse getBackup(String backupName) {
@@ -683,43 +712,29 @@ public class DbBackupV2Service {
             return backupDatabasesToFilter.stream().map(db -> new BackupDatabaseDelegate(db, db.getClassifiers()))
                     .toList();
 
-        Filter filter = filterCriteria.getFilter().getFirst();
-
-        if (filter.getNamespace().isEmpty()) {
-            if (!filter.getMicroserviceName().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by microservice");
-            }
-            if (!filter.getDatabaseKind().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by databaseKind");
-            }
-            if (!filter.getDatabaseType().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by databaseType");
-            }
-            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
-        }
-        if (filter.getNamespace().size() > 1) {
-            throw new FunctionalityNotImplemented("restoration by several namespace");
-        }
-        String namespace = filter.getNamespace().getFirst();
-        // Filter BackupDatabase by namespace
         List<BackupDatabaseDelegate> databaseDelegateList = backupDatabasesToFilter.stream()
-                .map(backupDatabase -> {
-                            List<SortedMap<String, Object>> filteredClassifiers = backupDatabase.getClassifiers().stream()
-                                    .filter(classifier -> namespace.equals(classifier.get(NAMESPACE)))
-                                    .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
-                                    .toList();
+                .map(db -> {
+                    List<SortedMap<String, Object>> filteredClassifiers = db.getClassifiers().stream()
+                            .filter(classifier -> {
+                                String namespace = (String) classifier.get(NAMESPACE);
+                                String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
+                                String type = db.getLogicalBackup().getType();
+                                boolean configurational = db.isConfigurational();
+                                return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
+                                        && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
+                            })
+                            .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
+                            .toList();
 
-                            if (filteredClassifiers.isEmpty())
-                                return null;
+                    if (filteredClassifiers.isEmpty()) {
+                        return null;
+                    }
 
-                            return new BackupDatabaseDelegate(
-                                    backupDatabase,
-                                    filteredClassifiers
-                            );
-                        }
-                )
+                    return new BackupDatabaseDelegate(db, filteredClassifiers);
+                })
                 .filter(Objects::nonNull)
                 .toList();
+
 
         if (databaseDelegateList.isEmpty()) {
             log.warn("During restore databases that match filterCriteria not found");
@@ -799,7 +814,7 @@ public class DbBackupV2Service {
         return restore;
     }
 
-    private List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
+    protected List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
                                                                       ExternalDatabaseStrategy strategy,
                                                                       FilterCriteria filterCriteria) {
         if (externalDatabases == null || externalDatabases.isEmpty())
@@ -827,29 +842,27 @@ public class DbBackupV2Service {
                 if (isFilterEmpty(filterCriteria))
                     yield mapper.toRestoreExternalDatabases(externalDatabases);
 
-                Filter filter = filterCriteria.getFilter().getFirst();
+                yield externalDatabases.stream()
+                        .map(db -> {
+                            List<SortedMap<String, Object>> filteredClassifiers = db.getClassifiers().stream()
+                                    .filter(classifier -> {
+                                        String namespace = (String) classifier.get(NAMESPACE);
+                                        String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
+                                        String type = db.getType();
+                                        return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
+                                                && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
+                                    })
+                                    .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
+                                    .toList();
 
-                if (filter.getNamespace().isEmpty()) {
-                    if (!filter.getMicroserviceName().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by microservice");
-                    }
-                    if (!filter.getDatabaseKind().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by databaseKind");
-                    }
-                    if (!filter.getDatabaseType().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by databaseType");
-                    }
-                    throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
-                }
-                if (filter.getNamespace().size() > 1) {
-                    throw new FunctionalityNotImplemented("restoration by several namespace");
-                }
-                String namespace = filter.getNamespace().getFirst();
-                yield mapper.toRestoreExternalDatabases(externalDatabases).stream()
-                        .filter(db -> db.getClassifiers().stream()
-                                .anyMatch(classifier ->
-                                        namespace.equals(classifier.get(NAMESPACE)))
-                        ).toList();
+                            if (filteredClassifiers.isEmpty()) {
+                                return null;
+                            }
+
+                            return mapper.toRestoreExternalDatabase(db);
+                        })
+                        .filter(Objects::nonNull)
+                        .toList();
             }
         };
     }
@@ -1068,15 +1081,8 @@ public class DbBackupV2Service {
         Restore restore = logicalRestore.getRestore();
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), RESTORE_OPERATION);
 
-        try {
-            return Failsafe.with(retryPolicy)
-                    .get(() -> executeRestore(logicalRestore, logicalBackupName, restore, databases, dryRun));
-        } catch (Exception e) {
-            log.error("Logical restore startup for adapterId={} failed, restore={}", logicalRestore.getAdapterId(), restore.getName());
-            throw new BackupExecutionException(
-                    String.format("Logical restore startup for adapterId=%s failed, restore=%s",
-                            logicalRestore.getAdapterId(), restore.getName()), e);
-        }
+        return Failsafe.with(retryPolicy)
+                .get(() -> executeRestore(logicalRestore, logicalBackupName, restore, databases, dryRun));
     }
 
     private List<Map<String, String>> buildRestoreDatabases(LogicalRestore logicalRestore) {
@@ -1557,11 +1563,7 @@ public class DbBackupV2Service {
     }
 
     private boolean isFilterEmpty(FilterCriteria filterCriteria) {
-        if (filterCriteria == null || filterCriteria.getFilter() == null)
-            return true;
-
-        return filterCriteria.getFilter().isEmpty()
-                || filterCriteria.getFilter().stream().allMatch(this::isSingleFilterEmpty);
+        return filterCriteria == null || filterCriteria.getFilter() == null || filterCriteria.getFilter().isEmpty();
     }
 
     private boolean isSingleFilterEmpty(Filter f) {
