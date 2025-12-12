@@ -27,14 +27,14 @@
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
         <jacoco.plugin.version>0.8.14</jacoco.plugin.version>
 
-        <jackson-bom.version>2.19.2</jackson-bom.version>
+        <jackson-bom.version>2.20.1</jackson-bom.version>
         <quarkus.platform.version>3.20.3</quarkus.platform.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
         <!-- Quarkus Qubership        -->
         <qs.quarkus.core.version>7.3.1</qs.quarkus.core.version>
         <!--End Quarkus Qubership section -->
         <lombok.version>1.18.42</lombok.version>
-        <junit.version>5.13.2</junit.version>
+        <junit.version>5.14.1</junit.version>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${project.basedir}/../dbaas-report-aggregate/target/site/jacoco-aggregate/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
@@ -77,7 +77,7 @@
         <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
-            <version>2.4</version>
+            <version>2.5</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -114,7 +114,7 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>33.4.0-jre</version>
+            <version>33.5.0-jre</version>
         </dependency>
         <dependency>
             <groupId>org.jboss.logging</groupId>
