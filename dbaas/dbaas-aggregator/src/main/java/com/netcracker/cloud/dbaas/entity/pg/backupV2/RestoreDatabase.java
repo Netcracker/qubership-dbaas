@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.netcracker.cloud.dbaas.dto.backupV2.Classifier;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
@@ -41,7 +42,7 @@ public class RestoreDatabase {
     @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private List<SortedMap<String, Object>> classifiers;
+    private List<Classifier> classifiers;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

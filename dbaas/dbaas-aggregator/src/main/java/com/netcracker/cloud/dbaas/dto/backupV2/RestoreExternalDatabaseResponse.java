@@ -19,6 +19,6 @@ public class RestoreExternalDatabaseResponse {
             description = "List of database classifiers. Each classifier is a sorted map of attributes.",
             examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]"
     )
-    private List<SortedMap<String, Object>> classifiers;
+    private List<Classifier> classifiers;
 }
 

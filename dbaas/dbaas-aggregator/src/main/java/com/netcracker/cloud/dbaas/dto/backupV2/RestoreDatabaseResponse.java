@@ -26,7 +26,7 @@ public class RestoreDatabaseResponse {
             description = "List of database classifiers. Each classifier is a sorted map of attributes.",
             examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]"
     )
-    private List<Map<String, Object>> classifiers;
+    private List<Classifier> classifiers;
     @Schema(
             description = "List of database users",
             examples = "[{\"name\":\"username\",\"role\":\"admin\"}"

@@ -644,9 +644,6 @@ public class DbBackupV2Service {
     }
 
     public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
-        if (dryRun)
-            throw new FunctionalityNotImplemented("dryRun");
-
         String restoreName = restoreRequest.getRestoreName();
         if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
             log.error("Restore with name {} already exists", restoreName);
@@ -684,7 +681,8 @@ public class DbBackupV2Service {
                 throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
 
             Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
-            restoreRepository.save(restore);
+            if (!dryRun)
+                restoreRepository.save(restore);
             // unlock method after save restore
             lock.unlock();
             unlocked = true;
@@ -692,13 +690,14 @@ public class DbBackupV2Service {
             // DryRun on adapters
             startRestore(restore, true);
             aggregateRestoreStatus(restore);
-            if (RestoreStatus.FAILED != restore.getStatus()) {
+            if (!dryRun && RestoreStatus.FAILED != restore.getStatus()) {
                 // Real run on adapters
                 restore = getRestoreOrThrowException(restoreName);
                 startRestore(restore, false);
                 aggregateRestoreStatus(restore);
             }
-            restoreRepository.save(restore);
+            if (!dryRun)
+                restoreRepository.save(restore);
             return mapper.toRestoreResponse(restore);
         } finally {
             if (!unlocked) {
@@ -709,12 +708,20 @@ public class DbBackupV2Service {
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
         if (isFilterEmpty(filterCriteria))
-            return backupDatabasesToFilter.stream().map(db -> new BackupDatabaseDelegate(db, db.getClassifiers()))
+            return backupDatabasesToFilter.stream()
+                    .map(db ->
+                            new BackupDatabaseDelegate(
+                                    db,
+                                    db.getClassifiers().stream()
+                                            .map(c -> new Classifier(ClassifierType.NEW, null, c))
+                                            .toList()
+                            )
+                    )
                     .toList();
 
         List<BackupDatabaseDelegate> databaseDelegateList = backupDatabasesToFilter.stream()
                 .map(db -> {
-                    List<SortedMap<String, Object>> filteredClassifiers = db.getClassifiers().stream()
+                    List<Classifier> filteredClassifiers = db.getClassifiers().stream()
                             .filter(classifier -> {
                                 String namespace = (String) classifier.get(NAMESPACE);
                                 String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
@@ -723,7 +730,7 @@ public class DbBackupV2Service {
                                 return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
                                         && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
                             })
-                            .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
+                            .map(c -> new Classifier(ClassifierType.NEW, null, c))
                             .toList();
 
                     if (filteredClassifiers.isEmpty()) {
@@ -815,8 +822,8 @@ public class DbBackupV2Service {
     }
 
     protected List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
-                                                                      ExternalDatabaseStrategy strategy,
-                                                                      FilterCriteria filterCriteria) {
+                                                                        ExternalDatabaseStrategy strategy,
+                                                                        FilterCriteria filterCriteria) {
         if (externalDatabases == null || externalDatabases.isEmpty())
             return List.of();
 
@@ -840,11 +847,22 @@ public class DbBackupV2Service {
             case INCLUDE -> {
                 log.info("Including external databases to restore by strategy: {}", ExternalDatabaseStrategy.INCLUDE);
                 if (isFilterEmpty(filterCriteria))
-                    yield mapper.toRestoreExternalDatabases(externalDatabases);
+                    yield mapper.toRestoreExternalDatabases(
+                            externalDatabases.stream()
+                                    .map(db ->
+                                            new BackupExternalDelegate(db, db.getClassifiers().stream()
+                                                    .map(c ->
+                                                            new Classifier(ClassifierType.NEW, null, c)
+                                                    )
+                                                    .toList()
+                                            )
+                                    )
+                                    .toList()
+                    );
 
                 yield externalDatabases.stream()
                         .map(db -> {
-                            List<SortedMap<String, Object>> filteredClassifiers = db.getClassifiers().stream()
+                            List<Classifier> filteredClassifiers = db.getClassifiers().stream()
                                     .filter(classifier -> {
                                         String namespace = (String) classifier.get(NAMESPACE);
                                         String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
@@ -852,14 +870,14 @@ public class DbBackupV2Service {
                                         return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
                                                 && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
                                     })
-                                    .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
+                                    .map(c -> new Classifier(ClassifierType.NEW, null, c))
                                     .toList();
 
                             if (filteredClassifiers.isEmpty()) {
                                 return null;
                             }
 
-                            return mapper.toRestoreExternalDatabase(db);
+                            return mapper.toRestoreExternalDatabase(new BackupExternalDelegate(db, filteredClassifiers));
                         })
                         .filter(Objects::nonNull)
                         .toList();
@@ -872,7 +890,7 @@ public class DbBackupV2Service {
         return externalDatabases.stream()
                 .peek(db -> {
                     Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
-                    List<SortedMap<String, Object>> updatedClassifiers = db.getClassifiers().stream()
+                    List<Classifier> updatedClassifiers = db.getClassifiers().stream()
                             .map(classifier -> updateAndValidateClassifier(classifier, mapping, uniqueClassifiers))
                             .toList();
                     db.setClassifiers(updatedClassifiers);
@@ -886,8 +904,8 @@ public class DbBackupV2Service {
         return backupDatabases.stream()
                 .map(delegatedBackupDatabase -> {
                     BackupDatabase backupDatabase = delegatedBackupDatabase.backupDatabase();
-                    List<SortedMap<String, Object>> classifiers = delegatedBackupDatabase.classifiers();
-                    String namespace = (String) classifiers.getFirst().get(NAMESPACE);
+                    List<Classifier> classifiers = delegatedBackupDatabase.classifiers();
+                    String namespace = classifiers.getFirst().getClassifier() != null ? (String) classifiers.getFirst().getClassifier().get(NAMESPACE) : (String) classifiers.getFirst().getClassifierBeforeMapper().get(NAMESPACE);
                     String bgVersion = null;
                     if (backupDatabase.isConfigurational()) {
                         Optional<BgNamespace> bgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(namespace);
@@ -911,15 +929,16 @@ public class DbBackupV2Service {
                 .toList();
     }
 
-    private SortedMap<String, Object> updateClassifier(SortedMap<String, Object> classifier, Mapping mapping) {
-        String targetNamespace = getValue(mapping.getNamespaces(), (String) classifier.get(NAMESPACE));
-        String targetTenant = getValue(mapping.getTenants(), (String) classifier.get(TENANT_ID));
+    private Classifier updateClassifier(Classifier classifier, Mapping mapping) {
+        String targetNamespace = getValue(mapping.getNamespaces(), (String) classifier.getClassifierBeforeMapper().get(NAMESPACE));
+        String targetTenant = getValue(mapping.getTenants(), (String) classifier.getClassifierBeforeMapper().get(TENANT_ID));
 
-        SortedMap<String, Object> updatedClassifier = new TreeMap<>(classifier);
+        SortedMap<String, Object> updatedClassifier = new TreeMap<>(classifier.getClassifierBeforeMapper());
         updatedClassifier.put(NAMESPACE, targetNamespace);
         if (targetTenant != null)
             updatedClassifier.put(TENANT_ID, targetTenant);
-        return updatedClassifier;
+        classifier.setClassifier(updatedClassifier);
+        return classifier;
     }
 
     private String getValue(Map<String, String> map, String oldValue) {
@@ -932,39 +951,35 @@ public class DbBackupV2Service {
     private Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupBackupDatabasesByTypeAndAdapter(
             List<BackupDatabaseDelegate> backupDatabases,
             Mapping mapping) {
-
+        Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
         return backupDatabases.stream()
-                .map(db -> mapToPhysicalDatabaseEntry(db, mapping))
-                .filter(Objects::nonNull)
+                .map(db -> mapToPhysicalDatabaseEntry(db, mapping, uniqueClassifiers))
                 .collect(Collectors.groupingBy(
                         Map.Entry::getKey,
                         Collectors.mapping(Map.Entry::getValue, Collectors.toList())
                 ));
     }
 
-    private Map.Entry<PhysicalDatabase, BackupDatabaseDelegate> mapToPhysicalDatabaseEntry(
-            BackupDatabaseDelegate db, Mapping mapping) {
-        List<SortedMap<String, Object>> classifiers = db.classifiers();
-        if (classifiers.isEmpty()) {
-            return null;
-        }
-
-        SortedMap<String, Object> firstClassifier = classifiers.getFirst();
+    private Map.Entry<PhysicalDatabase, BackupDatabaseDelegate> mapToPhysicalDatabaseEntry(BackupDatabaseDelegate db,
+                                                                                           Mapping mapping,
+                                                                                           Set<SortedMap<String, Object>> uniqueClassifiers) {
+        List<Classifier> classifiers = db.classifiers();
+        SortedMap<String, Object> firstClassifier = classifiers.getFirst().getClassifierBeforeMapper();
         String targetNamespace = (String) firstClassifier.get(NAMESPACE);
         String microserviceName = (String) firstClassifier.get(MICROSERVICE_NAME);
 
         // Mapping classifiers
         if (mapping != null && mapping.getNamespaces() != null) {
-            Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
             classifiers = db.classifiers().stream()
                     .map(classifier -> updateAndValidateClassifier(classifier, mapping, uniqueClassifiers))
                     .toList();
 
             // Find the first classifier whose namespace exists in the mapping
             SortedMap<String, Object> matchedClassifier = classifiers.stream()
+                    .map(Classifier::getClassifierBeforeMapper)
                     .filter(c -> mapping.getNamespaces().containsKey((String) c.get(NAMESPACE)))
                     .findFirst()
-                    .orElse(classifiers.getFirst());
+                    .orElse(classifiers.getFirst().getClassifierBeforeMapper());
 
             String oldNamespace = (String) matchedClassifier.get(NAMESPACE);
             targetNamespace = mapping.getNamespaces().getOrDefault(oldNamespace, oldNamespace);
@@ -987,17 +1002,17 @@ public class DbBackupV2Service {
         return Map.entry(physicalDatabase, new BackupDatabaseDelegate(db.backupDatabase(), classifiers));
     }
 
-    private SortedMap<String, Object> updateAndValidateClassifier(
-            SortedMap<String, Object> classifier,
+    private Classifier updateAndValidateClassifier(
+            Classifier classifier,
             Mapping mapping,
             Set<SortedMap<String, Object>> uniqueClassifiers) {
-        SortedMap<String, Object> updatedClassifier = updateClassifier(classifier, mapping);
+        Classifier updatedClassifier = updateClassifier(classifier, mapping);
         // To prevent collision during mapping
-        if (!uniqueClassifiers.add(updatedClassifier)) {
+        if (!uniqueClassifiers.add(updatedClassifier.getClassifier())) {
             String msg = String.format(
-                    "Duplicate classifier detected after mapping: classifier='%s', mapping='%s'. " +
+                    "Duplicate classifier detected after mapping: classifier='%s', classifierBeforeMapping='%s', mapping='%s'. " +
                             "Ensure all classifiers remain unique after mapping.",
-                    classifier, mapping);
+                    classifier.getClassifier(), classifier.getClassifierBeforeMapper(), mapping);
             log.error(msg);
             throw new IllegalResourceStateException(msg, Source.builder().build());
         }
@@ -1089,12 +1104,12 @@ public class DbBackupV2Service {
         return logicalRestore.getRestoreDatabases().stream()
                 .map(restoreDatabase -> {
                     String namespace = restoreDatabase.getClassifiers().stream()
-                            .map(i -> (String) i.get(NAMESPACE))
+                            .map(c -> (String) c.getClassifier().get(NAMESPACE))
                             .findFirst()
                             .orElse("");
 
                     String microserviceName = restoreDatabase.getClassifiers().stream()
-                            .map(i -> (String) i.get(MICROSERVICE_NAME))
+                            .map(c -> (String) c.getClassifier().get(MICROSERVICE_NAME))
                             .findFirst()
                             .orElse("");
 
@@ -1281,7 +1296,7 @@ public class DbBackupV2Service {
                 log.info("Processing logicalRestore={}, type={}, adapterId={}", logicalRestore.getLogicalRestoreName(), logicalRestore.getType(), logicalRestore.getAdapterId());
                 logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
                     String type = logicalRestore.getType();
-                    Set<SortedMap<String, Object>> classifiers = new HashSet<>();
+                    Set<Classifier> classifiers = new HashSet<>();
 
                     log.info("Processing restoreDatabase={}", restoreDatabase.getName());
                     findSimilarDbByClassifier(classifiers, restoreDatabase.getClassifiers(), type);
@@ -1291,7 +1306,7 @@ public class DbBackupV2Service {
                     Database newDatabase = createLogicalDatabase(
                             restoreDatabase.getName(),
                             restoreDatabase.getSettings(),
-                            classifiers,
+                            classifiers.stream().map(Classifier::getClassifier).collect(Collectors.toSet()),
                             type,
                             false,
                             false,
@@ -1304,6 +1319,7 @@ public class DbBackupV2Service {
                     newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
                     encryption.encryptPassword(newDatabase);
                     databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
+                    restoreDatabase.setClassifiers(classifiers.stream().toList());
                     log.info("Based restoreDatabase={}, database id={} created", restore.getName(), newDatabase.getId());
                 });
             });
@@ -1311,13 +1327,13 @@ public class DbBackupV2Service {
             restore.getExternalDatabases().forEach(externalDatabase -> {
                 log.info("Processing externalDatabase={}, type={}", externalDatabase.getName(), externalDatabase.getType());
                 String type = externalDatabase.getType();
-                Set<SortedMap<String, Object>> classifiers = new HashSet<>();
+                Set<Classifier> classifiers = new HashSet<>();
 
                 findSimilarDbByClassifier(classifiers, externalDatabase.getClassifiers(), type);
                 Database newDatabase = createLogicalDatabase(
                         externalDatabase.getName(),
                         null,
-                        classifiers,
+                        classifiers.stream().map(Classifier::getClassifier).collect(Collectors.toSet()),
                         type,
                         true,
                         true,
@@ -1337,20 +1353,28 @@ public class DbBackupV2Service {
         }
     }
 
-    private void findSimilarDbByClassifier(Set<SortedMap<String, Object>> uniqueClassifiers,
-                                           List<SortedMap<String, Object>> classifiers,
+    private void findSimilarDbByClassifier(Set<Classifier> uniqueClassifiers,
+                                           List<Classifier> classifiers,
                                            String type) {
         classifiers.forEach(classifier -> {
-            uniqueClassifiers.add(new TreeMap<>(classifier));
-            log.debug("Classifier candidate: {}", classifier);
+            uniqueClassifiers.add(classifier);
+            SortedMap<String, Object> currClassifier = classifier.getClassifier();
+            log.debug("Classifier candidate: {}", currClassifier);
             databaseRegistryDbaasRepository
-                    .getDatabaseByClassifierAndType(classifier, type)
+                    .getDatabaseByClassifierAndType(currClassifier, type)
                     .ifPresent(dbRegistry -> {
+                        classifier.setType(ClassifierType.REPLACED);
                         Database db = dbRegistry.getDatabase();
-                        log.info("Found existing database {} for classifier {}", db.getId(), classifier);
-                        List<TreeMap<String, Object>> existClassifiers = db.getDatabaseRegistry().stream()
+                        log.info("Found existing database {} for classifier {}", db.getId(), currClassifier);
+                        List<Classifier> existClassifiers = db.getDatabaseRegistry().stream()
                                 .map(AbstractDatabaseRegistry::getClassifier)
                                 .map(TreeMap::new)
+                                .map(c -> {
+                                    if (currClassifier.equals(c))
+                                        return wrapClassifier(ClassifierType.REPLACED, c, classifier.getClassifierBeforeMapper());
+                                    else
+                                        return wrapClassifier(ClassifierType.TRANSIENT_REPLACED, c, null);
+                                })
                                 .toList();
 
                         uniqueClassifiers.addAll(existClassifiers);
@@ -1359,6 +1383,10 @@ public class DbBackupV2Service {
                         databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
                     });
         });
+    }
+
+    private Classifier wrapClassifier(ClassifierType type, SortedMap<String, Object> classifier, SortedMap<String, Object> classifierBeforeMapper) {
+        return new Classifier(type, classifier, classifierBeforeMapper);
     }
 
     private Database createLogicalDatabase(String dbName,
