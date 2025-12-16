@@ -1,7 +1,7 @@
 {
     "components" : [
       {
-        "name": "default",
+        "name": "qubership-dbaas",
         "file": "dbaas/Dockerfile",
         "context": "./artifacts/dbaas",
         "download-artifact": true,
