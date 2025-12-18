@@ -101,6 +101,8 @@ public interface BackupV2Mapper {
     }
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "name", source = "backupExternalDatabase.name")
+    @Mapping(target = "type", source = "backupExternalDatabase.type")
     @Mapping(target = "classifiers", source = "classifiers")
     RestoreExternalDatabase toRestoreExternalDatabase(BackupExternalDelegate backupExternalDelegate);
 

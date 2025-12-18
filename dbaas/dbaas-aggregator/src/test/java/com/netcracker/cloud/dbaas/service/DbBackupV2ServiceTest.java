@@ -930,7 +930,7 @@ class DbBackupV2ServiceTest {
         assertEquals(1, restoreDatabase1.getClassifiers().size());
         assertEquals(1, restoreDatabase1.getDuration());
 
-        SortedMap<String, Object> classifier = restoreDatabase1.getClassifiers().getFirst();
+        SortedMap<String, Object> classifier = restoreDatabase1.getClassifiers().getFirst().getClassifierBeforeMapper();
         assertTrue(
                 namespace.equals(classifier.get(NAMESPACE)) &&
                         microserviceName1.equals(classifier.get(MICROSERVICE_NAME))
@@ -955,7 +955,7 @@ class DbBackupV2ServiceTest {
         assertEquals(1, restoreDatabase2.getClassifiers().size());
         assertEquals(1, restoreDatabase2.getDuration());
 
-        classifier = restoreDatabase2.getClassifiers().getFirst();
+        classifier = restoreDatabase2.getClassifiers().getFirst().getClassifierBeforeMapper();
         assertTrue(
                 namespace.equals(classifier.get(NAMESPACE)) &&
                         microserviceName2.equals(classifier.get(MICROSERVICE_NAME))
@@ -1196,7 +1196,7 @@ class DbBackupV2ServiceTest {
         assertEquals(externalDbName, restoreExternalDatabase.getName());
         assertEquals(postgresqlType, restoreExternalDatabase.getType());
 
-        SortedMap<String, Object> externalClassifier = restoreExternalDatabase.getClassifiers().getFirst();
+        SortedMap<String, Object> externalClassifier = restoreExternalDatabase.getClassifiers().getFirst().getClassifier();
         assertTrue(
                 mappedNamespace.equals(externalClassifier.get(NAMESPACE)) &&
                         microserviceName3.equals(externalClassifier.get(MICROSERVICE_NAME)) &&
@@ -1222,7 +1222,7 @@ class DbBackupV2ServiceTest {
         assertEquals(1, restoreDatabase1.getClassifiers().size());
         assertEquals(1, restoreDatabase1.getDuration());
 
-        SortedMap<String, Object> classifier = restoreDatabase1.getClassifiers().getFirst();
+        SortedMap<String, Object> classifier = restoreDatabase1.getClassifiers().getFirst().getClassifier();
         assertTrue(
                 mappedNamespace.equals(classifier.get(NAMESPACE)) &&
                         microserviceName1.equals(classifier.get(MICROSERVICE_NAME)) &&
@@ -1248,7 +1248,7 @@ class DbBackupV2ServiceTest {
         assertEquals(1, restoreDatabase2.getClassifiers().size());
         assertEquals(1, restoreDatabase2.getDuration());
 
-        classifier = restoreDatabase2.getClassifiers().getFirst();
+        classifier = restoreDatabase2.getClassifiers().getFirst().getClassifier();
         assertTrue(
                 mappedNamespace.equals(classifier.get(NAMESPACE)) &&
                         microserviceName2.equals(classifier.get(MICROSERVICE_NAME)) &&
@@ -1345,11 +1345,11 @@ class DbBackupV2ServiceTest {
 
         SortedMap<String, Object> classifier1 = getClassifier(namespace, microserviceName, tenantId);
         SortedMap<String, Object> classifier2 = getClassifier(namespace, microserviceName, anotherTenantId);
-
+        SortedMap<String, Object> mappedClassifier = getClassifier(mappedNamespace, microserviceName, anotherTenantId);
         String msg = String.format(
-                "Resource has illegal state: Duplicate classifier detected after mapping: classifier='%s', mapping='%s'. " +
+                "Resource has illegal state: Duplicate classifier detected after mapping: classifier='%s', classifierBeforeMapping='%s'. " +
                         "Ensure all classifiers remain unique after mapping.",
-                classifier2, mapping);
+                mappedClassifier, classifier2);
 
         BackupDatabase backupDatabase = getBackupDatabase(dbName, List.of(classifier1, classifier2), false, BackupTaskStatus.COMPLETED, "");
         LogicalBackup logicalBackup = getLogicalBackup(logicalBackupName, adapterId, postgresType, List.of(backupDatabase), BackupTaskStatus.COMPLETED, "");
@@ -1978,7 +1978,7 @@ class DbBackupV2ServiceTest {
         BackupDatabaseDelegate backupDatabaseDelegate = filteredDatabases.getFirst();
 
         assertEquals(backupDatabaseDelegate.backupDatabase(), backupDatabase1);
-        assertEquals(backupDatabaseDelegate.classifiers().getFirst(), backupDatabase1.getClassifiers().getFirst());
+        assertEquals(backupDatabaseDelegate.classifiers().getFirst().getClassifierBeforeMapper(), backupDatabase1.getClassifiers().getFirst());
     }
 
     @Test
@@ -2050,7 +2050,7 @@ class DbBackupV2ServiceTest {
         BackupDatabaseDelegate backupDatabaseDelegate = filteredDatabases.getFirst();
 
         assertEquals(backupDatabaseDelegate.backupDatabase(), backupDatabase3);
-        assertEquals(backupDatabaseDelegate.classifiers().getFirst(), backupDatabase3.getClassifiers().getFirst());
+        assertEquals(backupDatabaseDelegate.classifiers().getFirst().getClassifierBeforeMapper(), backupDatabase3.getClassifiers().getFirst());
     }
 
     @Test
@@ -2119,7 +2119,7 @@ class DbBackupV2ServiceTest {
         assertNotNull(backupDatabaseDelegate2);
         assertEquals(backupDatabaseDelegate2.backupDatabase(), backupDatabase2);
         assertEquals(1, backupDatabaseDelegate2.classifiers().size());
-        assertEquals(backupDatabaseDelegate2.classifiers().getFirst(), backupDatabase2.getClassifiers().getFirst());
+        assertEquals(backupDatabaseDelegate2.classifiers().getFirst().getClassifierBeforeMapper(), backupDatabase2.getClassifiers().getFirst());
     }
 
     @Test
@@ -2214,7 +2214,7 @@ class DbBackupV2ServiceTest {
         assertEquals(dbName1, externalDb.getName());
         assertEquals(postgresqlType, externalDb.getType());
         assertEquals(1, externalDb.getClassifiers().size());
-        assertEquals(classifier, externalDb.getClassifiers().getFirst());
+        assertEquals(classifier, externalDb.getClassifiers().getFirst().getClassifierBeforeMapper());
     }
 
     @Test
@@ -3047,6 +3047,9 @@ class DbBackupV2ServiceTest {
         SortedMap<String, Object> classifier = new TreeMap<>();
         classifier.put("namespace", namespace);
 
+        Classifier classifierMapper = new Classifier();
+        classifierMapper.setClassifierBeforeMapper(classifier);
+
         List<RestoreDatabase> restoreDatabases = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
             RestoreDatabase restoreDatabase = RestoreDatabase.builder()
@@ -3055,7 +3058,7 @@ class DbBackupV2ServiceTest {
                             new RestoreDatabase.User("username", "admin")
                     ))
                     .path("path")
-                    .classifiers(List.of(classifier))
+                    .classifiers(List.of(classifierMapper))
                     .build();
             restoreDatabases.add(restoreDatabase);
         }
@@ -3137,7 +3140,7 @@ class DbBackupV2ServiceTest {
 
     private RestoreDatabase getRestoreDatabase(BackupDatabase backupDatabase,
                                                String dbName,
-                                               List<SortedMap<String, Object>> classifiers,
+                                               List<Classifier> classifiers,
                                                Map<String, Object> settings,
                                                String bgVersion,
                                                RestoreTaskStatus status,

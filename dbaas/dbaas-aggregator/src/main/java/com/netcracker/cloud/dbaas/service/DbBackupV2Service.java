@@ -698,6 +698,19 @@ public class DbBackupV2Service {
             }
             if (!dryRun)
                 restoreRepository.save(restore);
+            else {
+                restore.getLogicalRestores().forEach(lr -> {
+                    for (RestoreDatabase restoreDatabase : lr.getRestoreDatabases()) {
+                        restoreDatabase.setClassifiers(
+                                findSimilarDbByClassifier(restoreDatabase.getClassifiers(), lr.getType()).stream()
+                                        .toList()
+                        );
+                    }
+                });
+                restore.getExternalDatabases().forEach(externalDb -> {
+                    externalDb.setClassifiers(findSimilarDbByClassifier(externalDb.getClassifiers(), externalDb.getType()).stream().toList());
+                });
+            }
             return mapper.toRestoreResponse(restore);
         } finally {
             if (!unlocked) {
@@ -815,8 +828,8 @@ public class DbBackupV2Service {
                 .mapToInt(lr -> lr.getRestoreDatabases().size())
                 .sum();
 
-        log.info("Restore structure initialized: restoreName={}, logicalRestores={}, restoreDatabases={}",
-                restore.getName(), logicalRestores.size(), totalDatabases);
+        log.info("Restore structure initialized: restoreName={}, logicalRestores={}, restoreDatabases={}, externalDatabases={}",
+                restore.getName(), logicalRestores.size(), totalDatabases, externalDatabases.size());
 
         return restore;
     }
@@ -1010,9 +1023,9 @@ public class DbBackupV2Service {
         // To prevent collision during mapping
         if (!uniqueClassifiers.add(updatedClassifier.getClassifier())) {
             String msg = String.format(
-                    "Duplicate classifier detected after mapping: classifier='%s', classifierBeforeMapping='%s', mapping='%s'. " +
+                    "Duplicate classifier detected after mapping: classifier='%s', classifierBeforeMapping='%s'. " +
                             "Ensure all classifiers remain unique after mapping.",
-                    classifier.getClassifier(), classifier.getClassifierBeforeMapper(), mapping);
+                    classifier.getClassifier(), classifier.getClassifierBeforeMapper());
             log.error(msg);
             throw new IllegalResourceStateException(msg, Source.builder().build());
         }
@@ -1104,12 +1117,12 @@ public class DbBackupV2Service {
         return logicalRestore.getRestoreDatabases().stream()
                 .map(restoreDatabase -> {
                     String namespace = restoreDatabase.getClassifiers().stream()
-                            .map(c -> (String) c.getClassifier().get(NAMESPACE))
+                            .map(c -> c.getClassifier() != null ? (String) c.getClassifier().get(NAMESPACE) : (String) c.getClassifierBeforeMapper().get(NAMESPACE))
                             .findFirst()
                             .orElse("");
 
                     String microserviceName = restoreDatabase.getClassifiers().stream()
-                            .map(c -> (String) c.getClassifier().get(MICROSERVICE_NAME))
+                            .map(c -> c.getClassifier() != null ? (String) c.getClassifier().get(MICROSERVICE_NAME) : (String) c.getClassifierBeforeMapper().get(MICROSERVICE_NAME))
                             .findFirst()
                             .orElse("");
 
@@ -1296,17 +1309,15 @@ public class DbBackupV2Service {
                 log.info("Processing logicalRestore={}, type={}, adapterId={}", logicalRestore.getLogicalRestoreName(), logicalRestore.getType(), logicalRestore.getAdapterId());
                 logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
                     String type = logicalRestore.getType();
-                    Set<Classifier> classifiers = new HashSet<>();
-
                     log.info("Processing restoreDatabase={}", restoreDatabase.getName());
-                    findSimilarDbByClassifier(classifiers, restoreDatabase.getClassifiers(), type);
+                    Set<Classifier> classifiers = findSimilarDbByClassifier(restoreDatabase.getClassifiers(), type);
                     String adapterId = logicalRestore.getAdapterId();
                     String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getPhysicalDatabaseIdentifier();
                     List<EnsuredUser> ensuredUsers = dbNameToEnsuredUsers.get(restoreDatabase.getName());
                     Database newDatabase = createLogicalDatabase(
                             restoreDatabase.getName(),
                             restoreDatabase.getSettings(),
-                            classifiers.stream().map(Classifier::getClassifier).collect(Collectors.toSet()),
+                            classifiers.stream().map(c -> c.getClassifier() != null ? c.getClassifier() : c.getClassifierBeforeMapper()).collect(Collectors.toSet()),
                             type,
                             false,
                             false,
@@ -1327,9 +1338,7 @@ public class DbBackupV2Service {
             restore.getExternalDatabases().forEach(externalDatabase -> {
                 log.info("Processing externalDatabase={}, type={}", externalDatabase.getName(), externalDatabase.getType());
                 String type = externalDatabase.getType();
-                Set<Classifier> classifiers = new HashSet<>();
-
-                findSimilarDbByClassifier(classifiers, externalDatabase.getClassifiers(), type);
+                Set<Classifier> classifiers = findSimilarDbByClassifier(externalDatabase.getClassifiers(), type);
                 Database newDatabase = createLogicalDatabase(
                         externalDatabase.getName(),
                         null,
@@ -1341,6 +1350,7 @@ public class DbBackupV2Service {
                         null,
                         null);
                 databaseRegistryDbaasRepository.saveExternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
+                externalDatabase.setClassifiers(classifiers.stream().toList());
                 log.info("Based externalDb={}, database id={} created", externalDatabase.getName(), newDatabase.getId());
             });
             restore.setStatus(RestoreStatus.COMPLETED);
@@ -1353,36 +1363,41 @@ public class DbBackupV2Service {
         }
     }
 
-    private void findSimilarDbByClassifier(Set<Classifier> uniqueClassifiers,
-                                           List<Classifier> classifiers,
-                                           String type) {
+    private Set<Classifier> findSimilarDbByClassifier(List<Classifier> classifiers,
+                                                      String type) {
+        Set<Classifier> uniqueClassifiers = new HashSet<>();
         classifiers.forEach(classifier -> {
-            uniqueClassifiers.add(classifier);
-            SortedMap<String, Object> currClassifier = classifier.getClassifier();
+            SortedMap<String, Object> currClassifier = classifier.getClassifier() != null ? classifier.getClassifier()
+                    : classifier.getClassifierBeforeMapper();
             log.debug("Classifier candidate: {}", currClassifier);
-            databaseRegistryDbaasRepository
-                    .getDatabaseByClassifierAndType(currClassifier, type)
-                    .ifPresent(dbRegistry -> {
-                        classifier.setType(ClassifierType.REPLACED);
-                        Database db = dbRegistry.getDatabase();
-                        log.info("Found existing database {} for classifier {}", db.getId(), currClassifier);
-                        List<Classifier> existClassifiers = db.getDatabaseRegistry().stream()
-                                .map(AbstractDatabaseRegistry::getClassifier)
-                                .map(TreeMap::new)
-                                .map(c -> {
-                                    if (currClassifier.equals(c))
-                                        return wrapClassifier(ClassifierType.REPLACED, c, classifier.getClassifierBeforeMapper());
-                                    else
-                                        return wrapClassifier(ClassifierType.TRANSIENT_REPLACED, c, null);
-                                })
-                                .toList();
 
-                        uniqueClassifiers.addAll(existClassifiers);
-                        dBaaService.markDatabasesAsOrphan(dbRegistry);
-                        log.info("Database {} marked as orphan", db.getId());
-                        databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
-                    });
+            Optional<DatabaseRegistry> optionalDatabaseRegistry = databaseRegistryDbaasRepository
+                    .getDatabaseByClassifierAndType(currClassifier, type);
+
+            if (optionalDatabaseRegistry.isPresent()) {
+                DatabaseRegistry dbRegistry = optionalDatabaseRegistry.get();
+                classifier.setType(ClassifierType.REPLACED);
+                Database db = dbRegistry.getDatabase();
+                log.info("Found existing database {} for classifier {}", db.getId(), currClassifier);
+                Set<Classifier> existClassifiers = db.getDatabaseRegistry().stream()
+                        .map(AbstractDatabaseRegistry::getClassifier)
+                        .map(TreeMap::new)
+                        .map(c -> {
+                            if (currClassifier.equals(c))
+                                return classifier;
+                            else
+                                return wrapClassifier(ClassifierType.TRANSIENT_REPLACED, c, null);
+                        })
+                        .collect(Collectors.toSet());
+
+                uniqueClassifiers.addAll(existClassifiers);
+                dBaaService.markDatabasesAsOrphan(dbRegistry);
+                log.info("Database {} marked as orphan", db.getId());
+                databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+            } else
+                uniqueClassifiers.add(classifier);
         });
+        return uniqueClassifiers;
     }
 
     private Classifier wrapClassifier(ClassifierType type, SortedMap<String, Object> classifier, SortedMap<String, Object> classifierBeforeMapper) {
