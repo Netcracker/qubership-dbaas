@@ -43,8 +43,7 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
         StringBuilder q = new StringBuilder(
                 "SELECT cl.* " +
                         "FROM classifier cl " +
-                        "LEFT JOIN database d ON cl.database_id = d.id " +
-                        "WHERE "
+                        "LEFT JOIN database d ON cl.database_id = d.id "
         );
 
         int index = 0;
@@ -80,7 +79,9 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
             orBlock.add(block);
             index++;
         }
-        q.append(String.join(" OR ", orBlock));
+        if (!params.isEmpty()) {
+            q.append("WHERE ").append(String.join(" OR ", orBlock));
+        }
 
         var query = getEntityManager()
                 .createNativeQuery(q.toString(), DatabaseRegistry.class);

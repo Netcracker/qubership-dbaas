@@ -441,14 +441,16 @@ public class DbBackupV2Service {
                 .filter(registry -> {
                     if (!isValidRegistry(registry))
                         return false;
-                    return filterCriteria.getExclude().stream().noneMatch(exclude -> {
-                        boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
-                        return isMatches(exclude,
-                                (String) registry.getClassifier().get(NAMESPACE),
-                                (String) registry.getClassifier().get(MICROSERVICE_NAME),
-                                registry.getType(),
-                                configurational);
-                    });
+                    return filterCriteria.getExclude().stream()
+                            .filter(exclude -> !isEmpty(exclude))
+                            .noneMatch(exclude -> {
+                                boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
+                                return isMatches(exclude,
+                                        (String) registry.getClassifier().get(NAMESPACE),
+                                        (String) registry.getClassifier().get(MICROSERVICE_NAME),
+                                        registry.getType(),
+                                        configurational);
+                            });
                 })
                 .toList();
 
@@ -487,6 +489,13 @@ public class DbBackupV2Service {
             return isKindMatched(configurational, filter.getDatabaseKind().getFirst());
         }
         return true;
+    }
+
+    private boolean isEmpty(Filter f) {
+        return f.getNamespace().isEmpty()
+                && f.getMicroserviceName().isEmpty()
+                && f.getDatabaseType().isEmpty()
+                && f.getDatabaseKind().isEmpty();
     }
 
     private boolean isKindMatched(boolean configurational, DatabaseKind kind) {
@@ -721,7 +730,7 @@ public class DbBackupV2Service {
                                 String type = db.getLogicalBackup().getType();
                                 boolean configurational = db.isConfigurational();
                                 return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
-                                        && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
+                                        && filterCriteria.getExclude().stream().filter(exclude -> !isEmpty(exclude)).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
                             })
                             .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
                             .toList();
@@ -815,8 +824,8 @@ public class DbBackupV2Service {
     }
 
     protected List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
-                                                                      ExternalDatabaseStrategy strategy,
-                                                                      FilterCriteria filterCriteria) {
+                                                                        ExternalDatabaseStrategy strategy,
+                                                                        FilterCriteria filterCriteria) {
         if (externalDatabases == null || externalDatabases.isEmpty())
             return List.of();
 
@@ -850,7 +859,8 @@ public class DbBackupV2Service {
                                         String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
                                         String type = db.getType();
                                         return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
-                                                && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
+                                                &&
+                                                filterCriteria.getExclude().stream().filter(exclude -> !isEmpty(exclude)).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
                                     })
                                     .map(c -> (SortedMap<String, Object>) new TreeMap<>(c))
                                     .toList();
