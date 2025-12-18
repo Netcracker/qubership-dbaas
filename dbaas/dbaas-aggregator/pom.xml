@@ -12,10 +12,10 @@
 
     <artifactId>dbaas-aggregator</artifactId>
     <properties>
-        <mockito.jupiter.version>5.18.0</mockito.jupiter.version>
+        <mockito.jupiter.version>5.21.0</mockito.jupiter.version>
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
-        <flyway.version>11.10.0</flyway.version>
+        <flyway.version>11.19.0</flyway.version>
         <sonar.coverage.exclusions>
             src/main/java/db/migration/postgresql/**/*,
             src/main/java/com/netcracker/cloud/dbaas/dto/**/*,
@@ -185,7 +185,7 @@
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
-            <version>3.1.0</version>
+            <version>3.1.1</version>
         </dependency>
         <dependency>
             <groupId>cz.jirutka.rsql</groupId>
@@ -209,12 +209,12 @@
         <dependency>
             <groupId>net.javacrumbs.shedlock</groupId>
             <artifactId>shedlock-cdi</artifactId>
-            <version>6.10.0</version>
+            <version>7.3.0</version>
         </dependency>
         <dependency>
             <groupId>net.javacrumbs.shedlock</groupId>
             <artifactId>shedlock-provider-jdbc-template</artifactId>
-            <version>6.10.0</version>
+            <version>7.3.0</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
@@ -268,7 +268,7 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
-            <version>1.21.3</version>
+            <version>1.21.4</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

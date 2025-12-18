@@ -107,6 +107,8 @@ class DbBackupV2ServiceTest {
         logicalBackupRepository.deleteAll();
         backupExternalDatabaseRepository.deleteAll();
         backupRepository.deleteAll();
+
+        Mockito.reset(physicalDatabasesService);
     }
 
     @Test
