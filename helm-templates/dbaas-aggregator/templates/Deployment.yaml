@@ -140,7 +140,7 @@ spec:
                     value: '{{ .Values.DISABLE_DEPRECATED_API }}'
                 -   name: DBAAS_LOG_LEVEL
                     value: '{{ .Values.DBAAS_LOG_LEVEL }}'
-              {{- if .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT}}
+              {{- if .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT }}
                 -   name: DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
                     value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT }}'
               {{- end }}
