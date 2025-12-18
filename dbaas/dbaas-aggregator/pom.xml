@@ -16,17 +16,15 @@
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
         <flyway.version>11.19.0</flyway.version>
+        <shedlock.version>7.3.0</shedlock.version>
         <sonar.coverage.exclusions>
             src/main/java/db/migration/postgresql/**/*,
+            src/main/java/com/netcracker/cloud/dbaas/entity/**/*,
             src/main/java/com/netcracker/cloud/dbaas/dto/**/*,
             src/main/java/com/netcracker/cloud/dbaas/converter/**/*,
-            src/main/java/com/netcracker/cloud/dbaas/service/processengine/**/*,
-            src/main/java/com/netcracker/cloud/dbaas/config/UndertowConfig.java,
-            <!--TODO remove after implemetation-->
-            src/main/java/com/netcracker/cloud/dbaas/controller/ConfigControllerV1.java,
+            src/main/java/com/netcracker/cloud/dbaas/exceptions/**/*,
             src/main/java/com/netcracker/cloud/dbaas/config/pg/**,
-            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*,
-            src/main/java/com/netcracker/cloud/dbaas/controller/ApiVersionController.java
+            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*
         </sonar.coverage.exclusions>
         <sonar.cpd.exclusions>
             src/main/java/db/migration/postgresql/**/*,
@@ -34,13 +32,8 @@
             src/main/java/com/netcracker/cloud/dbaas/dto/**/*,
             src/main/java/com/netcracker/cloud/dbaas/converter/**/*,
             src/main/java/com/netcracker/cloud/dbaas/exceptions/**/*,
-            src/main/java/com/netcracker/cloud/dbaas/service/processengine/**/*,
-            src/main/java/com/netcracker/cloud/dbaas/config/UndertowConfig.java,
-            <!--TODO remove after implemetation-->
-            src/main/java/com/netcracker/cloud/dbaas/controller/ConfigControllerV1.java,
             src/main/java/com/netcracker/cloud/dbaas/config/pg/**,
-            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*,
-            src/main/java/com/netcracker/cloud/dbaas/controller/ApiVersionController.java
+            src/main/java/com/netcracker/cloud/dbaas/monitoring/model/**/*
         </sonar.cpd.exclusions>
     </properties>
 
@@ -119,23 +112,11 @@
             <artifactId>quarkus-logging-manager</artifactId>
             <version>3.4.1</version>
         </dependency>
-        <!--Qubership-->
         <dependency>
             <groupId>javax.xml.bind</groupId>
             <artifactId>jaxb-api</artifactId>
             <version>2.3.1</version>
         </dependency>
-        <dependency>
-            <groupId>jakarta.xml.bind</groupId>
-            <artifactId>jakarta.xml.bind-api</artifactId>
-            <version>4.0.4</version>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish.jaxb</groupId>
-            <artifactId>jaxb-runtime</artifactId>
-            <version>4.0.6</version>
-        </dependency>
-        <!--Qubership-->
         <dependency>
             <groupId>com.netcracker.cloud.quarkus</groupId>
             <artifactId>context-propagation</artifactId>
@@ -148,6 +129,11 @@
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
             <version>3.2.5</version>
+        </dependency>
+        <dependency>
+            <groupId>com.netcracker.core</groupId>
+            <artifactId>process-engine</artifactId>
+            <version>1.2.5</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -169,19 +155,11 @@
             <artifactId>commons-beanutils</artifactId>
             <version>1.11.0</version>
         </dependency>
-
         <dependency>
             <groupId>net.jodah</groupId>
             <artifactId>failsafe</artifactId>
             <version>2.4.4</version>
         </dependency>
-
-        <dependency>
-            <groupId>com.netcracker.core</groupId>
-            <artifactId>process-engine</artifactId>
-            <version>1.2.5</version>
-        </dependency>
-
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
@@ -209,23 +187,19 @@
         <dependency>
             <groupId>net.javacrumbs.shedlock</groupId>
             <artifactId>shedlock-cdi</artifactId>
-            <version>7.3.0</version>
+            <version>${shedlock.version}</version>
         </dependency>
         <dependency>
             <groupId>net.javacrumbs.shedlock</groupId>
             <artifactId>shedlock-provider-jdbc-template</artifactId>
-            <version>7.3.0</version>
+            <version>${shedlock.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
+
         <!-- Test dependencies -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit5-mockito</artifactId>
@@ -246,12 +220,6 @@
             <groupId>org.mockito</groupId>
             <artifactId>mockito-junit-jupiter</artifactId>
             <version>${mockito.jupiter.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.hamcrest</groupId>
-            <artifactId>hamcrest</artifactId>
-            <version>3.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
