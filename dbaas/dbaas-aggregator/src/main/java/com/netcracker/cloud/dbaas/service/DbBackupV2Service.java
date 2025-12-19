@@ -702,13 +702,13 @@ public class DbBackupV2Service {
                 restore.getLogicalRestores().forEach(lr -> {
                     for (RestoreDatabase restoreDatabase : lr.getRestoreDatabases()) {
                         restoreDatabase.setClassifiers(
-                                findSimilarDbByClassifier(restoreDatabase.getClassifiers(), lr.getType()).stream()
+                                findSimilarDbByClassifier(restoreDatabase.getClassifiers(), lr.getType(), true).stream()
                                         .toList()
                         );
                     }
                 });
                 restore.getExternalDatabases().forEach(externalDb -> {
-                    externalDb.setClassifiers(findSimilarDbByClassifier(externalDb.getClassifiers(), externalDb.getType()).stream().toList());
+                    externalDb.setClassifiers(findSimilarDbByClassifier(externalDb.getClassifiers(), externalDb.getType(), true).stream().toList());
                 });
             }
             return mapper.toRestoreResponse(restore);
@@ -1310,7 +1310,7 @@ public class DbBackupV2Service {
                 logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
                     String type = logicalRestore.getType();
                     log.info("Processing restoreDatabase={}", restoreDatabase.getName());
-                    Set<Classifier> classifiers = findSimilarDbByClassifier(restoreDatabase.getClassifiers(), type);
+                    Set<Classifier> classifiers = findSimilarDbByClassifier(restoreDatabase.getClassifiers(), type, false);
                     String adapterId = logicalRestore.getAdapterId();
                     String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getPhysicalDatabaseIdentifier();
                     List<EnsuredUser> ensuredUsers = dbNameToEnsuredUsers.get(restoreDatabase.getName());
@@ -1338,7 +1338,7 @@ public class DbBackupV2Service {
             restore.getExternalDatabases().forEach(externalDatabase -> {
                 log.info("Processing externalDatabase={}, type={}", externalDatabase.getName(), externalDatabase.getType());
                 String type = externalDatabase.getType();
-                Set<Classifier> classifiers = findSimilarDbByClassifier(externalDatabase.getClassifiers(), type);
+                Set<Classifier> classifiers = findSimilarDbByClassifier(externalDatabase.getClassifiers(), type, false);
                 Database newDatabase = createLogicalDatabase(
                         externalDatabase.getName(),
                         null,
@@ -1364,7 +1364,7 @@ public class DbBackupV2Service {
     }
 
     private Set<Classifier> findSimilarDbByClassifier(List<Classifier> classifiers,
-                                                      String type) {
+                                                      String type, boolean dryRun) {
         Set<Classifier> uniqueClassifiers = new HashSet<>();
         classifiers.forEach(classifier -> {
             SortedMap<String, Object> currClassifier = classifier.getClassifier() != null ? classifier.getClassifier()
@@ -1391,9 +1391,11 @@ public class DbBackupV2Service {
                         .collect(Collectors.toSet());
 
                 uniqueClassifiers.addAll(existClassifiers);
-                dBaaService.markDatabasesAsOrphan(dbRegistry);
-                log.info("Database {} marked as orphan", db.getId());
-                databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+                if(!dryRun) {
+                    dBaaService.markDatabasesAsOrphan(dbRegistry);
+                    log.info("Database {} marked as orphan", db.getId());
+                    databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+                }
             } else
                 uniqueClassifiers.add(classifier);
         });
