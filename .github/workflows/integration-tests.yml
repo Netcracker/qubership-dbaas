@@ -26,6 +26,11 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Apply MinIO operator
+        run: |
+          kubectl kustomize "github.com/minio/operator?ref=v7.1.1" \
+          | kubectl apply -f -
+
       - name: Checkout Netcracker/qubership-core-bootstrap repo
         uses: actions/checkout@v4
         with:
