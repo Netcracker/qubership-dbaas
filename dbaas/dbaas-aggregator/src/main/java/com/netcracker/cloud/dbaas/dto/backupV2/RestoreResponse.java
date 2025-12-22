@@ -89,10 +89,6 @@ public class RestoreResponse {
             examples = "Backup Not Found"
     )
     private String errorMessage;
-    @Schema(description = "Aggregated duration of databases", examples = "1200")
-    private Long duration;
-    @Schema(description = "Total number of adapter requests", examples = "1")
-    private Integer attemptCount;
     @Schema(
             description = "List of logical restores",
             implementation = LogicalRestoreResponse.class,

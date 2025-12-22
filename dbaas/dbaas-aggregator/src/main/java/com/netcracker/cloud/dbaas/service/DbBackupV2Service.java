@@ -900,9 +900,9 @@ public class DbBackupV2Service {
 
     private List<RestoreExternalDatabase> executeMappingForExternalDb(List<RestoreExternalDatabase> externalDatabases,
                                                                       Mapping mapping) {
+        Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
         return externalDatabases.stream()
                 .peek(db -> {
-                    Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
                     List<Classifier> updatedClassifiers = db.getClassifiers().stream()
                             .map(classifier -> updateAndValidateClassifier(classifier, mapping, uniqueClassifiers))
                             .toList();

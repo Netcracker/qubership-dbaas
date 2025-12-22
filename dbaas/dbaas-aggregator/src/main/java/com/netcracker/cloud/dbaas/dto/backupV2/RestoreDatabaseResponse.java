@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.entity.pg.backupV2.Classifier;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -59,7 +58,7 @@ public class RestoreDatabaseResponse {
             required = true
     )
     private String path;
-    @Schema(description = "Error message if the backup failed",  examples = "Restore Not Found")
+    @Schema(description = "Error message if the backup failed", examples = "Restore Not Found")
     private String errorMessage;
     @Schema(description = "Timestamp when the restore was created", examples = "2025-11-13T12:34:56Z")
     private Instant creationTime;

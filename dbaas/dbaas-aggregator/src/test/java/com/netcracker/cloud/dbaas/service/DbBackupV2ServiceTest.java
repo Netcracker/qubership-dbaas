@@ -892,7 +892,6 @@ class DbBackupV2ServiceTest {
         assertNotNull(restoreResponse);
         assertEquals(restoreName, restoreResponse.getRestoreName());
         assertEquals(RestoreStatus.IN_PROGRESS, restoreResponse.getStatus());
-        assertEquals(2, restoreResponse.getDuration());
 
         dbBackupV2Service.checkRestoresAsync();
         Restore restore = restoreRepository.findById(restoreName);
@@ -1173,7 +1172,6 @@ class DbBackupV2ServiceTest {
         assertNotNull(restoreResponse);
         assertEquals(restoreName, restoreResponse.getRestoreName());
         assertEquals(RestoreStatus.IN_PROGRESS, restoreResponse.getStatus());
-        assertEquals(2, restoreResponse.getDuration());
 
         dbBackupV2Service.checkRestoresAsync();
         Restore restore = restoreRepository.findById(restoreName);

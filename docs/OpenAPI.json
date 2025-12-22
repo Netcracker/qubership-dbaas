@@ -3482,22 +3482,6 @@
             ],
             "description": "Aggregated error messages during restore operation"
           },
-          "duration": {
-            "type": "integer",
-            "format": "int64",
-            "examples": [
-              1200
-            ],
-            "description": "Aggregated duration of databases"
-          },
-          "attemptCount": {
-            "type": "integer",
-            "format": "int32",
-            "examples": [
-              1
-            ],
-            "description": "Total number of adapter requests"
-          },
           "logicalRestores": {
             "type": "array",
             "items": {
