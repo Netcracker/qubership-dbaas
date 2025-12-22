@@ -242,18 +242,9 @@
 
     <repositories>
         <repository>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-            <id>nc-central</id>
-            <name>libs-release</name>
-            <url>https://artifactorycn.netcracker.com/pd.saas-release.mvn.group</url>
-        </repository>
-        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/netcracker/*</url>
             <snapshots/>
-            <id>snapshots</id>
-            <name>libs-snapshot</name>
-            <url>https://artifactorycn.netcracker.com/pd.saas.mvn.group</url>
         </repository>
     </repositories>
 </project>
