@@ -247,4 +247,11 @@
             <snapshots/>
         </repository>
     </repositories>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/netcracker/qubership-dbaas</url>
+        </repository>
+    </distributionManagement>
 </project>
