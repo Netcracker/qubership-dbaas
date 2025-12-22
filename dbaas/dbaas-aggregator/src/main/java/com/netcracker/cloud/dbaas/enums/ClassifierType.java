@@ -1,4 +1,4 @@
-package com.netcracker.cloud.dbaas.dto.backupV2;
+package com.netcracker.cloud.dbaas.enums;
 
 public enum ClassifierType {
     NEW, REPLACED, TRANSIENT_REPLACED

@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
-import com.netcracker.cloud.dbaas.dto.backupV2.Classifier;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
@@ -14,7 +13,6 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedMap;
 import java.util.UUID;
 
 @Data

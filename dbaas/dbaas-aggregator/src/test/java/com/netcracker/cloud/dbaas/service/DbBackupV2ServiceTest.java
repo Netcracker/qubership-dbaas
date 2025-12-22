@@ -1680,7 +1680,7 @@ class DbBackupV2ServiceTest {
         assertEquals(1, restoreDatabase.getSettings().size());
         assertEquals(2, restoreDatabase.getClassifiers().size());
 
-        Classifier classifier1 = restoreDatabase.getClassifiers().stream()
+        ClassifierResponse classifier1 = restoreDatabase.getClassifiers().stream()
                 .filter(classifier -> ClassifierType.REPLACED == classifier.getType())
                 .findAny().orElse(null);
         assertNotNull(classifier1);
@@ -1699,7 +1699,7 @@ class DbBackupV2ServiceTest {
                         tenantId.equals(classifier1.getClassifierBeforeMapper().get(TENANT_ID))
         );
 
-        Classifier classifier2 = restoreDatabase.getClassifiers().stream()
+        ClassifierResponse classifier2 = restoreDatabase.getClassifiers().stream()
                 .filter(classifier -> ClassifierType.TRANSIENT_REPLACED == classifier.getType())
                 .findAny().orElse(null);
         assertNotNull(classifier2);
@@ -1718,7 +1718,7 @@ class DbBackupV2ServiceTest {
         assertEquals(postgresType, externalDatabaseResponse.getType());
         assertEquals(1, externalDatabaseResponse.getClassifiers().size());
 
-        Classifier classifier3 = externalDatabaseResponse.getClassifiers().getFirst();
+        ClassifierResponse classifier3 = externalDatabaseResponse.getClassifiers().getFirst();
         assertNotNull(classifier3);
         assertEquals(ClassifierType.REPLACED, classifier3.getType());
         assertNotNull(classifier3.getClassifier());

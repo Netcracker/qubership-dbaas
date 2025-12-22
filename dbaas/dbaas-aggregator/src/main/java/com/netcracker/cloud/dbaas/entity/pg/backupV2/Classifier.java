@@ -1,5 +1,6 @@
-package com.netcracker.cloud.dbaas.dto.backupV2;
+package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.netcracker.cloud.dbaas.enums.ClassifierType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

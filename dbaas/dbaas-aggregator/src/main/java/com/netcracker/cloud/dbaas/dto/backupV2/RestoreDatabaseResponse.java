@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.Classifier;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -26,7 +27,7 @@ public class RestoreDatabaseResponse {
             description = "List of database classifiers. Each classifier is a sorted map of attributes.",
             examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]"
     )
-    private List<Classifier> classifiers;
+    private List<ClassifierResponse> classifiers;
     @Schema(
             description = "List of database users",
             examples = "[{\"name\":\"username\",\"role\":\"admin\"}"

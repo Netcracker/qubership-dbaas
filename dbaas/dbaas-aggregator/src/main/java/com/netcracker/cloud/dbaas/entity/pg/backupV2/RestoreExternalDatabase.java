@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.netcracker.cloud.dbaas.dto.backupV2.Classifier;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -12,7 +11,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.util.List;
-import java.util.SortedMap;
 import java.util.UUID;
 
 @Data

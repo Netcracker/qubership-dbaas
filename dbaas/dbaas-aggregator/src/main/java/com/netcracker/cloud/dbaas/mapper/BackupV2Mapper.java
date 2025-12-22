@@ -107,4 +107,7 @@ public interface BackupV2Mapper {
     RestoreExternalDatabase toRestoreExternalDatabase(BackupExternalDelegate backupExternalDelegate);
 
     List<RestoreExternalDatabase> toRestoreExternalDatabases(List<BackupExternalDelegate> backupExternalDelegates);
+
+    ClassifierResponse toClassifierResponse(Classifier classifier);
+    List<ClassifierResponse> toClassifierResponse(List<Classifier> classifiers);
 }

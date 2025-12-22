@@ -3,17 +3,17 @@ package com.netcracker.cloud.dbaas.converter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.netcracker.cloud.dbaas.dto.backupV2.Classifier;
 import jakarta.persistence.AttributeConverter;
 
 import java.io.IOException;
+import java.util.SortedMap;
 
-public class ClassifierConverter implements AttributeConverter<Classifier, String> {
+public class ClassifierConverter implements AttributeConverter<SortedMap<Object, Object>, String> {
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    public String convertToDatabaseColumn(Classifier attribute) {
+    public String convertToDatabaseColumn(SortedMap<Object, Object> attribute) {
         try {
             return objectMapper.writeValueAsString(attribute);
         } catch (JsonProcessingException e) {
@@ -22,9 +22,9 @@ public class ClassifierConverter implements AttributeConverter<Classifier, Strin
     }
 
     @Override
-    public Classifier convertToEntityAttribute(String dbData) {
+    public SortedMap<Object, Object> convertToEntityAttribute(String dbData) {
         try {
-            return objectMapper.readValue(dbData, new TypeReference<>() {
+            return objectMapper.readValue(dbData, new TypeReference<SortedMap<Object, Object>>() {
             });
         } catch (IOException e) {
             throw new RuntimeException(e);

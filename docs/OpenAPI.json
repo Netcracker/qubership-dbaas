@@ -640,6 +640,30 @@
           }
         }
       },
+      "ClassifierResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ClassifierType"
+          },
+          "classifier": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "classifierBeforeMapper": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "ClassifierType": {
+        "type": "string",
+        "enum": [
+          "NEW",
+          "REPLACED",
+          "TRANSIENT_REPLACED"
+        ]
+      },
       "ClassifierWithRolesRequest": {
         "type": "object",
         "required": [
@@ -3078,8 +3102,7 @@
               ]
             ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           },
@@ -3186,8 +3209,7 @@
               ]
             ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           }
