@@ -4,7 +4,6 @@ import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonDeserializer;
-import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import com.netcracker.it.dbaas.entity.backup.v1.*;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
@@ -37,7 +36,6 @@ public class BackupHelperV1 {
             .withMaxRetries(-1).withDelay(Duration.ofSeconds(30)).withMaxDuration(Duration.ofMinutes(10));
 
     private static final OkHttpClient okHttpClient = new OkHttpClient.Builder()
-            .sslSocketFactory(TlsUtils.getSslContext().getSocketFactory(), TlsUtils.getTrustManager())
             .readTimeout(30, TimeUnit.SECONDS)
             .build();
 

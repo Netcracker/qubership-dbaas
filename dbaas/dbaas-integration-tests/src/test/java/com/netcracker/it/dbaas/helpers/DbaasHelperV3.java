@@ -15,7 +15,6 @@ import com.netcracker.cloud.junit.cloudcore.extension.service.Endpoint;
 import com.netcracker.cloud.junit.cloudcore.extension.service.NetSocketAddress;
 import com.netcracker.cloud.junit.cloudcore.extension.service.PortForwardService;
 import com.netcracker.cloud.junit.cloudcore.extension.service.ServicePortForwardParams;
-import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v3.NamespaceBackupV3;
 import com.netcracker.it.dbaas.entity.config.PolicyRole;
@@ -119,7 +118,6 @@ public class DbaasHelperV3 {
     private static final OkHttpClient okHttpClient = new OkHttpClient.Builder()
             .readTimeout(60, TimeUnit.SECONDS)
             .addNetworkInterceptor(chain -> chain.proceed(chain.request().newBuilder().addHeader("Connection", "close").build()))
-            .sslSocketFactory(TlsUtils.getSslContext().getSocketFactory(), TlsUtils.getTrustManager())
             .build();
 
     private static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
@@ -527,7 +525,6 @@ public class DbaasHelperV3 {
 
             transportBuilder.setHttpClientConfigCallback(httpClientBuilder -> {
                 var tlsStrategy = ClientTlsStrategyBuilder.create()
-                        .setSslContext(TlsUtils.getSslContext())
                         .buildAsync();
 
                 var connectionManager = PoolingAsyncClientConnectionManagerBuilder.create()

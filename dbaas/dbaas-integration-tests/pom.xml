@@ -87,9 +87,9 @@
             <version>${junit.version}</version>
         </dependency>
         <dependency>
-            <groupId>postgresql</groupId>
+            <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>9.3-1102.jdbc41</version>
+            <version>42.7.8</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -167,13 +167,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>2.2.3</version>
-        </dependency>
-        <dependency>
-            <groupId>com.netcracker.cloud.security.core.utils</groupId>
-            <artifactId>tls-utils</artifactId>
-            <version>1.2.3</version>
-            <scope>test</scope>
+            <version>3.2.5</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>

@@ -7,7 +7,6 @@ import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtensio
 import com.netcracker.cloud.junit.cloudcore.extension.service.Endpoint;
 import com.netcracker.cloud.junit.cloudcore.extension.service.PortForwardService;
 import com.netcracker.cloud.junit.cloudcore.extension.service.ServicePortForwardParams;
-import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import com.netcracker.it.dbaas.entity.AggregatorHealth;
 import com.netcracker.it.dbaas.entity.DatabaseV3;
 import com.netcracker.it.dbaas.entity.DbaasUsersData;
@@ -78,7 +77,6 @@ public abstract class AbstractIT {
     protected final OkHttpClient okHttpClient = new OkHttpClient.Builder()
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
-            .sslSocketFactory(TlsUtils.getSslContext().getSocketFactory(), TlsUtils.getTrustManager())
             .build();
 
     protected static final Gson gson = new Gson();

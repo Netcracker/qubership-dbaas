@@ -3,7 +3,6 @@ package com.netcracker.it.dbaas.helpers;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.mongodb.MongoException;
-import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v3.*;
 import com.netcracker.it.dbaas.exceptions.CannotCheckData;
@@ -55,7 +54,6 @@ public class BackupHelperV3 {
     private static final int RESTORE_TIMEOUT_MINUTES = 10;
 
     private static final OkHttpClient okHttpClient = new OkHttpClient.Builder()
-            .sslSocketFactory(TlsUtils.getSslContext().getSocketFactory(), TlsUtils.getTrustManager())
             .readTimeout(30, TimeUnit.SECONDS)
             .build();
 
