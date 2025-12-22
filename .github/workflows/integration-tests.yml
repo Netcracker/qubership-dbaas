@@ -1,0 +1,14 @@
+name: DBaaS Integration Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print context info
+        run: |
+          echo "Workflow works!"
+          echo "Branch: $GITHUB_REF"
+          echo "Repository: $GITHUB_REPOSITORY"
