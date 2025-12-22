@@ -31,6 +31,14 @@ jobs:
           kubectl kustomize "github.com/minio/operator?ref=v7.1.1" \
           | kubectl apply -f -
 
+      - name: Wait for MinIO operator
+        run: |
+          kubectl wait \
+          -n minio-operator \
+          --for=condition=Available \
+          deployment/minio-operator \
+          --timeout=300s
+
       - name: Checkout Netcracker/qubership-core-bootstrap repo
         uses: actions/checkout@v4
         with:
