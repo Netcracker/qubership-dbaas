@@ -32,9 +32,9 @@ jobs:
           repository: Netcracker/qubership-core-bootstrap
           path: core-bootstrap-repo
 
-      - name: Deploy cloud core
-        working-directory: core-bootstrap-repo
-        run: make -C cloud-core-local-dev/dbaas install CONFIG_FILE=cloud-core-local-dev/dbaas/local.mk
+      - name: Deploy DBaaS
+        working-directory: core-bootstrap-repo/cloud-core-local-dev/dbaas
+        run: make install CONFIG_FILE=local.mk
 
 
   
