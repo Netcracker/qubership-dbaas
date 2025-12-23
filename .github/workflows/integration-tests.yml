@@ -28,7 +28,6 @@ jobs:
         with:
           cluster_name: kind
           config: kind-config.yaml
-          cache: maven
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -38,9 +37,7 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-
-      - name: Run tests
-        run: mvn -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+          cache: maven
 
       - name: Create namespace minio
         run: |
@@ -159,5 +156,8 @@ jobs:
           kubectl rollout status deployment/postgres-backup-daemon \
             -n postgres \
             --timeout=300s
-        
+
+      - name: Run tests
+        run: mvn -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+
   
