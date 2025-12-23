@@ -110,9 +110,9 @@ jobs:
           echo "MinIO Tenant did not become ready in time"
           exit 1
 
-      - name: Create config file
+      - name: Create config file patroni-services-values.yaml
         run: |
-          cat <<'EOF' > "$GITHUB_WORKSPACE/values.yaml"
+          cat <<'EOF' > "$GITHUB_WORKSPACE/patroni-services-values.yaml"
           postgresPassword: ${POSTGRES_PASSWORD}
       
           backupDaemon:
@@ -148,7 +148,12 @@ jobs:
 
       - name: Deploy DBaaS
         working-directory: core-bootstrap-repo/cloud-core-local-dev/dbaas
-        run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/values.yaml
+        run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
 
+      - name: Wait for postgres-backup-daemon
+        run: |
+          kubectl rollout status deployment/postgres-backup-daemon \
+            -n postgres \
+            --timeout=300s
 
   
