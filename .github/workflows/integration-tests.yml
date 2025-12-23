@@ -110,6 +110,36 @@ jobs:
           echo "MinIO Tenant did not become ready in time"
           exit 1
 
+      - name: Create config file
+        run: |
+          cat <<'EOF' > "$GITHUB_WORKSPACE/values.yaml"
+          postgresPassword: ${POSTGRES_PASSWORD}
+      
+          backupDaemon:
+            install: true
+            storage:
+              storageClass: ${STORAGE_CLASS}
+              type: pv
+              size: 2Gi
+            s3Storage:
+              url: http://minio.minio.svc.cluster.local
+              accessKeyId: minio
+              secretAccessKey: minio123
+              bucket: dbaas-backup-restore-test
+              region: region123
+            securityContext:
+              runAsUser: "101"
+              fsGroup: "101"
+      
+          dbaas:
+            install: true
+            aggregator:
+              registrationAddress: http://${DBAAS_SERVICE_NAME}.${DBAAS_NAMESPACE}.svc.cluster.local:8080
+              registrationUsername: cluster-dba
+              registrationPassword: password
+          EOF
+    
+
       - name: Checkout Netcracker/qubership-core-bootstrap repo
         uses: actions/checkout@v4
         with:
@@ -118,7 +148,7 @@ jobs:
 
       - name: Deploy DBaaS
         working-directory: core-bootstrap-repo/cloud-core-local-dev/dbaas
-        run: make install CONFIG_FILE=local.mk
+        run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/values.yaml
 
 
   
