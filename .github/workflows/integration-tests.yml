@@ -28,6 +28,7 @@ jobs:
         with:
           cluster_name: kind
           config: kind-config.yaml
+          cache: maven
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -156,4 +157,8 @@ jobs:
             -n postgres \
             --timeout=300s
 
+      - name: Run tests
+        working-directory: qubership-dbaas
+        run: mvn -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+        
   
