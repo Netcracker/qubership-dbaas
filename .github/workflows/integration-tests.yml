@@ -39,11 +39,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Run tests
-        run: mvn --batch-mode -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create namespace minio
         run: |
           kubectl create namespace minio \
@@ -161,6 +156,11 @@ jobs:
           kubectl rollout status deployment/postgres-backup-daemon \
             -n postgres \
             --timeout=300s
+
+      - name: Run tests
+        run: mvn --batch-mode -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
 
