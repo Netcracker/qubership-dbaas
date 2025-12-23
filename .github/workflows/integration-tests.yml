@@ -38,6 +38,26 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Create namespace minio
+        run: |
+          kubectl create namespace minio \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create MinIO env secret
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: minio-env
+            namespace: minio
+          type: Opaque
+          stringData:
+            config.env: |
+              export MINIO_ROOT_USER=minio
+              export MINIO_ROOT_PASSWORD=minio123
+          EOF
+
       - name: Apply MinIO operator
         run: |
           kubectl kustomize "github.com/minio/operator?ref=v7.1.1" \
@@ -45,6 +65,43 @@ jobs:
 
       - name: Wait for MinIO operator
         run: kubectl wait -n minio-operator --for=condition=Available deployment/minio-operator --timeout=300s
+
+      - name: Deploy MinIO Tenant
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: minio.min.io/v2
+          kind: Tenant
+          metadata:
+            name: test-minio
+            namespace: minio
+          spec:
+            configuration:
+              name: minio-env
+            requestAutoCert: false
+            pools:
+              - servers: 1
+                name: pool-0
+                volumesPerServer: 1
+                volumeClaimTemplate:
+                  metadata:
+                    name: data
+                  spec:
+                    accessModes:
+                      - ReadWriteOnce
+                    resources:
+                      requests:
+                        storage: 2Gi
+          EOF
+
+      - name: Wait for MinIO to start
+        run: |
+          echo "Waiting for MinIO pods..."
+          kubectl wait \
+            --namespace minio \
+            --for=condition=Ready pod \
+            --selector=v1.min.io/tenant=test-minio \
+            --timeout=300s
+          echo "MinIO pods are ready"
 
       - name: Checkout Netcracker/qubership-core-bootstrap repo
         uses: actions/checkout@v4
