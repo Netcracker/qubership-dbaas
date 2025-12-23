@@ -39,6 +39,9 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Run tests
+        run: mvn -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+
       - name: Create namespace minio
         run: |
           kubectl create namespace minio \
@@ -156,9 +159,5 @@ jobs:
           kubectl rollout status deployment/postgres-backup-daemon \
             -n postgres \
             --timeout=300s
-
-      - name: Run tests
-        working-directory: qubership-dbaas
-        run: mvn -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
         
   
