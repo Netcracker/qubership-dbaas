@@ -128,8 +128,8 @@ jobs:
               bucket: dbaas-backup-restore-test
               region: region123
             securityContext:
-              runAsUser: "101"
-              fsGroup: "101"
+              runAsUser: 101
+              fsGroup: 101
       
           dbaas:
             install: true
