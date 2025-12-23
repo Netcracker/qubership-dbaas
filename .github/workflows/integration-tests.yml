@@ -93,15 +93,22 @@ jobs:
                         storage: 2Gi
           EOF
 
-      - name: Wait for MinIO to start
+      - name: Wait for MinIO Tenant readiness
         run: |
-          echo "Waiting for MinIO pods..."
-          kubectl wait \
-            --namespace minio \
-            --for=condition=Ready pod \
-            --selector=v1.min.io/tenant=test-minio \
-            --timeout=300s
-          echo "MinIO pods are ready"
+          echo "Waiting for MinIO Tenant to become Ready..."
+      
+          for i in {1..30}; do
+            STATE=$(kubectl get tenant test-minio -n minio -o jsonpath='{.status.currentState}')
+            echo "Current state: $STATE"
+            if [[ "$STATE" == "Ready" || "$STATE" == "Initialized" ]]; then
+              echo "MinIO Tenant is ready"
+              exit 0
+            fi
+            sleep 10
+          done
+      
+          echo "MinIO Tenant did not become ready in time"
+          exit 1
 
       - name: Checkout Netcracker/qubership-core-bootstrap repo
         uses: actions/checkout@v4
