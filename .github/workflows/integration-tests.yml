@@ -162,6 +162,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Aggregate Surefire reports
+        run: |
+          for module in $(find . -type d -path "*/target/surefire-reports" | sed -E 's#/target/surefire-reports##' | sort -u); do
+            modname=$(basename "$module")
+            echo "Found test reports for $modname"
+            mkdir -p artifacts/$modname
+            cp -r "$module/target/surefire-reports" artifacts/$modname/ || true
+            if [ -d "$module/target/reports" ]; then
+              cp -r "$module/target/reports" artifacts/$modname/ || true
+            fi
+          done
 
+      - name: Upload Surefire reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: artifacts/*
 
   
