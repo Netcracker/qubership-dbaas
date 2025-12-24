@@ -158,11 +158,14 @@ jobs:
             --timeout=300s
 
       - name: Run tests
-        run: mvn --batch-mode -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+        id: tests
+        run: mvn --batch-mode -Dmaven.test.failure.ignore="false" -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Aggregate Surefire reports
+        id: collect_reports
+        if: always() && steps.tests.outcome != 'skipped'
         run: |
           for module in $(find . -type d -path "*/target/surefire-reports" | sed -E 's#/target/surefire-reports##' | sort -u); do
             modname=$(basename "$module")
@@ -175,6 +178,7 @@ jobs:
           done
 
       - name: Upload Surefire reports
+        if: always() && steps.collect_reports.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: surefire-reports
