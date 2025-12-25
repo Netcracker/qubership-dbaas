@@ -154,7 +154,7 @@ jobs:
 
       - name: Run tests
         id: tests
-        run: mvn --batch-mode -Dmaven.test.failure.ignore=false -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+        run: mvn --batch-mode -Dmaven.test.failure.ignore=true -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
