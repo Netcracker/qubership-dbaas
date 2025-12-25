@@ -16,6 +16,7 @@
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
         <logback.version>1.5.20</logback.version>
         <junit.version>5.12.2</junit.version>
+        <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
 
     <dependencies>
@@ -198,7 +199,7 @@
                     </includes>
                     <skipTests>${skipIT}</skipTests>
                     <trimStackTrace>false</trimStackTrace>
-                    <testFailureIgnore>true</testFailureIgnore>
+                    <testFailureIgnore>${maven.test.failure.ignore}</testFailureIgnore>
                     <argLine>
                         --add-opens=java.base/java.lang=ALL-UNNAMED
                         --add-opens=java.base/java.lang.reflect=ALL-UNNAMED
