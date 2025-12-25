@@ -950,7 +950,8 @@ public class DbBackupV2Service {
         updatedClassifier.put(NAMESPACE, targetNamespace);
         if (targetTenant != null)
             updatedClassifier.put(TENANT_ID, targetTenant);
-        classifier.setClassifier(updatedClassifier);
+        if(!targetNamespace.equals(classifier.getClassifierBeforeMapper().get(NAMESPACE)))
+            classifier.setClassifier(updatedClassifier);
         return classifier;
     }
 
@@ -1342,7 +1343,7 @@ public class DbBackupV2Service {
                 Database newDatabase = createLogicalDatabase(
                         externalDatabase.getName(),
                         null,
-                        classifiers.stream().map(Classifier::getClassifier).collect(Collectors.toSet()),
+                        classifiers.stream().map(c -> c.getClassifier() != null ? c.getClassifier() : c.getClassifierBeforeMapper()).collect(Collectors.toSet()),
                         type,
                         true,
                         true,
@@ -1382,12 +1383,10 @@ public class DbBackupV2Service {
                 Set<Classifier> existClassifiers = db.getDatabaseRegistry().stream()
                         .map(AbstractDatabaseRegistry::getClassifier)
                         .map(TreeMap::new)
-                        .map(c -> {
-                            if (currClassifier.equals(c))
-                                return classifier;
-                            else
-                                return wrapClassifier(ClassifierType.TRANSIENT_REPLACED, c, null);
-                        })
+                        .map(c -> currClassifier.equals(c)
+                                ? classifier
+                                : new Classifier(ClassifierType.TRANSIENT_REPLACED, c, null)
+                        )
                         .collect(Collectors.toSet());
 
                 uniqueClassifiers.addAll(existClassifiers);
@@ -1402,8 +1401,8 @@ public class DbBackupV2Service {
         return uniqueClassifiers;
     }
 
-    private Classifier wrapClassifier(ClassifierType type, SortedMap<String, Object> classifier, SortedMap<String, Object> classifierBeforeMapper) {
-        return new Classifier(type, classifier, classifierBeforeMapper);
+    private Classifier wrapClassifier(SortedMap<String, Object> classifier) {
+        return new Classifier(ClassifierType.TRANSIENT_REPLACED, classifier, null);
     }
 
     private Database createLogicalDatabase(String dbName,
