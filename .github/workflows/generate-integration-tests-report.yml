@@ -67,10 +67,10 @@ jobs:
             successes=$((successes + mod_succ))
             failures=$((failures + mod_fail))
           
-            if [ -f "$artifact/reports/surefire.html" ]; then
+            if [ -f "$artifact/surefire-reports/junit-noframes.html" ]; then
               mkdir -p report/reports/$modname
-              cp -r "$artifact/reports/"* report/reports/$modname/
-              mv "report/reports/$modname/surefire.html" "report/reports/$modname/index.html" 
+              cp -r "$artifact/surefire-reports/"* report/reports/$modname/
+              mv "report/reports/$modname/junit-noframes.html" "report/reports/$modname/index.html" 
             fi
           
             jq --arg date "$today" \
