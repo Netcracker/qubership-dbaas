@@ -139,16 +139,9 @@ jobs:
               registrationUsername: cluster-dba
               registrationPassword: password
           EOF
-    
-
-      - name: Checkout Netcracker/qubership-core-bootstrap repo
-        uses: actions/checkout@v4
-        with:
-          repository: Netcracker/qubership-core-bootstrap
-          path: core-bootstrap-repo
 
       - name: Deploy DBaaS
-        working-directory: core-bootstrap-repo/cloud-core-local-dev/dbaas
+        working-directory: bootstrap
         run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
 
       - name: Wait for postgres-backup-daemon
