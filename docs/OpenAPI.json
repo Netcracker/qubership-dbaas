@@ -4960,16 +4960,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Restore operation retried successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RestoreResponse"
-                }
-              }
-            }
-          },
           "202": {
             "description": "Restore retry accepted and is being processed",
             "content": {
