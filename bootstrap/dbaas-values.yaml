@@ -1,0 +1,37 @@
+
+#Optional, but useful
+#DEPLOYMENT_SESSION_ID: 123aaa
+
+PRODUCTION_MODE: false
+
+# ============== Node Selector label ============================
+# Mandatory to define appropriate label for node selector. Or provide specific labels by cluster admin as pre-requisite
+NODE_SELECTOR_DBAAS_KEY: ${NODE_SELECTOR_DBAAS_KEY}
+REGION_DBAAS: ${REGION_DBAAS}
+
+# ============== Images ============================
+DECLARATIVE_HOOK_IMAGE: ghcr.io/netcracker/qubership-dbaas-validation-image:${TAG}
+IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas
+TAG: ${TAG}
+
+# ============== Service ============================
+# Should be 'dbaas-aggregator' only as in prepare-database.sh we have hardcoded refenerce
+SERVICE_NAME: ${DBAAS_SERVICE_NAME}
+
+# ============== Postgres ============================
+POSTGRES_HOST: pg-patroni.${PG_NAMESPACE}.svc.cluster.local
+
+# ============== Credentials ============================
+BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD: password
+DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD: password
+DBAAS_TENANT_PASSWORD: password
+DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD: password
+DISCR_TOOL_USER_PASSWORD: password
+POSTGRES_DBAAS_USER: postgres
+POSTGRES_DBAAS_PASSWORD: ${POSTGRES_PASSWORD}
+POSTGRES_DBAAS_DATABASE_NAME: dbaas
+DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS: 20
+DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS: 3
+DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS: 3
+DBAAS_BACKUP_RESTORE_CHECK_INTERVAL: 1m
+DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT: PT10M
