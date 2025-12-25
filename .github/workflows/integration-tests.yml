@@ -76,6 +76,8 @@ jobs:
             name: test-minio
             namespace: minio
           spec:
+            buckets:
+              - name: dbaas-backup-restore-test
             configuration:
               name: minio-env
             requestAutoCert: false
