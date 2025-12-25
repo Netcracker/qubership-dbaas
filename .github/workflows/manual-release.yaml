@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   release:
-    uses: netcracker/qubership-core-infra/.github/workflows/java-service-release.yaml@v2.test
+    uses: netcracker/qubership-core-infra/.github/workflows/java-service-release.yaml@v1.2.1
     with:
       version: "${{ inputs.version }}"
       dry-run: ${{ inputs.dry-run }}
