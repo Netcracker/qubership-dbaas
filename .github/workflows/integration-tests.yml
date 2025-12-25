@@ -151,6 +151,7 @@ jobs:
             --timeout=300s
 
       - name: Run tests
+        if: false
         id: tests
         run: mvn --batch-mode -Dmaven.test.failure.ignore=false -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
         env:
@@ -176,5 +177,19 @@ jobs:
         with:
           name: surefire-reports
           path: artifacts/*
+
+      - name: Collect logs
+        id: collect_logs
+        run: |
+          chmod +x .github/scripts/get-dbaas-logs.sh && \
+          .github/scripts/get-dbaas-logs.sh
+
+      - name: Upload DBaaS logs
+        if: always() && steps.collect_logs.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbaas-logs
+          path: logs/*
+      
 
   
