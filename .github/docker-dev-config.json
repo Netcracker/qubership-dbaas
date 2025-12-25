@@ -3,7 +3,7 @@
       {
         "name": "default",
         "file": "dbaas/Dockerfile",
-        "context": "./artifacts/pre-built-artifact/dbaas",        
+        "context": "./artifacts/dbaas",        
         "download-artifact": true
       },
       {
