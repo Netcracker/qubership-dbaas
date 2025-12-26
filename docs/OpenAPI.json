@@ -338,13 +338,6 @@
                 },
                 "description": "Apply the filter to the remaining databases"
               },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
-              },
               "exclude": {
                 "type": "array",
                 "items": {
@@ -451,13 +444,6 @@
                   "$ref": "#/components/schemas/Filter"
                 },
                 "description": "Apply the filter to the remaining databases"
-              },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
               },
               "exclude": {
                 "type": "array",
@@ -653,6 +639,30 @@
             "$ref": "#/components/schemas/BGState"
           }
         }
+      },
+      "ClassifierResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ClassifierType"
+          },
+          "classifier": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "classifierBeforeMapper": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "ClassifierType": {
+        "type": "string",
+        "enum": [
+          "NEW",
+          "REPLACED",
+          "TRANSIENT_REPLACED"
+        ]
       },
       "ClassifierWithRolesRequest": {
         "type": "object",
@@ -1801,13 +1811,6 @@
               "$ref": "#/components/schemas/Filter"
             },
             "description": "Apply the filter to the remaining databases"
-          },
-          "include": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Filter"
-            },
-            "description": "Include databases that match any of the filters in the list"
           },
           "exclude": {
             "type": "array",
@@ -3099,8 +3102,7 @@
               ]
             ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           },
@@ -3207,8 +3209,7 @@
               ]
             ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           }
@@ -3281,13 +3282,6 @@
                   "$ref": "#/components/schemas/Filter"
                 },
                 "description": "Apply the filter to the remaining databases"
-              },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
               },
               "exclude": {
                 "type": "array",
@@ -3412,13 +3406,6 @@
                 },
                 "description": "Apply the filter to the remaining databases"
               },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
-              },
               "exclude": {
                 "type": "array",
                 "items": {
@@ -3494,22 +3481,6 @@
               "Backup Not Found"
             ],
             "description": "Aggregated error messages during restore operation"
-          },
-          "duration": {
-            "type": "integer",
-            "format": "int64",
-            "examples": [
-              1200
-            ],
-            "description": "Aggregated duration of databases"
-          },
-          "attemptCount": {
-            "type": "integer",
-            "format": "int32",
-            "examples": [
-              1
-            ],
-            "description": "Total number of adapter requests"
           },
           "logicalRestores": {
             "type": "array",
@@ -4989,16 +4960,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Restore operation retried successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RestoreResponse"
-                }
-              }
-            }
-          },
           "202": {
             "description": "Restore retry accepted and is being processed",
             "content": {
