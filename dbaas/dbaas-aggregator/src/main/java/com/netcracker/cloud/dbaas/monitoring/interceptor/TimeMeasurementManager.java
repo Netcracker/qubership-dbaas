@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.monitoring.interceptor;
 
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -8,12 +9,14 @@ import io.micrometer.core.instrument.Timer;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.interceptor.InvocationContext;
+import jakarta.ws.rs.ProcessingException;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -86,22 +89,29 @@ public class TimeMeasurementManager {
             method = object.getClass().getMethod(method.getName(), method.getParameterTypes());
             TimeMeasure timeMeasureAnnotation = MethodUtils.getAnnotation(method, TimeMeasure.class, true, true);
             Object returnValue;
-            if (timeMeasureAnnotation != null) {
-                String metricName = timeMeasureAnnotation.value();
-                Tags tags = getTags(object, timeMeasureAnnotation);
-                Timer.Sample sample = Timer.start(meterRegistry);
-                try {
+            try {
+                if (timeMeasureAnnotation != null) {
+                    String metricName = timeMeasureAnnotation.value();
+                    Tags tags = getTags(object, timeMeasureAnnotation);
+                    Timer.Sample sample = Timer.start(meterRegistry);
+                    try {
+                        returnValue = method.invoke(object, args);
+                        increaseSuccessRequestCounter(metricName, tags);
+                    } catch (Throwable throwable) {
+                        increaseFailRequestCounter(metricName, tags);
+                        throw throwable;
+                    } finally {
+                        Timer timer = meterRegistry.timer(metricName, tags);
+                        sample.stop(timer);
+                    }
+                } else {
                     returnValue = method.invoke(object, args);
-                    increaseSuccessRequestCounter(metricName, tags);
-                } catch (Throwable throwable) {
-                    increaseFailRequestCounter(metricName, tags);
-                    throw throwable;
-                } finally {
-                    Timer timer = meterRegistry.timer(metricName, tags);
-                    sample.stop(timer);
                 }
-            } else {
-                returnValue = method.invoke(object, args);
+            } catch (InvocationTargetException exception) {
+                if (exception.getCause() instanceof ProcessingException processingException) {
+                    throw new AdapterException(processingException.getMessage());
+                }
+                throw exception.getCause() != null ? exception.getCause() : exception;
             }
             return returnValue;
         };
