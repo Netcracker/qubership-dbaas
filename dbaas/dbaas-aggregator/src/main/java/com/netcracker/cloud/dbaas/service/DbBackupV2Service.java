@@ -38,6 +38,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
@@ -652,71 +653,44 @@ public class DbBackupV2Service {
 
         log.info("Start restore for backup {}", backupName);
         Backup backup = getBackupOrThrowException(backupName);
+        assertBackupStatusCompleted(backupName, backup.getStatus());
 
-        BackupStatus backupStatus = backup.getStatus();
-        if (BackupStatus.COMPLETED != backupStatus) {
-            log.error("Restore can`t process due to backup status {}", backupStatus);
-            throw new UnprocessableEntityException(
-                    backupName, String.format("restore can`t process due to backup status %s", backupStatus),
-                    Source.builder().build());
-        }
-
-        LockConfiguration config = new LockConfiguration(
-                Instant.now(),
-                RESTORE,
-                Duration.ofMinutes(2),
-                Duration.ofMinutes(0)
-        );
-
-        Optional<SimpleLock> optLock = lockProvider.lock(config);
-
-        if (optLock.isEmpty())
-            throw new IllegalResourceStateException("restore already running", Source.builder().build());
-
-        SimpleLock lock = optLock.get();
-        boolean unlocked = false;
-
-        try {
-            if (restoreRepository.countNotCompletedRestores() > 0)
-                throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
-
-            Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
+        Restore restore = restoreLockWrapper(() -> {
+            Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
             if (!dryRun)
-                restoreRepository.save(restore);
-            // unlock method after save restore
-            lock.unlock();
-            unlocked = true;
+                restoreRepository.save(currRestore);
+            return currRestore;
+        });
 
-            // DryRun on adapters
-            startRestore(restore, true);
+        // DryRun on adapters
+        startRestore(restore, true);
+        aggregateRestoreStatus(restore);
+        if (!dryRun && RestoreStatus.FAILED != restore.getStatus()) {
+            // Real run on adapters
+            restore = getRestoreOrThrowException(restoreName);
+            startRestore(restore, false);
             aggregateRestoreStatus(restore);
-            if (!dryRun && RestoreStatus.FAILED != restore.getStatus()) {
-                // Real run on adapters
-                restore = getRestoreOrThrowException(restoreName);
-                startRestore(restore, false);
-                aggregateRestoreStatus(restore);
-            }
-            if (!dryRun)
-                restoreRepository.save(restore);
-            else {
-                restore.getLogicalRestores().forEach(lr -> {
-                    for (RestoreDatabase restoreDatabase : lr.getRestoreDatabases()) {
-                        restoreDatabase.setClassifiers(
-                                findSimilarDbByClassifier(restoreDatabase.getClassifiers(), lr.getType(), true).stream()
-                                        .toList()
-                        );
-                    }
-                });
-                restore.getExternalDatabases().forEach(externalDb -> {
-                    externalDb.setClassifiers(findSimilarDbByClassifier(externalDb.getClassifiers(), externalDb.getType(), true).stream().toList());
-                });
-            }
-            return mapper.toRestoreResponse(restore);
-        } finally {
-            if (!unlocked) {
-                lock.unlock();
-            }
         }
+        if (!dryRun)
+            restoreRepository.save(restore);
+        else {
+            updateRestoreClassifiersOnDryRun(restore.getLogicalRestores(), restore.getExternalDatabases());
+        }
+        return mapper.toRestoreResponse(restore);
+    }
+
+    private void updateRestoreClassifiersOnDryRun(List<LogicalRestore> logicalRestore, List<RestoreExternalDatabase> externalDatabases) {
+        logicalRestore.forEach(lr -> {
+            for (RestoreDatabase restoreDatabase : lr.getRestoreDatabases()) {
+                restoreDatabase.setClassifiers(
+                        findSimilarDbByClassifier(restoreDatabase.getClassifiers(), lr.getType(), true).stream()
+                                .toList()
+                );
+            }
+        });
+        externalDatabases.forEach(externalDb ->
+                externalDb.setClassifiers(findSimilarDbByClassifier(externalDb.getClassifiers(), externalDb.getType(), true).stream().toList())
+        );
     }
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
@@ -950,7 +924,7 @@ public class DbBackupV2Service {
         updatedClassifier.put(NAMESPACE, targetNamespace);
         if (targetTenant != null)
             updatedClassifier.put(TENANT_ID, targetTenant);
-        if(!targetNamespace.equals(classifier.getClassifierBeforeMapper().get(NAMESPACE)))
+        if (!targetNamespace.equals(classifier.getClassifierBeforeMapper().get(NAMESPACE)))
             classifier.setClassifier(updatedClassifier);
         return classifier;
     }
@@ -1413,10 +1387,6 @@ public class DbBackupV2Service {
         return uniqueClassifiers;
     }
 
-    private Classifier wrapClassifier(SortedMap<String, Object> classifier) {
-        return new Classifier(ClassifierType.TRANSIENT_REPLACED, classifier, null);
-    }
-
     private Database createLogicalDatabase(String dbName,
                                            Map<String, Object> settings,
                                            Set<SortedMap<String, Object>> classifiers,
@@ -1505,40 +1475,24 @@ public class DbBackupV2Service {
                     ),
                     Source.builder().build());
         }
-        // Check if the status of backup has COMPLETED
-        BackupStatus backupStatus = restore.getBackup().getStatus();
-        if (BackupStatus.COMPLETED != backupStatus) {
-            log.error("Restore can`t process due to backup status {}", backupStatus);
-            throw new UnprocessableEntityException(
-                    restore.getBackup().getName(), String.format("restore can`t process due to backup status %s", backupStatus),
-                    Source.builder().build());
-        }
-        // Only one retry restore operation able to process
-        LockConfiguration config = new LockConfiguration(
-                Instant.now(),
-                RESTORE,
-                Duration.ofMinutes(2),
-                Duration.ofMinutes(0));
 
-        Optional<SimpleLock> optLock = lockProvider.lock(config);
+        assertBackupStatusCompleted(restore.getBackup().getName(), restore.getBackup().getStatus());
 
-        if (optLock.isEmpty())
-            throw new IllegalResourceStateException("restore already running", Source.builder().build());
-
-        SimpleLock lock = optLock.get();
-        boolean unlocked = false;
-
-        try {
-            if (restoreRepository.countNotCompletedRestores() > 0)
-                throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
-
+        return restoreLockWrapper(() -> {
             retryRestore(restore);
             aggregateRestoreStatus(restore);
             restoreRepository.save(restore);
             return mapper.toRestoreResponse(restore);
-        } finally {
-            if (!unlocked)
-                lock.unlock();
+        });
+    }
+
+    private void assertBackupStatusCompleted(String backupName, BackupStatus status) {
+        // Check if the status of backup has COMPLETED
+        if (BackupStatus.COMPLETED != status) {
+            log.error("Restore can`t process due to backup status {}", status);
+            throw new UnprocessableEntityException(
+                    backupName, String.format("restore can`t process due to backup status %s", status),
+                    Source.builder().build());
         }
     }
 
@@ -1659,6 +1613,31 @@ public class DbBackupV2Service {
     private Restore getRestoreOrThrowException(String restoreName) {
         return restoreRepository.findByIdOptional(restoreName)
                 .orElseThrow(() -> new BackupRestorationNotFoundException(restoreName, Source.builder().build()));
+    }
+
+    private <T> T restoreLockWrapper(Supplier<T> action) {
+        // Only one retry restore operation able to process
+        LockConfiguration config = new LockConfiguration(
+                Instant.now(),
+                RESTORE,
+                Duration.ofMinutes(2),
+                Duration.ofMinutes(0));
+
+        Optional<SimpleLock> optLock = lockProvider.lock(config);
+
+        if (optLock.isEmpty())
+            throw new IllegalResourceStateException("restore already running", Source.builder().build());
+        // Start locking action
+        SimpleLock lock = optLock.get();
+        boolean unlocked = false;
+        try {
+            if (restoreRepository.countNotCompletedRestores() > 0)
+                throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
+            return action.get();
+        } finally {
+            if (!unlocked)
+                lock.unlock();
+        }
     }
 
     private RetryPolicy<Object> buildRetryPolicy(String name, String operation) {
