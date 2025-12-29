@@ -20,6 +20,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
@@ -33,7 +35,7 @@ import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 @RolesAllowed(DB_CLIENT)
 public class CompositeController {
 
-    private final AtomicLong lastAppliedIndex = new AtomicLong(0);
+    private final ConcurrentMap<String, AtomicLong> lastAppliedIndexes = new ConcurrentHashMap<>();
     private final CompositeNamespaceService compositeService;
 
     public CompositeController(CompositeNamespaceService compositeService) {
@@ -72,18 +74,19 @@ public class CompositeController {
             }
         }
 
-        long currentIndex;
-        do {
-            currentIndex = lastAppliedIndex.get();
-            if (compositeRequest.getIndex() < currentIndex) {
+        lastAppliedIndexes.compute(compositeRequest.getId(), (id, atomicIndex) -> {
+            AtomicLong index = (atomicIndex == null) ? new AtomicLong(0) : atomicIndex;
+            if (compositeRequest.getIndex() < index.get()) {
                 throw new NamespaceCompositeValidationException(
                         Source.builder().build(),
-                        "New composite version %d is less that last applied version %d".formatted(compositeRequest.getIndex(), currentIndex),
+                        "New composite version %d is less that last applied version %d".formatted(compositeRequest.getIndex(), index.get()),
                         CONFLICT.getStatusCode()
                 );
             }
             compositeService.saveOrUpdateCompositeStructure(compositeRequest);
-        } while (!lastAppliedIndex.compareAndSet(currentIndex, compositeRequest.getIndex()));
+            index.set(compositeRequest.getIndex());
+            return index;
+        });
 
         return Response.noContent().build();
     }
