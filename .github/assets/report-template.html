@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" sizes="any"
+          href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>"/>
+    <title>Daily DBaaS Integration Tests Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            padding: 20px;
+            background: linear-gradient(to bottom right, #f0f4f8, #e2e8f0);
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #4f46e5;
+        }
+
+        table {
+            width: 95%;
+            margin: 20px auto;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            background: white;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: center;
+        }
+
+        th {
+            background: #4f46e5;
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:nth-child(even) td {
+            background: #f7f9fc;
+        }
+
+        tr:hover td {
+            background: #e0e7ff;
+            transition: background 0.3s;
+        }
+
+        .success-cell {
+            background: #16a34a;
+            color: white;
+            font-weight: 500;
+            border-radius: 6px;
+            padding: 6px;
+        }
+
+        .failure-cell {
+            background: #dc2626;
+            color: white;
+            font-weight: 500;
+            border-radius: 6px;
+            padding: 6px;
+        }
+
+        a .success-cell, a .failure-cell {
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+            width: 100%;
+        }
+
+        canvas {
+            display: block;
+            margin: 40px auto;
+            max-width: 95%;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<h1>Daily Integration Tests Report</h1>
+
+<canvas id="weeklyChart" width="1000" height="400"></canvas>
+
+<table id="reportTable"></table>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        fetch('history.json')
+            .then(res => res.json())
+            .then(data => {
+                const table = document.getElementById('reportTable');
+                const dates = [];
+                const passedData = {};
+                const failedData = {};
+                const barLinks = {};
+
+                // Gather all unique project names
+                const projects = new Set();
+                Object.values(data).forEach(dayEntry => {
+                    if (dayEntry.projects) {
+                        dayEntry.projects.forEach(p => projects.add(p.name));
+                    }
+                });
+                const projectList = [...projects].sort();
+
+                // Last 7 days (newest first)
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date();
+                    d.setUTCDate(d.getUTCDate() - i);
+                    dates.push(d.toISOString().slice(0, 10));
+                }
+                dates.reverse();
+
+                const today = new Date().toISOString().slice(0, 10);
+
+                projectList.forEach(p => {
+                    passedData[p] = [];
+                    failedData[p] = [];
+                    barLinks[p] = { passed: [], failed: [] };
+                });
+
+                // ---- Header ----
+                const header = document.createElement('tr');
+                const headerHtml = ['<th>Project</th>'];
+                dates.forEach(day => {
+                    let dayFailed = false;
+                    const dayEntry = data[day];
+
+                    if (dayEntry && dayEntry.projects) {
+                        for (const p of dayEntry.projects) {
+                            if (p.failures > 0) dayFailed = true;
+                        }
+                    }
+
+                    const warning = dayFailed ? ' ⚠️' : '';
+                    headerHtml.push(`<th>${day}${warning}</th>`);
+                });
+                header.innerHTML = headerHtml.join('');
+                table.appendChild(header);
+
+                // ---- Rows ----
+                projectList.forEach(project => {
+                    const row = document.createElement('tr');
+                    const jobUrlToday = data[today] && data[today].job ? data[today].job : null;
+
+                    // Project name cell
+                    const projectCell = document.createElement('td');
+                    if (jobUrlToday) {
+                        const link = document.createElement('a');
+                        link.href = jobUrlToday;
+                        link.target = "_blank";
+                        link.textContent = project;
+                        link.style.fontWeight = "600";
+                        link.style.color = "#4f46e5";
+                        link.style.textDecoration = "none";
+                        projectCell.appendChild(link);
+                    } else {
+                        projectCell.textContent = project;
+                    }
+                    row.appendChild(projectCell);
+
+                    // Day cells
+                    dates.forEach(day => {
+                        const cell = document.createElement('td');
+                        let entry = null;
+                        const dayEntry = data[day];
+
+                        if (dayEntry && dayEntry.projects) {
+                            entry = dayEntry.projects.find(p => p.name === project) || null;
+                        }
+
+                        if (entry) {
+                            const successes = entry.successes;
+                            const failures = entry.failures;
+                            const cls = failures > 0 ? 'failure-cell' : 'success-cell';
+                            const text = `✔️ ${successes} / ⚠️ ${failures}`;
+
+                            const jobUrl = dayEntry && dayEntry.job ? dayEntry.job : null;
+
+                            if (day === today) {
+                                // today's cell → link to local report
+                                const link = document.createElement('a');
+                                link.href = entry.path + 'index.html';
+                                link.target = '_blank';
+                                const span = document.createElement('span');
+                                span.className = cls;
+                                span.textContent = text;
+                                link.appendChild(span);
+                                cell.appendChild(link);
+                            } else if (jobUrl) {
+                                // past days → link to job URL
+                                const link = document.createElement('a');
+                                link.href = jobUrl;
+                                link.target = '_blank';
+                                const span = document.createElement('span');
+                                span.className = cls;
+                                span.textContent = text;
+                                link.appendChild(span);
+                                cell.appendChild(link);
+                            } else {
+                                const span = document.createElement('span');
+                                span.className = cls;
+                                span.textContent = text;
+                                cell.appendChild(span);
+                            }
+
+                            passedData[project].push(successes);
+                            failedData[project].push(failures);
+
+                            if (day === today) {
+                                barLinks[project].passed.push(entry.path + 'index.html');
+                                barLinks[project].failed.push(entry.path + 'index.html');
+                            } else {
+                                barLinks[project].passed.push(jobUrl);
+                                barLinks[project].failed.push(jobUrl);
+                            }
+                        } else {
+                            cell.textContent = '-';
+                            passedData[project].push(0);
+                            failedData[project].push(0);
+                            barLinks[project].passed.push(null);
+                            barLinks[project].failed.push(null);
+                        }
+
+                        row.appendChild(cell);
+                    });
+
+                    table.appendChild(row);
+                });
+
+                // ---- Chart ----
+                const datasets = [];
+                projectList.forEach(project => {
+                    datasets.push({
+                        label: project + ' Passed',
+                        data: passedData[project],
+                        backgroundColor: '#16a34a',
+                        stack: project,
+                        custom: { links: barLinks[project].passed }
+                    });
+                    datasets.push({
+                        label: project + ' Failed',
+                        data: failedData[project],
+                        backgroundColor: '#dc2626',
+                        stack: project,
+                        custom: { links: barLinks[project].failed }
+                    });
+                });
+
+                const ctx = document.getElementById('weeklyChart').getContext('2d');
+                const weeklyChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: dates, datasets },
+                    options: {
+                        responsive: true,
+                        animation: false,
+                        plugins: {
+                            legend: { display: false },
+                            title: {
+                                display: true,
+                                text: 'Tests Passed vs Failed (Last 7 Days, per project)',
+                                font: { size: 18, weight: '600' }
+                            }
+                        },
+                        scales: { y: { beginAtZero: true, precision: 0 } },
+                        onClick: (evt, elements) => {
+                            if (!elements.length) return;
+                            const element = elements[0];
+                            const ds = weeklyChart.data.datasets[element.datasetIndex];
+                            const link = ds.custom.links[element.index];
+                            if (link) window.open(link, '_blank');
+                        },
+                        hover: {
+                            onHover: (evt, elements) => {
+                                evt.native.target.style.cursor = elements[0] ? 'pointer' : 'default';
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(err => console.error('Failed to load history.json', err));
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,13 @@
+postgresPassword: ${POSTGRES_PASSWORD}
+
+patroni:
+  replicas: ${PATRONI_REPLICAS_NUMBER}
+# enable - in case of there is not enough available ndoes
+#  affinity:
+#    podAntiAffinity: {}
+  storage:
+    storageClass: ${STORAGE_CLASS}
+    size: 2Gi
+  securityContext:
+    fsGroup: 26
+    runAsUser: 26
