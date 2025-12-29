@@ -18,5 +18,5 @@ public class CompositeStructureDto {
     private Set<String> namespaces;
 
     @Schema(description = "Index of composite structure (changes on each composite struct modification)", required = true)
-    private Long index;
+    private long index;
 }
