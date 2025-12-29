@@ -16,4 +16,7 @@ public class CompositeStructureDto {
     @Schema(description = "Namespaces that are included in composite structure (baseline and satellites)", required = true)
     @NonNull
     private Set<String> namespaces;
+
+    @Schema(description = "Index of composite structure (changes on each composite struct modification)", required = true)
+    private Long index;
 }

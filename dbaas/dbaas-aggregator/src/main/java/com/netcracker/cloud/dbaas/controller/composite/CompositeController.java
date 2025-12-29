@@ -5,25 +5,26 @@ import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.exceptions.NamespaceCompositeValidationException;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
-import org.eclipse.microprofile.openapi.annotations.Operation;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
 import static com.netcracker.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
+import static jakarta.ws.rs.core.Response.Status.CONFLICT;
 import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 
 @Slf4j
@@ -32,6 +33,7 @@ import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 @RolesAllowed(DB_CLIENT)
 public class CompositeController {
 
+    private final AtomicLong lastAppliedIndex = new AtomicLong(0);
     private final CompositeNamespaceService compositeService;
 
     public CompositeController(CompositeNamespaceService compositeService) {
@@ -49,10 +51,12 @@ public class CompositeController {
                     "associated with another composite structure"),
             @APIResponse(responseCode = "500", description = "Internal server error")
     })
+
     @POST
     @Transactional
     public Response saveOrUpdateComposite(CompositeStructureDto compositeRequest) {
         log.info("Received request to save or update composite {}", compositeRequest);
+
         if (StringUtils.isBlank(compositeRequest.getId())) {
             throw new NamespaceCompositeValidationException(Source.builder().pointer("/id").build(), "id field can't be empty");
         }
@@ -67,7 +71,19 @@ public class CompositeController {
                         409);
             }
         }
-        compositeService.saveOrUpdateCompositeStructure(compositeRequest);
+
+        long currentIndex;
+        do {
+            currentIndex = lastAppliedIndex.get();
+            if (compositeRequest.getIndex() < currentIndex) {
+                throw new NamespaceCompositeValidationException(
+                        Source.builder().build(),
+                        "New composite version %d is less that last applied version %d".formatted(compositeRequest.getIndex(), currentIndex),
+                        CONFLICT.getStatusCode()
+                );
+            }
+            compositeService.saveOrUpdateCompositeStructure(compositeRequest);
+        } while (!lastAppliedIndex.compareAndSet(currentIndex, compositeRequest.getIndex()));
 
         return Response.noContent().build();
     }
