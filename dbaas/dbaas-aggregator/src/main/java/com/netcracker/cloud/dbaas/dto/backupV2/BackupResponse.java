@@ -3,7 +3,7 @@ package com.netcracker.cloud.dbaas.dto.backupV2;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
-import com.netcracker.cloud.dbaas.utils.validation.BackupGroup;
+import com.netcracker.cloud.dbaas.utils.validation.group.BackupGroup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
