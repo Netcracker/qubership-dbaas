@@ -1,5 +1,8 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
+import com.netcracker.cloud.dbaas.utils.validation.NotEmptyFilter;
+import com.netcracker.cloud.dbaas.utils.validation.group.BackupGroup;
+import com.netcracker.cloud.dbaas.utils.validation.group.RestoreGroup;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
@@ -9,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Data
+@NotEmptyFilter(groups = {BackupGroup.class, RestoreGroup.class})
 @NoArgsConstructor
 @Schema(description = "Single filter criteria for backup and restore operations")
 public class Filter {
