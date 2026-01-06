@@ -174,7 +174,7 @@ jobs:
 
       - name: Upload Surefire reports
         if: always() && steps.collect_reports.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: surefire-reports
           path: artifacts/*
@@ -187,7 +187,7 @@ jobs:
 
       - name: Upload DBaaS logs
         if: always() && steps.collect_logs.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dbaas-logs
           path: logs/*
