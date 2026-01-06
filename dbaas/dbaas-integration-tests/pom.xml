@@ -15,7 +15,7 @@
         <skipIT>true</skipIT>
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
         <logback.version>1.5.23</logback.version>
-        <junit.version>5.14.1</junit.version>
+        <junit.version>6.0.2</junit.version>
         <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
 
