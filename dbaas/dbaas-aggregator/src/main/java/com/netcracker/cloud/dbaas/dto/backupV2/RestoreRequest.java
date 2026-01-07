@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
-import com.netcracker.cloud.dbaas.utils.validation.RestoreGroup;
+import com.netcracker.cloud.dbaas.utils.validation.group.RestoreGroup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.groups.ConvertGroup;
