@@ -26,7 +26,7 @@ public class RestoreDatabaseResponse {
             description = "List of database classifiers. Each classifier is a sorted map of attributes.",
             examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]"
     )
-    private List<Map<String, Object>> classifiers;
+    private List<ClassifierResponse> classifiers;
     @Schema(
             description = "List of database users",
             examples = "[{\"name\":\"username\",\"role\":\"admin\"}"
@@ -58,7 +58,7 @@ public class RestoreDatabaseResponse {
             required = true
     )
     private String path;
-    @Schema(description = "Error message if the backup failed",  examples = "Restore Not Found")
+    @Schema(description = "Error message if the backup failed", examples = "Restore Not Found")
     private String errorMessage;
     @Schema(description = "Timestamp when the restore was created", examples = "2025-11-13T12:34:56Z")
     private Instant creationTime;
