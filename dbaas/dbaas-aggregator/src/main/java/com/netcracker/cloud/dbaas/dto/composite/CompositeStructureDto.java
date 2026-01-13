@@ -1,12 +1,15 @@
 package com.netcracker.cloud.dbaas.dto.composite;
 
+import jakarta.validation.constraints.PositiveOrZero;
+import lombok.*;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
-import lombok.Data;
-import lombok.NonNull;
 
+import java.math.BigDecimal;
 import java.util.Set;
 
 @Data
+@AllArgsConstructor
+@Builder
 public class CompositeStructureDto {
 
     @Schema(description = "Composite identifier. Usually it's baseline or origin baseline in blue-green scheme", required = true)
@@ -18,5 +21,6 @@ public class CompositeStructureDto {
     private Set<String> namespaces;
 
     @Schema(description = "Index of composite structure (changes on each composite struct modification)", required = true)
-    private long index;
+    @PositiveOrZero
+    private BigDecimal modifyIndex;
 }

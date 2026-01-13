@@ -6,15 +6,15 @@ import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
-import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.mockito.InjectSpy;
 import io.restassured.common.mapper.TypeRef;
 import jakarta.ws.rs.core.MediaType;
-
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -22,9 +22,7 @@ import java.util.Set;
 
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.*;
@@ -34,13 +32,13 @@ import static org.mockito.Mockito.*;
 @TestHTTPEndpoint(CompositeController.class)
 class CompositeControllerTest {
 
-    @InjectMock
-    CompositeNamespaceService compositeService;
+    @InjectSpy
+    CompositeNamespaceService compositeServiceMock;
 
     @Test
     void testGetAllCompositeStructures_Success() {
         CompositeStructure expected = new CompositeStructure("ns-1", Set.of("ns-1", "ns-2"));
-        when(compositeService.getAllCompositeStructures())
+        when(compositeServiceMock.getAllCompositeStructures())
                 .thenReturn(List.of(expected));
 
         List<CompositeStructureDto> allCompositeStructures = given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
@@ -58,7 +56,7 @@ class CompositeControllerTest {
 
     @Test
     void testGetAllCompositeStructures_EmptyList() {
-        when(compositeService.getAllCompositeStructures()).thenReturn(Collections.emptyList());
+        when(compositeServiceMock.getAllCompositeStructures()).thenReturn(Collections.emptyList());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get()
@@ -66,14 +64,12 @@ class CompositeControllerTest {
                 .statusCode(OK.getStatusCode())
                 .body(is("[]"));
 
-        verify(compositeService).getAllCompositeStructures();
-        verifyNoMoreInteractions(compositeService);
-
+        verify(compositeServiceMock).getAllCompositeStructures();
     }
 
     @Test
     void testGetAllCompositeStructures_InternalServerError() {
-        when(compositeService.getAllCompositeStructures()).thenThrow(new RuntimeException("Internal Server Error"));
+        when(compositeServiceMock.getAllCompositeStructures()).thenThrow(new RuntimeException("Internal Server Error"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get()
@@ -86,7 +82,7 @@ class CompositeControllerTest {
     @Test
     void testGetCompositeById_Success() {
         CompositeStructure expected = new CompositeStructure("test-id", Set.of("ns-1", "ns-2"));
-        when(compositeService.getCompositeStructure("test-id")).thenReturn(Optional.of(expected));
+        when(compositeServiceMock.getCompositeStructure("test-id")).thenReturn(Optional.of(expected));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get("/test-id")
@@ -99,7 +95,7 @@ class CompositeControllerTest {
 
     @Test
     void testGetCompositeById_NotFound() {
-        when(compositeService.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
+        when(compositeServiceMock.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get("/non-existent-id")
@@ -109,7 +105,7 @@ class CompositeControllerTest {
 
     @Test
     void testGetCompositeById_InternalServerError() {
-        when(compositeService.getCompositeStructure("error-id")).thenThrow(new RuntimeException("Internal Server Error"));
+        when(compositeServiceMock.getCompositeStructure("error-id")).thenThrow(new RuntimeException("Internal Server Error"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get("/error-id")
@@ -121,7 +117,11 @@ class CompositeControllerTest {
 
     @Test
     void testSaveOrUpdateComposite_Success() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("test-id", Set.of("ns-1", "ns-2"));
+        compositeServiceMock.deleteCompositeStructure("ns-1");
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("ns-1")
+                .namespaces(Set.of("ns-1", "ns-2"))
+                .build();
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body((new ObjectMapper()).writeValueAsString(request))
@@ -129,15 +129,17 @@ class CompositeControllerTest {
                 .then()
                 .statusCode(NO_CONTENT.getStatusCode());
 
-        verify(compositeService).saveOrUpdateCompositeStructure(request);
-        verify(compositeService).getBaselineByNamespace("ns-1");
-        verify(compositeService).getBaselineByNamespace("ns-2");
-        verifyNoMoreInteractions(compositeService);
+        verify(compositeServiceMock).saveOrUpdateCompositeStructure(request);
+        verify(compositeServiceMock).getBaselineByNamespace("ns-1");
+        verify(compositeServiceMock).getBaselineByNamespace("ns-2");
     }
 
     @Test
     void testSaveOrUpdateComposite_IdBlank() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("", Set.of("ns-1", "ns-2"));
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("")
+                .namespaces(Set.of("ns-1", "ns-2"))
+                .build();
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -147,12 +149,15 @@ class CompositeControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", is("Validation error: 'id field can't be empty'"));
 
-        verifyNoInteractions(compositeService);
+        verifyNoInteractions(compositeServiceMock);
     }
 
     @Test
     void testSaveOrUpdateComposite_NamespacesEmpty() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("test-id", Collections.emptySet());
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("test-id")
+                .namespaces(Collections.emptySet())
+                .build();
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -162,13 +167,16 @@ class CompositeControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", is("Validation error: 'namespace field can't be empty'"));
 
-        verifyNoInteractions(compositeService);
+        verifyNoInteractions(compositeServiceMock);
     }
 
     @Test
     void testSaveOrUpdateComposite_NamespaceConflict() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("test-id", Set.of("ns-1", "ns-2"));
-        when(compositeService.getBaselineByNamespace("ns-2")).thenReturn(Optional.of("existing-id"));
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("test-id")
+                .namespaces(Set.of("ns-1", "ns-2"))
+                .build();
+        when(compositeServiceMock.getBaselineByNamespace("ns-2")).thenReturn(Optional.of("existing-id"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -178,13 +186,35 @@ class CompositeControllerTest {
                 .statusCode(CONFLICT.getStatusCode())
                 .body("message", is("Validation error: 'can't save or update composite structure because ns-2 namespace is registered in another composite'"));
 
-        verify(compositeService, never()).saveOrUpdateCompositeStructure(request);
+        verify(compositeServiceMock, never()).saveOrUpdateCompositeStructure(request);
     }
 
+    @Test
+    void testSaveOrUpdateComposite_WrongModifyIndex() throws JsonProcessingException {
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), BigDecimal.ONE)))
+                .when().post()
+                .then()
+                .statusCode(NO_CONTENT.getStatusCode());
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), BigDecimal.TWO)))
+                .when().post()
+                .then()
+                .statusCode(NO_CONTENT.getStatusCode());
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), BigDecimal.ONE)))
+                .when().post()
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", is("Validation error: 'new modify index '1' should be greater than current index '2''"));
+    }
 
     @Test
     void testDeleteCompositeById_Success() {
-        when(compositeService.getCompositeStructure("test-id"))
+        when(compositeServiceMock.getCompositeStructure("test-id"))
                 .thenReturn(Optional.of(new CompositeStructure("test-id", Set.of("test-id", "ns-1"))));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
@@ -192,27 +222,27 @@ class CompositeControllerTest {
                 .then()
                 .statusCode(NO_CONTENT.getStatusCode());
 
-        verify(compositeService).getCompositeStructure("test-id");
-        verify(compositeService).deleteCompositeStructure("test-id");
-        verifyNoMoreInteractions(compositeService);
+
+        verify(compositeServiceMock).getCompositeStructure("test-id");
+        verify(compositeServiceMock).deleteCompositeStructure("test-id");
     }
 
     @Test
     void testDeleteCompositeById_NotFound() {
-        when(compositeService.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
+        when(compositeServiceMock.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().delete("/non-existent-id/delete")
                 .then()
                 .statusCode(NOT_FOUND.getStatusCode());
 
-        verify(compositeService).getCompositeStructure("non-existent-id");
-        verifyNoMoreInteractions(compositeService);
+        verify(compositeServiceMock).getCompositeStructure("non-existent-id");
+        verifyNoMoreInteractions(compositeServiceMock);
     }
 
     @Test
     void testDeleteCompositeById_InternalServerError() {
-        when(compositeService.getCompositeStructure("error-id"))
+        when(compositeServiceMock.getCompositeStructure("error-id"))
                 .thenThrow(new RuntimeException("Internal Server Error"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")

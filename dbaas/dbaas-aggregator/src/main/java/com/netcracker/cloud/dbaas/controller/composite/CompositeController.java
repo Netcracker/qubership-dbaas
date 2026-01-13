@@ -20,13 +20,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
 import static com.netcracker.cloud.dbaas.controller.error.Utils.createTmfErrorResponse;
-import static jakarta.ws.rs.core.Response.Status.CONFLICT;
 import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 
 @Slf4j
@@ -35,7 +31,6 @@ import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 @RolesAllowed(DB_CLIENT)
 public class CompositeController {
 
-    private final ConcurrentMap<String, AtomicLong> lastAppliedIndexes = new ConcurrentHashMap<>();
     private final CompositeNamespaceService compositeService;
 
     public CompositeController(CompositeNamespaceService compositeService) {
@@ -53,12 +48,10 @@ public class CompositeController {
                     "associated with another composite structure"),
             @APIResponse(responseCode = "500", description = "Internal server error")
     })
-
     @POST
     @Transactional
     public Response saveOrUpdateComposite(CompositeStructureDto compositeRequest) {
         log.info("Received request to save or update composite {}", compositeRequest);
-
         if (StringUtils.isBlank(compositeRequest.getId())) {
             throw new NamespaceCompositeValidationException(Source.builder().pointer("/id").build(), "id field can't be empty");
         }
@@ -73,20 +66,7 @@ public class CompositeController {
                         409);
             }
         }
-
-        lastAppliedIndexes.compute(compositeRequest.getId(), (id, atomicIndex) -> {
-            AtomicLong index = (atomicIndex == null) ? new AtomicLong(0) : atomicIndex;
-            if (compositeRequest.getIndex() < index.get()) {
-                throw new NamespaceCompositeValidationException(
-                        Source.builder().build(),
-                        "New composite version %d is less that last applied version %d".formatted(compositeRequest.getIndex(), index.get()),
-                        CONFLICT.getStatusCode()
-                );
-            }
-            compositeService.saveOrUpdateCompositeStructure(compositeRequest);
-            index.set(compositeRequest.getIndex());
-            return index;
-        });
+        compositeService.saveOrUpdateCompositeStructure(compositeRequest);
 
         return Response.noContent().build();
     }
@@ -104,7 +84,10 @@ public class CompositeController {
         log.info("Received request to get all composite structures");
         List<CompositeStructure> compositeStructures = compositeService.getAllCompositeStructures();
         List<CompositeStructureDto> compositeStructureResponse = compositeStructures.stream()
-                .map(compositeStructure -> new CompositeStructureDto(compositeStructure.getBaseline(), compositeStructure.getNamespaces()))
+                .map(compositeStructure -> CompositeStructureDto.builder()
+                        .id(compositeStructure.getBaseline())
+                        .namespaces(compositeStructure.getNamespaces())
+                        .build())
                 .toList();
         return Response.ok(compositeStructureResponse).build();
     }
@@ -127,7 +110,11 @@ public class CompositeController {
         if (composite.isEmpty()) {
             return getNotFoundTmfErrorResponse(compositeId);
         }
-        return Response.ok(new CompositeStructureDto(composite.get().getBaseline(), composite.get().getNamespaces())).build();
+        return Response.ok(CompositeStructureDto.builder()
+                        .id(composite.get().getBaseline())
+                        .namespaces(composite.get().getNamespaces())
+                        .build())
+                .build();
     }
 
     @NotNull
