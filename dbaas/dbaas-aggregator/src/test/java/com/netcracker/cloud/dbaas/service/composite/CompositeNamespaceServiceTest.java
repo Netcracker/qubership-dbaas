@@ -12,7 +12,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -35,7 +34,7 @@ class CompositeNamespaceServiceTest {
         CompositeStructureDto compositeRequest = CompositeStructureDto.builder()
                 .id("test-id")
                 .namespaces(new HashSet<>(Set.of("ns-1", "ns-2")))
-                .modifyIndex(BigDecimal.ONE)
+                .modifyIndex(1L)
                 .build();
 
         assertDoesNotThrow(() -> compositeNamespaceService.saveOrUpdateCompositeStructure(compositeRequest));

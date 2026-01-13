@@ -22,5 +22,5 @@ public class CompositeStructureDto {
 
     @Schema(description = "Index of composite structure (changes on each composite struct modification)", required = true)
     @PositiveOrZero
-    private BigDecimal modifyIndex;
+    private Long modifyIndex;
 }

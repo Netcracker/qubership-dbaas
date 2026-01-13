@@ -14,7 +14,6 @@ import io.restassured.common.mapper.TypeRef;
 import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -193,19 +192,19 @@ class CompositeControllerTest {
     void testSaveOrUpdateComposite_WrongModifyIndex() throws JsonProcessingException {
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), BigDecimal.ONE)))
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), 1L)))
                 .when().post()
                 .then()
                 .statusCode(NO_CONTENT.getStatusCode());
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), BigDecimal.TWO)))
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), 2L)))
                 .when().post()
                 .then()
                 .statusCode(NO_CONTENT.getStatusCode());
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), BigDecimal.ONE)))
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), 1L)))
                 .when().post()
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())

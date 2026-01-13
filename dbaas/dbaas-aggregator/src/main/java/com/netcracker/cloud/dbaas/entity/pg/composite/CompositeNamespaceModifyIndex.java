@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
@@ -21,10 +20,10 @@ public class CompositeNamespaceModifyIndex {
     @JoinColumn(name = "composite_namespace_id")
     private CompositeNamespace compositeNamespace;
 
-    @Column(name = "modify_index", nullable = false, precision = 20)
-    private BigDecimal modifyIndex;
+    @Column(name = "modify_index", nullable = false)
+    private long modifyIndex;
 
-    public CompositeNamespaceModifyIndex(CompositeNamespace compositeNamespace, BigDecimal modifyIndex) {
+    public CompositeNamespaceModifyIndex(CompositeNamespace compositeNamespace, long modifyIndex) {
         this.compositeNamespace = compositeNamespace;
         this.modifyIndex = modifyIndex;
     }
