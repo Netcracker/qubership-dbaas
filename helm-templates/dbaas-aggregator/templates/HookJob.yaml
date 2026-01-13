@@ -27,4 +27,11 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ .Values.SERVICE_NAME }}-env-variables
+          resources:
+            requests:
+              cpu: '100m'
+              memory: '50Mi'
+            limits:
+              cpu: '100m'
+              memory: '50Mi'
       restartPolicy: Never

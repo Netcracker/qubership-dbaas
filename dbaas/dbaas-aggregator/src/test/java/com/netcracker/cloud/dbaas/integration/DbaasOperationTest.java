@@ -27,6 +27,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.*;
 
@@ -68,6 +69,7 @@ class DbaasOperationTest {
 
     @Transactional
     public void clean() {
+        Mockito.reset();
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType().forEach(dbr -> databaseRegistryDbaasRepository.delete(dbr));
         physicalDatabaseDbaasRepository.findAll().forEach(pd -> physicalDatabaseDbaasRepository.delete(pd));
     }
