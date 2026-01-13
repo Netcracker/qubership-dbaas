@@ -33,12 +33,12 @@ import static org.mockito.Mockito.*;
 class CompositeControllerTest {
 
     @InjectSpy
-    CompositeNamespaceService compositeServiceMock;
+    CompositeNamespaceService compositeService;
 
     @Test
     void testGetAllCompositeStructures_Success() {
         CompositeStructure expected = new CompositeStructure("ns-1", Set.of("ns-1", "ns-2"));
-        when(compositeServiceMock.getAllCompositeStructures())
+        when(compositeService.getAllCompositeStructures())
                 .thenReturn(List.of(expected));
 
         List<CompositeStructureDto> allCompositeStructures = given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
@@ -56,7 +56,7 @@ class CompositeControllerTest {
 
     @Test
     void testGetAllCompositeStructures_EmptyList() {
-        when(compositeServiceMock.getAllCompositeStructures()).thenReturn(Collections.emptyList());
+        when(compositeService.getAllCompositeStructures()).thenReturn(Collections.emptyList());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get()
@@ -64,12 +64,12 @@ class CompositeControllerTest {
                 .statusCode(OK.getStatusCode())
                 .body(is("[]"));
 
-        verify(compositeServiceMock).getAllCompositeStructures();
+        verify(compositeService).getAllCompositeStructures();
     }
 
     @Test
     void testGetAllCompositeStructures_InternalServerError() {
-        when(compositeServiceMock.getAllCompositeStructures()).thenThrow(new RuntimeException("Internal Server Error"));
+        when(compositeService.getAllCompositeStructures()).thenThrow(new RuntimeException("Internal Server Error"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get()
@@ -82,7 +82,7 @@ class CompositeControllerTest {
     @Test
     void testGetCompositeById_Success() {
         CompositeStructure expected = new CompositeStructure("test-id", Set.of("ns-1", "ns-2"));
-        when(compositeServiceMock.getCompositeStructure("test-id")).thenReturn(Optional.of(expected));
+        when(compositeService.getCompositeStructure("test-id")).thenReturn(Optional.of(expected));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get("/test-id")
@@ -95,7 +95,7 @@ class CompositeControllerTest {
 
     @Test
     void testGetCompositeById_NotFound() {
-        when(compositeServiceMock.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
+        when(compositeService.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get("/non-existent-id")
@@ -105,7 +105,7 @@ class CompositeControllerTest {
 
     @Test
     void testGetCompositeById_InternalServerError() {
-        when(compositeServiceMock.getCompositeStructure("error-id")).thenThrow(new RuntimeException("Internal Server Error"));
+        when(compositeService.getCompositeStructure("error-id")).thenThrow(new RuntimeException("Internal Server Error"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().get("/error-id")
@@ -117,7 +117,7 @@ class CompositeControllerTest {
 
     @Test
     void testSaveOrUpdateComposite_Success() throws JsonProcessingException {
-        compositeServiceMock.deleteCompositeStructure("ns-1");
+        compositeService.deleteCompositeStructure("ns-1");
         CompositeStructureDto request = CompositeStructureDto.builder()
                 .id("ns-1")
                 .namespaces(Set.of("ns-1", "ns-2"))
@@ -129,9 +129,9 @@ class CompositeControllerTest {
                 .then()
                 .statusCode(NO_CONTENT.getStatusCode());
 
-        verify(compositeServiceMock).saveOrUpdateCompositeStructure(request);
-        verify(compositeServiceMock).getBaselineByNamespace("ns-1");
-        verify(compositeServiceMock).getBaselineByNamespace("ns-2");
+        verify(compositeService).saveOrUpdateCompositeStructure(request);
+        verify(compositeService).getBaselineByNamespace("ns-1");
+        verify(compositeService).getBaselineByNamespace("ns-2");
     }
 
     @Test
@@ -149,7 +149,7 @@ class CompositeControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", is("Validation error: 'id field can't be empty'"));
 
-        verifyNoInteractions(compositeServiceMock);
+        verifyNoInteractions(compositeService);
     }
 
     @Test
@@ -167,7 +167,7 @@ class CompositeControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", is("Validation error: 'namespace field can't be empty'"));
 
-        verifyNoInteractions(compositeServiceMock);
+        verifyNoInteractions(compositeService);
     }
 
     @Test
@@ -176,7 +176,7 @@ class CompositeControllerTest {
                 .id("test-id")
                 .namespaces(Set.of("ns-1", "ns-2"))
                 .build();
-        when(compositeServiceMock.getBaselineByNamespace("ns-2")).thenReturn(Optional.of("existing-id"));
+        when(compositeService.getBaselineByNamespace("ns-2")).thenReturn(Optional.of("existing-id"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -186,7 +186,7 @@ class CompositeControllerTest {
                 .statusCode(CONFLICT.getStatusCode())
                 .body("message", is("Validation error: 'can't save or update composite structure because ns-2 namespace is registered in another composite'"));
 
-        verify(compositeServiceMock, never()).saveOrUpdateCompositeStructure(request);
+        verify(compositeService, never()).saveOrUpdateCompositeStructure(request);
     }
 
     @Test
@@ -214,7 +214,7 @@ class CompositeControllerTest {
 
     @Test
     void testDeleteCompositeById_Success() {
-        when(compositeServiceMock.getCompositeStructure("test-id"))
+        when(compositeService.getCompositeStructure("test-id"))
                 .thenReturn(Optional.of(new CompositeStructure("test-id", Set.of("test-id", "ns-1"))));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
@@ -223,26 +223,26 @@ class CompositeControllerTest {
                 .statusCode(NO_CONTENT.getStatusCode());
 
 
-        verify(compositeServiceMock).getCompositeStructure("test-id");
-        verify(compositeServiceMock).deleteCompositeStructure("test-id");
+        verify(compositeService).getCompositeStructure("test-id");
+        verify(compositeService).deleteCompositeStructure("test-id");
     }
 
     @Test
     void testDeleteCompositeById_NotFound() {
-        when(compositeServiceMock.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
+        when(compositeService.getCompositeStructure("non-existent-id")).thenReturn(Optional.empty());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .when().delete("/non-existent-id/delete")
                 .then()
                 .statusCode(NOT_FOUND.getStatusCode());
 
-        verify(compositeServiceMock).getCompositeStructure("non-existent-id");
-        verifyNoMoreInteractions(compositeServiceMock);
+        verify(compositeService).getCompositeStructure("non-existent-id");
+        verifyNoMoreInteractions(compositeService);
     }
 
     @Test
     void testDeleteCompositeById_InternalServerError() {
-        when(compositeServiceMock.getCompositeStructure("error-id"))
+        when(compositeService.getCompositeStructure("error-id"))
                 .thenThrow(new RuntimeException("Internal Server Error"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
