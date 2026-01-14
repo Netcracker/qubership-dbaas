@@ -243,11 +243,11 @@ public enum ErrorCodes implements ErrorCode {
             "Digest header mismatch: %s"
     ),
     CORE_DBAAS_4053(
-            "CORE-DBAAS-4046",
+            "CORE-DBAAS-4053",
             "Invalid tenantId in classifier",
             "tenantId from classifier and tenantId from request don't match"),
     CORE_DBAAS_4054(
-            "CORE-DBAAS-4047",
+            "CORE-DBAAS-4054",
             "Failed namespace isolation check",
             "Namespace from path and namespace from jwt token doesn't not match or aren't in the same composite structure"),
 

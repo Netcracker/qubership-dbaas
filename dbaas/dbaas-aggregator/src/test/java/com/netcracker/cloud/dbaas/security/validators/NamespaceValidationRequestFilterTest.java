@@ -1,13 +1,14 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
 import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.exceptions.FailedNamespaceIsolationCheckException;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
 import io.smallrye.jwt.auth.principal.JWTCallerPrincipal;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.MultivaluedMap;
-import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
+import org.junit.Assert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -94,10 +95,11 @@ class NamespaceValidationRequestFilterTest {
 
             when(namespaceValidator.checkNamespaceIsolation("ns1", "other-ns")).thenReturn(false);
 
-            filter.filter(requestContext);
+            Assert.assertThrows(FailedNamespaceIsolationCheckException.class, () -> {
+                filter.filter(requestContext);
+            });
 
             verify(namespaceValidator, times(1)).checkNamespaceIsolation("ns1", "other-ns");
-            verify(requestContext, times(1)).abortWith(any(Response.class));
         }
     }
 }

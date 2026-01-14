@@ -110,8 +110,8 @@ class BasicAndKubernetesAuthMechanismTest {
         assertTrue(result.containsAll(basicAuth.getCredentialTypes()));
         assertTrue(result.containsAll(jwtAuth.getCredentialTypes()));
 
-        verify(basicAuth, times(1)).getCredentialTypes();
-        verify(jwtAuth, times(1)).getCredentialTypes();
+        verify(basicAuth, times(2)).getCredentialTypes();
+        verify(jwtAuth, times(2)).getCredentialTypes();
     }
 
     @Test
