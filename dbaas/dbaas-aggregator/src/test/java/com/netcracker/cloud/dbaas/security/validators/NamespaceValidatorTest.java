@@ -27,6 +27,7 @@ class NamespaceValidatorTest {
     private static final String defaultBaseLine = "default";
     private static final String defaultNamespace = "default";
     private static final String otherNamespaceInComposite = "otherNamespaceInComposite";
+    private static final String someOtherNamespace = "someOtherNamespace";
 
     @Mock
     CompositeNamespaceService compositeNamespaceService;
@@ -58,13 +59,13 @@ class NamespaceValidatorTest {
 
         when(compositeNamespaceService.getBaselineByNamespace(defaultNamespace)).thenReturn(Optional.of(defaultBaseLine));
         when(compositeNamespaceService.getBaselineByNamespace(otherNamespaceInComposite)).thenReturn(Optional.of(defaultBaseLine));
-        when(compositeNamespaceService.getBaselineByNamespace("someOtherNamespace")).thenReturn(Optional.empty());
+        when(compositeNamespaceService.getBaselineByNamespace(someOtherNamespace)).thenReturn(Optional.empty());
 
         assertTrue(namespaceValidator.checkNamespaceIsolation(defaultNamespace, defaultNamespace));
-        assertTrue(namespaceValidator.checkNamespaceIsolation("someOtherNamespace", "someOtherNamespace"));
-        assertFalse(namespaceValidator.checkNamespaceIsolation("someOtherNamespace", "notEqualSomeOtherNamespace"));
-        assertFalse(namespaceValidator.checkNamespaceIsolation(defaultNamespace, "someOtherNamespace"));
-        assertFalse(namespaceValidator.checkNamespaceIsolation(otherNamespaceInComposite, "someOtherNamespace"));
+        assertTrue(namespaceValidator.checkNamespaceIsolation(someOtherNamespace, someOtherNamespace));
+        assertFalse(namespaceValidator.checkNamespaceIsolation(someOtherNamespace, "notEqualSomeOtherNamespace"));
+        assertFalse(namespaceValidator.checkNamespaceIsolation(defaultNamespace, someOtherNamespace));
+        assertFalse(namespaceValidator.checkNamespaceIsolation(otherNamespaceInComposite, someOtherNamespace));
         assertTrue(namespaceValidator.checkNamespaceIsolation(otherNamespaceInComposite, defaultNamespace));
     }
 
@@ -72,13 +73,13 @@ class NamespaceValidatorTest {
     void checkNamespaceFromClassifier() {
         when(securityContext.getUserPrincipal()).thenReturn(principal);
         when(compositeNamespaceService.getBaselineByNamespace(otherNamespaceInComposite)).thenReturn(Optional.of(defaultBaseLine));
-        when(compositeNamespaceService.getBaselineByNamespace("someOtherNamespace")).thenReturn(Optional.empty());
+        when(compositeNamespaceService.getBaselineByNamespace(someOtherNamespace)).thenReturn(Optional.empty());
 
         try (var jwtMock = mockStatic(JwtUtils.class)) {
             jwtMock.when(() -> JwtUtils.getNamespace(securityContext)).thenReturn(defaultNamespace);
             assertTrue(namespaceValidator.checkNamespaceFromClassifier(securityContext, Collections.singletonMap("namespace", defaultNamespace)));
             assertTrue(namespaceValidator.checkNamespaceFromClassifier(securityContext, Collections.singletonMap("namespace", otherNamespaceInComposite)));
-            assertFalse(namespaceValidator.checkNamespaceFromClassifier(securityContext, Collections.singletonMap("namespace", "someOtherNamespace")));
+            assertFalse(namespaceValidator.checkNamespaceFromClassifier(securityContext, Collections.singletonMap("namespace", someOtherNamespace)));
         }
     }
 }

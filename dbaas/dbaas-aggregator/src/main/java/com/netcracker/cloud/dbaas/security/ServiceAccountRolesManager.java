@@ -2,7 +2,6 @@ package com.netcracker.cloud.dbaas.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.netcracker.cloud.dbaas.dto.role.ServiceAccountWithRoles;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -18,15 +17,10 @@ import java.util.*;
 @NoArgsConstructor
 @Slf4j
 public class ServiceAccountRolesManager {
-    private final ArrayList<ServiceAccountWithRoles> serviceAccountsWithRoles = new ArrayList<>();
+    private final Map<String, Set<String>> serviceAccountsWithRoles = new HashMap<>();
 
     public Set<String> getRolesByServiceAccountName(String serviceAccountName) {
-        for (ServiceAccountWithRoles s : serviceAccountsWithRoles) {
-            if (serviceAccountName.equals(s.getName())) {
-                return s.getRoles();
-            }
-        }
-        return null;
+        return serviceAccountsWithRoles.get(serviceAccountName);
     }
 
     void onStart(@Observes StartupEvent ev, @ConfigProperty(name = "dbaas.security.k8s.service.account.roles.path") String rolesConfigPath) {
@@ -38,7 +32,7 @@ public class ServiceAccountRolesManager {
             Map<String, Object> rawServiceAccountsWithRoles = yamlReader.readValue(rawYaml, Map.class);
             for (Map.Entry<String, Object> serviceAccount : rawServiceAccountsWithRoles.entrySet()) {
                 List<String> roles = (List<String>) serviceAccount.getValue();
-                serviceAccountsWithRoles.add(new ServiceAccountWithRoles(serviceAccount.getKey(), new HashSet<>(roles)));
+                serviceAccountsWithRoles.put(serviceAccount.getKey(), new HashSet<>(roles));
             }
             log.info("Roles for kubernetes service accounts loaded");
         } catch (Exception e) {

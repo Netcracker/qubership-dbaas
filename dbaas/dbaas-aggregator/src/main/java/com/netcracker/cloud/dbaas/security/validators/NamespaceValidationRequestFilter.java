@@ -1,6 +1,10 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
+import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.controller.error.Utils;
+import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
+import com.netcracker.cloud.dbaas.exceptions.FailedNamespaceIsolationCheckException;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
 import io.smallrye.jwt.auth.principal.JWTCallerPrincipal;
 import jakarta.inject.Inject;
@@ -26,7 +30,7 @@ public class NamespaceValidationRequestFilter implements ContainerRequestFilter 
             return;
         }
         if (!namespaceValidator.checkNamespaceIsolation(namespaceFromPath, JwtUtils.getNamespace(requestContext.getSecurityContext()))) {
-            requestContext.abortWith(Response.status(Response.Status.FORBIDDEN.getStatusCode(), "Namespace from path and namespace from jwt token doesn't not match or aren't in the same composite structure").build());
+            throw new FailedNamespaceIsolationCheckException();
         }
     }
 }

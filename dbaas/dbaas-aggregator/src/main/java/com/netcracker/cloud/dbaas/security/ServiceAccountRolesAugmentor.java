@@ -13,6 +13,25 @@ import jakarta.inject.Inject;
 
 import java.util.Set;
 
+/**
+ * Augments a {@link SecurityIdentity} with roles based on a service account name
+ * derived from the principal.
+ *
+ * <p><b>Principal name format</b></p>
+ * <p>
+ * The principal name is expected to contain the service account name as the
+ * last segment, separated by colons:
+ * </p>
+ *
+ * <pre>
+ *     &lt;prefix&gt;:&lt;serviceAccountName&gt;
+ * </pre>
+ *
+ * <p>
+ * The service account name is extracted as the substring after the last {@code ':'}
+ * character and is used to resolve roles via {@link ServiceAccountRolesManager}.
+ * </p>
+ */
 @ApplicationScoped
 public class ServiceAccountRolesAugmentor implements SecurityIdentityAugmentor {
     @Inject

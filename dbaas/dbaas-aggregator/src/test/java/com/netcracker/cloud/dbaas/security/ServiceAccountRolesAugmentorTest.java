@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.security;
 
 import com.netcracker.cloud.dbaas.Constants;
-import com.netcracker.cloud.dbaas.dto.role.ServiceAccountWithRoles;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.smallrye.mutiny.Uni;
 import org.junit.jupiter.api.AfterEach;
@@ -14,6 +13,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.security.Principal;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,30 +34,30 @@ class ServiceAccountRolesAugmentorTest {
 
     @Test
     void augment() {
-        ArrayList<ServiceAccountWithRoles> serviceAccounts = new ArrayList<>();
+        Map<String, Set<String>> serviceAccounts = new HashMap<>();
 
-        serviceAccounts.add(new ServiceAccountWithRoles(
+        serviceAccounts.put(
                 "service-account-1",
                 Set.of("NAMESPACE_CLEANER", "DB_CLIENT", "MIGRATION_CLIENT")
-        ));
+        );
 
-        serviceAccounts.add(new ServiceAccountWithRoles(
+        serviceAccounts.put(
                 "service-account-2",
                 Set.of("NAMESPACE_CLEANER", "MIGRATION_CLIENT")
-        ));
+        );
 
         when(mockIdentity.getPrincipal()).thenReturn(mockPrincipal);
 
-        for (ServiceAccountWithRoles sa : serviceAccounts) {
-            when(rolesManager.getRolesByServiceAccountName(sa.getName())).thenReturn(sa.getRoles());
-            when(mockPrincipal.getName()).thenReturn(sa.getName());
+        serviceAccounts.forEach((name, roles) -> {
+            when(rolesManager.getRolesByServiceAccountName(name)).thenReturn(roles);
+            when(mockPrincipal.getName()).thenReturn(name);
 
             Uni<SecurityIdentity> identityUni = augmentor.augment(mockIdentity, null);
-            assertEquals(identityUni.await().indefinitely().getRoles(), sa.getRoles());
+            assertEquals(identityUni.await().indefinitely().getRoles(), roles);
 
             when(mockPrincipal.getName()).thenReturn("someOtherName");
             identityUni = augmentor.augment(mockIdentity, null);
             assertEquals(identityUni.await().indefinitely().getRoles(), Set.of(Constants.DB_CLIENT));
-        }
+        });
     }
 }
