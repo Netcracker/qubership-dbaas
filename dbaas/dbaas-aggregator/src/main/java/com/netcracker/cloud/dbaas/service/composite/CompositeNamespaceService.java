@@ -32,10 +32,13 @@ public class CompositeNamespaceService {
 
     @Transactional
     public void saveOrUpdateCompositeStructure(CompositeStructureDto compositeRequest) {
-        Optional<CompositeNamespaceModifyIndex> currentModifyIndex = compositeNamespaceModifyIndexesDbaasRepository.findByBaselineName(compositeRequest.getId());
-        if (currentModifyIndex.isPresent() && compositeRequest.getModifyIndex() < currentModifyIndex.get().getModifyIndex()) {
-            throw new NamespaceCompositeValidationException(Source.builder().pointer("/modifyIndex").build(), "new modify index '%s' should be greater than current index '%s'".formatted(compositeRequest.getModifyIndex(), currentModifyIndex.get().getModifyIndex()));
+        if (compositeRequest.getModifyIndex() != null) {
+            Optional<CompositeNamespaceModifyIndex> currentModifyIndex = compositeNamespaceModifyIndexesDbaasRepository.findByBaselineName(compositeRequest.getId());
+            if (currentModifyIndex.isPresent() && compositeRequest.getModifyIndex() < currentModifyIndex.get().getModifyIndex()) {
+                throw new NamespaceCompositeValidationException(Source.builder().pointer("/modifyIndex").build(), "new modify index '%s' should be greater than current index '%s'".formatted(compositeRequest.getModifyIndex(), currentModifyIndex.get().getModifyIndex()));
+            }
         }
+
         deleteCompositeStructure(compositeRequest.getId());
         compositeNamespaceDbaasRepository.flush(); // need to flush because jpa first tries to save data without deleting it
         compositeRequest.getNamespaces().add(compositeRequest.getId());
