@@ -4,6 +4,10 @@ import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserAdapterRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupAdapterRequest;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.RestoreAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
@@ -154,6 +158,34 @@ public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 
     @Override
     public String updateSettings(String type, String dbName, UpdateSettingsAdapterRequest request) {
         return executeRequest(() -> restClient.updateSettings(type, dbName, request));
+    }
+
+    @Override
+    public LogicalBackupAdapterResponse backupV2(String dbType, BackupAdapterRequest request) {
+        return executeRequest(() -> restClient.backupV2(dbType, request));
+    }
+
+    @Override
+    public LogicalBackupAdapterResponse trackBackupV2(String dbType, String logicalBackupName, String storageName, String blobPath) {
+        return executeRequest(() -> restClient.trackBackupV2(dbType, logicalBackupName, storageName, blobPath));
+    }
+
+    @Override
+    public void deleteBackupV2(String dbType, String logicalBackupName, String blobPath) {
+        executeRequest(() -> {
+            restClient.deleteBackupV2(dbType, logicalBackupName, blobPath);
+            return null;
+        });
+    }
+
+    @Override
+    public LogicalRestoreAdapterResponse restoreV2(String dbType, String logicalRestoreName, Boolean dryRun, RestoreAdapterRequest request) {
+        return executeRequest(() -> restClient.restoreV2(dbType, logicalRestoreName, dryRun, request));
+    }
+
+    @Override
+    public LogicalRestoreAdapterResponse trackRestoreV2(String dbType, String logicalBackupName, String storageName, String blobPath) {
+        return executeRequest(() -> restClient.trackRestoreV2(dbType, logicalBackupName, storageName, blobPath));
     }
 
     @Override
