@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.Map;
 
 public class JwtUtilsTestResource implements QuarkusTestResourceLifecycleManager {
+    public static final String tokenDir = "./src/test/resources/mock-oidc-token";
     public static TestJwtUtils JWT_UTILS;
     private final OidcWiremockTestResource oidcWiremock = new OidcWiremockTestResource();
 
@@ -18,10 +19,6 @@ public class JwtUtilsTestResource implements QuarkusTestResourceLifecycleManager
         String issuer = conf.get("keycloak.url")+"/realms/quarkus";
         String audience = ConfigProvider.getConfig()
                 .getValue("dbaas.security.k8s.jwt.audience", String.class);
-        String tokenDir = ConfigProvider.getConfig()
-                .getValue(
-                        "com.netcracker.cloud.security.kubernetes.service.account.token.dir",
-                        String.class);
         System.setProperty("smallrye.jwt.sign.key.location", conf.get("smallrye.jwt.sign.key.location"));
         JWT_UTILS = new TestJwtUtils(issuer, audience, tokenDir);
         return conf;
