@@ -13,7 +13,6 @@ import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
-import com.netcracker.cloud.dbaas.integration.config.MockOidcTestResource;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.integration.config.SecurityTestProfile;
 import com.netcracker.cloud.dbaas.integration.utils.TestJwtUtils;
@@ -22,11 +21,13 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.service.*;
+import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.junit.mockito.MockitoConfig;
+import io.quarkus.test.oidc.server.OidcWiremockTestResource;
 import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
@@ -53,7 +54,7 @@ import static org.mockito.Mockito.when;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
-@QuarkusTestResource(MockOidcTestResource.class)
+@QuarkusTestResource(OidcWiremockTestResource.class)
 @TestProfile(SecurityTestProfile.class)
 class SecurityTest {
 

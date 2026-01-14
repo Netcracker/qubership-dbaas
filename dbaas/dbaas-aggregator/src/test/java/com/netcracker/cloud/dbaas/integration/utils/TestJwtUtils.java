@@ -2,7 +2,6 @@ package com.netcracker.cloud.dbaas.integration.utils;
 
 import io.smallrye.jwt.build.Jwt;
 import jakarta.enterprise.context.ApplicationScoped;
-import lombok.Getter;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Duration;
@@ -11,12 +10,11 @@ import java.util.Map;
 
 @ApplicationScoped
 public class TestJwtUtils {
-    private static final String issuer = "http://localhost:46567/auth/realms/quarkus";
-    @Getter
-    private static final int oidcPort = 46567;
+    private final String issuer;
     private final String audience;
 
-    public TestJwtUtils(@ConfigProperty(name = "dbaas.security.k8s.jwt.audience") String audience) {
+    public TestJwtUtils(@ConfigProperty(name = "quarkus.oidc.server-url") String issuer, @ConfigProperty(name = "dbaas.security.k8s.jwt.audience") String audience) {
+        this.issuer = issuer;
         this.audience = audience;
     }
 
