@@ -13,6 +13,7 @@ import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.integration.config.JwtUtilsTestResource;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.integration.config.SecurityTestProfile;
 import com.netcracker.cloud.dbaas.integration.utils.TestJwtUtils;
@@ -21,6 +22,7 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.utils.JwtUtils;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
@@ -32,6 +34,8 @@ import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
 
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +58,7 @@ import static org.mockito.Mockito.when;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
-@QuarkusTestResource(OidcWiremockTestResource.class)
+@QuarkusTestResource(JwtUtilsTestResource.class)
 @TestProfile(SecurityTestProfile.class)
 class SecurityTest {
 
@@ -83,11 +87,13 @@ class SecurityTest {
     ProcessConnectionPropertiesService processConnectionPropertiesService;
     @Inject
     PasswordEncryption passwordEncryption;
-    @Inject
+
     TestJwtUtils jwtUtils;
 
     @BeforeEach
     void prepareMock() {
+        jwtUtils = JwtUtilsTestResource.JWT_UTILS;
+
         testDbaasAdapter = mock(DbaasAdapter.class);
         when(dbaasAdapterRESTClientFactory.createDbaasAdapterClientV2(any(), any(), any(), any(), any(), any(), any())).thenReturn(testDbaasAdapter);
         CreatedDatabaseV3 testDatabase = new CreatedDatabaseV3();
