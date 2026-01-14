@@ -794,8 +794,9 @@ This controller contains API for operations with already created databases, user
 
 ### Change user password
 The API changes password of a user that is related to the specified database. A password will be changed 
-to a random value.If classifier is not passed then all passwords of databases in the namespace and type 
-will be changed.
+to a random value.
+
+If classifier is not passed then all passwords of databases in the namespace and type will be changed.
 
 * **URI:**  `POST {dbaas_host}/api/v3/dbaas/namespaces/{namespace}/password-changes`
 * **Headers:**  
@@ -2154,6 +2155,10 @@ then all registered physical databases for all types will be shown.
           "backupRestore": true,
           "users": true,
           "describeDatabases": true
+        },
+        "features":  {
+          "tls": false,
+          "multiusers": true
         }
       },
       "core-elasticsearch": {
@@ -2192,6 +2197,7 @@ Deletes physical database by database type and physical database id
 
 | HTTP Code | Description                                                             | Schema     |
 |-----------|-------------------------------------------------------------------------|------------|
+| **400**   | The request was invalid or cannot be served.                            | No Content | 
 | **404**   | Physical database with specific type and id was not found.              | No Content |
 | **406**   | Database is marked as default or there are connected logical databases. | No Content |
 
@@ -4181,7 +4187,7 @@ Response model for recreate existing database API. The model contains successful
 
 
 ### UpdateClassifierRequest
-Contains primary or source ("from") classifier by which a database record will be found and changed to target classifier ("from")
+Contains primary or source ("from") classifier by which a database record will be found and changed to target classifier ("to")
 
 | Name                               | Description                                                                     | Schema                 |
 |------------------------------------|---------------------------------------------------------------------------------|------------------------|

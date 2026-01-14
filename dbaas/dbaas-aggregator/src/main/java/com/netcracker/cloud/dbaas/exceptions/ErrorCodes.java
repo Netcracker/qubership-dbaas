@@ -103,7 +103,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4023(
             "CORE-DBAAS-4023",
             "Requested role is not allowed by service",
-            "Requested role is not allowed = %s"),
+            "Requested role '%s' from '%s' service cannot be accessed by '%s' service"),
     CORE_DBAAS_4024(
             "CORE-DBAAS-4024",
             "Connection properties doesn't contain field 'role'",
@@ -210,12 +210,47 @@ public enum ErrorCodes implements ErrorCode {
                     "Must be in format: <schema>://<service-name>.<namespace>:<port>, e.g.: http://dbaas-postgres-adapter.postgresql:8080"),
     CORE_DBAAS_4046(
             "CORE-DBAAS-4046",
+            "Resource already exists",
+            "Resource with name '%s' already exists"),
+    CORE_DBAAS_4047(
+            "CORE-DBAAS-4047",
+            "Backup not allowed",
+            "The backup/restore request can`t be processed. %s"
+    ),
+    CORE_DBAAS_4048(
+            "CORE-DBAAS-4048",
+            "Illegal state of entity",
+            "Resource has illegal state: %s"
+    ),
+    CORE_DBAAS_4049(
+            "CORE-DBAAS-4049",
+            "Unprocessable resource",
+            "Resource '%s' can`t be processed: %s"
+    ),
+    CORE_DBAAS_4050(
+            "CORE-DBAAS-4050",
+            "Operation not implemented",
+            "The requested functionality is not implemented: %s"
+    ),
+    CORE_DBAAS_4051(
+            "CORE-DBAAS-4051",
+            "Digest calculation failed",
+            "Failed to calculate digest: %s"
+    ),
+    CORE_DBAAS_4052(
+            "CORE-DBAAS-4052",
+            "Digest mismatch",
+            "Digest header mismatch: %s"
+    ),
+    CORE_DBAAS_4053(
+            "CORE-DBAAS-4046",
             "Invalid tenantId in classifier",
             "tenantId from classifier and tenantId from request don't match"),
-    CORE_DBAAS_4047(
+    CORE_DBAAS_4054(
             "CORE-DBAAS-4047",
             "Failed namespace isolation check",
             "Namespace from path and namespace from jwt token doesn't not match or aren't in the same composite structure"),
+
 
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",

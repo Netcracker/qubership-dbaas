@@ -7,13 +7,15 @@ import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
 import com.netcracker.cloud.dbaas.dto.role.ServiceRole;
 import jakarta.persistence.*;
 import lombok.Data;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.ToString;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.hibernate.Hibernate;
 
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Data
@@ -51,9 +53,6 @@ public class DatabaseRole {
     @Schema(description = "Is global permissions disabled")
     private Boolean disableGlobalPermissions;
 
-    @Getter
-    private static Map<String, List<String>> globalPermissions = getGlobalPermissionsList();
-
 
     public DatabaseRole(DatabaseRole databaseRole) {
         this.services = databaseRole.getServices() == null ? null : databaseRole.getServices().stream().map(ServiceRole::new).collect(Collectors.toList());
@@ -70,16 +69,6 @@ public class DatabaseRole {
         this.microserviceName = microserviceName;
         this.timeRoleCreation = date;
         this.disableGlobalPermissions = rolesRegistrationRequest.getDisableGlobalPermissions() != null && rolesRegistrationRequest.getDisableGlobalPermissions();
-    }
-
-    private static Map<String, List<String>> getGlobalPermissionsList() {
-        Map<String, List<String>> defaultRoles = new HashMap<>();
-        defaultRoles.put("cdc-streaming-platform", List.of("streaming"));
-        defaultRoles.put("cdc-control", List.of("streaming"));
-        defaultRoles.put("data-slicing-tool", List.of("admin"));
-        defaultRoles.put("df-tool-backend", List.of("rw"));
-        defaultRoles.put("dpc-backend", List.of("ro"));
-        return defaultRoles;
     }
 
     @Override

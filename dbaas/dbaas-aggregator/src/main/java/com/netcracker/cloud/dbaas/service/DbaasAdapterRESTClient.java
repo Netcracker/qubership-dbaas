@@ -1,7 +1,12 @@
 package com.netcracker.cloud.dbaas.service;
 
+
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupAdapterRequest;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.RestoreAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
@@ -85,6 +90,30 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     @Override
     protected TrackedAction collectBackup(Boolean allowEviction, String keep, List<String> databases) {
         return restClient.collectBackup(type(), allowEviction, keep, databases);
+    }
+
+    @Override
+    public LogicalBackupAdapterResponse backupV2(BackupAdapterRequest backupAdapterRequest) {
+        throw new UnsupportedOperationException("New backup is not supported by V1 adapter API");
+    }
+
+    @Override
+    public LogicalRestoreAdapterResponse restoreV2(String backupName, boolean dryRun, RestoreAdapterRequest restoreAdapterRequest) {
+        throw new UnsupportedOperationException("New restore is not supported by V1 adapter API");
+    }
+
+    @Override
+    public LogicalBackupAdapterResponse trackBackupV2(String logicalBackupName, String storageName, String blobPath) {
+        throw new UnsupportedOperationException("New backup check status is not supported by V1 adapter API");
+    }
+    @Override
+    public LogicalRestoreAdapterResponse trackRestoreV2(String logicalRestoreName, String storageName, String blobPath) {
+        throw new UnsupportedOperationException("New restore check status is not supported by V1 adapter API");
+    }
+
+    @Override
+    public void deleteBackupV2(String logicalBackupName, String blobPath) {
+        throw new UnsupportedOperationException("New delete backup is not supported by by V1 adapter API");
     }
 
     @Override

@@ -7,7 +7,13 @@ cat << EOF | kubectl apply -f - --namespace="${NAMESPACE}"
       "apiVersion": "v1",
       "kind": "Secret",
       "metadata": {
-        "name": "dbaas-storage-credentials"
+        "name": "dbaas-storage-credentials",
+        "labels": {
+            "app.kubernetes.io/name": "${SERVICE_NAME}",
+            "app.kubernetes.io/part-of": "${APPLICATION_NAME}",
+            "app.kubernetes.io/managed-by": "${MANAGED_BY}",
+            "deployment.netcracker.com/sessionId": "${DEPLOYMENT_SESSION_ID:-"unimplemented"}",
+        }
       },
       "data": {
         "username": "$(echo -n "${2}" | base64 -w 0)",
@@ -49,7 +55,7 @@ kill_process(){
 
 isSecretExist() {
   echo "Entered isSecretExist func with secret name ${1}"
-  SECRET=$(kubectl get secret $1 --output=go-template='{{ .metadata.name }}')
+  SECRET=$(kubectl get secret $1 --namespace="${NAMESPACE}" --output=go-template='{{ .metadata.name }}')
 
   if [ -z $SECRET ]
   then
@@ -61,11 +67,11 @@ isSecretExist() {
 
 ensure-encryption-secret() {
   echo "Check [encryption-secret]"
-  service=${ENV_SERVICE:=dbaas-aggregator}
+  service=${SERVICE_NAME:=dbaas-aggregator}
 
   # 1. Secrets
   # 1.1 Get secret SYM_KEY_VALUE
-  SECRET=$(kubectl get secret ${service}-encryption-secret --namespace="$ENV_NAMESPACE" --output=go-template='{{ .metadata.name }}')
+  SECRET=$(kubectl get secret ${service}-encryption-secret --namespace="$NAMESPACE" --output=go-template='{{ .metadata.name }}')
 
   # 1.2 Check secrets
   if [ -z $SECRET ]
@@ -112,7 +118,13 @@ print(encryptedDefaultKey);")
   \"apiVersion\": \"v1\", \
   \"kind\": \"Secret\", \
   \"metadata\": { \
-    \"name\": \"${service}-encryption-secret\" \
+    \"name\": \"${service}-encryption-secret\", \
+    \"labels\": { \
+        \"app.kubernetes.io/name\": \"${SERVICE_NAME}\", \
+        \"app.kubernetes.io/part-of\": \"${APPLICATION_NAME}\", \
+        \"app.kubernetes.io/managed-by\": \"${MANAGED_BY}\", \
+        \"deployment.netcracker.com/sessionId\": \"${DEPLOYMENT_SESSION_ID:-"unimplemented"}\", \
+    } \
   }, \
   \"data\": { \
     \"sym-key\": \"${SYM_KEY_VALUE_B64}\", \
@@ -125,7 +137,7 @@ print(encryptedDefaultKey);")
   #exit
 
   # 1.4 Create secret from json
-  echo "$SECRET_JSON" | kubectl apply -f - --namespace="${ENV_NAMESPACE}"
+  echo "$SECRET_JSON" | kubectl apply -f - --namespace="${NAMESPACE}"
   else
      echo "The Secret [$SECRET] already exists."
   fi
@@ -137,7 +149,7 @@ export PGSSLMODE=allow # allows to work with postgres in both ssl and not ssl mo
 POSTGRES_HOST="${POSTGRES_HOST:-"pg-patroni.postgresql"}"
 POSTGRES_PORT="${POSTGRES_PORT:-"5432"}"
 POSTGRES_DBA_USER="${POSTGRES_DBA_USER:-"postgres"}"
-POSTGRES_DBA_PASSWORD="${POSTGRES_DBA_PASSWORD:-"paSSw0rd"}"
+POSTGRES_DBA_PASSWORD="${POSTGRES_DBA_PASSWORD:-"password"}"
 USE_POSTGRES_PORT_FORWARD=$(echo "${USE_POSTGRES_PORT_FORWARD:-true}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 IFS='.' read -r -a array <<< "${POSTGRES_HOST}"
 pg_namespace=${array[1]}

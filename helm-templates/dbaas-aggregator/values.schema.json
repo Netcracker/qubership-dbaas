@@ -18,6 +18,7 @@
       "POSTGRES_HOST": "pg-patroni.postgresql",
       "DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES": "",
       "DBAAS_SECURITY_CONFIGURATION_LOCATION": "/etc/dbaas/security",
+      "DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION": "/etc/dbaas/global_permissions",
       "MEM_ARGS": "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=64M -XX:CodeCacheMinimumFreeSpace=4M -XX:CompressedClassSpaceSize=32M -XX:MinMetaspaceExpansion=1M -XX:MaxMetaspaceExpansion=8M -XX:CodeCacheExpansionSize=256k",
       "MEMORY_LIMIT": "904Mi",
       "REPLICA_ROLLING_TIMEOUT_SECONDS": 600,
@@ -159,6 +160,13 @@
       "type": "string",
       "title": "The DBAAS_SECURITY_CONFIGURATION_LOCATION schema",
       "description": "Location to save security configuration such as users.",
+      "internal": true
+    },
+    "DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION": {
+      "$id": "#/properties/DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION",
+      "type": "string",
+      "title": "The DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION schema",
+      "description": "Location to save global permissions configuration such as services and their roles.",
       "internal": true
     },
     "DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED": {
@@ -474,6 +482,56 @@
       "internal": true,
       "examples": [
         "- topologyKey: kubernetes.io/hostname"
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT",
+      "type": "string",
+      "title": "The DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT schema",
+      "description": "Parameter specifies the default amount of time the lock should be kept in case the executing node dies",
+      "default": "PT10M",
+      "examples": [
+        "PT10M"
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_CHECK_INTERVAL": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_CHECK_INTERVAL",
+      "type": "string",
+      "title": "The DBAAS_BACKUP_RESTORE_CHECK_INTERVAL schema",
+      "description": "Parameter specifies the period of backup or restore check",
+      "default": "1m",
+      "examples": [
+        "1m"
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS",
+      "type": "integer",
+      "title": "The DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS schema",
+      "description": "Parameter specifies max number of attempts to check backup or restore",
+      "default": 10,
+      "examples": [
+        10
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS",
+      "type": "integer",
+      "title": "The DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS schema",
+      "description": "Parameter specifies the delay between retries in seconds",
+      "default": 3,
+      "examples": [
+        3
+      ]
+    },
+    "DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS": {
+      "$id": "#/properties/DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS",
+      "type": "integer",
+      "title": "The DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS schema",
+      "description": "Parameter specifies max number of retries to check backup or restore",
+      "default": 3,
+      "examples": [
+        3
       ]
     }
   },

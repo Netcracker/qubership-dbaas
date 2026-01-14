@@ -9,7 +9,7 @@ metadata:
     labels:
         name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
-        deployment.qubership.org/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
     replicas: {{ .Values.REPLICAS | default 1 }}
     strategy:
@@ -33,9 +33,12 @@ spec:
             -   name: dbaas-security-configuration-volume
                 secret:
                     secretName: 'dbaas-security-configuration-secret'
+            -   name: dbaas-global-permissions-configuration-volume
+                secret:
+                    secretName: 'dbaas-global-permissions-configuration-secret'
             -   name: dbaas-security-service-account-roles-volume
                 secret:
-                  secretName: 'dbaas-security-service-account-roles-secret'
+                    secretName: 'dbaas-security-service-account-roles-secret'
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
@@ -61,6 +64,9 @@ spec:
                     readOnly: true
                 -   name: dbaas-security-service-account-roles-volume
                     mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+                    readOnly: true
+                -   name: dbaas-global-permissions-configuration-volume
+                    mountPath: '{{ .Values.DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION }}'
                     readOnly: true
             {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
                 -   name: tmp
@@ -140,6 +146,26 @@ spec:
                     value: '{{ .Values.DISABLE_DEPRECATED_API }}'
                 -   name: DBAAS_LOG_LEVEL
                     value: '{{ .Values.DBAAS_LOG_LEVEL }}'
+              {{- if .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT }}
+                -   name: DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT }}'
+              {{- end }}
+              {{- if .Values.DBAAS_BACKUP_RESTORE_CHECK_INTERVAL }}
+                -   name: DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_INTERVAL }}'
+              {{- end }}
+              {{- if .Values.DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS }}
+                -   name: DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS }}'
+              {{- end }}
+              {{- if .Values.DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS }}
+                -   name: DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS }}'
+              {{- end }}
+              {{- if .Values.DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS }}
+                -   name: DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
+                    value: '{{ .Values.DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS }}'
+              {{- end }}
                 resources:
                     requests:
                         cpu: '{{ .Values.CPU_REQUEST }}'

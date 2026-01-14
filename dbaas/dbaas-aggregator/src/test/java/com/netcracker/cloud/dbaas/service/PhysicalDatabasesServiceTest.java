@@ -9,6 +9,7 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -78,6 +79,12 @@ class PhysicalDatabasesServiceTest {
         PhysicalDatabase physicalDatabase = physicalDatabasesService.searchInPhysicalDatabaseCache("test-id");
         assertEquals(physicalDatabaseMock, physicalDatabase);
 
+    }
+
+    @Test
+    void testPhysicalDatabaseCache_dbNotFound() {
+        assertThrows(NotFoundException.class,
+                () -> physicalDatabasesService.searchInPhysicalDatabaseCache("phyDbId"));
     }
 
     @Test
@@ -506,6 +513,7 @@ class PhysicalDatabasesServiceTest {
         String type = "test-type";
         Date registrationDate = new Date();
         List<String> roles = new ArrayList(Arrays.asList("admin", "ro", "rw"));
+        Map<String, Boolean> features = Map.of("tls", false, "multiusers", true);
         ExternalAdapterRegistrationEntry externalAdapterRegistrationEntry = mock(ExternalAdapterRegistrationEntry.class);
         HttpBasicCredentials httpBasicCredentials = new HttpBasicCredentials("test-username", "test-password");
         String address = "test.address";
@@ -521,6 +529,7 @@ class PhysicalDatabasesServiceTest {
         physicalDatabase.setAdapter(externalAdapterRegistrationEntry);
         physicalDatabase.setLabels(labels);
         physicalDatabase.setRoles(roles);
+        physicalDatabase.setFeatures(features);
         List<PhysicalDatabase> source = Stream.<PhysicalDatabase>builder()
                 .add(physicalDatabase).build().collect(Collectors.toList());
 
@@ -550,6 +559,7 @@ class PhysicalDatabasesServiceTest {
         assertEquals(supports, dto.getSupports());
         assertEquals(global, dto.isGlobal());
         assertTrue(roles.containsAll(dto.getSupportedRoles()));
+        assertEquals(features, dto.getFeatures());
     }
 
     @Test

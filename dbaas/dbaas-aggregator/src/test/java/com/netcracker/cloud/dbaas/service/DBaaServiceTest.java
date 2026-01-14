@@ -241,9 +241,9 @@ class DBaaServiceTest {
         String databaseName1 = "database-name-1";
         String databaseName2 = "database-name-2";
         String userName1 = "user-name-1";
-        String password1 = "new-password-1";
+        String userPass1 = "new-password-1";
         String userName2 = "user-name-2";
-        String password2 = "new-password-2";
+        String userPassw2 = "new-password-2";
         Map<String, Object> classifierRequest = new HashMap<>();
         classifierRequest.put("microserviceName", "microserivice-name-test");
         classifierRequest.put("isServiceDb", true);
@@ -253,11 +253,11 @@ class DBaaServiceTest {
         classifier2.put("database", "two");
         Map<String, Object> connection1 = new HashMap<>();
         connection1.put("username", userName1);
-        connection1.put("password", password1);
+        connection1.put("password", userPass1);
         connection1.put("role", Role.ADMIN.toString());
         Map<String, Object> connection2 = new HashMap<>();
         connection2.put("username", userName2);
-        connection2.put("password", password2);
+        connection2.put("password", userPassw2);
         connection2.put("role", Role.ADMIN.toString());
 
         DbaasAdapter mongoDefaultAdapter = Mockito.spy(createAdapter("mongoDefaultAdapter-address", dbType, mock(DbaasAdapterRestClientV2.class), defaultAdapter,
@@ -1097,7 +1097,7 @@ class DBaaServiceTest {
         PhysicalDatabase physicalDatabase = Mockito.mock(PhysicalDatabase.class);
         when(physicalDatabase.getPhysicalDatabaseIdentifier()).thenReturn(adapterId);
         when(physicalDatabase.getAdapter()).thenReturn(adapterRegistrationEntry);
-        when(balancingRulesService.applyNamespaceBalancingRule(eq(namespace), eq(createRequest.getType()))).thenReturn(physicalDatabase);
+        when(balancingRulesService.applyBalancingRules(eq(createRequest.getType()), eq(namespace), eq(microserviceName))).thenReturn(physicalDatabase);
         when(physicalDatabasesService.getAdapterById(eq(adapterId))).thenReturn(testAdapter);
 
         createRequest.setOriginService(microserviceName);
@@ -1110,7 +1110,6 @@ class DBaaServiceTest {
     }
 
     @Test
-
     void updateFromOldClassifierToClassifierTestException() {
         String type = "test-type";
         SortedMap<String, Object> classifier1 = new TreeMap<>(testClassifier());
@@ -1177,7 +1176,7 @@ class DBaaServiceTest {
             put("microserviceName", microserviceName);
         }});
 
-        when(balancingRulesService.applyNamespaceBalancingRule(eq(namespace), eq(createRequest.getType()))).thenReturn(null);
+        when(balancingRulesService.applyBalancingRules(eq(createRequest.getType()), eq(namespace), eq(microserviceName))).thenThrow(NoBalancingRuleException.class);
 
         createRequest.setOriginService(microserviceName);
         createRequest.setUserRole(Role.ADMIN.toString());

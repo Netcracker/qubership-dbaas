@@ -10,8 +10,8 @@ import com.netcracker.cloud.dbaas.entity.pg.BgDomain;
 import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
 import com.netcracker.cloud.dbaas.security.validators.NamespaceValidator;
 import com.netcracker.cloud.dbaas.service.*;
@@ -42,6 +42,7 @@ import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
+import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.*;
 
 @Slf4j
@@ -147,7 +148,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
         String supportedRole = databaseRolesService.getSupportedRoleFromRequest(createRequest, createRequest.getType(),
                 namespace);
         if (supportedRole == null) {
-            throw new NotSupportedServiceRoleException(createRequest.getUserRole());
+            throw new NotSupportedServiceRoleException(createRequest.getUserRole(),
+                    createRequest.getClassifier().get(MICROSERVICE_NAME).toString(),
+                    createRequest.getOriginService());
         }
         return supportedRole;
     }
@@ -223,7 +226,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
 
         String supportedRole = databaseRolesService.getSupportedRoleFromRequest(classifierRequest, type, namespace);
         if (supportedRole == null) {
-            throw new NotSupportedServiceRoleException(classifierRequest.getUserRole());
+            throw new NotSupportedServiceRoleException(classifierRequest.getUserRole(),
+                    classifierRequest.getClassifier().get(MICROSERVICE_NAME).toString(),
+                    classifierRequest.getOriginService());
         }
 
         log.debug("Get by classifier {}", classifierRequest.getClassifier());
@@ -264,7 +269,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     @Deprecated
     @RolesAllowed(DB_CLIENT)
     public Response getDatabasesStatus(@Parameter(description = "Namespace for which to get the database statuses", required = true)
-                                           @PathParam(NAMESPACE_PARAMETER) String namespace) {
+                                       @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Get databases statuses");
         return Response.ok(monitoringService.getDatabasesStatus()).build();
     }
@@ -381,7 +386,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
         checkOriginService(classifierRequest);
         String supportedRole = databaseRolesService.getSupportedRoleFromRequest(classifierRequest, type, namespace);
         if (supportedRole == null || !supportedRole.equals(Role.ADMIN.toString())) {
-            throw new NotSupportedServiceRoleException();
+            throw new NotSupportedServiceRoleException(classifierRequest.getUserRole(),
+                    classifierRequest.getClassifier().get(MICROSERVICE_NAME).toString(),
+                    classifierRequest.getOriginService());
         }
         log.info("Drop database with classifier={} in namespace={}", classifierRequest.getClassifier(), namespace);
         Optional<DatabaseRegistry> databaseRegistryOptional = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifierRequest.getClassifier(), type);

@@ -32,7 +32,7 @@ public class Database extends AbstractDatabase {
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<DbResource> resources;
 
-    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.EAGER,orphanRemoval=true)
+    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
     private DbState dbState = new DbState();
 
     public DbState getDbState() {
@@ -92,6 +92,7 @@ public class Database extends AbstractDatabase {
         this.externallyManageable = database.isExternallyManageable();
         this.dbState = new DbState(database.getDbState());
         this.physicalDatabaseId = database.getPhysicalDatabaseId();
+        this.bgVersion = database.getBgVersion();
         List<DatabaseRegistry> registries = new ArrayList<>();
         for (DatabaseRegistry registry : database.getDatabaseRegistry()) {
             registries.add(new DatabaseRegistry(this,
