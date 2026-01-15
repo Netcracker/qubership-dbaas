@@ -9,6 +9,7 @@ import com.netcracker.cloud.dbaas.exceptions.NamespaceCompositeValidationExcepti
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceModifyIndexesDbaasRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -24,15 +25,20 @@ public class CompositeNamespaceService {
 
     private final CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository;
     private final CompositeNamespaceModifyIndexesDbaasRepository compositeNamespaceModifyIndexesDbaasRepository;
+    private final EntityManager entityManager;
 
-    public CompositeNamespaceService(CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository, CompositeNamespaceModifyIndexesDbaasRepository compositeNamespaceModifyIndexesDbaasRepository) {
+    public CompositeNamespaceService(CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository,
+                                     CompositeNamespaceModifyIndexesDbaasRepository compositeNamespaceModifyIndexesDbaasRepository,
+                                     EntityManager entityManager) {
         this.compositeNamespaceDbaasRepository = compositeNamespaceDbaasRepository;
         this.compositeNamespaceModifyIndexesDbaasRepository = compositeNamespaceModifyIndexesDbaasRepository;
+        this.entityManager = entityManager;
     }
 
     @Transactional
     public void saveOrUpdateCompositeStructure(CompositeStructureDto compositeRequest) {
         if (compositeRequest.getModifyIndex() != null) {
+            txLock(compositeRequest.getId());
             Optional<CompositeNamespaceModifyIndex> currentModifyIndex = compositeNamespaceModifyIndexesDbaasRepository.findByBaselineName(compositeRequest.getId());
             if (currentModifyIndex.isPresent() && compositeRequest.getModifyIndex() < currentModifyIndex.get().getModifyIndex()) {
                 throw new NamespaceCompositeValidationException(Source.builder().pointer("/modifyIndex").build(), "new modify index '%s' should be greater than current index '%s'".formatted(compositeRequest.getModifyIndex(), currentModifyIndex.get().getModifyIndex()));
@@ -110,5 +116,13 @@ public class CompositeNamespaceService {
     public Optional<String> getBaselineByNamespace(String namespace) {
         return compositeNamespaceDbaasRepository.findBaselineByNamespace(namespace)
                 .map(CompositeNamespace::getBaseline);
+    }
+
+    private void txLock(String baseline) {
+        entityManager.createNativeQuery(
+                        "SELECT pg_advisory_xact_lock(hashtext(:baseline))"
+                )
+                .setParameter("baseline", baseline)
+                .getSingleResult();
     }
 }
