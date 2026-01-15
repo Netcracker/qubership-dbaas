@@ -5,6 +5,8 @@ import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespace;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceModifyIndexesDbaasRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -24,6 +26,9 @@ class CompositeNamespaceServiceTest {
     private CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository;
 
     @Mock
+    private EntityManager entityManager;
+
+    @Mock
     private CompositeNamespaceModifyIndexesDbaasRepository compositeNamespaceModifyIndexesDbaasRepository;
 
     @InjectMocks
@@ -37,8 +42,10 @@ class CompositeNamespaceServiceTest {
                 .modifyIndex(1L)
                 .build();
 
+        Query query = mock(Query.class);
+        when(query.setParameter(anyString(), anyString())).thenReturn(query);
+        when(entityManager.createNativeQuery("SELECT pg_advisory_xact_lock(hashtext(:baseline))")).thenReturn(query);
         assertDoesNotThrow(() -> compositeNamespaceService.saveOrUpdateCompositeStructure(compositeRequest));
-
 
         verify(compositeNamespaceDbaasRepository, times(1)).deleteByBaseline("test-id");
         ArgumentCaptor<List<CompositeNamespace>> compositeNamespaceCaptureList = ArgumentCaptor.forClass(List.class);
