@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
@@ -121,6 +122,41 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .statusCode(OK.getStatusCode())
                 .body("name", is(database.getName()))
                 .body("connectionProperties.roHost", is(TEST_RO_HOST));
+    }
+
+    @Test
+    void testCreateDatabase_WhenAdapterException_ThenReturns500WithMappedError() throws JsonProcessingException {
+        when(dBaaService.getConnectionPropertiesService()).thenReturn(processConnectionPropertiesService);
+        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
+        physicalDatabase.setPhysicalDatabaseIdentifier(PHYSICAL_DATABASE_ID);
+        physicalDatabase.setRoHost(TEST_RO_HOST);
+        when(physicalDatabasesService.searchInPhysicalDatabaseCache(any())).thenReturn(physicalDatabase);
+
+        final DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample();
+        when(declarativeConfigRepository.findFirstByClassifierAndType(any(), any())).thenReturn(Optional.empty());
+        Mockito.when(databaseRolesService.getSupportedRoleFromRequest(any(DatabaseCreateRequestV3.class), any(), any())).thenReturn(ADMIN.toString());
+
+        final DatabaseRegistry database = getDatabaseSample();
+        database.setPhysicalDatabaseId(PHYSICAL_DATABASE_ID);
+        when(dBaaService.findDatabaseByClassifierAndType(any(), any(), anyBoolean())).thenReturn(database.getDatabaseRegistry().getFirst());
+        when(dBaaService.isModifiedFields(any(), any())).thenReturn(true);
+        when(dBaaService.detach(database)).thenReturn(database);
+        when(dBaaService.isModifiedFields(any(), any())).thenReturn(false);
+        DatabaseResponseV3 response = new DatabaseResponseV3SingleCP(database.getDatabaseRegistry().getFirst(), PHYSICAL_DATABASE_ID, ADMIN.toString());
+        when(dBaaService.processConnectionPropertiesV3(any(DatabaseRegistry.class), any())).thenReturn(response);
+        when(databaseRegistryDbaasRepository.findDatabaseRegistryById(any())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(dBaaService.isAdapterExists(any(), any(), any())).thenReturn(true);
+        doThrow(new AdapterException("Internal Exception"))
+                .when(dBaaService).createDatabase(any(), any(), any());
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(databaseCreateRequest))
+                .when().put()
+                .then()
+                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
+                .body("reason", is("Failed request to physical adapter"))
+                .body("message", is("An error occurred during the request to adapter: Internal Exception"));
     }
 
     @Test
@@ -1324,6 +1360,10 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setId(UUID.randomUUID());
         databaseRegistry.setDatabase(database);
+        SortedMap<String, Object> classifier = new TreeMap<>();
+        classifier.put(NAMESPACE, NAMESPACE);
+        classifier.put(MICROSERVICE_NAME, MICROSERVICE_NAME);
+        databaseRegistry.setClassifier(classifier);
         database.setResources(Collections.singletonList(new DbResource("database", TEST_NAME)));
         ArrayList<DatabaseRegistry> dbrs = new ArrayList<>();
         dbrs.add(databaseRegistry);
