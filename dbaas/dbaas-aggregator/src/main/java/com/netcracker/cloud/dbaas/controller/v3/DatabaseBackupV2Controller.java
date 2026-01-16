@@ -241,7 +241,7 @@ public class DatabaseBackupV2Controller {
     @POST
     public Response restoreBackup(@Parameter(description = "Unique identifier of the backup", required = true)
                                   @PathParam("backupName") @NotBlank String backupName,
-                                  @RequestBody(description = "Restore request", required = true)
+                                  @RequestBody(description = "Restore request")
                                   @Valid RestoreRequest restoreRequest,
                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, dryRun);
