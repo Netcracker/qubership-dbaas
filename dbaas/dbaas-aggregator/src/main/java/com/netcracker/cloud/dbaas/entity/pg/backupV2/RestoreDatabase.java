@@ -13,7 +13,6 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedMap;
 import java.util.UUID;
 
 @Data
@@ -41,7 +40,7 @@ public class RestoreDatabase {
     @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private List<SortedMap<String, Object>> classifiers;
+    private List<Classifier> classifiers;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

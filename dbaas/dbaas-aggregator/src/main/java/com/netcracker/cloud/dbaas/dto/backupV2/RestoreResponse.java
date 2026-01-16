@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
-import com.netcracker.cloud.dbaas.utils.validation.RestoreGroup;
+import com.netcracker.cloud.dbaas.utils.validation.group.RestoreGroup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.groups.ConvertGroup;
@@ -89,10 +89,6 @@ public class RestoreResponse {
             examples = "Backup Not Found"
     )
     private String errorMessage;
-    @Schema(description = "Aggregated duration of databases", examples = "1200")
-    private Long duration;
-    @Schema(description = "Total number of adapter requests", examples = "1")
-    private Integer attemptCount;
     @Schema(
             description = "List of logical restores",
             implementation = LogicalRestoreResponse.class,
