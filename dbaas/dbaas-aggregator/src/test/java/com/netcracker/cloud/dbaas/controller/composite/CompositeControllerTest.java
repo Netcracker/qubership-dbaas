@@ -10,20 +10,27 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
+import io.restassured.RestAssured;
 import io.restassured.common.mapper.TypeRef;
+import io.restassured.config.LogConfig;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.IntStream;
 
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @QuarkusTest
@@ -33,6 +40,9 @@ class CompositeControllerTest {
 
     @InjectSpy
     CompositeNamespaceService compositeService;
+
+    @Inject
+    EntityManager entityManager;
 
     @Test
     void testGetAllCompositeStructures_Success() {
@@ -221,7 +231,6 @@ class CompositeControllerTest {
                 .then()
                 .statusCode(NO_CONTENT.getStatusCode());
 
-
         verify(compositeService).getCompositeStructure("test-id");
         verify(compositeService).deleteCompositeStructure("test-id");
     }
@@ -249,5 +258,39 @@ class CompositeControllerTest {
                 .then()
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
                 .body("message", is("Internal Server Error"));
+    }
+
+    @Test
+    void saveOrUpdateComposite_concurrent() {
+        RestAssured.config = RestAssured.config()
+                .logConfig(LogConfig.logConfig().enablePrettyPrinting(false));
+        List<CompletableFuture<Void>> futures =
+                IntStream.range(0, 100)
+                        .mapToObj(i ->
+                                CompletableFuture.runAsync(() -> {
+                                            CompositeStructureDto request = CompositeStructureDto.builder()
+                                                    .id("base")
+                                                    .namespaces(Set.of("ns-%d".formatted(i)))
+                                                    .modifyIndex(i == 50 ? 1000 : (long) ThreadLocalRandom.current().nextInt(1000))
+                                                    .build();
+                                            try {
+                                                given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                                                        .contentType(MediaType.APPLICATION_JSON)
+                                                        .body((new ObjectMapper()).writeValueAsString(request))
+                                                        .when().post();
+                                            } catch (JsonProcessingException e) {
+                                                fail("something went wrong", e);
+                                            }
+                                        }
+                                )
+                        ).toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        Object singleResult = entityManager.createNativeQuery(
+                        "SELECT MAX(modify_index) FROM composite_namespace_modify_indexes"
+                )
+                .getSingleResult();
+        assertEquals(BigDecimal.valueOf(1000), singleResult);
     }
 }
