@@ -431,7 +431,7 @@ public class DbBackupV2Service {
                 .flatMap(exclude -> exclude.getDatabaseKind().stream())
                 .distinct()
                 .count();
-        if (uniqKinds == 2) {
+        if (uniqKinds == DatabaseKind.values().length) {
             log.warn("No databases matching the filtering criteria were found during the backup");
             throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
