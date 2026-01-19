@@ -288,7 +288,7 @@ class CompositeControllerTest {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         Object singleResult = entityManager.createNativeQuery(
-                        "SELECT MAX(modify_index) FROM composite_namespace_modify_indexes"
+                        "SELECT MAX(modify_index) FROM composite_properties"
                 )
                 .getSingleResult();
         assertEquals(BigDecimal.valueOf(1000), singleResult);

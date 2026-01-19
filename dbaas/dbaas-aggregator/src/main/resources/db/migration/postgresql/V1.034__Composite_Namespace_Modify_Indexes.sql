@@ -1,4 +1,4 @@
-create table if not exists composite_namespace_modify_indexes
+create table if not exists composite_properties
 (
    composite_namespace_id uuid primary key
        references composite_namespace(id)

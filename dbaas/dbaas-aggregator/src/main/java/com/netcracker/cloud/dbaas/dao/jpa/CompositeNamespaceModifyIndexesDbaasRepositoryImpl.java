@@ -1,6 +1,6 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
-import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespaceModifyIndex;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeProperties;
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceModifyIndexesDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.CompositeNamespaceModifyIndexesRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -16,13 +16,13 @@ public class CompositeNamespaceModifyIndexesDbaasRepositoryImpl implements Compo
     private CompositeNamespaceModifyIndexesRepository compositeNamespaceModifyIndexesRepository;
 
     @Override
-    public Optional<CompositeNamespaceModifyIndex> findByBaselineName(String baselineName) {
+    public Optional<CompositeProperties> findByBaselineName(String baselineName) {
         return compositeNamespaceModifyIndexesRepository.findByBaseline(baselineName);
     }
 
     @Transactional
     @Override
-    public void save(CompositeNamespaceModifyIndex compositeNamespacesModifyIndex) {
+    public void save(CompositeProperties compositeNamespacesModifyIndex) {
         compositeNamespaceModifyIndexesRepository.persist(compositeNamespacesModifyIndex);
     }
 }

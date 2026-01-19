@@ -8,9 +8,9 @@ import java.util.UUID;
 
 @Data
 @NoArgsConstructor
-@Table(name = "composite_namespace_modify_indexes")
-@Entity(name = "CompositeNamespaceModifyIndex")
-public class CompositeNamespaceModifyIndex {
+@Table(name = "composite_properties")
+@Entity(name = "CompositeProperties")
+public class CompositeProperties {
     @Id
     @Column(name = "composite_namespace_id")
     public UUID id;
@@ -23,7 +23,7 @@ public class CompositeNamespaceModifyIndex {
     @Column(name = "modify_index", nullable = false)
     private long modifyIndex;
 
-    public CompositeNamespaceModifyIndex(CompositeNamespace compositeNamespace, long modifyIndex) {
+    public CompositeProperties(CompositeNamespace compositeNamespace, long modifyIndex) {
         this.compositeNamespace = compositeNamespace;
         this.modifyIndex = modifyIndex;
     }

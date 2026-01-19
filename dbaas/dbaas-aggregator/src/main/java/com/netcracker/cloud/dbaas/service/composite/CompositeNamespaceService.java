@@ -3,7 +3,7 @@ package com.netcracker.cloud.dbaas.service.composite;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespace;
-import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespaceModifyIndex;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeProperties;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.exceptions.NamespaceCompositeValidationException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
@@ -39,7 +39,7 @@ public class CompositeNamespaceService {
     public void saveOrUpdateCompositeStructure(CompositeStructureDto compositeRequest) {
         if (compositeRequest.getModifyIndex() != null) {
             txLock(compositeRequest.getId());
-            Optional<CompositeNamespaceModifyIndex> currentModifyIndex = compositeNamespaceModifyIndexesDbaasRepository.findByBaselineName(compositeRequest.getId());
+            Optional<CompositeProperties> currentModifyIndex = compositeNamespaceModifyIndexesDbaasRepository.findByBaselineName(compositeRequest.getId());
             if (currentModifyIndex.isPresent() && compositeRequest.getModifyIndex() < currentModifyIndex.get().getModifyIndex()) {
                 throw new NamespaceCompositeValidationException(Source.builder().pointer("/modifyIndex").build(), "new modify index '%s' should be greater than current index '%s'".formatted(compositeRequest.getModifyIndex(), currentModifyIndex.get().getModifyIndex()));
             }
@@ -54,7 +54,7 @@ public class CompositeNamespaceService {
         compositeNamespaceDbaasRepository.saveAll(compositeNamespaces);
         if (compositeRequest.getModifyIndex() != null) {
             compositeNamespaceDbaasRepository.findBaselineByNamespace(compositeRequest.getId())
-                    .ifPresent(compositeNamespace -> compositeNamespaceModifyIndexesDbaasRepository.save(new CompositeNamespaceModifyIndex(compositeNamespace, compositeRequest.getModifyIndex())));
+                    .ifPresent(compositeNamespace -> compositeNamespaceModifyIndexesDbaasRepository.save(new CompositeProperties(compositeNamespace, compositeRequest.getModifyIndex())));
         }
     }
 
