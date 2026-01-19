@@ -152,32 +152,18 @@ jobs:
             -n postgres \
             --timeout=300s
 
-      - name: Run tests
-        id: tests
-        run: mvn --batch-mode -Dmaven.test.failure.ignore=true -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Aggregate Surefire reports
-        id: collect_reports
-        if: always() && steps.tests.outcome != 'skipped'
+      - name: Collect DBaaS POD logs
+        id: collect_pod_logs
         run: |
-          for module in $(find . -type d -path "*/target/surefire-reports" | sed -E 's#/target/surefire-reports##' | sort -u); do
-            modname=$(basename "$module")
-            echo "Found test reports for $modname"
-            mkdir -p artifacts/$modname
-            cp -r "$module/target/surefire-reports" artifacts/$modname/ || true
-            if [ -d "$module/target/reports" ]; then
-              cp -r "$module/target/reports" artifacts/$modname/ || true
-            fi
-          done
+          chmod +x .github/scripts/get-dbaas-pod-logs.sh && \
+          .github/scripts/get-dbaas-pod-logs.sh
 
-      - name: Upload Surefire reports
-        if: always() && steps.collect_reports.outcome == 'success'
+      - name: Upload DBaaS POD logs
+        if: always() && steps.collect_pod_logs.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: surefire-reports
-          path: artifacts/*
+          name: dbaas-pod-logs
+          path: pod-logs/*
 
       - name: Collect DBaaS logs
         id: collect_logs
