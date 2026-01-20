@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-read
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-read
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: logging
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: logging
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        5
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/dbaas-aggregator-*.log,/var/log/containers/dbaas-postgres-adapter-*.log,/var/log/containers/postgres-backup-daemon-*.log
+        Parser            cri
+        Read_From_Head    On
+        Mem_Buf_Limit     20MB
+        Skip_Long_Lines   On
+        Refresh_Interval  5
+        Rotate_Wait       30
+        DB                /var/log/fluent-bit/flb_kube.db8
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           Off
+        Keep_Log            On
+
+    [FILTER]
+        Name          nest
+        Match         kube.*
+        Operation     lift
+        Nested_under  kubernetes
+        Add_prefix    k8s_
+
+    [FILTER]
+        Name      modify
+        Match     kube.*
+        Copy      k8s_pod_name  pod_name
+        Remove_regex ^k8s_.*$
+        Remove    kubernetes
+        Remove    stream
+        Remove    logtag
+
+    [OUTPUT]
+        Name   file
+        Match  kube.var.log.containers.dbaas-aggregator-*_dbaas_*
+        Path   /var/log/fluent-bit
+        File   dbaas-aggregator.log
+        Format plain
+        Mkdir  true
+
+    [OUTPUT]
+        Name   file
+        Match  kube.var.log.containers.dbaas-postgres-adapter-*_postgres_*
+        Path   /var/log/fluent-bit
+        File   dbaas-postgres-adapter.log
+        Format plain
+        Mkdir  true
+
+    [OUTPUT]
+        Name   file
+        Match  kube.var.log.containers.postgres-backup-daemon-*_postgres_*
+        Path   /var/log/fluent-bit
+        File   postgres-backup-daemon.log
+        Format plain
+        Mkdir  true
+
+  parsers.conf: |
+    [PARSER]
+        Name   cri
+        Format regex
+        Regex  ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: logging
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      serviceAccountName: fluent-bit
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: fluent-bit
+          image: cr.fluentbit.io/fluent/fluent-bit:2.2.2
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+            - name: fluentbit-state
+              mountPath: /var/log/fluent-bit
+            - name: config
+              mountPath: /fluent-bit/etc/
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: fluentbit-state
+          hostPath:
+            path: /var/log/fluent-bit
+            type: DirectoryOrCreate
+        - name: config
+          configMap:
+            name: fluent-bit-config
