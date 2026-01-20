@@ -167,7 +167,8 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: dbaas-pod-logs
-          path: fluentbit-logs/*
+          path: fluentbit-logs/**
+          if-no-files-found: warn
 
       - name: Collect DBaaS logs
         id: collect_logs
