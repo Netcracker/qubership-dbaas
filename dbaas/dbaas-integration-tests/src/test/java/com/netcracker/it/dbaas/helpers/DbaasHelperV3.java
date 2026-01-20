@@ -123,7 +123,7 @@ public class DbaasHelperV3 {
     private static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     @NonNull
-    private final URL dbaasServiceUrl;
+    private volatile URL dbaasServiceUrl;
     @NonNull
     private final KubernetesClient kubernetesClient;
     @Getter
@@ -149,6 +149,14 @@ public class DbaasHelperV3 {
         this.dbaasMigrationAuthorization = dbaasUsers.getBasicAuthorizationForRoles("MIGRATION_CLIENT");
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
+    }
+
+    public URL getDbaasServiceUrl() {
+        return dbaasServiceUrl;
+    }
+
+    public void setDbaasServiceUrl(@NotNull URL dbaasServiceUrl) {
+        this.dbaasServiceUrl = dbaasServiceUrl;
     }
 
     /**
