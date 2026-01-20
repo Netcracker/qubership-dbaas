@@ -39,6 +39,10 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Deploy Fluent Bit
+        run: |
+          kubectl apply -f .github/declarations/fluent-bit-logging.yaml
+
       - name: Create namespace minio
         run: |
           kubectl create namespace minio \
