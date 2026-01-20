@@ -12,6 +12,7 @@ import java.util.SortedMap;
 @AllArgsConstructor
 public class ClassifierResponse {
     private ClassifierType type;
+    private String previousDatabase;
     private SortedMap<String, Object> classifier;
     private SortedMap<String, Object> classifierBeforeMapper;
 }

@@ -242,6 +242,11 @@ public enum ErrorCodes implements ErrorCode {
             "Digest mismatch",
             "Digest header mismatch: %s"
     ),
+    CORE_DBAAS_4053(
+            "CORE-DBAAS-4053",
+            "Operation already running",
+            "Operation '%s' is already in progress"
+    ),
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",
             "trackingId not found",

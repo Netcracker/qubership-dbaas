@@ -13,6 +13,7 @@ import java.util.SortedMap;
 @AllArgsConstructor
 public class Classifier {
     private ClassifierType type;
+    private String previousDatabase;
     private SortedMap<String, Object> classifier;
     private SortedMap<String, Object> classifierBeforeMapper;
 
