@@ -23,6 +23,7 @@ import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.javacrumbs.shedlock.core.LockProvider;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -1345,9 +1346,9 @@ class DbBackupV2ServiceTest {
         SortedMap<String, Object> classifier2 = getClassifier(namespace, microserviceName, anotherTenantId);
         SortedMap<String, Object> mappedClassifier = getClassifier(mappedNamespace, microserviceName, anotherTenantId);
         String msg = String.format(
-                "Resource has illegal state: Duplicate classifier detected after mapping: classifier='%s', classifierBeforeMapping='%s'. " +
-                        "Ensure all classifiers remain unique after mapping.",
-                mappedClassifier, classifier2);
+                "Resource has illegal state: Duplicate classifier detected after mapping: " +
+                        "classifier='%s'. Ensure all classifiers remain unique after mapping.",
+                mappedClassifier);
 
         BackupDatabase backupDatabase = getBackupDatabase(dbName, List.of(classifier1, classifier2), false, BackupTaskStatus.COMPLETED, "");
         LogicalBackup logicalBackup = getLogicalBackup(logicalBackupName, adapterId, postgresType, List.of(backupDatabase), BackupTaskStatus.COMPLETED, "");
@@ -1576,7 +1577,6 @@ class DbBackupV2ServiceTest {
                         anotherTenantId.equals(databaseRegistry5.getClassifier().get(TENANT_ID)) &&
                         databaseRegistry5.getClassifier().containsKey(MARKED_FOR_DROP)
         );
-
     }
 
     @Test
@@ -1683,11 +1683,12 @@ class DbBackupV2ServiceTest {
                 .findAny().orElse(null);
         assertNotNull(classifier1);
         assertNotNull(classifier1.getClassifier());
+        assertEquals(database.getName(), classifier1.getPreviousDatabase());
         assertTrue(
                 mappedNamespace.equals(classifier1.getClassifier().get(NAMESPACE)) &&
-                microserviceName1.equals(classifier1.getClassifier().get(MICROSERVICE_NAME)) &&
-                "tenant".equals(classifier1.getClassifier().get("scope")) &&
-                mappedTenantId.equals(classifier1.getClassifier().get(TENANT_ID))
+                        microserviceName1.equals(classifier1.getClassifier().get(MICROSERVICE_NAME)) &&
+                        "tenant".equals(classifier1.getClassifier().get("scope")) &&
+                        mappedTenantId.equals(classifier1.getClassifier().get(TENANT_ID))
         );
         assertNotNull(classifier1.getClassifierBeforeMapper());
         assertTrue(
@@ -1702,6 +1703,7 @@ class DbBackupV2ServiceTest {
                 .findAny().orElse(null);
         assertNotNull(classifier2);
         assertNotNull(classifier2.getClassifier());
+        assertEquals(database.getName(), classifier2.getPreviousDatabase());
         assertTrue(
                 anotherNamespace.equals(classifier2.getClassifier().get(NAMESPACE)) &&
                         microserviceName1.equals(classifier2.getClassifier().get(MICROSERVICE_NAME)) &&
@@ -1719,6 +1721,7 @@ class DbBackupV2ServiceTest {
         ClassifierResponse classifier3 = externalDatabaseResponse.getClassifiers().getFirst();
         assertNotNull(classifier3);
         assertEquals(ClassifierType.REPLACED, classifier3.getType());
+        assertEquals(externalDb.getName(), classifier3.getPreviousDatabase());
         assertNotNull(classifier3.getClassifier());
         assertTrue(
                 mappedNamespace.equals(classifier3.getClassifier().get(NAMESPACE)) &&
@@ -1733,6 +1736,48 @@ class DbBackupV2ServiceTest {
                         "tenant".equals(classifier3.getClassifierBeforeMapper().get("scope")) &&
                         tenantId.equals(classifier3.getClassifierBeforeMapper().get(TENANT_ID))
         );
+    }
+
+    @Test
+    void updateAndValidateClassifier() {
+        String namespace = "test1-namespace";
+        String namespaceMapped = "test1-namespace-mapped";
+
+        List<Classifier> classifiers = getClassifiers(namespace, namespaceMapped);
+        Mapping mapping = new Mapping();
+        mapping.setNamespaces(Map.of(namespace, namespaceMapped));
+
+        Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
+        IllegalResourceStateException ex = assertThrows(
+                IllegalResourceStateException.class,
+                () -> classifiers.forEach(c ->
+                        dbBackupV2Service.updateAndValidateClassifier(c, mapping, uniqueClassifiers)
+                )
+        );
+
+        assertTrue(ex.getMessage().contains("Duplicate classifier detected after mapping: " +
+                "classifier='{microserviceName=test1, namespace=test1-namespace-mapped, scope=service}'. " +
+                "Ensure all classifiers remain unique after mapping"));
+    }
+
+    private static @NotNull List<Classifier> getClassifiers(String namespace, String namespaceMapped) {
+        SortedMap<String, Object> classifier1 = new TreeMap<>();
+        classifier1.put("microserviceName", "test1");
+        classifier1.put("namespace", namespace);
+        classifier1.put("scope", "service");
+
+        SortedMap<String, Object> classifier2 = new TreeMap<>();
+        classifier2.put("microserviceName", "test1");
+        classifier2.put("namespace", namespaceMapped);
+        classifier2.put("scope", "service");
+
+        Classifier classifierWrapper1 = new Classifier();
+        classifierWrapper1.setClassifierBeforeMapper(classifier1);
+
+        Classifier classifierWrapper2 = new Classifier();
+        classifierWrapper2.setClassifierBeforeMapper(classifier2);
+
+        return List.of(classifierWrapper1, classifierWrapper2);
     }
 
     @Test

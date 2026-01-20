@@ -1009,21 +1009,25 @@ public class DbBackupV2Service {
         return Map.entry(physicalDatabase, new BackupDatabaseDelegate(db.backupDatabase(), classifiers));
     }
 
-    private Classifier updateAndValidateClassifier(
+    protected Classifier updateAndValidateClassifier(
             Classifier classifier,
             Mapping mapping,
             Set<SortedMap<String, Object>> uniqueClassifiers) {
         Classifier updatedClassifier = updateClassifier(classifier, mapping);
         // To prevent collision during mapping
-        if (!uniqueClassifiers.add(updatedClassifier.getClassifier())) {
+        if (!uniqueClassifiers.add(getClassifier(updatedClassifier))) {
             String msg = String.format(
-                    "Duplicate classifier detected after mapping: classifier='%s', classifierBeforeMapping='%s'. " +
-                            "Ensure all classifiers remain unique after mapping.",
-                    classifier.getClassifier(), classifier.getClassifierBeforeMapper());
+                    "Duplicate classifier detected after mapping: classifier='%s'. " +
+                            "Ensure all classifiers remain unique after mapping.", getClassifier(updatedClassifier));
             log.error(msg);
             throw new IllegalResourceStateException(msg, Source.builder().build());
         }
         return updatedClassifier;
+    }
+
+    private SortedMap<String, Object> getClassifier(Classifier classifier) {
+        return Optional.ofNullable(classifier.getClassifier())
+                .orElseGet(classifier::getClassifierBeforeMapper);
     }
 
     protected void startRestore(Restore restore, boolean dryRun) {
