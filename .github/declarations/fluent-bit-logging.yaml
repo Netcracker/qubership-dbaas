@@ -66,22 +66,6 @@ data:
         Merge_Log           Off
         Keep_Log            On
 
-    [FILTER]
-        Name          nest
-        Match         kube.*
-        Operation     lift
-        Nested_under  kubernetes
-        Add_prefix    k8s_
-
-    [FILTER]
-        Name      modify
-        Match     kube.*
-        Copy      k8s_pod_name  pod_name
-        Remove_regex ^k8s_.*$
-        Remove    kubernetes
-        Remove    stream
-        Remove    logtag
-
     [OUTPUT]
         Name   file
         Match  kube.var.log.containers.dbaas-aggregator-*_dbaas_*
