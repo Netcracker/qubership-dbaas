@@ -1027,9 +1027,24 @@ public class DbBackupV2Service {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
-    private CompletableFuture<Void> runLogicalRestoreAsync(LogicalRestore logicalRestore, List<RestoreDatabase> restoreDatabases, String storageName, String blobPath, boolean dryRun) {
-        return CompletableFuture.supplyAsync(asyncOperations.wrapWithContext(() ->
-                        logicalRestore(logicalRestore.getLogicalRestoreName(), logicalRestore, restoreDatabases, storageName, blobPath, dryRun)))
+    private CompletableFuture<Void> runLogicalRestoreAsync(LogicalRestore logicalRestore,
+                                                           List<RestoreDatabase> restoreDatabases,
+                                                           String storageName,
+                                                           String blobPath,
+                                                           boolean dryRun
+    ) {
+        return CompletableFuture.supplyAsync(
+                        asyncOperations.wrapWithContext(
+                                () -> logicalRestore(
+                                        logicalRestore.getLogicalRestoreName(),
+                                        logicalRestore,
+                                        restoreDatabases,
+                                        storageName,
+                                        blobPath,
+                                        dryRun
+                                )
+                        )
+                )
                 .thenAccept(response ->
                         refreshLogicalRestoreState(logicalRestore, response))
                 .exceptionally(throwable -> {
@@ -1085,7 +1100,13 @@ public class DbBackupV2Service {
                 logicalRestore.getLogicalRestoreName(), logicalRestore.getStatus(), logicalRestore.getErrorMessage());
     }
 
-    private LogicalRestoreAdapterResponse logicalRestore(String logicalRestoreName, LogicalRestore logicalRestore, List<RestoreDatabase> restoreDatabases, String storageName, String blobPath, boolean dryRun) {
+    private LogicalRestoreAdapterResponse logicalRestore(String logicalRestoreName,
+                                                         LogicalRestore logicalRestore,
+                                                         List<RestoreDatabase> restoreDatabases,
+                                                         String storageName,
+                                                         String blobPath,
+                                                         boolean dryRun
+    ) {
         String logicalBackupName = restoreDatabases.getFirst()
                 .getBackupDatabase()
                 .getLogicalBackup()
@@ -1524,10 +1545,10 @@ public class DbBackupV2Service {
 
         List<CompletableFuture<Void>> futures = failedLogicalRestores.stream()
                 .map(logicalRestore -> {
-                            List<RestoreDatabase> failedRestoreDatabase = logicalRestore.getRestoreDatabases().stream()
+                            List<RestoreDatabase> failedRestoreDatabases = logicalRestore.getRestoreDatabases().stream()
                                     .filter(db -> RestoreTaskStatus.FAILED == db.getStatus())
                                     .toList();
-                            return runLogicalRestoreAsync(logicalRestore, failedRestoreDatabase, storageName, blobPath, false);
+                            return runLogicalRestoreAsync(logicalRestore, failedRestoreDatabases, storageName, blobPath, false);
                         }
                 )
                 .toList();
@@ -1635,23 +1656,25 @@ public class DbBackupV2Service {
         LockConfiguration config = new LockConfiguration(
                 Instant.now(),
                 RESTORE,
-                Duration.ofMinutes(2),
-                Duration.ofMinutes(0));
+                Duration.ofMinutes(LOCK_AT_MOST),
+                Duration.ofMinutes(LOCK_AT_LEAST));
 
         Optional<SimpleLock> optLock = lockProvider.lock(config);
 
         if (optLock.isEmpty())
-            throw new IllegalResourceStateException("restore already running", Source.builder().build());
+            throw new OperationAlreadyRunningException("restore", Source.builder().build());
         // Start locking action
         SimpleLock lock = optLock.get();
-        boolean unlocked = false;
         try {
             if (restoreRepository.countNotCompletedRestores() > 0)
-                throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
+                throw new OperationAlreadyRunningException("restore", Source.builder().build());
             return action.get();
         } finally {
-            if (!unlocked)
+            try {
                 lock.unlock();
+            } catch (IllegalStateException ex) {
+                log.debug("Lock is already unlocked", ex);
+            }
         }
     }
 
