@@ -328,6 +328,22 @@ smoke-test:
 		echo "$(RED)Error: Could not retrieve DBaaS credentials$(NC)"; \
 		exit 1; \
 	fi; \
+	start_port_forward() { \
+		port=$$1; \
+		kubectl port-forward -n $(DBAAS_NAMESPACE) service/$(DBAAS_SERVICE_NAME) $$port:8080 >/tmp/dbaas-port-forward.log 2>&1 & \
+		PORT_FORWARD_PID=$$!; \
+		echo "$(CYAN)--- Port forward started with PID: $$PORT_FORWARD_PID$(NC)"; \
+		sleep 2; \
+		if ! kill -0 $$PORT_FORWARD_PID 2>/dev/null; then \
+			echo "$(RED)Error: Port forward process exited. See /tmp/dbaas-port-forward.log$(NC)"; \
+			return 1; \
+		fi; \
+		if ! timeout 2 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/$$port" >/dev/null 2>&1; then \
+			echo "$(RED)Error: Port $$port not listening after port-forward start$(NC)"; \
+			return 1; \
+		fi; \
+		return 0; \
+	}; \
 	echo "$(GREEN)--- Credentials retrieved successfully$(NC)"; \
 	echo "$(CYAN)--- Setting up port forward to DBaaS service...$(NC)";\
 	PORT_FOUND=false;\
@@ -337,10 +353,12 @@ smoke-test:
 		echo "$(CYAN)--- Attempt $$ATTEMPT: Trying port $$RANDOM_PORT$(NC)"; \
 		if ! netstat -tuln 2>/dev/null | grep -q ":$$RANDOM_PORT "; then \
 			echo "$(GREEN)--- Port $$RANDOM_PORT is available$(NC)"; \
-			kubectl port-forward -n $(DBAAS_NAMESPACE) service/$(DBAAS_SERVICE_NAME) $$RANDOM_PORT:8080 >/dev/null 2>&1 & \
-			PORT_FORWARD_PID=$$!; \
-			echo "$(CYAN)--- Port forward started with PID: $$PORT_FORWARD_PID$(NC)"; \
-			PORT_FOUND=true; \
+			if start_port_forward $$RANDOM_PORT; then \
+				PORT_FOUND=true; \
+			else \
+				kill $$PORT_FORWARD_PID 2>/dev/null || true; \
+				ATTEMPT=$$((ATTEMPT + 1)); \
+			fi; \
 		else \
 			echo "$(CYAN)--- Port $$RANDOM_PORT is already in use, trying another port$(NC)"; \
 			ATTEMPT=$$((ATTEMPT + 1)); \
@@ -372,6 +390,13 @@ smoke-test:
 			}' 2>/dev/null); \
 		HTTP_STATUS=$$(echo "$$TEST_DB_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2); \
 		RESPONSE_BODY=$$(echo "$$TEST_DB_RESPONSE" | sed 's/HTTPSTATUS:[0-9]*//'); \
+		if [ -z "$$HTTP_STATUS" ] || [ "$$HTTP_STATUS" = "000" ]; then \
+			echo "$(CYAN)--- Detected HTTPSTATUS 000/empty. Restarting port forward...$(NC)"; \
+			kill $$PORT_FORWARD_PID 2>/dev/null || true; \
+			if ! start_port_forward $$RANDOM_PORT; then \
+				echo "$(RED)Error: Failed to restart port forward$(NC)"; \
+			fi; \
+		fi; \
 		if [ "$$HTTP_STATUS" = "200" ] || [ "$$HTTP_STATUS" = "201" ] || [ "$$HTTP_STATUS" = "202" ]; then \
 			echo "$(GREEN)--- Database creation successful on attempt $$DB_ATTEMPT! HTTP Status: $$HTTP_STATUS$(NC)"; \
 			echo "$(CYAN)--- Response: $$RESPONSE_BODY$(NC)"; \
