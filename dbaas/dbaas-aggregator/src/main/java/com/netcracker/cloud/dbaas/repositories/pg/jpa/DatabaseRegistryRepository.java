@@ -42,12 +42,11 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
     public List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters) {
         StringBuilder q = new StringBuilder(
                 "SELECT cl.* " +
-                        "FROM classifier cl " +
-                        "LEFT JOIN database d ON cl.database_id = d.id " +
-                        "WHERE "
+                        "FROM classifier cl "
         );
 
         int index = 0;
+        boolean needDatabaseJoin = false;
         List<String> orBlock = new ArrayList<>();
         Map<String, Object> params = new HashMap<>();
 
@@ -69,6 +68,7 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
                 params.put(typeValues, filter.getDatabaseType().stream().map(DatabaseType::getType).toList().toArray(new String[0]));
             }
             if (filter.getDatabaseKind() != null && filter.getDatabaseKind().size() == 1) {
+                needDatabaseJoin = true;
                 DatabaseKind kind = filter.getDatabaseKind().getFirst();
                 if (kind == DatabaseKind.CONFIGURATION) {
                     query.add("d.bgversion IS NOT NULL AND d.bgversion <> '' ");
@@ -76,11 +76,18 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
                     query.add("(d.bgversion IS NULL OR d.bgversion = '') ");
                 }
             }
-            String block = "(" + String.join(" AND ", query) + ")";
-            orBlock.add(block);
-            index++;
+            if (!query.isEmpty()) {
+                String block = "(" + String.join(" AND ", query) + ")";
+                orBlock.add(block);
+                index++;
+            }
         }
-        q.append(String.join(" OR ", orBlock));
+
+        if (needDatabaseJoin)
+            q.append("LEFT JOIN database d ON cl.database_id = d.id ");
+
+        if (!orBlock.isEmpty())
+            q.append("WHERE ").append(String.join(" OR ", orBlock));
 
         var query = getEntityManager()
                 .createNativeQuery(q.toString(), DatabaseRegistry.class);
