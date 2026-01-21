@@ -1739,6 +1739,190 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void retryRestore() {
+        // 1 ExternalDatabase 2 RestoreDatabase (1 FAILED, 1 COMPLETED), 1 logicalRestore (FAILED), 1 restore (FAILED)
+        // 1 mapping { namespace : mappedNamespace }
+        // Assert restore COMPLETED, 3 db created
+        String restoreName = "restoreName";
+        String backupName = "backupName";
+        String logicalBackupName = "logicalBackupName";
+        String logicalRestoreName = "logicalRestoreName";
+
+        String dbName = "dbName";
+        String dbName2 = "dbName2";
+
+        String newName = "newName";
+        String newName2 = "newName2";
+        String externalName = "externalName";
+        String adapterId = "adapterId";
+
+
+        String namespace = "namespace";
+        String mappedNamespace = "mappedNamespace";
+        String anotherNamespace = "anotherNamespace";
+
+        String microserviceName1 = "microserviceName1";
+        String microserviceName2 = "microserviceName2";
+        String microserviceName3 = "microserviceName3";
+
+        String tenantId = "tenantId";
+        String postgresType = "postgresql";
+
+        BackupExternalDatabase externalDatabase = getBackupExternalDatabase(externalName, postgresType, List.of(getClassifier(namespace, microserviceName3, tenantId)));
+        BackupDatabase backupDatabase1 = getBackupDatabase(dbName, List.of(getClassifier(namespace, microserviceName1, tenantId)), false, BackupTaskStatus.COMPLETED, "Internal Server Error");
+        BackupDatabase backupDatabase2 = getBackupDatabase(dbName2, List.of(getClassifier(anotherNamespace, microserviceName2, null)), false, BackupTaskStatus.COMPLETED, null);
+        LogicalBackup logicalBackup = getLogicalBackup(logicalBackupName, adapterId, postgresType, List.of(backupDatabase1, backupDatabase2), BackupTaskStatus.COMPLETED, "Internal Server Error");
+        Backup backup = getBackup(backupName, ExternalDatabaseStrategy.INCLUDE, getFilterCriteriaEntity(List.of(namespace)), List.of(logicalBackup), List.of(externalDatabase), BackupStatus.COMPLETED, "Internal Server Error");
+        backupRepository.save(backup);
+
+        Classifier classifierWrapper1 = getClassifier(ClassifierType.NEW, mappedNamespace, microserviceName1, null, namespace, null);
+        Classifier classifierWrapper2 = getClassifier(ClassifierType.NEW, null, microserviceName2, null, namespace, null);
+        Classifier classifierWrapper3 = getClassifier(ClassifierType.NEW, null, microserviceName3, null, namespace, null);
+        RestoreExternalDatabase restoreExternalDatabase = getRestoreExternalDb(externalName, postgresType, List.of(classifierWrapper3));
+        RestoreDatabase restoreDatabase1 = getRestoreDatabase(backupDatabase1, newName, List.of(classifierWrapper1), Map.of(), null, RestoreTaskStatus.FAILED, 1, "Internal Server Error");
+        RestoreDatabase restoreDatabase2 = getRestoreDatabase(backupDatabase2, newName2, List.of(classifierWrapper2), Map.of(), null, RestoreTaskStatus.COMPLETED, 1, null);
+        LogicalRestore logicalRestore = getLogicalRestore(logicalRestoreName, adapterId, postgresType, List.of(restoreDatabase1, restoreDatabase2), RestoreTaskStatus.FAILED, "Internal Server Error");
+        Restore restore = getRestore(backup, restoreName, getFilterCriteriaEntity(List.of(namespace)), null, List.of(logicalRestore), ExternalDatabaseStrategy.INCLUDE, List.of(restoreExternalDatabase), RestoreStatus.FAILED, "Internal Server Error");
+
+        restoreRepository.save(restore);
+
+        DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(dbaasAdapter);
+        when(dbaasAdapter.isBackupRestoreSupported()).thenReturn(true);
+
+        // Mock logic of choosing adapter in new/current env
+        ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
+        adapter1.setAdapterId(adapterId);
+        PhysicalDatabase physicalDatabase1 = new PhysicalDatabase();
+        physicalDatabase1.setAdapter(adapter1);
+        physicalDatabase1.setType(postgresType);
+        physicalDatabase1.setPhysicalDatabaseIdentifier("postgres-dev");
+
+        when(balancingRulesService.applyBalancingRules(postgresType, mappedNamespace, microserviceName1))
+                .thenReturn(physicalDatabase1);
+        when(physicalDatabasesService.getByAdapterId(adapterId)).thenReturn(physicalDatabase1);
+
+        // Response during the sync restore process
+        LogicalRestoreAdapterResponse response = LogicalRestoreAdapterResponse.builder()
+                .status(IN_PROGRESS_STATUS)
+                .restoreId(logicalRestoreName)
+                .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(IN_PROGRESS_STATUS)
+                        .previousDatabaseName(dbName)
+                        .databaseName(newName)
+                        .duration(1)
+                        .build()))
+                .build();
+
+        // Same answer to DryRun non-DryRun mode
+        when(dbaasAdapter.restoreV2(eq(logicalBackupName), anyBoolean(), any()))
+                .thenReturn(response)
+                .thenReturn(response);
+
+        // Response during the async restore process
+        LogicalRestoreAdapterResponse response2 = LogicalRestoreAdapterResponse.builder()
+                .status(COMPLETED_STATUS)
+                .restoreId(logicalRestoreName)
+                .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(COMPLETED_STATUS)
+                        .previousDatabaseName(dbName)
+                        .databaseName(newName)
+                        .duration(1)
+                        .build()))
+                .build();
+
+        when(dbaasAdapter.trackRestoreV2(eq(logicalRestoreName), any(), any()))
+                .thenReturn(response2);
+
+        // Mocks to ensure user process
+        DbResource resource1 = new DbResource();
+        resource1.setId(UUID.randomUUID());
+        resource1.setKind("kind");
+        resource1.setName("name");
+        EnsuredUser user1 = new EnsuredUser();
+        user1.setConnectionProperties(Map.of(
+                "key", "value"
+        ));
+        user1.setResources(List.of(resource1));
+
+        when(dbaasAdapter.ensureUser("username", null, newName, "admin")).thenReturn(user1);
+
+        DbResource resource2 = new DbResource();
+        resource2.setId(UUID.randomUUID());
+        resource2.setKind("kind");
+        resource2.setName("name");
+        EnsuredUser user2 = new EnsuredUser();
+        user2.setConnectionProperties(Map.of(
+                "key", "value"
+        ));
+        user2.setResources(List.of(resource2));
+
+        when(dbaasAdapter.ensureUser("username", null, newName2, "admin")).thenReturn(user2);
+
+        RestoreResponse restoreResponse = dbBackupV2Service.retryRestore(restoreName);
+        dbBackupV2Service.checkRestoresAsync();
+
+        assertEquals(restoreName, restoreResponse.getRestoreName());
+        assertEquals(backupName, restoreResponse.getBackupName());
+        assertEquals(RestoreStatus.IN_PROGRESS, restoreResponse.getStatus());
+        assertEquals(2, restoreResponse.getTotal());
+        assertEquals(1, restoreResponse.getCompleted());
+        assertEquals(1, restoreResponse.getLogicalRestores().size());
+
+        LogicalRestoreResponse logicalRestoreResponse = restoreResponse.getLogicalRestores().getFirst();
+        assertEquals(logicalRestoreName, logicalRestoreResponse.getLogicalRestoreName());
+        assertEquals(adapterId, logicalRestoreResponse.getAdapterId());
+        assertEquals(2, logicalRestoreResponse.getRestoreDatabases().size());
+
+        RestoreDatabaseResponse restoreDatabaseResponse1 = logicalRestoreResponse.getRestoreDatabases().stream()
+                .filter(db -> newName.equals(db.getName())).findAny().orElse(null);
+        assertEquals(1, restoreDatabaseResponse1.getClassifiers().size());
+
+        ClassifierResponse classifierResponse1 = restoreDatabaseResponse1.getClassifiers().getFirst();
+        assertEquals(classifierWrapper1.getType(), classifierResponse1.getType());
+        assertEquals(classifierWrapper1.getClassifier(), classifierResponse1.getClassifier());
+        assertEquals(classifierWrapper1.getClassifierBeforeMapper(), classifierResponse1.getClassifierBeforeMapper());
+        assertEquals(RestoreTaskStatus.IN_PROGRESS, restoreDatabaseResponse1.getStatus());
+
+        RestoreDatabaseResponse restoreDatabaseResponse2 = logicalRestoreResponse.getRestoreDatabases().stream()
+                .filter(db -> newName2.equals(db.getName())).findAny().orElse(null);
+        assertEquals(1, restoreDatabaseResponse2.getClassifiers().size());
+
+        ClassifierResponse classifierResponse2 = restoreDatabaseResponse2.getClassifiers().getFirst();
+        assertEquals(classifierWrapper2.getType(), classifierResponse2.getType());
+        assertEquals(classifierWrapper2.getClassifier(), classifierResponse2.getClassifier());
+        assertEquals(classifierWrapper2.getClassifierBeforeMapper(), classifierResponse2.getClassifierBeforeMapper());
+        assertEquals(RestoreTaskStatus.COMPLETED, restoreDatabaseResponse2.getStatus());
+
+        // Start assert initialized dbs
+        List<DatabaseRegistry> databaseRegistries = databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType();
+        assertEquals(3, databaseRegistries.size());
+
+        DatabaseRegistry databaseRegistry1 = databaseRegistries.stream()
+                .filter(db -> newName.equals(db.getName()))
+                .findAny().orElse(null);
+        assert databaseRegistry1 != null;
+        assertEquals(classifierWrapper1.getClassifier(), databaseRegistry1.getClassifier());
+        assertEquals("postgres-dev", databaseRegistry1.getPhysicalDatabaseId());
+
+        DatabaseRegistry databaseRegistry2 = databaseRegistries.stream()
+                .filter(db -> newName2.equals(db.getName()))
+                .findAny().orElse(null);
+        assert databaseRegistry2 != null;
+        assertEquals(classifierWrapper2.getClassifierBeforeMapper(), databaseRegistry2.getClassifier());
+        assertEquals("postgres-dev", databaseRegistry2.getPhysicalDatabaseId());
+
+        DatabaseRegistry databaseRegistry3 = databaseRegistries.stream()
+                .filter(db -> externalName.equals(db.getName()))
+                .findAny().orElse(null);
+        assert databaseRegistry3 != null;
+        assertEquals(classifierWrapper3.getClassifierBeforeMapper(), databaseRegistry3.getClassifier());
+        assertNull(databaseRegistry3.getPhysicalDatabaseId());
+
+    }
+
+    @Test
     void updateAndValidateClassifier() {
         String namespace = "test1-namespace";
         String namespaceMapped = "test1-namespace-mapped";
@@ -3101,6 +3285,37 @@ class DbBackupV2ServiceTest {
         return classifier;
     }
 
+    private Classifier getClassifier(ClassifierType classifierType, String namespace, String microserviceName, String tenantId, String namespaceBeforeMap, String tenantIdBeforeMap) {
+        assertFalse(namespaceBeforeMap.isBlank());
+
+        Classifier classifierWrapper = new Classifier();
+        classifierWrapper.setType(classifierType);
+
+        if(namespace != null && !namespace.isBlank()) {
+            SortedMap<String, Object> classifier = new TreeMap<>();
+            classifier.put("namespace", namespace);
+            classifier.put("microserviceName", microserviceName);
+            if (tenantId != null && !tenantId.isBlank()) {
+                classifier.put("tenantId", tenantId);
+                classifier.put("scope", "tenant");
+            } else
+                classifier.put("scope", "service");
+            classifierWrapper.setClassifier(classifier);
+        }
+
+        SortedMap<String, Object> classifierBeforeMapping = new TreeMap<>();
+        classifierBeforeMapping.put("namespace", namespaceBeforeMap);
+        classifierBeforeMapping.put("microserviceName", microserviceName);
+        if (tenantId != null && !tenantId.isBlank()) {
+            classifierBeforeMapping.put("tenantId", tenantIdBeforeMap);
+            classifierBeforeMapping.put("scope", "tenant");
+        } else
+            classifierBeforeMapping.put("scope", "service");
+
+        classifierWrapper.setClassifierBeforeMapper(classifierBeforeMapping);
+        return classifierWrapper;
+    }
+
     private BackupExternalDatabase getBackupExternalDatabase(String name, String type, List<SortedMap<String, Object>> classifiers) {
         return BackupExternalDatabase.builder()
                 .name(name)
@@ -3403,6 +3618,18 @@ class DbBackupV2ServiceTest {
         logicalRestores.forEach(db -> db.setRestore(restore));
         externalDatabases.forEach(db -> db.setRestore(restore));
         return restore;
+    }
+
+    private RestoreExternalDatabase getRestoreExternalDb(
+            String name,
+            String type,
+            List<Classifier> classifiers
+    ) {
+        return RestoreExternalDatabase.builder()
+                .name(name)
+                .type(type)
+                .classifiers(classifiers)
+                .build();
     }
 
     private BackupRequest getBackupRequest(String backupName,

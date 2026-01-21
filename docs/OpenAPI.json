@@ -3253,6 +3253,7 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
+            "pattern": "\\S",
             "description": "Unique identifier of the restore"
           },
           "storageName": {
@@ -3260,6 +3261,7 @@
             "examples": [
               "s3-backend"
             ],
+            "pattern": "\\S",
             "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
@@ -3267,6 +3269,7 @@
             "examples": [
               "/backups"
             ],
+            "pattern": "\\S",
             "description": "Path to the restore file in the storage"
           },
           "filterCriteria": {
@@ -4565,14 +4568,14 @@
         ],
         "requestBody": {
           "description": "Restore request",
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RestoreRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -4960,16 +4963,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Restore operation retried successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RestoreResponse"
-                }
-              }
-            }
-          },
           "202": {
             "description": "Restore retry accepted and is being processed",
             "content": {

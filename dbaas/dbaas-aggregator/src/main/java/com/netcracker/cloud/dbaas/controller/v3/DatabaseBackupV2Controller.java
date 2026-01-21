@@ -241,7 +241,7 @@ public class DatabaseBackupV2Controller {
     @POST
     public Response restoreBackup(@Parameter(description = "Unique identifier of the backup", required = true)
                                   @PathParam("backupName") @NotBlank String backupName,
-                                  @RequestBody(description = "Restore request", required = true)
+                                  @RequestBody(description = "Restore request")
                                   @Valid RestoreRequest restoreRequest,
                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, dryRun);
@@ -308,8 +308,6 @@ public class DatabaseBackupV2Controller {
 
     @Operation(summary = "Retry restore", description = "Retry a failed restore operation")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Restore operation retried successfully",
-                    content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "202", description = "Restore retry accepted and is being processed",
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
@@ -324,7 +322,6 @@ public class DatabaseBackupV2Controller {
     public Response retryRestore(@Parameter(description = "Unique identifier of the restore operation", required = true)
                                  @PathParam("restoreName")
                                  String restoreName) {
-        dbBackupV2Service.retryRestore(restoreName);
-        return Response.ok().build();
+        return Response.accepted(dbBackupV2Service.retryRestore(restoreName)).build();
     }
 }

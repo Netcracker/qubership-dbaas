@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.dto.backupV2;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.utils.validation.group.RestoreGroup;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.groups.ConvertGroup;
 import jakarta.validation.groups.Default;
@@ -21,6 +22,7 @@ public class RestoreRequest {
                     "restore-before-prod-update-20251203T1020-4t6S"
             }
     )
+    @NotBlank
     private String restoreName;
     @Schema(
             description = "Name of the storage backend containing the restore",
@@ -29,6 +31,7 @@ public class RestoreRequest {
                     "s3-backend"
             }
     )
+    @NotBlank
     private String storageName;
     @Schema(
             description = "Path to the restore file in the storage",
@@ -37,6 +40,7 @@ public class RestoreRequest {
                     "/backups"
             }
     )
+    @NotBlank
     private String blobPath;
     @Schema(
             description = "Filter criteria",
