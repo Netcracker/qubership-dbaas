@@ -45,10 +45,11 @@ public class BackupHelperV1 {
             .create();
 
     @NonNull
-    private URL dbaasServiceUrl;
-
-    @NonNull
     private DbaasHelperV3 helper;
+
+    private URL dbaasServiceUrl() {
+        return helper.getDbaasServiceUrl();
+    }
 
     public BackupRequest getBackupRequest(String backupName,
                                           String storageName,
@@ -211,7 +212,7 @@ public class BackupHelperV1 {
 
     public Request backupInformationRequest(String authorization, String backupName) {
         return new Request.Builder()
-                .url(dbaasServiceUrl + String.format("api/backups/v1/backup/%s", backupName))
+                .url(dbaasServiceUrl() + String.format("api/backups/v1/backup/%s", backupName))
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .get()
@@ -220,7 +221,7 @@ public class BackupHelperV1 {
 
     public Request backupStatusRequest(String authorization, String backupName) {
         return new Request.Builder()
-                .url(dbaasServiceUrl + String.format("api/backups/v1/backup/%s/status", backupName))
+                .url(dbaasServiceUrl() + String.format("api/backups/v1/backup/%s/status", backupName))
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .get()
@@ -230,7 +231,7 @@ public class BackupHelperV1 {
     public Request startBackupRequest(String authorization, BackupRequest backup, boolean dryRun) {
         String reqJson = new GsonBuilder().create().toJson(backup);
         return new Request.Builder()
-                .url(dbaasServiceUrl + "api/backups/v1/backup?dryRun=" + dryRun)
+                .url(dbaasServiceUrl() + "api/backups/v1/backup?dryRun=" + dryRun)
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .post(RequestBody.create(reqJson, JSON))
@@ -240,7 +241,7 @@ public class BackupHelperV1 {
     public Request startRestoreRequest(String authorization, String backupName, RestoreRequest restore, boolean dryRun) {
         String reqJson = new GsonBuilder().create().toJson(restore);
         return new Request.Builder()
-                .url(dbaasServiceUrl + String.format("api/backups/v1/backup/%s/restore?dryRun=%s", backupName, dryRun))
+                .url(dbaasServiceUrl() + String.format("api/backups/v1/backup/%s/restore?dryRun=%s", backupName, dryRun))
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .post(RequestBody.create(reqJson, JSON))
@@ -249,7 +250,7 @@ public class BackupHelperV1 {
 
     public Request restoreInformationRequest(String authorization, String restoreName) {
         return new Request.Builder()
-                .url(dbaasServiceUrl + String.format("api/backups/v1/restore/%s", restoreName))
+                .url(dbaasServiceUrl() + String.format("api/backups/v1/restore/%s", restoreName))
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .get()
