@@ -835,18 +835,14 @@ public class DbBackupV2Service {
                 log.info("Including external databases to restore by strategy={}. External db names: [{}]",
                         ExternalDatabaseStrategy.INCLUDE, externalNames);
                 if (isFilterEmpty(filterCriteria))
-                    yield mapper.toRestoreExternalDatabases(
-                            externalDatabases.stream()
-                                    .map(db ->
-                                            new BackupExternalDelegate(db, db.getClassifiers().stream()
-                                                    .map(c ->
-                                                            new Classifier(ClassifierType.NEW, null, null, c)
-                                                    )
-                                                    .toList()
-                                            )
-                                    )
-                                    .toList()
-                    );
+                    yield externalDatabases.stream()
+                            .map(db -> mapper.toRestoreExternalDatabase(
+                                    db,
+                                    db.getClassifiers().stream()
+                                            .map(c -> new Classifier(ClassifierType.NEW, null, null, c))
+                                            .toList()
+                            ))
+                            .toList();
 
                 yield externalDatabases.stream()
                         .map(db -> {
@@ -865,7 +861,7 @@ public class DbBackupV2Service {
                                 return null;
                             }
 
-                            return mapper.toRestoreExternalDatabase(new BackupExternalDelegate(db, filteredClassifiers));
+                            return mapper.toRestoreExternalDatabase(db, filteredClassifiers);
                         })
                         .filter(Objects::nonNull)
                         .toList();

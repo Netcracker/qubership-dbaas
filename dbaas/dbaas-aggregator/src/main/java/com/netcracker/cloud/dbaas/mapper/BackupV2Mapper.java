@@ -2,7 +2,6 @@ package com.netcracker.cloud.dbaas.mapper;
 
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupExternalDelegate;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
@@ -104,10 +103,9 @@ public interface BackupV2Mapper {
     @Mapping(target = "name", source = "backupExternalDatabase.name")
     @Mapping(target = "type", source = "backupExternalDatabase.type")
     @Mapping(target = "classifiers", source = "classifiers")
-    RestoreExternalDatabase toRestoreExternalDatabase(BackupExternalDelegate backupExternalDelegate);
-
-    List<RestoreExternalDatabase> toRestoreExternalDatabases(List<BackupExternalDelegate> backupExternalDelegates);
+    RestoreExternalDatabase toRestoreExternalDatabase(BackupExternalDatabase backupExternalDatabase, List<Classifier> classifiers);
 
     ClassifierResponse toClassifierResponse(Classifier classifier);
+
     List<ClassifierResponse> toClassifierResponse(List<Classifier> classifiers);
 }
