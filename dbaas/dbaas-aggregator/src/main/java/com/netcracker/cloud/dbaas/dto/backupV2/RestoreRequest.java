@@ -47,7 +47,7 @@ public class RestoreRequest {
             implementation = FilterCriteria.class
     )
     @Valid
-    @ConvertGroup(from = Default.class, to = RestoreGroup.class)
+    @ConvertGroup(to = RestoreGroup.class)
     private FilterCriteria filterCriteria;
     @Schema(
             description = "Mapping to use for the restore operation",

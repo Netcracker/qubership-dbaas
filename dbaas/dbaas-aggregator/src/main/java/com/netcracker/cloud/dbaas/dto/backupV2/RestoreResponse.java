@@ -4,6 +4,7 @@ import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
 import com.netcracker.cloud.dbaas.utils.validation.group.RestoreGroup;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.groups.ConvertGroup;
 import jakarta.validation.groups.Default;
@@ -25,6 +26,7 @@ public class RestoreResponse {
             },
             required = true
     )
+    @NotBlank
     private String restoreName;
     @Schema(
             description = "Unique identifier of the backup",
@@ -32,6 +34,7 @@ public class RestoreResponse {
                     "before-prod-update-20251013T1345-G5s8"
             }
     )
+    @NotBlank
     private String backupName;
     @Schema(
             description = "Name of the storage backend containing the restore",
@@ -39,6 +42,7 @@ public class RestoreResponse {
                     "s3-backend"
             }
     )
+    @NotBlank
     private String storageName;
     @Schema(
             description = "Path to the restore file in the storage",
@@ -61,7 +65,7 @@ public class RestoreResponse {
             implementation = FilterCriteria.class
     )
     @Valid
-    @ConvertGroup(from = Default.class, to = RestoreGroup.class)
+    @ConvertGroup(to = RestoreGroup.class)
     private FilterCriteria filterCriteria;
     @Schema(
             description = "Mapping configuration for the restore",
@@ -78,11 +82,13 @@ public class RestoreResponse {
             description = "Total number of databases being restored",
             examples = "5"
     )
+    @NotNull
     private Integer total;
     @Schema(
             description = "Completed databases restore operation",
             examples = "5"
     )
+    @NotNull
     private Integer completed;
     @Schema(
             description = "Aggregated error messages during restore operation",

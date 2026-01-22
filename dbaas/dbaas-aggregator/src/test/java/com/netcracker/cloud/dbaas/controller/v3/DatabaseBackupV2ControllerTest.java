@@ -305,6 +305,10 @@ class DatabaseBackupV2ControllerTest {
         backupResponse.setBlobPath("path");
         backupResponse.setStorageName("storageName");
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        backupResponse.setTotal(0);
+        backupResponse.setSize(0L);
+        backupResponse.setCompleted(0);
+
         String expectedDigest = DigestUtil.calculateDigest(backupResponse);
         String incomingDigest = "SHA-256=abc";
         given().auth().preemptive().basic("backup_manager", "backup_manager")

@@ -45,7 +45,7 @@ public class BackupRequest {
     )
     @Valid
     @NotNull
-    @ConvertGroup(from = Default.class, to = BackupGroup.class)
+    @ConvertGroup(to = BackupGroup.class)
     private FilterCriteria filterCriteria;
     @Schema(
             description = "How to handle external databases during backup",
