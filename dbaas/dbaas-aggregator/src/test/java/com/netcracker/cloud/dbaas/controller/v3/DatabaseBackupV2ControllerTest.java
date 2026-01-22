@@ -112,7 +112,7 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(422)
                 .body("reason", equalTo("Backup not allowed"))
-                .body("message", equalTo("The backup/restore request can`t be processed. Backup operation unsupported for databases: " + dbNames));
+                .body("message", equalTo("The backup/restore request can't be processed. Backup operation unsupported for databases: " + dbNames));
         verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
 
@@ -356,7 +356,7 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(422)
                 .body("message",
-                        equalTo(String.format("Resource '%s' can`t be processed: %s", backupName,
+                        equalTo(String.format("Resource '%s' can't be processed: %s", backupName,
                                 "has invalid status '" + backupStatus + "'. Only COMPLETED or FAILED backups can be processed.")));
     }
 

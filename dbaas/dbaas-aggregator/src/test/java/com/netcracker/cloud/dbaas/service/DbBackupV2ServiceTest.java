@@ -3176,7 +3176,7 @@ class DbBackupV2ServiceTest {
                 () -> dbBackupV2Service.uploadBackupMetadata(backupResponse));
 
         assertEquals(
-                String.format("Resource has illegal state: can`t restore %s backup that not imported",
+                String.format("Resource has illegal state: can't restore %s backup that not imported",
                         BackupStatus.DELETED),
                 ex.getDetail());
     }

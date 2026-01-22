@@ -215,7 +215,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4047(
             "CORE-DBAAS-4047",
             "Backup not allowed",
-            "The backup/restore request can`t be processed. %s"
+            "The backup/restore request can't be processed. %s"
     ),
     CORE_DBAAS_4048(
             "CORE-DBAAS-4048",
@@ -225,7 +225,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4049(
             "CORE-DBAAS-4049",
             "Unprocessable resource",
-            "Resource '%s' can`t be processed: %s"
+            "Resource '%s' can't be processed: %s"
     ),
     CORE_DBAAS_4050(
             "CORE-DBAAS-4050",

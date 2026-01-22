@@ -519,7 +519,7 @@ public class DbBackupV2Service {
 
         if (BackupStatus.COMPLETED != backup.getStatus()) {
             throw new UnprocessableEntityException(backupName,
-                    String.format("can`t produce metadata for backup in status %s", backup.getStatus()),
+                    String.format("can't produce metadata for backup %s in status %s", backupName, backup.getStatus()),
                     Source.builder().build());
         }
         return mapper.toBackupResponse(backup);
@@ -556,7 +556,7 @@ public class DbBackupV2Service {
                 }
             } else {
                 throw new IllegalResourceStateException(
-                        String.format("can`t restore %s backup that not imported", BackupStatus.DELETED),
+                        String.format("can't restore %s backup that not imported", BackupStatus.DELETED),
                         Source.builder().build()
                 );
             }
@@ -665,7 +665,7 @@ public class DbBackupV2Service {
 
         log.info("Start restore {} for backup {}", restoreName, backupName);
         Backup backup = getBackupOrThrowException(backupName);
-        assertBackupStatusCompleted(backupName, backup.getStatus());
+        checkBackupStatusForRestore(backupName, backup.getStatus());
 
         Restore restore = restoreLockWrapper(() -> {
             Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
@@ -807,7 +807,7 @@ public class DbBackupV2Service {
     protected List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
                                                                         ExternalDatabaseStrategy strategy,
                                                                         FilterCriteria filterCriteria) {
-        if (externalDatabases == null || externalDatabases.isEmpty())
+        if (isEmpty(externalDatabases))
             return List.of();
 
         String externalNames = externalDatabases.stream()
@@ -816,19 +816,24 @@ public class DbBackupV2Service {
 
         return switch (strategy) {
             case FAIL -> {
-                log.error("External databases not allowed by strategy={}: {}", ExternalDatabaseStrategy.FAIL, externalNames);
+                log.error("External databases not allowed by strategy={}. External db names: [{}]",
+                        ExternalDatabaseStrategy.FAIL, externalNames);
                 throw new DatabaseBackupRestoreNotSupportedException(
-                        String.format("External databases not allowed by strategy=%s: %s", ExternalDatabaseStrategy.FAIL, externalNames),
+                        String.format(
+                                "External databases not allowed by strategy=%s. External db names: [%s]",
+                                ExternalDatabaseStrategy.FAIL, externalNames
+                        ),
                         Source.builder().parameter("ExternalDatabaseStrategy").build()
                 );
             }
             case SKIP -> {
-                log.info("Excluding external databases from restore by strategy={}: external db names {}",
+                log.info("Excluding external databases from restore by strategy={}. External db names: [{}]",
                         ExternalDatabaseStrategy.SKIP, externalNames);
                 yield List.of();
             }
             case INCLUDE -> {
-                log.info("Including external databases to restore by strategy: {}", ExternalDatabaseStrategy.INCLUDE);
+                log.info("Including external databases to restore by strategy={}. External db names: [{}]",
+                        ExternalDatabaseStrategy.INCLUDE, externalNames);
                 if (isFilterEmpty(filterCriteria))
                     yield mapper.toRestoreExternalDatabases(
                             externalDatabases.stream()
@@ -1512,7 +1517,7 @@ public class DbBackupV2Service {
                     Source.builder().build());
         }
 
-        assertBackupStatusCompleted(restore.getBackup().getName(), restore.getBackup().getStatus());
+        checkBackupStatusForRestore(restore.getBackup().getName(), restore.getBackup().getStatus());
 
         return restoreLockWrapper(() -> {
             retryRestore(restore);
@@ -1522,12 +1527,11 @@ public class DbBackupV2Service {
         });
     }
 
-    private void assertBackupStatusCompleted(String backupName, BackupStatus status) {
-        // Check if the status of backup has COMPLETED
-        if (BackupStatus.COMPLETED != status) {
-            log.error("Restore can`t process due to backup status {}", status);
+    private void checkBackupStatusForRestore(String restoreName, BackupStatus status) {
+        if (status != BackupStatus.COMPLETED) {
+            log.error("Restore {} can't process due to backup status {}", restoreName, status);
             throw new UnprocessableEntityException(
-                    backupName, String.format("restore can`t process due to backup status %s", status),
+                    restoreName, String.format("restore can't process due to backup status %s", status),
                     Source.builder().build());
         }
     }
@@ -1706,10 +1710,8 @@ public class DbBackupV2Service {
     }
 
     private boolean isFilterEmpty(FilterCriteria filterCriteria) {
-        if (filterCriteria == null)
-            return true;
-
-        return isEmpty(filterCriteria.getFilter()) && isEmpty(filterCriteria.getExclude());
+        return filterCriteria == null
+                || (isEmpty(filterCriteria.getFilter()) && isEmpty(filterCriteria.getExclude()));
     }
 
     private boolean isEmpty(Collection<?> c) {
