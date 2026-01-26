@@ -121,7 +121,7 @@ else
 	@echo "$(CYAN)--- Skipping nodes check (ADD_DBAAS_NODE_LABEL=false)...$(NC)"
 	@echo "$(CYAN)--- Please ensure your cluster has at least 1 node with label '$(NODE_SELECTOR_DBAAS_KEY)=$(REGION_DBAAS)'$(NC)"
 endif
-	@echo ""	
+	@echo ""
 
 # Setup repositories
 .PHONY: setup-repos
@@ -370,7 +370,7 @@ smoke-test:
 	fi; \
 	sleep 10;\
 	echo "$(CYAN)--- Creating test database via REST API (10 attempts with 10s sleep)...$(NC)";\
-	BASIC_AUTH_HEADER=$$(echo -n "$$DBAAS_USERNAME:$$DBAAS_PASSWORD" | base64);\
+	BASIC_AUTH_HEADER=$$(printf '%s' "$$DBAAS_USERNAME:$$DBAAS_PASSWORD" | base64 | tr -d '\n');\
 	DB_CREATION_SUCCESS=false;\
 	DB_ATTEMPT=1;\
 	while [ $$DB_ATTEMPT -le 10 ] && [ "$$DB_CREATION_SUCCESS" != "true" ]; do \
@@ -521,7 +521,7 @@ manual-cleanup:
 	@kubectl get pv -o custom-columns=name:metadata.name --no-headers 2>/dev/null | \
 		xargs -I {} sh -c 'kubectl get pv {} -o jsonpath="{.spec.claimRef.namespace}" | \
 		grep -q "^$(PG_NAMESPACE)$$" && echo {}' | \
-		xargs -r kubectl delete pv || echo "PVs not found or already deleted"	
+		xargs -r kubectl delete pv || echo "PVs not found or already deleted"
 	@echo "$(CYAN)--- kubectl delete service -n $(PG_NAMESPACE) --all$(NC)"
 	@kubectl delete service -n $(PG_NAMESPACE) --all || echo "Service not found or already deleted"
 	@echo "$(GREEN)--- Manual cleanup completed$(NC)"
@@ -553,4 +553,4 @@ cleanup-namespaces:
 		echo ""; \
 	fi
 
-	
+
