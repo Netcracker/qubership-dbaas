@@ -702,7 +702,7 @@ public class DbBackupV2Service {
                     )
                     .toList();
 
-        List<BackupDatabaseDelegate> databaseDelegateList = backupDatabasesToFilter.stream()
+        return backupDatabasesToFilter.stream()
                 .map(db -> {
                     List<Classifier> filteredClassifiers = db.getClassifiers().stream()
                             .filter(classifier -> {
@@ -724,13 +724,6 @@ public class DbBackupV2Service {
                 })
                 .filter(Objects::nonNull)
                 .toList();
-
-
-        if (databaseDelegateList.isEmpty()) {
-            log.warn("During restore databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
-        }
-        return databaseDelegateList;
     }
 
     protected Restore initializeFullRestoreStructure(
@@ -754,6 +747,10 @@ public class DbBackupV2Service {
                         .toList(),
                 restoreRequest.getFilterCriteria());
 
+        if (externalDatabases.isEmpty() && backupDatabases.isEmpty()) {
+            log.warn("Databases that match filterCriteria during restore not found");
+            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
+        }
 
         // Group BackupDatabase by updated adapters
         Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupedByTypeAndAdapter =
