@@ -1,0 +1,115 @@
+name: Generate Test Report
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 1 * * *" # every day at 01:00
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "integration-tests-report"
+  cancel-in-progress: true
+
+jobs:
+  run-tests:
+    uses: ./.github/workflows/integration-tests.yml
+  update-report:
+    needs: run-tests
+    runs-on: ubuntu-latest
+    environment:
+      name: pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download Surefire reports artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: surefire-reports
+          path: artifacts
+
+      - name: Update report
+        run: |
+          today=$(date +%Y-%m-%d)
+          mkdir -p report/reports
+          successes=0
+          failures=0
+          
+          history_url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/history.json"
+          job_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          if ! curl -s -f -o report/history.json "$history_url"; then
+            echo "No history.json found, create a new one"
+            echo "{}" > report/history.json
+          fi
+          
+          for artifact in artifacts/*; do
+            modname=$(basename "$artifact")
+            echo "Processing artifact for $modname"
+            mod_succ=0
+            mod_fail=0
+          
+            for f in "$artifact"/surefire-reports/TEST-*.xml; do
+              [ -f "$f" ] || continue
+              line=$(grep -o '<testsuite[^>]*>' "$f" | head -n1 || true)
+              tests=$(echo "$line" | sed -n 's/.*tests="\([0-9]\+\)".*/\1/p')
+              fails=$(echo "$line" | sed -n 's/.*failures="\([0-9]\+\)".*/\1/p')
+              errs=$(echo "$line" | sed -n 's/.*errors="\([0-9]\+\)".*/\1/p')
+              skipped=$(echo "$line" | sed -n 's/.*skipped="\([0-9]\+\)".*/\1/p')
+              tests=${tests:-0}; fails=${fails:-0}; errs=${errs:-0}; skipped=${skipped:-0}
+              mod_succ=$((mod_succ + tests - fails - errs - skipped))
+              mod_fail=$((mod_fail + fails + errs))
+            done
+          
+            successes=$((successes + mod_succ))
+            failures=$((failures + mod_fail))
+          
+            if [ -f "$artifact/surefire-reports/junit-noframes.html" ]; then
+              mkdir -p report/reports/$modname
+              cp -r "$artifact/surefire-reports/"* report/reports/$modname/
+              mv "report/reports/$modname/junit-noframes.html" "report/reports/$modname/index.html" 
+            fi
+          
+            jq --arg date "$today" \
+              --arg proj "$modname" \
+              --arg succ "$mod_succ" \
+              --arg fail "$mod_fail" \
+              --arg job "$job_url" \
+              --arg p "reports/$modname/" \
+              '
+             .[$date] //= {}
+             | .[$date].job = $job
+             | .[$date].projects //= []
+             | .[$date].projects |= map(select(.name != $proj))
+             | .[$date].projects |= (
+                 . + [{
+                   name: $proj,
+                   successes: ($succ|tonumber),
+                   failures: ($fail|tonumber),
+                   path: $p
+                 }]
+               )
+             ' \
+              report/history.json > report/tmp.json && mv report/tmp.json report/history.json
+          done
+          
+          cutoff=$(date -d "7 days ago" +%Y-%m-%d)
+          jq --arg cutoff "$cutoff" 'with_entries(select(.key > $cutoff))' \
+          report/history.json > report/tmp.json && mv report/tmp.json report/history.json
+          
+          cp .github/assets/report-template.html report/index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact for Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: './report'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

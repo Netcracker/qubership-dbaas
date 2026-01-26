@@ -1,14 +1,214 @@
 name: DBaaS Integration Tests
 
 on:
+  workflow_call:
   workflow_dispatch:
 
 jobs:
-  stub:
+  integration-tests:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Print context info
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Create kind config
         run: |
-          echo "Workflow works!"
-          echo "Branch: $GITHUB_REF"
-          echo "Repository: $GITHUB_REPOSITORY"
+          cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+            - role: worker
+            - role: worker
+          EOF
+
+      - name: Set up Kind
+        uses: helm/kind-action@v1.13.0
+        with:
+          cluster_name: kind
+          config: kind-config.yaml
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Deploy Fluent Bit
+        run: |
+          kubectl apply -f .github/declarations/fluent-bit-logging.yaml
+
+      - name: Create namespace minio
+        run: |
+          kubectl create namespace minio \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create MinIO env secret
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: minio-env
+            namespace: minio
+          type: Opaque
+          stringData:
+            config.env: |
+              export MINIO_ROOT_USER=minio
+              export MINIO_ROOT_PASSWORD=minio123
+          EOF
+
+      - name: Apply MinIO operator
+        run: |
+          kubectl kustomize "github.com/minio/operator?ref=v7.1.1" \
+          | kubectl apply -f -
+
+      - name: Wait for MinIO operator
+        run: kubectl wait -n minio-operator --for=condition=Available deployment/minio-operator --timeout=300s
+
+      - name: Deploy MinIO Tenant
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: minio.min.io/v2
+          kind: Tenant
+          metadata:
+            name: test-minio
+            namespace: minio
+          spec:
+            buckets:
+              - name: dbaas-backup-restore-test
+            configuration:
+              name: minio-env
+            requestAutoCert: false
+            pools:
+              - servers: 1
+                name: pool-0
+                volumesPerServer: 1
+                volumeClaimTemplate:
+                  metadata:
+                    name: data
+                  spec:
+                    accessModes:
+                      - ReadWriteOnce
+                    resources:
+                      requests:
+                        storage: 2Gi
+          EOF
+
+      - name: Wait for MinIO Tenant readiness
+        run: |
+          echo "Waiting for MinIO Tenant to become Ready..."
+      
+          for i in {1..30}; do
+            STATE=$(kubectl get tenant test-minio -n minio -o jsonpath='{.status.currentState}')
+            echo "Current state: $STATE"
+            if [[ "$STATE" == "Ready" || "$STATE" == "Initialized" ]]; then
+              echo "MinIO Tenant is ready"
+              exit 0
+            fi
+            sleep 10
+          done
+      
+          echo "MinIO Tenant did not become ready in time"
+          exit 1
+
+      - name: Create config file patroni-services-values.yaml
+        run: |
+          cat <<'EOF' > "$GITHUB_WORKSPACE/patroni-services-values.yaml"
+          postgresPassword: ${POSTGRES_PASSWORD}
+      
+          backupDaemon:
+            install: true
+            storage:
+              storageClass: ${STORAGE_CLASS}
+              type: pv
+              size: 2Gi
+            s3Storage:
+              url: http://minio.minio.svc.cluster.local
+              accessKeyId: minio
+              secretAccessKey: minio123
+              bucket: dbaas-backup-restore-test
+              region: region123
+            securityContext:
+              runAsUser: 101
+              fsGroup: 101
+      
+          dbaas:
+            install: true
+            aggregator:
+              registrationAddress: http://${DBAAS_SERVICE_NAME}.${DBAAS_NAMESPACE}.svc.cluster.local:8080
+              registrationUsername: cluster-dba
+              registrationPassword: password
+          EOF
+
+      - name: Deploy DBaaS
+        working-directory: bootstrap
+        run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
+
+      - name: Wait for postgres-backup-daemon
+        run: |
+          kubectl rollout status deployment/postgres-backup-daemon \
+            -n postgres \
+            --timeout=300s
+
+      - name: Run tests
+        id: tests
+        run: mvn --batch-mode -Dmaven.test.failure.ignore=true -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Aggregate Surefire reports
+        id: collect_reports
+        if: always() && steps.tests.outcome != 'skipped'
+        run: |
+          for module in $(find . -type d -path "*/target/surefire-reports" | sed -E 's#/target/surefire-reports##' | sort -u); do
+            modname=$(basename "$module")
+            echo "Found test reports for $modname"
+            mkdir -p artifacts/$modname
+            cp -r "$module/target/surefire-reports" artifacts/$modname/ || true
+            if [ -d "$module/target/reports" ]; then
+              cp -r "$module/target/reports" artifacts/$modname/ || true
+            fi
+          done
+
+      - name: Upload Surefire reports
+        if: always() && steps.collect_reports.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: surefire-reports
+          path: artifacts/*
+
+      - name: Collect Fluent Bit logs
+        id: collect_fluentbit_logs
+        run: |
+          chmod +x .github/scripts/collect-fluentbit-logs.sh && \
+          .github/scripts/collect-fluentbit-logs.sh
+
+      - name: Upload Fluent Bit logs
+        if: always() && steps.collect_fluentbit_logs.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: dbaas-pod-logs
+          path: fluentbit-logs/**
+          if-no-files-found: warn
+
+      - name: Collect DBaaS logs
+        id: collect_logs
+        run: |
+          chmod +x .github/scripts/get-dbaas-logs.sh && \
+          .github/scripts/get-dbaas-logs.sh
+
+      - name: Upload DBaaS logs
+        if: always() && steps.collect_logs.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: dbaas-logs
+          path: logs/*
+      
+
+  
