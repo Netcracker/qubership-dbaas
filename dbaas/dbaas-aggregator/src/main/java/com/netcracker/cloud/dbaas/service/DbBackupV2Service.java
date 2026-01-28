@@ -38,6 +38,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
@@ -56,6 +57,9 @@ public class DbBackupV2Service {
     private static final String TRACK_RESTORE_OPERATION = "trackRestoreV2";
     private static final String RESTORE = "restore";
     private static final String DATABASE_NAME = "databaseName";
+
+    private static final Integer LOCK_AT_MOST = 2;
+    private static final Integer LOCK_AT_LEAST = 0;
 
     private final BackupRepository backupRepository;
     private final RestoreRepository restoreRepository;
@@ -427,38 +431,39 @@ public class DbBackupV2Service {
     }
 
     protected Map<Database, List<DatabaseRegistry>> getAllDbByFilter(FilterCriteria filterCriteria) {
-        Filter filter = filterCriteria.getFilter().getFirst();
-
-        if (filter.getNamespace().isEmpty()) {
-            if (!filter.getMicroserviceName().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by microservice");
-            }
-            if (!filter.getDatabaseKind().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by databaseKind");
-            }
-            if (!filter.getDatabaseType().isEmpty()) {
-                throw new FunctionalityNotImplemented("backup by databaseType");
-            }
-            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
+        int uniqKinds = (int) filterCriteria.getExclude().stream()
+                .flatMap(exclude -> exclude.getDatabaseKind().stream())
+                .distinct()
+                .count();
+        if (uniqKinds == DatabaseKind.values().length) {
+            log.warn("No databases matching the filtering criteria were found during the backup");
+            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
-        if (filter.getNamespace().size() > 1) {
-            throw new FunctionalityNotImplemented("backup by several namespace");
-        }
-
-        String namespace = filter.getNamespace().getFirst();
-
-        List<DatabaseRegistry> databasesRegistriesForBackup = databaseRegistryDbaasRepository
-                .findAnyLogDbRegistryTypeByNamespace(namespace)
+        List<DatabaseRegistry> filteredDatabases = databaseRegistryDbaasRepository
+                .findAllDatabasesByFilter(filterCriteria.getFilter())
                 .stream()
-                .filter(this::isValidRegistry)
+                .filter(registry -> {
+                    if (!isValidRegistry(registry))
+                        return false;
+                    return filterCriteria.getExclude().stream()
+                            .filter(exclude -> !isEmpty(exclude))
+                            .noneMatch(exclude -> {
+                                boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
+                                return isMatches(exclude,
+                                        (String) registry.getClassifier().get(NAMESPACE),
+                                        (String) registry.getClassifier().get(MICROSERVICE_NAME),
+                                        registry.getType(),
+                                        configurational);
+                            });
+                })
                 .toList();
 
-        if (databasesRegistriesForBackup.isEmpty()) {
-            log.warn("During backup databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
+        if (filteredDatabases.isEmpty()) {
+            log.warn("No databases matching the filtering criteria were found during the backup");
+            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
         }
 
-        return databasesRegistriesForBackup.stream()
+        return filteredDatabases.stream()
                 .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
     }
 
@@ -466,6 +471,43 @@ public class DbBackupV2Service {
         return !registry.isMarkedForDrop()
                 && !registry.getClassifier().containsKey(MARKED_FOR_DROP)
                 && CREATED.equals(registry.getDbState().getDatabaseState());
+    }
+
+    private boolean isMatches(Filter filter, String namespace, String microserviceName, String type, boolean configurational) {
+        if (!filter.getNamespace().isEmpty() &&
+                !filter.getNamespace().contains(namespace)) {
+            return false;
+        }
+
+        if (!filter.getMicroserviceName().isEmpty() &&
+                !filter.getMicroserviceName().contains(microserviceName)) {
+            return false;
+        }
+
+        if (!filter.getDatabaseType().isEmpty() &&
+                filter.getDatabaseType().stream().noneMatch(dt -> dt.getType().equals(type))) {
+            return false;
+        }
+
+        if (!filter.getDatabaseKind().isEmpty()) {
+            return isKindMatched(configurational, filter.getDatabaseKind().getFirst());
+        }
+        return true;
+    }
+
+    private boolean isEmpty(Filter f) {
+        return f.getNamespace().isEmpty()
+                && f.getMicroserviceName().isEmpty()
+                && f.getDatabaseType().isEmpty()
+                && f.getDatabaseKind().isEmpty();
+    }
+
+    private boolean isKindMatched(boolean configurational, DatabaseKind kind) {
+        if (kind == DatabaseKind.CONFIGURATION)
+            return configurational;
+        if (kind == DatabaseKind.TRANSACTIONAL)
+            return !configurational;
+        return true;
     }
 
     public BackupResponse getBackup(String backupName) {
@@ -477,7 +519,7 @@ public class DbBackupV2Service {
 
         if (BackupStatus.COMPLETED != backup.getStatus()) {
             throw new UnprocessableEntityException(backupName,
-                    String.format("can`t produce metadata for backup in status %s", backup.getStatus()),
+                    String.format("can't produce metadata for backup %s in status %s", backupName, backup.getStatus()),
                     Source.builder().build());
         }
         return mapper.toBackupResponse(backup);
@@ -514,7 +556,7 @@ public class DbBackupV2Service {
                 }
             } else {
                 throw new IllegalResourceStateException(
-                        String.format("can`t restore %s backup that not imported", BackupStatus.DELETED),
+                        String.format("can't restore %s backup that not imported", BackupStatus.DELETED),
                         Source.builder().build()
                 );
             }
@@ -615,154 +657,120 @@ public class DbBackupV2Service {
     }
 
     public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
-        if (dryRun)
-            throw new FunctionalityNotImplemented("dryRun");
-
         String restoreName = restoreRequest.getRestoreName();
         if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
             log.error("Restore with name {} already exists", restoreName);
             throw new ResourceAlreadyExistsException(restoreName, Source.builder().build());
         }
 
-        log.info("Start restore for backup {}", backupName);
+        log.info("Start restore {} for backup {}", restoreName, backupName);
         Backup backup = getBackupOrThrowException(backupName);
+        checkBackupStatusForRestore(backupName, backup.getStatus());
 
-        BackupStatus backupStatus = backup.getStatus();
-        if (BackupStatus.COMPLETED != backupStatus) {
-            log.error("Restore can`t process due to backup status {}", backupStatus);
-            throw new UnprocessableEntityException(
-                    backupName, String.format("restore can`t process due to backup status %s", backupStatus),
-                    Source.builder().build());
-        }
+        Restore restore = restoreLockWrapper(() -> {
+            Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
+            if (!dryRun)
+                restoreRepository.save(currRestore);
+            return currRestore;
+        });
 
-        LockConfiguration config = new LockConfiguration(
-                Instant.now(),
-                RESTORE,
-                Duration.ofMinutes(2),
-                Duration.ofMinutes(0)
-        );
-
-        Optional<SimpleLock> optLock = lockProvider.lock(config);
-
-        if (optLock.isEmpty())
-            throw new IllegalResourceStateException("restore already running", Source.builder().build());
-
-        SimpleLock lock = optLock.get();
-        boolean unlocked = false;
-
-        try {
-            if (restoreRepository.countNotCompletedRestores() > 0)
-                throw new IllegalResourceStateException("another restore is being processed", Source.builder().build());
-
-            Restore restore = initializeFullRestoreStructure(backup, restoreRequest);
-            restoreRepository.save(restore);
-            // unlock method after save restore
-            lock.unlock();
-            unlocked = true;
-
-            // DryRun on adapters
-            startRestore(restore, true);
+        // DryRun on adapters
+        startRestore(restore, true);
+        aggregateRestoreStatus(restore);
+        if (!dryRun && RestoreStatus.FAILED != restore.getStatus()) {
+            // Real run on adapters
+            startRestore(restore, false);
             aggregateRestoreStatus(restore);
-            if (RestoreStatus.FAILED != restore.getStatus()) {
-                // Real run on adapters
-                restore = getRestoreOrThrowException(restoreName);
-                startRestore(restore, false);
-                aggregateRestoreStatus(restore);
-            }
-            restoreRepository.save(restore);
-            return mapper.toRestoreResponse(restore);
-        } finally {
-            if (!unlocked) {
-                lock.unlock();
-            }
         }
+        if (!dryRun)
+            restoreRepository.save(restore);
+        return mapper.toRestoreResponse(restore);
     }
+
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
         if (isFilterEmpty(filterCriteria))
-            return backupDatabasesToFilter.stream().map(db -> new BackupDatabaseDelegate(db, db.getClassifiers()))
+            return backupDatabasesToFilter.stream()
+                    .map(db ->
+                            new BackupDatabaseDelegate(
+                                    db,
+                                    db.getClassifiers().stream()
+                                            .map(c -> new Classifier(ClassifierType.NEW, null, null, new TreeMap<>(c)))
+                                            .toList()
+                            )
+                    )
                     .toList();
 
-        Filter filter = filterCriteria.getFilter().getFirst();
+        return backupDatabasesToFilter.stream()
+                .map(db -> {
+                    List<Classifier> filteredClassifiers = db.getClassifiers().stream()
+                            .filter(classifier -> {
+                                String namespace = (String) classifier.get(NAMESPACE);
+                                String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
+                                String type = db.getLogicalBackup().getType();
+                                boolean configurational = db.isConfigurational();
+                                return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
+                                        && filterCriteria.getExclude().stream().filter(exclude -> !isEmpty(exclude)).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
+                            })
+                            .map(c -> new Classifier(ClassifierType.NEW, null, null, new TreeMap<>(c)))
+                            .toList();
 
-        if (filter.getNamespace().isEmpty()) {
-            if (!filter.getMicroserviceName().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by microservice");
-            }
-            if (!filter.getDatabaseKind().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by databaseKind");
-            }
-            if (!filter.getDatabaseType().isEmpty()) {
-                throw new FunctionalityNotImplemented("restoration by databaseType");
-            }
-            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
-        }
-        if (filter.getNamespace().size() > 1) {
-            throw new FunctionalityNotImplemented("restoration by several namespace");
-        }
-        String namespace = filter.getNamespace().getFirst();
-        // Filter BackupDatabase by namespace
-        List<BackupDatabaseDelegate> databaseDelegateList = backupDatabasesToFilter.stream()
-                .map(backupDatabase -> {
-                            List<SortedMap<String, Object>> filteredClassifiers = backupDatabase.getClassifiers().stream()
-                                    .filter(classifier -> namespace.equals(classifier.get(NAMESPACE)))
-                                    .map(classifier -> (SortedMap<String, Object>) new TreeMap<>(classifier))
-                                    .toList();
+                    if (filteredClassifiers.isEmpty()) {
+                        return null;
+                    }
 
-                            if (filteredClassifiers.isEmpty())
-                                return null;
-
-                            return new BackupDatabaseDelegate(
-                                    backupDatabase,
-                                    filteredClassifiers
-                            );
-                        }
-                )
+                    return new BackupDatabaseDelegate(db, filteredClassifiers);
+                })
                 .filter(Objects::nonNull)
                 .toList();
-
-        if (databaseDelegateList.isEmpty()) {
-            log.warn("During restore databases that match filterCriteria not found");
-            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
-        }
-        return databaseDelegateList;
     }
 
     protected Restore initializeFullRestoreStructure(
             Backup backup,
             RestoreRequest restoreRequest
     ) {
-        // Apply ExternalDatabaseStrategy to external databases, filter by FilterCriteria
-        List<RestoreExternalDatabase> externalDatabases = validateAndFilterExternalDb(
+        // Apply ExternalDatabaseStrategy to external databases and filter by FilterCriteria
+        List<RestoreExternalDatabase> filteredExternalDbs = validateAndFilterExternalDb(
                 backup.getExternalDatabases(),
                 restoreRequest.getExternalDatabaseStrategy(),
                 restoreRequest.getFilterCriteria());
 
-        // MappingEntity classifiers of externalDb
-        if (restoreRequest.getMapping() != null)
-            externalDatabases = executeMappingForExternalDb(externalDatabases, restoreRequest.getMapping());
-
-        // Filtering classifiers
-        List<BackupDatabaseDelegate> backupDatabases = getAllDbByFilter(
+        // Filter internal database classifiers
+        List<BackupDatabaseDelegate> filteredBackupDatabases = getAllDbByFilter(
                 backup.getLogicalBackups().stream()
                         .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
                         .toList(),
                 restoreRequest.getFilterCriteria());
 
+        if (filteredExternalDbs.isEmpty() && filteredBackupDatabases.isEmpty()) {
+            log.warn("Databases that match filterCriteria during restore not found");
+            throw new DbNotFoundException("Databases that match filterCriteria not found", Source.builder().build());
+        }
 
-        // Group BackupDatabase by updated adapters
-        Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupedByTypeAndAdapter =
-                groupBackupDatabasesByTypeAndAdapter(backupDatabases, restoreRequest.getMapping());
+        // Mapping classifiers
+        List<RestoreExternalDatabase> mappedExternalDbs =
+                executeMappingForExternalDb(filteredExternalDbs, restoreRequest.getMapping());
+        List<BackupDatabaseDelegate> mappedBackupDatabases =
+                applyMappingToBackupDatabases(filteredBackupDatabases, restoreRequest.getMapping());
 
+        // Enrich classifiers
+        List<BackupDatabaseDelegate> enrichedBackupClassifiers = applySimilarDbClassifiers(mappedBackupDatabases);
+
+        // Group BackupDatabases by updated adapter and logicalBackupName
+        Map<AdapterBackupKey, List<BackupDatabaseDelegate>> groupedByTypeAndAdapter =
+                groupBackupDatabasesByLogicalBackupNameAndAdapter(enrichedBackupClassifiers);
+
+        checkForCollision(mappedExternalDbs, groupedByTypeAndAdapter.values().stream().flatMap(List::stream).toList());
         log.info("Initializing restore structure: restoreName={}, backupName={}",
                 restoreRequest.getRestoreName(),
                 backup.getName());
+
         // Build logicalRestores for each new adapter
         List<LogicalRestore> logicalRestores = groupedByTypeAndAdapter.entrySet().stream()
                 .map(entry -> {
                     LogicalRestore logicalRestore = new LogicalRestore();
-                    logicalRestore.setType(entry.getKey().getType());
-                    logicalRestore.setAdapterId(entry.getKey().getAdapter().getAdapterId());
+                    logicalRestore.setType(entry.getValue().getFirst().backupDatabase().getLogicalBackup().getType());
+                    logicalRestore.setAdapterId(entry.getKey().adapterId());
 
                     List<RestoreDatabase> restoreDatabases =
                             createRestoreDatabases(entry.getValue());
@@ -782,27 +790,100 @@ public class DbBackupV2Service {
         restore.setBlobPath(restoreRequest.getBlobPath());
         restore.setLogicalRestores(new ArrayList<>(logicalRestores));
         restore.setExternalDatabaseStrategy(restoreRequest.getExternalDatabaseStrategy());
-        restore.setExternalDatabases(externalDatabases);
+        restore.setExternalDatabases(mappedExternalDbs);
         restore.setMapping(mapper.toMappingEntity(restoreRequest.getMapping()));
         restore.setFilterCriteria(mapper.toFilterCriteriaEntity(restoreRequest.getFilterCriteria()));
 
         // set up relation
         logicalRestores.forEach(lr -> lr.setRestore(restore));
-        externalDatabases.forEach(db -> db.setRestore(restore));
+        mappedExternalDbs.forEach(db -> db.setRestore(restore));
         int totalDatabases = logicalRestores.stream()
                 .mapToInt(lr -> lr.getRestoreDatabases().size())
                 .sum();
 
-        log.info("Restore structure initialized: restoreName={}, logicalRestores={}, restoreDatabases={}",
-                restore.getName(), logicalRestores.size(), totalDatabases);
+        log.info("Restore structure initialized: restoreName={}, logicalRestores={}, restoreDatabases={}, externalDatabases={}",
+                restore.getName(), logicalRestores.size(), totalDatabases, mappedExternalDbs.size());
 
         return restore;
     }
 
-    private List<RestoreExternalDatabase> validateAndFilterExternalDb(List<BackupExternalDatabase> externalDatabases,
-                                                                      ExternalDatabaseStrategy strategy,
-                                                                      FilterCriteria filterCriteria) {
-        if (externalDatabases == null || externalDatabases.isEmpty())
+    private List<BackupDatabaseDelegate> applyMappingToBackupDatabases(List<BackupDatabaseDelegate> backupDatabases, Mapping mapping) {
+        return backupDatabases.stream()
+                .map(db ->
+                        new BackupDatabaseDelegate(db.backupDatabase(), applyMapping(db.classifiers(), mapping))
+                ).toList();
+    }
+
+    protected List<Classifier> applyMapping(List<Classifier> classifiers, Mapping mapping) {
+        List<Classifier> mappedClassifiers = new ArrayList<>();
+
+        for (Classifier classifier : classifiers) {
+            SortedMap<String, Object> sourceClassifier = classifier.getClassifierBeforeMapper();
+            SortedMap<String, Object> mappedClassifier = new TreeMap<>(sourceClassifier);
+            if (mapping != null) {
+                String targetNamespace = getValue(mapping.getNamespaces(), (String) sourceClassifier.get(NAMESPACE));
+                String targetTenant = (String) sourceClassifier.get(TENANT_ID);
+                mappedClassifier.put(NAMESPACE, targetNamespace);
+
+                if (targetTenant != null) {
+                    targetTenant = getValue(mapping.getTenants(), targetTenant);
+                    mappedClassifier.put(TENANT_ID, targetTenant);
+                }
+            }
+            classifier.setClassifier(mappedClassifier);
+            mappedClassifiers.add(classifier);
+        }
+        return mappedClassifiers;
+    }
+
+    private List<BackupDatabaseDelegate> applySimilarDbClassifiers(List<BackupDatabaseDelegate> backupDatabases) {
+        return backupDatabases.stream()
+                .map(db -> {
+                    String type = db.backupDatabase().getLogicalBackup().getType();
+                    List<Classifier> updatedClassifiers = findSimilarDbByClassifier(db.classifiers(), type).stream().toList();
+                    return new BackupDatabaseDelegate(db.backupDatabase(), updatedClassifiers);
+                }).toList();
+    }
+
+    private void checkForCollision(List<RestoreExternalDatabase> externalDatabases, List<BackupDatabaseDelegate> backupDatabases) {
+        Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
+        List<Classifier> duplicateClassifiers = new ArrayList<>();
+
+        for (RestoreExternalDatabase externalDatabase : externalDatabases) {
+            for (Classifier classifier : externalDatabase.getClassifiers())
+                collectDuplicateClassifiers(classifier, uniqueClassifiers, duplicateClassifiers);
+        }
+
+        for (BackupDatabaseDelegate internalDatabase : backupDatabases) {
+            for (Classifier classifier : internalDatabase.classifiers())
+                collectDuplicateClassifiers(classifier, uniqueClassifiers, duplicateClassifiers);
+        }
+
+        if (!duplicateClassifiers.isEmpty()) {
+            String msg = String.format(
+                    "Duplicate classifiers detected after mapping. Duplicate classifiers=%s. " +
+                            "Ensure all classifiers remain unique after mapping.", duplicateClassifiers);
+            log.error(msg);
+            throw new IllegalResourceStateException(msg, Source.builder().build());
+        }
+    }
+
+    private void collectDuplicateClassifiers(
+            Classifier classifier,
+            Set<SortedMap<String, Object>> uniqueClassifiers,
+            List<Classifier> duplicateClassifiers
+    ) {
+        SortedMap<String, Object> c = classifier.getClassifier();
+        if (!uniqueClassifiers.add(c)) {
+            duplicateClassifiers.add(classifier);
+        }
+    }
+
+    protected List<RestoreExternalDatabase> validateAndFilterExternalDb
+            (List<BackupExternalDatabase> externalDatabases,
+             ExternalDatabaseStrategy strategy,
+             FilterCriteria filterCriteria) {
+        if (isEmpty(externalDatabases))
             return List.of();
 
         String externalNames = externalDatabases.stream()
@@ -811,60 +892,72 @@ public class DbBackupV2Service {
 
         return switch (strategy) {
             case FAIL -> {
-                log.error("External databases not allowed by strategy={}: {}", ExternalDatabaseStrategy.FAIL, externalNames);
+                log.error("External databases not allowed by strategy={}. External db names: [{}]",
+                        ExternalDatabaseStrategy.FAIL, externalNames);
                 throw new DatabaseBackupRestoreNotSupportedException(
-                        String.format("External databases not allowed by strategy=%s: %s", ExternalDatabaseStrategy.FAIL, externalNames),
+                        String.format(
+                                "External databases not allowed by strategy=%s. External db names: [%s]",
+                                ExternalDatabaseStrategy.FAIL, externalNames
+                        ),
                         Source.builder().parameter("ExternalDatabaseStrategy").build()
                 );
             }
             case SKIP -> {
-                log.info("Excluding external databases from restore by strategy={}: external db names {}",
+                log.info("Excluding external databases from restore by strategy={}. External db names: [{}]",
                         ExternalDatabaseStrategy.SKIP, externalNames);
                 yield List.of();
             }
             case INCLUDE -> {
-                log.info("Including external databases to restore by strategy: {}", ExternalDatabaseStrategy.INCLUDE);
+                log.info("Including external databases to restore by strategy={}. External db names: [{}]",
+                        ExternalDatabaseStrategy.INCLUDE, externalNames);
                 if (isFilterEmpty(filterCriteria))
-                    yield mapper.toRestoreExternalDatabases(externalDatabases);
+                    yield externalDatabases.stream()
+                            .map(db -> mapper.toRestoreExternalDatabase(
+                                    db,
+                                    db.getClassifiers().stream()
+                                            .map(c -> new Classifier(ClassifierType.NEW, null, null, new TreeMap<>(c)))
+                                            .toList()
+                            ))
+                            .toList();
 
-                Filter filter = filterCriteria.getFilter().getFirst();
+                yield externalDatabases.stream()
+                        .map(db -> {
+                            List<Classifier> filteredClassifiers = db.getClassifiers().stream()
+                                    .filter(classifier -> {
+                                        String namespace = (String) classifier.get(NAMESPACE);
+                                        String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
+                                        String type = db.getType();
+                                        return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
+                                                && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
+                                    })
+                                    .map(c -> new Classifier(ClassifierType.NEW, null, null, new TreeMap<>(c)))
+                                    .toList();
 
-                if (filter.getNamespace().isEmpty()) {
-                    if (!filter.getMicroserviceName().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by microservice");
-                    }
-                    if (!filter.getDatabaseKind().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by databaseKind");
-                    }
-                    if (!filter.getDatabaseType().isEmpty()) {
-                        throw new FunctionalityNotImplemented("restoration by databaseType");
-                    }
-                    throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043, "namespace", Source.builder().build());
-                }
-                if (filter.getNamespace().size() > 1) {
-                    throw new FunctionalityNotImplemented("restoration by several namespace");
-                }
-                String namespace = filter.getNamespace().getFirst();
-                yield mapper.toRestoreExternalDatabases(externalDatabases).stream()
-                        .filter(db -> db.getClassifiers().stream()
-                                .anyMatch(classifier ->
-                                        namespace.equals(classifier.get(NAMESPACE)))
-                        ).toList();
+                            if (filteredClassifiers.isEmpty()) {
+                                return null;
+                            }
+
+                            return mapper.toRestoreExternalDatabase(db, filteredClassifiers);
+                        })
+                        .filter(Objects::nonNull)
+                        .toList();
             }
         };
     }
 
-    private List<RestoreExternalDatabase> executeMappingForExternalDb(List<RestoreExternalDatabase> externalDatabases,
-                                                                      Mapping mapping) {
-        return externalDatabases.stream()
-                .peek(db -> {
-                    Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
-                    List<SortedMap<String, Object>> updatedClassifiers = db.getClassifiers().stream()
-                            .map(classifier -> updateAndValidateClassifier(classifier, mapping, uniqueClassifiers))
-                            .toList();
-                    db.setClassifiers(updatedClassifiers);
-                })
-                .toList();
+    private List<RestoreExternalDatabase> executeMappingForExternalDb(
+            List<RestoreExternalDatabase> externalDatabases,
+            Mapping mapping
+    ) {
+        List<RestoreExternalDatabase> updatedExternals = new ArrayList<>();
+
+        for (RestoreExternalDatabase externalDatabase : externalDatabases) {
+            List<Classifier> mappedClassifiers = applyMapping(externalDatabase.getClassifiers(), mapping);
+            List<Classifier> enrichedClassifiers = findSimilarDbByClassifier(mappedClassifiers, externalDatabase.getType()).stream().toList();
+            externalDatabase.setClassifiers(enrichedClassifiers);
+            updatedExternals.add(externalDatabase);
+        }
+        return updatedExternals;
     }
 
     private List<RestoreDatabase> createRestoreDatabases(
@@ -873,8 +966,8 @@ public class DbBackupV2Service {
         return backupDatabases.stream()
                 .map(delegatedBackupDatabase -> {
                     BackupDatabase backupDatabase = delegatedBackupDatabase.backupDatabase();
-                    List<SortedMap<String, Object>> classifiers = delegatedBackupDatabase.classifiers();
-                    String namespace = (String) classifiers.getFirst().get(NAMESPACE);
+                    List<Classifier> classifiers = delegatedBackupDatabase.classifiers();
+                    String namespace = (String) classifiers.getFirst().getClassifier().get(NAMESPACE);
                     String bgVersion = null;
                     if (backupDatabase.isConfigurational()) {
                         Optional<BgNamespace> bgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(namespace);
@@ -898,17 +991,6 @@ public class DbBackupV2Service {
                 .toList();
     }
 
-    private SortedMap<String, Object> updateClassifier(SortedMap<String, Object> classifier, Mapping mapping) {
-        String targetNamespace = getValue(mapping.getNamespaces(), (String) classifier.get(NAMESPACE));
-        String targetTenant = getValue(mapping.getTenants(), (String) classifier.get(TENANT_ID));
-
-        SortedMap<String, Object> updatedClassifier = new TreeMap<>(classifier);
-        updatedClassifier.put(NAMESPACE, targetNamespace);
-        if (targetTenant != null)
-            updatedClassifier.put(TENANT_ID, targetTenant);
-        return updatedClassifier;
-    }
-
     private String getValue(Map<String, String> map, String oldValue) {
         if (map == null || map.isEmpty()) {
             return oldValue;
@@ -916,54 +998,51 @@ public class DbBackupV2Service {
         return map.getOrDefault(oldValue, oldValue);
     }
 
-    private Map<PhysicalDatabase, List<BackupDatabaseDelegate>> groupBackupDatabasesByTypeAndAdapter(
-            List<BackupDatabaseDelegate> backupDatabases,
-            Mapping mapping) {
-
+    private Map<AdapterBackupKey, List<BackupDatabaseDelegate>> groupBackupDatabasesByLogicalBackupNameAndAdapter(
+            List<BackupDatabaseDelegate> backupDatabases
+    ) {
         return backupDatabases.stream()
-                .map(db -> mapToPhysicalDatabaseEntry(db, mapping))
-                .filter(Objects::nonNull)
+                .map(this::mapToAdapterBackupKeyEntry)
                 .collect(Collectors.groupingBy(
                         Map.Entry::getKey,
                         Collectors.mapping(Map.Entry::getValue, Collectors.toList())
                 ));
     }
 
-    private Map.Entry<PhysicalDatabase, BackupDatabaseDelegate> mapToPhysicalDatabaseEntry(
-            BackupDatabaseDelegate db, Mapping mapping) {
-        List<SortedMap<String, Object>> classifiers = db.classifiers();
-        if (classifiers.isEmpty()) {
-            return null;
-        }
+    private Map.Entry<AdapterBackupKey, BackupDatabaseDelegate> mapToAdapterBackupKeyEntry(
+            BackupDatabaseDelegate backupDatabaseDelegate
+    ) {
+        List<Classifier> classifiers = backupDatabaseDelegate.classifiers();
+        String type = backupDatabaseDelegate.backupDatabase().getLogicalBackup().getType();
+        String logicalBackupName = backupDatabaseDelegate.backupDatabase().getLogicalBackup().getLogicalBackupName();
 
-        SortedMap<String, Object> firstClassifier = classifiers.getFirst();
-        String targetNamespace = (String) firstClassifier.get(NAMESPACE);
-        String microserviceName = (String) firstClassifier.get(MICROSERVICE_NAME);
+        Optional<String> adapterIdFromClassifier = classifiers.stream()
+                .filter(c -> ClassifierType.REPLACED == c.getType() || ClassifierType.TRANSIENT_REPLACED == c.getType())
+                .map(Classifier::getClassifier)
+                .filter(Objects::nonNull)
+                .map(c -> databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(c, type))
+                .filter(Optional::isPresent)
+                .map(opt -> opt.get().getDatabase().getAdapterId())
+                .findFirst();
 
-        // Mapping classifiers
-        if (mapping != null && mapping.getNamespaces() != null) {
-            Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
-            classifiers = db.classifiers().stream()
-                    .map(classifier -> updateAndValidateClassifier(classifier, mapping, uniqueClassifiers))
-                    .toList();
-
-            // Find the first classifier whose namespace exists in the mapping
-            SortedMap<String, Object> matchedClassifier = classifiers.stream()
-                    .filter(c -> mapping.getNamespaces().containsKey((String) c.get(NAMESPACE)))
+        String adapterId;
+        if (adapterIdFromClassifier.isPresent()) {
+            adapterId = adapterIdFromClassifier.get();
+        } else {
+            SortedMap<String, Object> firstNewClassifier = classifiers.stream()
+                    .filter(c -> ClassifierType.NEW == c.getType())
+                    .map(Classifier::getClassifier)
+                    .filter(Objects::nonNull)
                     .findFirst()
-                    .orElse(classifiers.getFirst());
-
-            String oldNamespace = (String) matchedClassifier.get(NAMESPACE);
-            targetNamespace = mapping.getNamespaces().getOrDefault(oldNamespace, oldNamespace);
-            microserviceName = (String) matchedClassifier.get(MICROSERVICE_NAME);
+                    .orElseGet(() -> classifiers.getFirst().getClassifier());
+            String targetNamespace = (String) firstNewClassifier.get(NAMESPACE);
+            String microserviceName = (String) firstNewClassifier.get(MICROSERVICE_NAME);
+            PhysicalDatabase physicalDatabase = balancingRulesService
+                    .applyBalancingRules(type, targetNamespace, microserviceName);
+            adapterId = physicalDatabase.getAdapter().getAdapterId();
         }
-
-        String type = db.backupDatabase().getLogicalBackup().getType();
-        PhysicalDatabase physicalDatabase = balancingRulesService
-                .applyBalancingRules(type, targetNamespace, microserviceName);
 
         // Checking adapter support backup restore
-        String adapterId = physicalDatabase.getAdapter().getAdapterId();
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
         if (!isBackupRestoreSupported(adapter)) {
             throw new DatabaseBackupRestoreNotSupportedException(
@@ -971,47 +1050,53 @@ public class DbBackupV2Service {
                     Source.builder().build());
         }
 
-        return Map.entry(physicalDatabase, new BackupDatabaseDelegate(db.backupDatabase(), classifiers));
-    }
-
-    private SortedMap<String, Object> updateAndValidateClassifier(
-            SortedMap<String, Object> classifier,
-            Mapping mapping,
-            Set<SortedMap<String, Object>> uniqueClassifiers) {
-        SortedMap<String, Object> updatedClassifier = updateClassifier(classifier, mapping);
-        // To prevent collision during mapping
-        if (!uniqueClassifiers.add(updatedClassifier)) {
-            String msg = String.format(
-                    "Duplicate classifier detected after mapping: classifier='%s', mapping='%s'. " +
-                            "Ensure all classifiers remain unique after mapping.",
-                    classifier, mapping);
-            log.error(msg);
-            throw new IllegalResourceStateException(msg, Source.builder().build());
-        }
-        return updatedClassifier;
+        return Map.entry(new AdapterBackupKey(adapterId, logicalBackupName),
+                new BackupDatabaseDelegate(backupDatabaseDelegate.backupDatabase(), classifiers));
     }
 
     protected void startRestore(Restore restore, boolean dryRun) {
         List<LogicalRestore> logicalRestores = restore.getLogicalRestores();
         log.info("Starting requesting adapters to restore startup process: restore={}, dryRun={} logicalRestoreCount={}",
-                restore.getName(), dryRun, restore.getLogicalRestores().size());
+                restore.getName(), dryRun, logicalRestores.size());
+        String storageName = restore.getStorageName();
+        String blobPath = restore.getBlobPath();
+
         List<CompletableFuture<Void>> futures = logicalRestores.stream()
                 .map(logicalRestore ->
-                        CompletableFuture.supplyAsync(asyncOperations.wrapWithContext(() ->
-                                        logicalRestore(logicalRestore, dryRun)))
-                                .thenAccept(response ->
-                                        refreshLogicalRestoreState(logicalRestore, response))
-                                .exceptionally(throwable -> {
-                                    logicalRestore.setStatus(RestoreTaskStatus.FAILED);
-                                    logicalRestore.setErrorMessage(extractErrorMessage(throwable));
-                                    log.error("Logical restore failed: adapterId={}, error={}",
-                                            logicalRestore.getAdapterId(), logicalRestore.getErrorMessage());
-                                    return null;
-                                })
+                        runLogicalRestoreAsync(logicalRestore, logicalRestore.getRestoreDatabases(), storageName, blobPath, dryRun)
                 )
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+    }
+
+    private CompletableFuture<Void> runLogicalRestoreAsync(LogicalRestore logicalRestore,
+                                                           List<RestoreDatabase> restoreDatabases,
+                                                           String storageName,
+                                                           String blobPath,
+                                                           boolean dryRun
+    ) {
+        return CompletableFuture.supplyAsync(
+                        asyncOperations.wrapWithContext(
+                                () -> logicalRestore(
+                                        logicalRestore.getLogicalRestoreName(),
+                                        logicalRestore,
+                                        restoreDatabases,
+                                        storageName,
+                                        blobPath,
+                                        dryRun
+                                )
+                        )
+                )
+                .thenAccept(response ->
+                        refreshLogicalRestoreState(logicalRestore, response))
+                .exceptionally(throwable -> {
+                    logicalRestore.setStatus(RestoreTaskStatus.FAILED);
+                    logicalRestore.setErrorMessage(extractErrorMessage(throwable));
+                    log.error("Logical restore failed: adapterId={}, error={}",
+                            logicalRestore.getAdapterId(), logicalRestore.getErrorMessage());
+                    return null;
+                });
     }
 
     private void refreshLogicalRestoreState(LogicalRestore logicalRestore, LogicalRestoreAdapterResponse response) {
@@ -1037,7 +1122,7 @@ public class DbBackupV2Service {
                 restoreDatabase.setCreationTime(db.getCreationTime());
                 if (!restoreDatabase.getName().equals(db.getDatabaseName())) {
                     restoreDatabase.setName(db.getDatabaseName());
-                    log.debug("For restore={} backup database updated: old name={}, new name={}",
+                    log.debug("For restore={} restoreDatabase updated: old name={}, new name={}",
                             logicalRestore.getRestore().getName(), db.getPreviousDatabaseName(), restoreDatabase.getName());
                 }
             } else {
@@ -1058,43 +1143,41 @@ public class DbBackupV2Service {
                 logicalRestore.getLogicalRestoreName(), logicalRestore.getStatus(), logicalRestore.getErrorMessage());
     }
 
-    private LogicalRestoreAdapterResponse logicalRestore(LogicalRestore logicalRestore, boolean dryRun) {
-        String logicalBackupName = logicalRestore.getRestoreDatabases().getFirst()
+    private LogicalRestoreAdapterResponse logicalRestore(String logicalRestoreName,
+                                                         LogicalRestore logicalRestore,
+                                                         List<RestoreDatabase> restoreDatabases,
+                                                         String storageName,
+                                                         String blobPath,
+                                                         boolean dryRun
+    ) {
+        String logicalBackupName = restoreDatabases.getFirst()
                 .getBackupDatabase()
                 .getLogicalBackup()
                 .getLogicalBackupName();
-        List<Map<String, String>> databases = buildRestoreDatabases(logicalRestore);
 
-        Restore restore = logicalRestore.getRestore();
-        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestore.getLogicalRestoreName(), RESTORE_OPERATION);
+        List<Map<String, String>> databases = buildRestoreDatabases(restoreDatabases);
+        RetryPolicy<Object> retryPolicy = buildRetryPolicy(logicalRestoreName, RESTORE_OPERATION);
 
-        try {
-            return Failsafe.with(retryPolicy)
-                    .get(() -> executeRestore(logicalRestore, logicalBackupName, restore, databases, dryRun));
-        } catch (Exception e) {
-            log.error("Logical restore startup for adapterId={} failed, restore={}", logicalRestore.getAdapterId(), restore.getName());
-            throw new BackupExecutionException(
-                    String.format("Logical restore startup for adapterId=%s failed, restore=%s",
-                            logicalRestore.getAdapterId(), restore.getName()), e);
-        }
+        return Failsafe.with(retryPolicy)
+                .get(() -> executeRestore(logicalRestore, logicalBackupName, storageName, blobPath, databases, dryRun));
     }
 
-    private List<Map<String, String>> buildRestoreDatabases(LogicalRestore logicalRestore) {
-        return logicalRestore.getRestoreDatabases().stream()
+    private List<Map<String, String>> buildRestoreDatabases(List<RestoreDatabase> restoreDatabases) {
+        return restoreDatabases.stream()
                 .map(restoreDatabase -> {
                     String namespace = restoreDatabase.getClassifiers().stream()
-                            .map(i -> (String) i.get(NAMESPACE))
+                            .map(c -> (String) c.getClassifier().get(NAMESPACE))
                             .findFirst()
                             .orElse("");
 
                     String microserviceName = restoreDatabase.getClassifiers().stream()
-                            .map(i -> (String) i.get(MICROSERVICE_NAME))
+                            .map(c -> (String) c.getClassifier().get(MICROSERVICE_NAME))
                             .findFirst()
                             .orElse("");
 
                     return Map.of(
                             MICROSERVICE_NAME, microserviceName,
-                            DATABASE_NAME, restoreDatabase.getName(),
+                            DATABASE_NAME, restoreDatabase.getBackupDatabase().getName(),
                             NAMESPACE, namespace
                     );
                 })
@@ -1104,7 +1187,8 @@ public class DbBackupV2Service {
     private LogicalRestoreAdapterResponse executeRestore(
             LogicalRestore logicalRestore,
             String logicalBackupName,
-            Restore restore,
+            String storageName,
+            String blobPath,
             List<Map<String, String>> databases,
             boolean dryRun
     ) {
@@ -1113,7 +1197,7 @@ public class DbBackupV2Service {
         LogicalRestoreAdapterResponse result = adapter.restoreV2(
                 logicalBackupName,
                 dryRun,
-                new RestoreAdapterRequest(restore.getStorageName(), restore.getBlobPath(), databases)
+                new RestoreAdapterRequest(storageName, blobPath, databases)
         );
 
         if (result == null) {
@@ -1135,15 +1219,17 @@ public class DbBackupV2Service {
         LockAssert.assertLocked();
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToAggregate();
 
-        log.info("Founded restores to aggregate {}",
+        log.info("Found restores to aggregate {}",
                 restoresToAggregate.stream().map(Restore::getName).toList());
 
-        restoresToAggregate.forEach(this::trackAndAggregateRestore);
         restoresToAggregate.forEach(restore -> {
-            if (!Objects.equals(restore.getTotal(), restore.getCompleted()) && RestoreStatus.COMPLETED != restore.getStatus()) {
+            trackAndAggregateRestore(restore);
+
+            if (RestoreStatus.COMPLETED != restore.getStatus() || !Objects.equals(restore.getTotal(), restore.getCompleted())) {
                 restoreRepository.save(restore);
                 return;
             }
+
             Map<String, List<EnsuredUser>> dbNameToEnsuredUsers = restore.getLogicalRestores().stream()
                     .flatMap(lr -> lr.getRestoreDatabases().stream()
                             .map(rd -> Map.entry(
@@ -1151,7 +1237,7 @@ public class DbBackupV2Service {
                                     ensureUsers(lr.getAdapterId(), rd.getName(), rd.getUsers())
                             ))
                     )
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a));
 
             initializeLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
             restoreRepository.save(restore);
@@ -1164,14 +1250,19 @@ public class DbBackupV2Service {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(dbName, ENSURE_USER_OPERATION);
 
-        log.info("Ensuring {} users for databaseName=[{}] via adapter [{}]",
+        log.info("Start ensure {} users for database=[{}] via adapter [{}]",
                 users.size(), dbName, adapterId);
 
         return users.stream()
                 .map(user -> {
                     try {
                         return Failsafe.with(retryPolicy)
-                                .get(() -> adapter.ensureUser(user.getName(), null, dbName, user.getRole()));
+                                .get(() -> {
+                                    EnsuredUser ensuredUser = adapter.ensureUser(user.getName(), null, dbName, user.getRole());
+                                    log.info("User ensured for database=[{}], user information=[name={}, connectionProperties={}]",
+                                            dbName, ensuredUser.getName(), ensuredUser.getConnectionProperties());
+                                    return ensuredUser;
+                                });
                     } catch (Exception e) {
                         log.error("Failed to ensure user {} in database {}", user.getName(), dbName, e);
                         throw new BackupExecutionException(
@@ -1267,7 +1358,8 @@ public class DbBackupV2Service {
     }
 
     @Transactional
-    protected void initializeLogicalDatabasesFromRestore(Restore restore, Map<String, List<EnsuredUser>> dbNameToEnsuredUsers) {
+    protected void initializeLogicalDatabasesFromRestore(Restore restore,
+                                                         Map<String, List<EnsuredUser>> dbNameToEnsuredUsers) {
         log.info("Start creating logicalDatabases from restore {}", restore.getName());
         try {
             // Creating LogicalDb based logicalRestores
@@ -1275,17 +1367,16 @@ public class DbBackupV2Service {
                 log.info("Processing logicalRestore={}, type={}, adapterId={}", logicalRestore.getLogicalRestoreName(), logicalRestore.getType(), logicalRestore.getAdapterId());
                 logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
                     String type = logicalRestore.getType();
-                    Set<SortedMap<String, Object>> classifiers = new HashSet<>();
-
                     log.info("Processing restoreDatabase={}", restoreDatabase.getName());
-                    findSimilarDbByClassifier(classifiers, restoreDatabase.getClassifiers(), type);
+                    findAndMarkDatabaseAsOrphan(restoreDatabase.getClassifiers(), type);
                     String adapterId = logicalRestore.getAdapterId();
                     String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getPhysicalDatabaseIdentifier();
                     List<EnsuredUser> ensuredUsers = dbNameToEnsuredUsers.get(restoreDatabase.getName());
                     Database newDatabase = createLogicalDatabase(
                             restoreDatabase.getName(),
                             restoreDatabase.getSettings(),
-                            classifiers,
+                            restoreDatabase.getClassifiers().stream()
+                                    .map(Classifier::getClassifier).collect(Collectors.toSet()),
                             type,
                             false,
                             false,
@@ -1298,20 +1389,19 @@ public class DbBackupV2Service {
                     newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
                     encryption.encryptPassword(newDatabase);
                     databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
-                    log.info("Based restoreDatabase={}, database id={} created", restore.getName(), newDatabase.getId());
+                    log.info("Based restoreDatabase={}, database with id={} created", restoreDatabase.getName(), newDatabase.getId());
                 });
             });
             // Creating LogicalDb based externalDbs
             restore.getExternalDatabases().forEach(externalDatabase -> {
                 log.info("Processing externalDatabase={}, type={}", externalDatabase.getName(), externalDatabase.getType());
                 String type = externalDatabase.getType();
-                Set<SortedMap<String, Object>> classifiers = new HashSet<>();
-
-                findSimilarDbByClassifier(classifiers, externalDatabase.getClassifiers(), type);
+                findAndMarkDatabaseAsOrphan(externalDatabase.getClassifiers(), type);
                 Database newDatabase = createLogicalDatabase(
                         externalDatabase.getName(),
                         null,
-                        classifiers,
+                        externalDatabase.getClassifiers().stream()
+                                .map(Classifier::getClassifier).collect(Collectors.toSet()),
                         type,
                         true,
                         true,
@@ -1319,7 +1409,7 @@ public class DbBackupV2Service {
                         null,
                         null);
                 databaseRegistryDbaasRepository.saveExternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
-                log.info("Based externalDb={}, database id={} created", externalDatabase.getName(), newDatabase.getId());
+                log.info("Based externalDb={}, database with id={} created", externalDatabase.getName(), newDatabase.getId());
             });
             restore.setStatus(RestoreStatus.COMPLETED);
             log.info("Finished initializing logical databases from restore {}", restore.getName());
@@ -1331,28 +1421,51 @@ public class DbBackupV2Service {
         }
     }
 
-    private void findSimilarDbByClassifier(Set<SortedMap<String, Object>> uniqueClassifiers,
-                                           List<SortedMap<String, Object>> classifiers,
-                                           String type) {
+    private Set<Classifier> findSimilarDbByClassifier(List<Classifier> classifiers, String type) {
+        Set<Classifier> uniqueClassifiers = new HashSet<>();
         classifiers.forEach(classifier -> {
-            uniqueClassifiers.add(new TreeMap<>(classifier));
-            log.debug("Classifier candidate: {}", classifier);
-            databaseRegistryDbaasRepository
-                    .getDatabaseByClassifierAndType(classifier, type)
-                    .ifPresent(dbRegistry -> {
-                        Database db = dbRegistry.getDatabase();
-                        log.info("Found existing database {} for classifier {}", db.getId(), classifier);
-                        List<TreeMap<String, Object>> existClassifiers = db.getDatabaseRegistry().stream()
-                                .map(AbstractDatabaseRegistry::getClassifier)
-                                .map(TreeMap::new)
-                                .toList();
+            SortedMap<String, Object> currClassifier = classifier.getClassifier();
+            log.debug("Classifier candidate: {}", currClassifier);
 
-                        uniqueClassifiers.addAll(existClassifiers);
-                        dBaaService.markDatabasesAsOrphan(dbRegistry);
-                        log.info("Database {} marked as orphan", db.getId());
-                        databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
-                    });
+            Optional<DatabaseRegistry> optionalDatabaseRegistry = databaseRegistryDbaasRepository
+                    .getDatabaseByClassifierAndType(currClassifier, type);
+
+            if (optionalDatabaseRegistry.isPresent()) {
+                DatabaseRegistry dbRegistry = optionalDatabaseRegistry.get();
+                Database db = dbRegistry.getDatabase();
+                classifier.setType(ClassifierType.REPLACED);
+                classifier.setPreviousDatabase(db.getName());
+                log.info("Found existing database {} for classifier {}", db.getId(), currClassifier);
+                Set<Classifier> existClassifiers = db.getDatabaseRegistry().stream()
+                        .map(AbstractDatabaseRegistry::getClassifier)
+                        .filter(c -> !c.containsKey(MARKED_FOR_DROP)) // TODO
+                        .map(TreeMap::new)
+                        .map(c -> currClassifier.equals(c)
+                                ? classifier
+                                : new Classifier(ClassifierType.TRANSIENT_REPLACED, db.getName(), c, null)
+                        )
+                        .collect(Collectors.toSet());
+
+                uniqueClassifiers.addAll(existClassifiers);
+            } else
+                uniqueClassifiers.add(classifier);
         });
+        return uniqueClassifiers;
+    }
+
+    private void findAndMarkDatabaseAsOrphan(List<Classifier> classifiers, String type) {
+        classifiers.stream()
+                .filter(classifier -> ClassifierType.REPLACED == classifier.getType())
+                .forEach(classifier -> {
+                    SortedMap<String, Object> currClassifier = classifier.getClassifier();
+                    databaseRegistryDbaasRepository
+                            .getDatabaseByClassifierAndType(currClassifier, type)
+                            .ifPresent(dbRegistry -> {
+                                dBaaService.markDatabasesAsOrphan(dbRegistry);
+                                log.info("Database {} marked as orphan", dbRegistry.getDatabase().getId());
+                                databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+                            });
+                });
     }
 
     private Database createLogicalDatabase(String dbName,
@@ -1431,12 +1544,64 @@ public class DbBackupV2Service {
     }
 
     public RestoreResponse retryRestore(String restoreName) {
-        throw new FunctionalityNotImplemented("retry restore functionality not implemented yet");
+        // Check existence of restore by restoreName
+        Restore restore = getRestoreOrThrowException(restoreName);
+        // Check if the status of the restor has FAILED
+        if (RestoreStatus.FAILED != restore.getStatus()) {
+            throw new UnprocessableEntityException(
+                    restoreName,
+                    String.format(
+                            "has invalid status '%s'. Only %s restores can be processed.",
+                            restore.getStatus(), RestoreStatus.FAILED
+                    ),
+                    Source.builder().build());
+        }
+
+        return restoreLockWrapper(() -> {
+            retryRestore(restore);
+            aggregateRestoreStatus(restore);
+            restoreRepository.save(restore);
+            return mapper.toRestoreResponse(restore);
+        });
     }
 
-    protected Map<Database, List<DatabaseRegistry>> validateAndFilterDatabasesForBackup(Map<Database, List<DatabaseRegistry>> databasesForBackup,
-                                                                                        boolean ignoreNotBackupableDatabases,
-                                                                                        ExternalDatabaseStrategy strategy) {
+    private void checkBackupStatusForRestore(String restoreName, BackupStatus status) {
+        if (status != BackupStatus.COMPLETED) {
+            log.error("Restore {} can't process due to backup status {}", restoreName, status);
+            throw new UnprocessableEntityException(
+                    restoreName, String.format("restore can't process due to backup status %s", status),
+                    Source.builder().build());
+        }
+    }
+
+    private void retryRestore(Restore restore) {
+        List<LogicalRestore> failedLogicalRestores = restore.getLogicalRestores()
+                .stream()
+                .filter(logicalRestore -> RestoreTaskStatus.FAILED == logicalRestore.getStatus())
+                .toList();
+
+        log.info("Starting retry restore process: restore={}, failedLogicalRestoreCount={}",
+                restore.getName(), failedLogicalRestores.size());
+        String storageName = restore.getStorageName();
+        String blobPath = restore.getBlobPath();
+
+        List<CompletableFuture<Void>> futures = failedLogicalRestores.stream()
+                .map(logicalRestore -> {
+                            List<RestoreDatabase> failedRestoreDatabases = logicalRestore.getRestoreDatabases().stream()
+                                    .filter(db -> RestoreTaskStatus.FAILED == db.getStatus())
+                                    .toList();
+                            return runLogicalRestoreAsync(logicalRestore, failedRestoreDatabases, storageName, blobPath, false);
+                        }
+                )
+                .toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+    }
+
+    protected Map<Database, List<DatabaseRegistry>> validateAndFilterDatabasesForBackup(
+            Map<Database, List<DatabaseRegistry>> databasesForBackup,
+            boolean ignoreNotBackupableDatabases,
+            ExternalDatabaseStrategy strategy) {
 
         Map<Boolean, Map<Database, List<DatabaseRegistry>>> partitioned = databasesForBackup.entrySet().stream()
                 .collect(Collectors.groupingBy(entry ->
@@ -1529,6 +1694,33 @@ public class DbBackupV2Service {
                 .orElseThrow(() -> new BackupRestorationNotFoundException(restoreName, Source.builder().build()));
     }
 
+    private <T> T restoreLockWrapper(Supplier<T> action) {
+        // Only one restore operation able to process
+        LockConfiguration config = new LockConfiguration(
+                Instant.now(),
+                RESTORE,
+                Duration.ofMinutes(LOCK_AT_MOST),
+                Duration.ofMinutes(LOCK_AT_LEAST));
+
+        Optional<SimpleLock> optLock = lockProvider.lock(config);
+
+        if (optLock.isEmpty())
+            throw new OperationAlreadyRunningException("restore", Source.builder().build());
+        // Start locking action
+        SimpleLock lock = optLock.get();
+        try {
+            if (restoreRepository.countNotCompletedRestores() > 0)
+                throw new OperationAlreadyRunningException("restore", Source.builder().build());
+            return action.get();
+        } finally {
+            try {
+                lock.unlock();
+            } catch (IllegalStateException ex) {
+                log.debug("Lock is already unlocked", ex);
+            }
+        }
+    }
+
     private RetryPolicy<Object> buildRetryPolicy(String name, String operation) {
         return new RetryPolicy<>()
                 .handle(WebApplicationException.class)
@@ -1557,18 +1749,12 @@ public class DbBackupV2Service {
     }
 
     private boolean isFilterEmpty(FilterCriteria filterCriteria) {
-        if (filterCriteria == null || filterCriteria.getFilter() == null)
-            return true;
-
-        return filterCriteria.getFilter().isEmpty()
-                || filterCriteria.getFilter().stream().allMatch(this::isSingleFilterEmpty);
+        return filterCriteria == null
+                || (isEmpty(filterCriteria.getFilter()) && isEmpty(filterCriteria.getExclude()));
     }
 
-    private boolean isSingleFilterEmpty(Filter f) {
-        return (f.getNamespace() == null || f.getNamespace().isEmpty())
-                && (f.getMicroserviceName() == null || f.getMicroserviceName().isEmpty())
-                && (f.getDatabaseType() == null || f.getDatabaseType().isEmpty())
-                && (f.getDatabaseKind() == null || f.getDatabaseKind().isEmpty());
+    private boolean isEmpty(Collection<?> c) {
+        return c == null || c.isEmpty();
     }
 
     private static <T extends Enum<T>, R extends Enum<R>> R aggregateStatus(

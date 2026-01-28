@@ -100,7 +100,12 @@ public interface BackupV2Mapper {
     }
 
     @Mapping(target = "id", ignore = true)
-    RestoreExternalDatabase toRestoreExternalDatabase(BackupExternalDatabase backupExternalDatabase);
+    @Mapping(target = "name", source = "backupExternalDatabase.name")
+    @Mapping(target = "type", source = "backupExternalDatabase.type")
+    @Mapping(target = "classifiers", source = "classifiers")
+    RestoreExternalDatabase toRestoreExternalDatabase(BackupExternalDatabase backupExternalDatabase, List<Classifier> classifiers);
 
-    List<RestoreExternalDatabase> toRestoreExternalDatabases(List<BackupExternalDatabase> backupExternalDatabases);
+    ClassifierResponse toClassifierResponse(Classifier classifier);
+
+    List<ClassifierResponse> toClassifierResponse(List<Classifier> classifiers);
 }

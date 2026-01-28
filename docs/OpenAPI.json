@@ -338,13 +338,6 @@
                 },
                 "description": "Apply the filter to the remaining databases"
               },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
-              },
               "exclude": {
                 "type": "array",
                 "items": {
@@ -388,7 +381,10 @@
           "blobPath",
           "externalDatabaseStrategy",
           "ignoreNotBackupableDatabases",
-          "status"
+          "status",
+          "total",
+          "completed",
+          "size"
         ],
         "description": "Response containing backup operation details",
         "properties": {
@@ -451,13 +447,6 @@
                   "$ref": "#/components/schemas/Filter"
                 },
                 "description": "Apply the filter to the remaining databases"
-              },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
               },
               "exclude": {
                 "type": "array",
@@ -653,6 +642,33 @@
             "$ref": "#/components/schemas/BGState"
           }
         }
+      },
+      "ClassifierResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ClassifierType"
+          },
+          "previousDatabase": {
+            "type": "string"
+          },
+          "classifier": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "classifierBeforeMapper": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "ClassifierType": {
+        "type": "string",
+        "enum": [
+          "NEW",
+          "REPLACED",
+          "TRANSIENT_REPLACED"
+        ]
       },
       "ClassifierWithRolesRequest": {
         "type": "object",
@@ -1801,13 +1817,6 @@
               "$ref": "#/components/schemas/Filter"
             },
             "description": "Apply the filter to the remaining databases"
-          },
-          "include": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Filter"
-            },
-            "description": "Include databases that match any of the filters in the list"
           },
           "exclude": {
             "type": "array",
@@ -3099,8 +3108,7 @@
               ]
             ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           },
@@ -3207,8 +3215,7 @@
               ]
             ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           }
@@ -3252,6 +3259,7 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
+            "pattern": "\\S",
             "description": "Unique identifier of the restore"
           },
           "storageName": {
@@ -3259,6 +3267,7 @@
             "examples": [
               "s3-backend"
             ],
+            "pattern": "\\S",
             "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
@@ -3266,6 +3275,7 @@
             "examples": [
               "/backups"
             ],
+            "pattern": "\\S",
             "description": "Path to the restore file in the storage"
           },
           "filterCriteria": {
@@ -3281,13 +3291,6 @@
                   "$ref": "#/components/schemas/Filter"
                 },
                 "description": "Apply the filter to the remaining databases"
-              },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
               },
               "exclude": {
                 "type": "array",
@@ -3350,8 +3353,12 @@
         "type": "object",
         "required": [
           "restoreName",
+          "backupName",
+          "storageName",
           "externalDatabaseStrategy",
-          "status"
+          "status",
+          "total",
+          "completed"
         ],
         "description": "Response containing the restore operation details",
         "properties": {
@@ -3360,6 +3367,7 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
+            "pattern": "\\S",
             "description": "Unique identifier of the restore"
           },
           "backupName": {
@@ -3367,6 +3375,7 @@
             "examples": [
               "before-prod-update-20251013T1345-G5s8"
             ],
+            "pattern": "\\S",
             "description": "Unique identifier of the backup"
           },
           "storageName": {
@@ -3374,6 +3383,7 @@
             "examples": [
               "s3-backend"
             ],
+            "pattern": "\\S",
             "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
@@ -3411,13 +3421,6 @@
                   "$ref": "#/components/schemas/Filter"
                 },
                 "description": "Apply the filter to the remaining databases"
-              },
-              "include": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Include databases that match any of the filters in the list"
               },
               "exclude": {
                 "type": "array",
@@ -3494,22 +3497,6 @@
               "Backup Not Found"
             ],
             "description": "Aggregated error messages during restore operation"
-          },
-          "duration": {
-            "type": "integer",
-            "format": "int64",
-            "examples": [
-              1200
-            ],
-            "description": "Aggregated duration of databases"
-          },
-          "attemptCount": {
-            "type": "integer",
-            "format": "int32",
-            "examples": [
-              1
-            ],
-            "description": "Total number of adapter requests"
           },
           "logicalRestores": {
             "type": "array",
@@ -4307,7 +4294,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4536,7 +4523,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4594,14 +4581,14 @@
         ],
         "requestBody": {
           "description": "Restore request",
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RestoreRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -4661,7 +4648,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4989,16 +4976,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Restore operation retried successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RestoreResponse"
-                }
-              }
-            }
-          },
           "202": {
             "description": "Restore retry accepted and is being processed",
             "content": {
@@ -5017,6 +4994,26 @@
           },
           "404": {
             "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
