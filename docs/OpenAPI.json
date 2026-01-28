@@ -381,7 +381,10 @@
           "blobPath",
           "externalDatabaseStrategy",
           "ignoreNotBackupableDatabases",
-          "status"
+          "status",
+          "total",
+          "completed",
+          "size"
         ],
         "description": "Response containing backup operation details",
         "properties": {
@@ -645,6 +648,9 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ClassifierType"
+          },
+          "previousDatabase": {
+            "type": "string"
           },
           "classifier": {
             "type": "object",
@@ -3347,8 +3353,12 @@
         "type": "object",
         "required": [
           "restoreName",
+          "backupName",
+          "storageName",
           "externalDatabaseStrategy",
-          "status"
+          "status",
+          "total",
+          "completed"
         ],
         "description": "Response containing the restore operation details",
         "properties": {
@@ -3357,6 +3367,7 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
+            "pattern": "\\S",
             "description": "Unique identifier of the restore"
           },
           "backupName": {
@@ -3364,6 +3375,7 @@
             "examples": [
               "before-prod-update-20251013T1345-G5s8"
             ],
+            "pattern": "\\S",
             "description": "Unique identifier of the backup"
           },
           "storageName": {
@@ -3371,6 +3383,7 @@
             "examples": [
               "s3-backend"
             ],
+            "pattern": "\\S",
             "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
@@ -4281,7 +4294,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4510,7 +4523,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4635,7 +4648,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4981,6 +4994,26 @@
           },
           "404": {
             "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
