@@ -1345,10 +1345,7 @@ class DbBackupV2ServiceTest {
         SortedMap<String, Object> classifier1 = getClassifier(namespace, microserviceName, tenantId);
         SortedMap<String, Object> classifier2 = getClassifier(namespace, microserviceName, anotherTenantId);
         SortedMap<String, Object> mappedClassifier = getClassifier(mappedNamespace, microserviceName, anotherTenantId);
-        String msg = String.format(
-                "Resource has illegal state: Duplicate classifier detected after mapping: " +
-                        "classifier='%s'. Ensure all classifiers remain unique after mapping.",
-                mappedClassifier);
+
 
         BackupDatabase backupDatabase = getBackupDatabase(dbName, List.of(classifier1, classifier2), false, BackupTaskStatus.COMPLETED, "");
         LogicalBackup logicalBackup = getLogicalBackup(logicalBackupName, adapterId, postgresType, List.of(backupDatabase), BackupTaskStatus.COMPLETED, "");
@@ -1377,7 +1374,8 @@ class DbBackupV2ServiceTest {
                 false
         ));
 
-        assertEquals(msg, ex.getDetail());
+        String msg = mappedClassifier.toString();
+        assertTrue(ex.getDetail().contains(msg));
     }
 
     @Test
@@ -1580,6 +1578,196 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void restore_testChoosingAdapterBasedClassifierType() {
+        String restoreName = "restoreName";
+        String backupName = "backupName";
+        String logicalBackupName1 = "logicalBackupName";
+        String logicalBackupName2 = "logicalBackupName2";
+        String logicalRestoreName1 = "logicalRestoreName";
+        String logicalRestoreName2 = "logicalRestoreName2";
+
+        String dbName1 = "dbName";
+        String dbName2 = "dbName2";
+        String newName1 = "newName";
+        String newName2 = "newName2";
+        String adapterId1 = "adapterId1";
+        String adapterId2 = "adapterId2";
+
+        String namespace1 = "namespace1";
+        String namespace2 = "namespace2";
+        String mappedNamespace = "mappedNamespace";
+        String anotherNamespace = "anotherNamespace";
+
+        String microserviceName1 = "microserviceName1";
+        String microserviceName2 = "microserviceName2";
+
+        String tenantId = "tenantId";
+        String anotherTenantId = "tenantId";
+        String mappedTenantId = "mappedTenantId";
+        String postgresType = "postgresql";
+
+        // Database with registries that exists in another namespace
+        Database database = getDatabase(adapterId1, newName1, false, false, null);
+        DatabaseRegistry registry1 = getDatabaseRegistry(database, mappedNamespace, microserviceName1, mappedTenantId, postgresType);
+        DatabaseRegistry registry2 = getDatabaseRegistry(database, anotherNamespace, microserviceName1, anotherTenantId, postgresType);
+
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(registry1);
+
+        BackupDatabase backupDatabase = getBackupDatabase(dbName1, List.of(getClassifier(namespace1, microserviceName1, tenantId)), false, BackupTaskStatus.COMPLETED, null);
+        BackupDatabase backupDatabase2 = getBackupDatabase(dbName2, List.of(getClassifier(namespace2, microserviceName2, null)), false, BackupTaskStatus.COMPLETED, null);
+        LogicalBackup logicalBackup = getLogicalBackup(logicalBackupName1, adapterId1, postgresType, List.of(backupDatabase), BackupTaskStatus.COMPLETED, null);
+        LogicalBackup logicalBackup2 = getLogicalBackup(logicalBackupName2, adapterId2, postgresType, List.of(backupDatabase2), BackupTaskStatus.COMPLETED, null);
+        Backup backup = getBackup(backupName, ExternalDatabaseStrategy.INCLUDE, getFilterCriteriaEntity(List.of(namespace1, namespace2)), List.of(logicalBackup, logicalBackup2), List.of(), BackupStatus.COMPLETED, null);
+        backupRepository.save(backup);
+
+        DbaasAdapter dbaasAdapter1 = Mockito.mock(DbaasAdapter.class);
+        DbaasAdapter dbaasAdapter2 = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById(adapterId1)).thenReturn(dbaasAdapter1);
+        when(dbaasAdapter1.isBackupRestoreSupported()).thenReturn(true);
+
+        when(physicalDatabasesService.getAdapterById(adapterId2)).thenReturn(dbaasAdapter2);
+        when(dbaasAdapter2.isBackupRestoreSupported()).thenReturn(true);
+
+        // Mock logic of choosing adapter in new/current env
+        ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
+        PhysicalDatabase physicalDatabase1 = new PhysicalDatabase();
+        physicalDatabase1.setAdapter(adapter1);
+        physicalDatabase1.setType(postgresType);
+        physicalDatabase1.setPhysicalDatabaseIdentifier("postgres-dev");
+
+        when(physicalDatabasesService.getByAdapterId(adapterId1)).thenReturn(physicalDatabase1);
+
+        ExternalAdapterRegistrationEntry adapter2 = new ExternalAdapterRegistrationEntry();
+        adapter2.setAdapterId(adapterId2);
+        PhysicalDatabase physicalDatabase2 = new PhysicalDatabase();
+        physicalDatabase2.setAdapter(adapter2);
+        physicalDatabase2.setType(postgresType);
+        physicalDatabase2.setPhysicalDatabaseIdentifier("postgres-dev");
+
+        when(balancingRulesService.applyBalancingRules(postgresType, namespace2, microserviceName2))
+                .thenReturn(physicalDatabase2);
+        when(physicalDatabasesService.getByAdapterId(adapterId2)).thenReturn(physicalDatabase2);
+
+
+        // Response during the sync restore process
+        LogicalRestoreAdapterResponse response = LogicalRestoreAdapterResponse.builder()
+                .status(IN_PROGRESS_STATUS)
+                .restoreId(logicalRestoreName1)
+                .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(IN_PROGRESS_STATUS)
+                        .previousDatabaseName(dbName1)
+                        .databaseName(newName1)
+                        .duration(1)
+                        .build()))
+                .build();
+
+        LogicalRestoreAdapterResponse response2 = LogicalRestoreAdapterResponse.builder()
+                .status(IN_PROGRESS_STATUS)
+                .restoreId(logicalRestoreName2)
+                .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(IN_PROGRESS_STATUS)
+                        .previousDatabaseName(dbName2)
+                        .databaseName(newName2)
+                        .duration(1)
+                        .build()))
+                .build();
+
+        // Response to DryRun, RealRun
+        when(dbaasAdapter1.restoreV2(eq(logicalBackupName1), anyBoolean(), any()))
+                .thenReturn(response)
+                .thenReturn(response);
+        when(dbaasAdapter2.restoreV2(eq(logicalBackupName2), anyBoolean(), any()))
+                .thenReturn(response2)
+                .thenReturn(response2);
+
+        // Response during the async restore process
+        LogicalRestoreAdapterResponse response3 = LogicalRestoreAdapterResponse.builder()
+                .status(COMPLETED_STATUS)
+                .restoreId(logicalRestoreName1)
+                .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(COMPLETED_STATUS)
+                        .previousDatabaseName(dbName1)
+                        .databaseName(newName1)
+                        .duration(1)
+                        .build()))
+                .build();
+
+        LogicalRestoreAdapterResponse response4 = LogicalRestoreAdapterResponse.builder()
+                .status(COMPLETED_STATUS)
+                .restoreId(logicalRestoreName2)
+                .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
+                        .status(COMPLETED_STATUS)
+                        .previousDatabaseName(dbName2)
+                        .databaseName(newName2)
+                        .duration(1)
+                        .build()))
+                .build();
+
+        when(dbaasAdapter1.trackRestoreV2(eq(logicalRestoreName1), any(), any()))
+                .thenReturn(response3);
+        when(dbaasAdapter2.trackRestoreV2(eq(logicalRestoreName2), any(), any()))
+                .thenReturn(response4);
+
+        // Mocks to ensure user process
+        DbResource resource1 = new DbResource();
+        resource1.setId(UUID.randomUUID());
+        resource1.setKind("kind");
+        resource1.setName("name");
+        EnsuredUser user1 = new EnsuredUser();
+        user1.setConnectionProperties(Map.of(
+                "key", "value"
+        ));
+        user1.setResources(List.of(resource1));
+
+        when(dbaasAdapter1.ensureUser("username", null, newName1, "admin")).thenReturn(user1);
+
+        DbResource resource2 = new DbResource();
+        resource2.setId(UUID.randomUUID());
+        resource2.setKind("kind");
+        resource2.setName("name");
+        EnsuredUser user2 = new EnsuredUser();
+        user2.setConnectionProperties(Map.of(
+                "key", "value"
+        ));
+        user2.setResources(List.of(resource2));
+
+        when(dbaasAdapter2.ensureUser("username", null, newName2, "admin")).thenReturn(user2);
+
+        Map<String, String> namespaceMap = Map.of(namespace1, mappedNamespace);
+        Map<String, String> tenantMap = Map.of(tenantId, mappedTenantId);
+
+        RestoreResponse restoreResponse = dbBackupV2Service.restore(backupName,
+                getRestoreRequest(restoreName, List.of(namespace1, namespace2), ExternalDatabaseStrategy.INCLUDE, namespaceMap, tenantMap),
+                false
+        );
+        dbBackupV2Service.checkRestoresAsync();
+
+        List<DatabaseRegistry> databaseRegistries = databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType();
+        assertEquals(5, databaseRegistries.size());
+
+        DatabaseRegistry replacedRegistry = databaseRegistries.stream()
+                .filter(r -> !r.getClassifier().containsKey(MARKED_FOR_DROP))
+                .filter(r -> mappedNamespace.equals(r.getClassifier().get(NAMESPACE)))
+                .findAny().orElse(null);
+        assertNotNull(replacedRegistry);
+        assertEquals(adapterId1, replacedRegistry.getAdapterId());
+
+        DatabaseRegistry transientRegistry = databaseRegistries.stream()
+                .filter(r -> !r.getClassifier().containsKey(MARKED_FOR_DROP))
+                .filter(r -> anotherNamespace.equals(r.getClassifier().get(NAMESPACE)))
+                .findAny().orElse(null);
+        assertNotNull(transientRegistry);
+        assertEquals(adapterId1, transientRegistry.getAdapterId());
+
+        DatabaseRegistry newRegistry = databaseRegistries.stream()
+                .filter(r -> namespace2.equals(r.getClassifier().get(NAMESPACE)))
+                .findAny().orElse(null);
+        assertNotNull(newRegistry);
+        assertEquals(adapterId2, newRegistry.getAdapterId());
+    }
+
+    @Test
     void restore_dryRun() {
         String restoreName = "restoreName";
         String backupName = "backupName";
@@ -1776,8 +1964,8 @@ class DbBackupV2ServiceTest {
         backupRepository.save(backup);
 
         Classifier classifierWrapper1 = getClassifier(ClassifierType.NEW, mappedNamespace, microserviceName1, null, namespace, null);
-        Classifier classifierWrapper2 = getClassifier(ClassifierType.NEW, null, microserviceName2, null, namespace, null);
-        Classifier classifierWrapper3 = getClassifier(ClassifierType.NEW, null, microserviceName3, null, namespace, null);
+        Classifier classifierWrapper2 = getClassifier(ClassifierType.NEW, namespace, microserviceName2, null, namespace, null);
+        Classifier classifierWrapper3 = getClassifier(ClassifierType.NEW, namespace, microserviceName3, null, namespace, null);
         RestoreExternalDatabase restoreExternalDatabase = getRestoreExternalDb(externalName, postgresType, List.of(classifierWrapper3));
         RestoreDatabase restoreDatabase1 = getRestoreDatabase(backupDatabase1, newName, List.of(classifierWrapper1), Map.of(), null, RestoreTaskStatus.FAILED, 1, "Internal Server Error");
         RestoreDatabase restoreDatabase2 = getRestoreDatabase(backupDatabase2, newName2, List.of(classifierWrapper2), Map.of(), null, RestoreTaskStatus.COMPLETED, 1, null);
@@ -1932,16 +2120,114 @@ class DbBackupV2ServiceTest {
         mapping.setNamespaces(Map.of(namespace, namespaceMapped));
 
         Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
-        IllegalResourceStateException ex = assertThrows(
-                IllegalResourceStateException.class,
-                () -> classifiers.forEach(c ->
-                        dbBackupV2Service.updateAndValidateClassifier(c, mapping, uniqueClassifiers)
-                )
-        );
+    }
 
-        assertTrue(ex.getMessage().contains("Duplicate classifier detected after mapping: " +
-                "classifier='{microserviceName=test1, namespace=test1-namespace-mapped, scope=service}'. " +
-                "Ensure all classifiers remain unique after mapping"));
+    @Test
+    void updateClassifier_withoutMapping() {
+        SortedMap<String, Object> oldClassifier = new TreeMap<>();
+        oldClassifier.put(NAMESPACE, "namespace");
+        oldClassifier.put(MICROSERVICE_NAME, "microserviceName");
+        oldClassifier.put(TENANT_ID, "tenant");
+        oldClassifier.put(SCOPE, "tenant");
+
+        Classifier classifier = new Classifier();
+        classifier.setClassifierBeforeMapper(oldClassifier);
+
+        List<Classifier> updatedClassifiers = dbBackupV2Service.applyMapping(List.of(classifier), null);
+        assertEquals(1, updatedClassifiers.size());
+
+        Classifier updatedClassifier = updatedClassifiers.getFirst();
+        assertEquals(updatedClassifier.getClassifier(), updatedClassifier.getClassifierBeforeMapper());
+        assertEquals(updatedClassifier.getClassifierBeforeMapper(), oldClassifier);
+    }
+
+    @Test
+    void updateClassifier_tenantMapping() {
+        String tenant = "tenant";
+        String mappedTenant = "mappedTenant";
+
+        SortedMap<String, Object> oldClassifier = new TreeMap<>();
+        oldClassifier.put(NAMESPACE, "namespace");
+        oldClassifier.put(MICROSERVICE_NAME, "microserviceName");
+        oldClassifier.put(TENANT_ID, tenant);
+        oldClassifier.put(SCOPE, tenant);
+
+        Classifier classifier = new Classifier();
+        classifier.setClassifierBeforeMapper(oldClassifier);
+
+        Mapping mapping = new Mapping();
+        mapping.setTenants(Map.of(
+                tenant, mappedTenant
+        ));
+
+        List<Classifier> updatedClassifiers = dbBackupV2Service.applyMapping(List.of(classifier), mapping);
+        assertEquals(1, updatedClassifiers.size());
+        Classifier updatedClassifier = updatedClassifiers.getFirst();
+        SortedMap<String, Object> mappedClassifier = updatedClassifier.getClassifier();
+
+        assertNotNull(mappedClassifier);
+        assertEquals(updatedClassifier.getClassifierBeforeMapper(), oldClassifier);
+
+        assertEquals(oldClassifier.get(NAMESPACE), mappedClassifier.get(NAMESPACE));
+        assertEquals(oldClassifier.get(MICROSERVICE_NAME), mappedClassifier.get(MICROSERVICE_NAME));
+        assertEquals(oldClassifier.get(SCOPE), mappedClassifier.get(SCOPE));
+        assertEquals(mappedTenant, mappedClassifier.get(TENANT_ID));
+    }
+
+    @Test
+    void updateClassifier_nullTenantMapping() {
+        String tenant = "tenant";
+        String mappedTenant = "mappedTenant";
+
+        SortedMap<String, Object> oldClassifier = new TreeMap<>();
+        oldClassifier.put(NAMESPACE, "namespace");
+        oldClassifier.put(MICROSERVICE_NAME, "microserviceName");
+        oldClassifier.put(SCOPE, "service");
+
+        Classifier classifier = new Classifier();
+        classifier.setClassifierBeforeMapper(oldClassifier);
+
+        Mapping mapping = new Mapping();
+        mapping.setTenants(Map.of(
+                tenant, mappedTenant
+        ));
+
+        List<Classifier> updatedClassifiers = dbBackupV2Service.applyMapping(List.of(classifier), mapping);
+        assertEquals(1, updatedClassifiers.size());
+
+        Classifier updatedClassifier = updatedClassifiers.getFirst();
+        assertEquals(updatedClassifier.getClassifier(), updatedClassifier.getClassifierBeforeMapper());
+        assertEquals(updatedClassifier.getClassifierBeforeMapper(), oldClassifier);
+    }
+
+    @Test
+    void updateClassifier_namespaceMapping() {
+        String namespace = "namespace";
+        String mappedNamespace = "mappedNamespace";
+
+        SortedMap<String, Object> oldClassifier = new TreeMap<>();
+        oldClassifier.put(NAMESPACE, namespace);
+        oldClassifier.put(MICROSERVICE_NAME, "microserviceName");
+        oldClassifier.put(SCOPE, "service");
+
+        Classifier classifier = new Classifier();
+        classifier.setClassifierBeforeMapper(oldClassifier);
+
+        Mapping mapping = new Mapping();
+        mapping.setNamespaces(Map.of(
+                namespace, mappedNamespace
+        ));
+
+        List<Classifier> updatedClassifiers = dbBackupV2Service.applyMapping(List.of(classifier), mapping);
+        assertEquals(1, updatedClassifiers.size());
+
+        SortedMap<String, Object> mappedClassifier = updatedClassifiers.getFirst().getClassifier();
+
+        assertEquals(updatedClassifiers.getFirst().getClassifierBeforeMapper(), oldClassifier);
+
+        assertEquals(oldClassifier.get(MICROSERVICE_NAME), mappedClassifier.get(MICROSERVICE_NAME));
+        assertEquals(oldClassifier.get(SCOPE), mappedClassifier.get(SCOPE));
+        assertEquals(mappedNamespace, mappedClassifier.get(NAMESPACE));
     }
 
     private static @NotNull List<Classifier> getClassifiers(String namespace, String namespaceMapped) {
@@ -3291,7 +3577,7 @@ class DbBackupV2ServiceTest {
         Classifier classifierWrapper = new Classifier();
         classifierWrapper.setType(classifierType);
 
-        if(namespace != null && !namespace.isBlank()) {
+        if (namespace != null && !namespace.isBlank()) {
             SortedMap<String, Object> classifier = new TreeMap<>();
             classifier.put("namespace", namespace);
             classifier.put("microserviceName", microserviceName);
