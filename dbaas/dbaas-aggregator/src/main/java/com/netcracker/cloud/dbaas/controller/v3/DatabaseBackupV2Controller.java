@@ -72,7 +72,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/backup")
     @POST
-    public Response initiateBackup(@RequestBody(description = "Backup request", required = true) @Valid BackupRequest backupRequest,
+    public Response initiateBackup(@RequestBody(description = "Backup request") @Valid BackupRequest backupRequest,
                                    @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         BackupResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
         BackupStatus status = response.getStatus();
@@ -202,7 +202,7 @@ public class DatabaseBackupV2Controller {
                                     "sha-256=nOJRJg..."
                             }))
             @HeaderParam("Digest") @NotNull String digestHeader,
-            @RequestBody(description = "Backup metadata", required = true) @Valid BackupResponse backupResponse
+            @RequestBody(description = "Backup metadata") @Valid BackupResponse backupResponse
     ) {
         String calculatedDigest = DigestUtil.calculateDigest(backupResponse);
         if (!calculatedDigest.equals(digestHeader))
