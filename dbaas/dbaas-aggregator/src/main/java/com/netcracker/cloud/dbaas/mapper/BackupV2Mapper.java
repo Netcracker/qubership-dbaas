@@ -78,7 +78,7 @@ public interface BackupV2Mapper {
         return mapStatus(status, RestoreTaskStatus::valueOf);
     }
 
-    private static <T extends Enum<T>, R extends Enum<R>> R mapStatus(
+    private static <R extends Enum<R>> R mapStatus(
             String status,
             Function<String, R> resultStatusGetter) {
         if (status == null) {
@@ -88,8 +88,7 @@ public interface BackupV2Mapper {
         }
 
         return switch (status) {
-            case "notStarted" -> resultStatusGetter.apply("NOT_STARTED");
-            case "inProgress" -> resultStatusGetter.apply("IN_PROGRESS");
+            case "notStarted", "inProgress" -> resultStatusGetter.apply("IN_PROGRESS");
             case "completed" -> resultStatusGetter.apply("COMPLETED");
             case "failed" -> resultStatusGetter.apply("FAILED");
             default -> throw new UnprocessableEntityException(
