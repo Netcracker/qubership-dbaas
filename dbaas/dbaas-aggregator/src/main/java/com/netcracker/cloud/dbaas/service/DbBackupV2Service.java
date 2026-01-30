@@ -202,26 +202,21 @@ public class DbBackupV2Service {
                     Source.builder().build());
         }
 
-        LogicalBackup logicalBackup = LogicalBackup.builder()
-                .backup(backup)
-                .adapterId(adapterId)
-                .type(adapter.type())
-                .backupDatabases(new ArrayList<>())
-                .build();
+        LogicalBackup logicalBackup = new LogicalBackup(backup, adapterId, adapter.type());
+
         // Initializing backup database entity
         logicalBackup.getBackupDatabases().addAll(databaseToRegistry.entrySet().stream()
                 .map(entry -> {
                     Database db = entry.getKey();
                     List<DatabaseRegistry> databaseRegistries = entry.getValue();
-                    return BackupDatabase.builder()
-                            .logicalBackup(logicalBackup)
-                            .name(DbaasBackupUtils.getDatabaseName(db))
-                            .classifiers(databaseRegistries.stream()
-                                    .map(DatabaseRegistry::getClassifier).toList())
-                            .users(getBackupDatabaseUsers(db.getConnectionProperties()))
-                            .settings(db.getSettings())
-                            .configurational(db.getBgVersion() != null && !db.getBgVersion().isBlank())
-                            .build();
+                    return new BackupDatabase(
+                            logicalBackup,
+                            DbaasBackupUtils.getDatabaseName(db),
+                            databaseRegistries.stream().map(DatabaseRegistry::getClassifier).toList(),
+                            db.getSettings(),
+                            getBackupDatabaseUsers(db.getConnectionProperties()),
+                            db.getBgVersion() != null && !db.getBgVersion().isBlank()
+                    );
                 }).toList());
         return logicalBackup;
     }
@@ -1004,14 +999,15 @@ public class DbBackupV2Service {
                             .map(u -> new RestoreDatabase.User(u.getName(), u.getRole()))
                             .toList();
 
-                    return RestoreDatabase.builder()
-                            .backupDatabase(backupDatabase)
-                            .name(backupDatabase.getName())
-                            .classifiers(classifiers)
-                            .settings(backupDatabase.getSettings())
-                            .users(users)
-                            .bgVersion(bgVersion)
-                            .build();
+                    RestoreDatabase restoreDatabase = new RestoreDatabase();
+                    restoreDatabase.setBackupDatabase(backupDatabase);
+                    restoreDatabase.setName(backupDatabase.getName());
+                    restoreDatabase.setClassifiers(classifiers);
+                    restoreDatabase.setSettings(backupDatabase.getSettings());
+                    restoreDatabase.setUsers(users);
+                    restoreDatabase.setBgVersion(bgVersion);
+
+                    return restoreDatabase;
                 })
                 .toList();
     }

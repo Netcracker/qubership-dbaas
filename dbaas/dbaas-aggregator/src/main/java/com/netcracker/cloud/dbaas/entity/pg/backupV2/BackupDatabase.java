@@ -76,4 +76,13 @@ public class BackupDatabase {
         String name;
         String role;
     }
+
+    public BackupDatabase(LogicalBackup logicalBackup, String name, List<SortedMap<String, Object>> classifiers, Map<String, Object> settings, List<User> users, boolean configurational) {
+        this.logicalBackup = logicalBackup;
+        this.name = name;
+        this.classifiers = classifiers;
+        this.settings = settings;
+        this.users = users;
+        this.configurational = configurational;
+    }
 }
