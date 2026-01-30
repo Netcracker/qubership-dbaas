@@ -34,7 +34,7 @@ public class RestoreDatabaseResponse {
     private List<User> users;
     @Schema(
             description = "Database settings as a key-value map",
-            examples = "{\"key\":value, \"key\":value}"
+            examples = "{\"key\": \"value\", \"key\": \"value\"}"
     )
     private Map<String, Object> settings;
     @Schema(
@@ -58,7 +58,7 @@ public class RestoreDatabaseResponse {
             required = true
     )
     private String path;
-    @Schema(description = "Error message if the backup failed", examples = "Restore Not Found")
+    @Schema(description = "Error message if the restore failed", examples = "Restore Not Found")
     private String errorMessage;
     @Schema(description = "Timestamp when the restore was created", examples = "2025-11-13T12:34:56Z")
     private Instant creationTime;

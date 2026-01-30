@@ -31,12 +31,12 @@ public class BackupDatabaseResponse {
     private List<SortedMap<String, Object>> classifiers;
     @Schema(
             description = "Database settings as a key-value map",
-            examples = "{\"key\":value, \"key\":value}"
+            examples = "{\"key\": \"value\", \"key\": \"value\"}"
     )
     private Map<String, Object> settings;
     @Schema(
             description = "List of database users",
-            examples = "[{\"name\":\"username\",\"role\":\"admin\"}"
+            examples = "[{\"name\":\"username\",\"role\":\"admin\"}]"
     )
     private List<User> users;
     @Schema(

@@ -17,7 +17,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 public class BackupRequest {
     @NotBlank
     @Schema(
-            description = "Unique identifier of the backup",
+            description = "Unique name of the backup",
             examples = {
                     "before-prod-update-20251013T1345-G5s8"
             },
@@ -59,7 +59,7 @@ public class BackupRequest {
     private ExternalDatabaseStrategy externalDatabaseStrategy = ExternalDatabaseStrategy.FAIL;
     @NotNull
     @Schema(
-            description = "Whether non-backupable databases should be ignored during backup",
+            description = "Whether non‑backupable databases were ignored during backup",
             examples = {
                     "false"
             },

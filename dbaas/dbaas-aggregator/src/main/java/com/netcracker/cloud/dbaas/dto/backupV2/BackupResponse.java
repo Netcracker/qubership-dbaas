@@ -21,7 +21,7 @@ import java.util.List;
 public class BackupResponse {
 
     @Schema(
-            description = "Unique identifier of the backup",
+            description = "Unique name of the backup",
             examples = {
                     "before-prod-update-20251013T1345-G5s8"
             },
@@ -57,7 +57,7 @@ public class BackupResponse {
     @NotNull
     private ExternalDatabaseStrategy externalDatabaseStrategy;
     @Schema(
-            description = "Whether external databases were skipped during the backup",
+            description = "Whether non‑backupable databases were ignored during backup",
             examples = {
                     "false"
             }

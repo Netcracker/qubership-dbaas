@@ -16,7 +16,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @Schema(description = "Request to restore a database from a backup")
 public class RestoreRequest {
     @Schema(
-            description = "Unique identifier of the restore",
+            description = "Unique name of the restore",
             required = true,
             examples = {
                     "restore-before-prod-update-20251203T1020-4t6S"
