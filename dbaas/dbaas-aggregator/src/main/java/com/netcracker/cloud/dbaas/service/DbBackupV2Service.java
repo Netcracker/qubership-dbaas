@@ -195,7 +195,7 @@ public class DbBackupV2Service {
     private LogicalBackup createLogicalBackup(String adapterId, Map<Database, List<DatabaseRegistry>> databaseToRegistry, Backup backup) {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
 
-        if (!isBackupRestoreSupported(adapter)) {
+        if (isBackupRestoreUnsupported(adapter)) {
             log.error("Adapter {} does not support backup operation", adapterId);
             throw new DatabaseBackupRestoreNotSupportedException(
                     String.format("Adapter %s does not support backup operation", adapterId),
@@ -252,7 +252,6 @@ public class DbBackupV2Service {
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        backupRepository.save(backup);
     }
 
     protected LogicalBackupAdapterResponse startLogicalBackup(LogicalBackup logicalBackup) {
@@ -450,7 +449,7 @@ public class DbBackupV2Service {
                     if (!isValidRegistry(registry))
                         return false;
                     return filterCriteria.getExclude().stream()
-                            .filter(exclude -> !isEmpty(exclude))
+                            .filter(this::isFilled)
                             .noneMatch(exclude -> {
                                 boolean configurational = registry.getBgVersion() != null && !registry.getBgVersion().isBlank();
                                 return isMatches(exclude,
@@ -499,11 +498,11 @@ public class DbBackupV2Service {
         return true;
     }
 
-    private boolean isEmpty(Filter f) {
-        return f.getNamespace().isEmpty()
-                && f.getMicroserviceName().isEmpty()
-                && f.getDatabaseType().isEmpty()
-                && f.getDatabaseKind().isEmpty();
+    private boolean isFilled(Filter f) {
+        return !f.getNamespace().isEmpty()
+                || !f.getMicroserviceName().isEmpty()
+                || !f.getDatabaseType().isEmpty()
+                || !f.getDatabaseKind().isEmpty();
     }
 
     private boolean isKindMatched(boolean configurational, DatabaseKind kind) {
@@ -671,26 +670,36 @@ public class DbBackupV2Service {
         Backup backup = getBackupOrThrowException(backupName);
         checkBackupStatusForRestore(restoreName, backup.getStatus());
 
+        if (dryRun) {
+            return applyDryRunRestore(backup, restoreRequest);
+        }
+
         Restore restore = restoreLockWrapper(() -> {
             Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
-            if (!dryRun)
-                restoreRepository.save(currRestore);
+            restoreRepository.save(currRestore);
             return currRestore;
         });
 
         // DryRun on adapters
         startRestore(restore, true);
         aggregateRestoreStatus(restore);
-        if (!dryRun && RestoreStatus.FAILED != restore.getStatus()) {
+        if (RestoreStatus.FAILED != restore.getStatus()) {
             // Real run on adapters
             startRestore(restore, false);
             aggregateRestoreStatus(restore);
         }
-        if (!dryRun)
-            restoreRepository.save(restore);
+
+        restoreRepository.save(restore);
         return mapper.toRestoreResponse(restore);
     }
 
+    private RestoreResponse applyDryRunRestore(Backup backup, RestoreRequest restoreRequest) {
+        Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
+        // DryRun on adapters
+        startRestore(currRestore, true);
+        aggregateRestoreStatus(currRestore);
+        return mapper.toRestoreResponse(currRestore);
+    }
 
     protected List<BackupDatabaseDelegate> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
         if (isFilterEmpty(filterCriteria))
@@ -714,7 +723,7 @@ public class DbBackupV2Service {
                                 String type = db.getLogicalBackup().getType();
                                 boolean configurational = db.isConfigurational();
                                 return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
-                                        && filterCriteria.getExclude().stream().filter(exclude -> !isEmpty(exclude)).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
+                                        && filterCriteria.getExclude().stream().filter(this::isFilled).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
                             })
                             .map(c -> new Classifier(ClassifierType.NEW, null, null, new TreeMap<>(c)))
                             .toList();
@@ -945,7 +954,7 @@ public class DbBackupV2Service {
                                         String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
                                         String type = db.getType();
                                         return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
-                                                && filterCriteria.getExclude().stream().filter(exclude -> !isEmpty(exclude)).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
+                                                && filterCriteria.getExclude().stream().filter(this::isFilled).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));
                                     })
                                     .map(c -> new Classifier(ClassifierType.NEW, null, null, new TreeMap<>(c)))
                                     .toList();
@@ -1060,7 +1069,7 @@ public class DbBackupV2Service {
 
         // Checking adapter support backup restore
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
-        if (!isBackupRestoreSupported(adapter)) {
+        if (isBackupRestoreUnsupported(adapter)) {
             throw new DatabaseBackupRestoreNotSupportedException(
                     String.format("Adapter %s does not support restore operation", adapterId),
                     Source.builder().build());
@@ -1659,7 +1668,7 @@ public class DbBackupV2Service {
                         return true;
                     }
                     if (db.getAdapterId() != null) {
-                        return !isBackupRestoreSupported(physicalDatabasesService.getAdapterById(db.getAdapterId()));
+                        return isBackupRestoreUnsupported(physicalDatabasesService.getAdapterById(db.getAdapterId()));
                     }
                     return false;
                 })
@@ -1693,8 +1702,8 @@ public class DbBackupV2Service {
         return filteredDatabases;
     }
 
-    private boolean isBackupRestoreSupported(DbaasAdapter adapter) {
-        return adapter.isBackupRestoreSupported();
+    private boolean isBackupRestoreUnsupported(DbaasAdapter adapter) {
+        return !adapter.isBackupRestoreSupported();
     }
 
     private void backupExistenceCheck(String backupName) {
