@@ -1,10 +1,8 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
-import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
