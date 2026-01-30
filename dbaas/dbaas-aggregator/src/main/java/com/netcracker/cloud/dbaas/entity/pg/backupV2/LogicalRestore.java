@@ -39,7 +39,7 @@ public class LogicalRestore {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private RestoreTaskStatus status;
+    private RestoreTaskStatus status = RestoreTaskStatus.NOT_STARTED;
 
     @Column(name = "error_message")
     private String errorMessage;

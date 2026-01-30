@@ -49,7 +49,7 @@ public class DatabaseBackupV2Controller {
 
     @Operation(summary = "Initiate database backup",
             description = "Starts an asynchronous backup operation for the specified databases."
-                    + " Returns immediately with a backup identifier that can be used to track progress.")
+                    + " Returns immediately with a backup name that can be used to track progress.")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Backup operation completed successfully",
                     content = @Content(schema = @Schema(implementation = BackupResponse.class))),
@@ -63,16 +63,14 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
-            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource",
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server couldn't process due to incompatible resource",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
-                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
-            @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup")
     @POST
-    public Response initiateBackup(@RequestBody(description = "Backup request", required = true) @Valid BackupRequest backupRequest,
+    public Response initiateBackup(@RequestBody(description = "Backup request") @Valid BackupRequest backupRequest,
                                    @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         BackupResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
         BackupStatus status = response.getStatus();
@@ -85,6 +83,8 @@ public class DatabaseBackupV2Controller {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Backup details retrieved successfully",
                     content = @Content(schema = @Schema(implementation = BackupResponse.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found",
@@ -94,7 +94,9 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/backup/{backupName}")
     @GET
-    public Response getBackup(@Parameter(description = "Unique identifier of the backup", required = true) @PathParam("backupName") String backupName) {
+    public Response getBackup(@Parameter(description = "Unique name of the backup", required = true)
+                              @PathParam("backupName")
+                              @NotBlank String backupName) {
         return Response.ok(dbBackupV2Service.getBackup(backupName)).build();
     }
 
@@ -102,17 +104,19 @@ public class DatabaseBackupV2Controller {
     @APIResponses({
             @APIResponse(responseCode = "202", description = "Backup delete initialized successfully"),
             @APIResponse(responseCode = "204", description = "Backup deleted successfully"),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server couldn't process due to incompatible resource",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup/{backupName}")
     @DELETE
-    public Response deleteBackup(@Parameter(description = "Unique identifier of the backup", required = true)
-                                 @PathParam("backupName") String backupName,
+    public Response deleteBackup(@Parameter(description = "Unique name of the backup", required = true)
+                                 @PathParam("backupName") @NotBlank String backupName,
                                  @QueryParam("force") @DefaultValue("false") boolean force) {
         dbBackupV2Service.deleteBackup(backupName, force);
         if (force)
@@ -124,6 +128,8 @@ public class DatabaseBackupV2Controller {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Backup status retrieved successfully",
                     content = @Content(schema = @Schema(implementation = BackupStatusResponse.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found",
@@ -133,7 +139,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/backup/{backupName}/status")
     @GET
-    public Response getBackupStatus(@Parameter(description = "Unique identifier of the backup", required = true)
+    public Response getBackupStatus(@Parameter(description = "Unique name of the backup", required = true)
                                     @PathParam("backupName")
                                     @NotBlank String backupName) {
         return Response.ok(dbBackupV2Service.getCurrentStatus(backupName)).build();
@@ -155,18 +161,20 @@ public class DatabaseBackupV2Controller {
                     },
                     content = @Content(schema = @Schema(implementation = BackupResponse.class))
             ),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
-            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource",
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server couldn't process due to incompatible resource",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup/{backupName}/metadata")
     @GET
-    public Response getBackupMetadata(@Parameter(description = "Unique identifier of the backup", required = true)
+    public Response getBackupMetadata(@Parameter(description = "Unique name of the backup", required = true)
                                       @PathParam("backupName")
                                       @NotBlank String backupName) {
         BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
@@ -176,7 +184,7 @@ public class DatabaseBackupV2Controller {
                 .build();
     }
 
-    @Operation(summary = "Upload backup metadata", description = "Metadata upload done")
+    @Operation(summary = "Upload backup metadata", description = "Upload backup metadata")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Backup metadata uploaded successfully"),
             @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
@@ -193,16 +201,16 @@ public class DatabaseBackupV2Controller {
     public Response uploadMetadata(
             @Parameter(
                     name = "Digest",
-                    description = "Digest header in format: sha-256=<base64-hash>",
+                    description = "Digest header in format: SHA-256=<base64-hash>",
                     required = true,
                     in = ParameterIn.HEADER,
                     schema = @Schema(
                             type = SchemaType.STRING,
                             examples = {
-                                    "sha-256=nOJRJg..."
+                                    "SHA-256=nOJRJg..."
                             }))
             @HeaderParam("Digest") @NotNull String digestHeader,
-            @RequestBody(description = "Backup metadata", required = true) @Valid BackupResponse backupResponse
+            @RequestBody(description = "Backup metadata") @Valid BackupResponse backupResponse
     ) {
         String calculatedDigest = DigestUtil.calculateDigest(backupResponse);
         if (!calculatedDigest.equals(digestHeader))
@@ -215,7 +223,7 @@ public class DatabaseBackupV2Controller {
     }
 
     @Operation(summary = "Restore from backup", description = "Initiate a database restore operation from an existing backup." +
-            "This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress." +
+            "This operation is asynchronous and returns immediately with a restore name that can be used to track progress." +
             "Operation is not idempotent")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Restore operation completed successfully",
@@ -230,18 +238,16 @@ public class DatabaseBackupV2Controller {
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
-            @APIResponse(responseCode = "422", description = "The request was accepted, but the server could`t process due to incompatible resource",
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server couldn't process due to incompatible resource",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
-                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
-            @APIResponse(responseCode = "501", description = "The server does not support the functionality required to fulfill the request",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/backup/{backupName}/restore")
     @POST
-    public Response restoreBackup(@Parameter(description = "Unique identifier of the backup", required = true)
+    public Response restoreBackup(@Parameter(description = "Unique name of the backup", required = true)
                                   @PathParam("backupName") @NotBlank String backupName,
-                                  @RequestBody(description = "Restore request", required = true)
+                                  @RequestBody(description = "Restore request")
                                   @Valid RestoreRequest restoreRequest,
                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, dryRun);
@@ -255,6 +261,8 @@ public class DatabaseBackupV2Controller {
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Restore details retrieved successfully",
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found",
@@ -264,7 +272,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}")
     @GET
-    public Response getRestore(@Parameter(description = "Unique identifier of the restore operation", required = true)
+    public Response getRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                @PathParam("restoreName")
                                @NotBlank String restoreName) {
         return Response.ok(dbBackupV2Service.getRestore(restoreName)).build();
@@ -275,14 +283,16 @@ public class DatabaseBackupV2Controller {
             @APIResponse(responseCode = "204", description = "Restore operation deleted successfully"),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
-            @APIResponse(responseCode = "404", description = "The requested resource could not be found",
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server couldn't process due to incompatible resource",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/restore/{restoreName}")
     @DELETE
-    public Response deleteRestore(@Parameter(description = "Unique identifier of the restore operation", required = true) @PathParam("restoreName") String restoreName) {
+    public Response deleteRestore(@Parameter(description = "Unique name of the restore operation", required = true)
+                                  @PathParam("restoreName")
+                                  @NotBlank String restoreName) {
         dbBackupV2Service.deleteRestore(restoreName);
         return Response.noContent().build();
     }
@@ -300,7 +310,7 @@ public class DatabaseBackupV2Controller {
     })
     @Path("/restore/{restoreName}/status")
     @GET
-    public Response getRestoreStatus(@Parameter(description = "Unique identifier of the restore operation", required = true)
+    public Response getRestoreStatus(@Parameter(description = "Unique name of the restore operation", required = true)
                                      @PathParam("restoreName")
                                      @NotBlank String restoreName) {
         return Response.ok(dbBackupV2Service.getRestoreStatus(restoreName)).build();
@@ -308,23 +318,24 @@ public class DatabaseBackupV2Controller {
 
     @Operation(summary = "Retry restore", description = "Retry a failed restore operation")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Restore operation retried successfully",
-                    content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "202", description = "Restore retry accepted and is being processed",
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
             @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
             @APIResponse(responseCode = "404", description = "The requested resource could not be found",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "409", description = "The request could not be completed due to a conflict with the current state of the resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "422", description = "The request was accepted, but the server couldn't process due to incompatible resource",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "500", description = "An unexpected error occurred on the server",
                     content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/restore/{restoreName}/retry")
     @POST
-    public Response retryRestore(@Parameter(description = "Unique identifier of the restore operation", required = true)
+    public Response retryRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                  @PathParam("restoreName")
-                                 String restoreName) {
-        dbBackupV2Service.retryRestore(restoreName);
-        return Response.ok().build();
+                                 @NotBlank String restoreName) {
+        return Response.accepted(dbBackupV2Service.retryRestore(restoreName)).build();
     }
 }

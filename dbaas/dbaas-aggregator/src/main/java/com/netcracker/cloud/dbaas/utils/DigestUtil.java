@@ -9,6 +9,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.netcracker.cloud.dbaas.exceptions.DigestCalculationException;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
@@ -29,7 +30,7 @@ public class DigestUtil {
             String json = OBJECT_MAPPER.writeValueAsString(obj);
 
             MessageDigest digest = MessageDigest.getInstance(ALGORITHM);
-            byte[] hash = digest.digest(json.getBytes());
+            byte[] hash = digest.digest(json.getBytes(StandardCharsets.UTF_8));
             String base64Hash = Base64.getEncoder().encodeToString(hash);
 
             return ALGORITHM + "=" + base64Hash;

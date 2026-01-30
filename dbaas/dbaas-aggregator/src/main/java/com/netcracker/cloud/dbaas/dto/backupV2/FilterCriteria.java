@@ -1,12 +1,14 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
-import com.netcracker.cloud.dbaas.utils.validation.BackupGroup;
+import com.netcracker.cloud.dbaas.utils.validation.group.BackupGroup;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -14,22 +16,18 @@ import java.util.List;
 @Schema(description = "Group of filters for backup and restore operations. Filters are applied in the following order:\n" +
         "\n" +
         "1. `filter`: Apply the filter to the databases.\n" +
-        "2. `include`: Include databases that match any of the filters in the list.\n" +
-        "3. `exclude`: Exclude databases that match any of the filters in the list.")
+        "2. `exclude`: Exclude databases that match any of the filters in the list.")
 public class FilterCriteria {
     @Schema(
-            description = "Apply the filter to the remaining databases",
-            required = true
+            description = "Apply the filter to the remaining databases"
     )
     @NotNull(groups = {BackupGroup.class})
     @Size(min = 1, groups = {BackupGroup.class})
-    private List<Filter> filter;
-    @Schema(
-            description = "Include databases that match any of the filters in the list"
-    )
-    private List<Filter> include;
+    @Valid
+    private List<Filter> filter = new ArrayList<>();
+
     @Schema(
             description = "Exclude databases that match any of the filters in the list"
     )
-    private List<Filter> exclude;
+    private List<Filter> exclude = new ArrayList<>();
 }

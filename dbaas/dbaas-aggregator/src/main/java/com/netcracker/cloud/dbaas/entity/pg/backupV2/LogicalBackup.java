@@ -5,9 +5,9 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import jakarta.persistence.*;
 import lombok.*;
-import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -22,7 +22,6 @@ public class LogicalBackup {
 
     @Id
     @GeneratedValue
-    @Schema(description = "A unique identifier of the logical backup process.", required = true)
     private UUID id;
 
     @Column(name = "logical_backup_name")
@@ -41,7 +40,7 @@ public class LogicalBackup {
     @ToString.Exclude
     @JsonManagedReference
     @OneToMany(mappedBy = "logicalBackup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<BackupDatabase> backupDatabases;
+    private List<BackupDatabase> backupDatabases = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
@@ -55,6 +54,12 @@ public class LogicalBackup {
 
     @Column(name = "completion_time")
     private Instant completionTime;
+
+    public LogicalBackup(Backup backup, String adapterId, String type) {
+        this.backup = backup;
+        this.adapterId = adapterId;
+        this.type = type;
+    }
 
     @Override
     public boolean equals(Object o) {

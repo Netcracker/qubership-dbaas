@@ -20,7 +20,7 @@ public class RestoreRepository implements PanacheRepositoryBase<Restore, String>
     }
 
     public List<Restore> findRestoresToAggregate() {
-        return list("status in ?1", List.of(RestoreStatus.NOT_STARTED, RestoreStatus.IN_PROGRESS));
+        return list("status in ?1", List.of(RestoreStatus.IN_PROGRESS));
     }
 
     public long countNotCompletedRestores() {

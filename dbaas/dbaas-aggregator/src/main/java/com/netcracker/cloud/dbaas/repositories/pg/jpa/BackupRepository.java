@@ -20,6 +20,6 @@ public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
     }
 
     public List<Backup> findBackupsToAggregate() {
-        return list("status in ?1", List.of(BackupStatus.NOT_STARTED, BackupStatus.IN_PROGRESS));
+        return list("status in ?1", List.of(BackupStatus.IN_PROGRESS));
     }
 }

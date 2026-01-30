@@ -2,10 +2,10 @@ package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
-import java.util.SortedMap;
 
 @Data
 @NoArgsConstructor
@@ -16,9 +16,10 @@ public class RestoreExternalDatabaseResponse {
     @Schema(description = "Type of the database", examples = "postgresql")
     private String type;
     @Schema(
-            description = "List of database classifiers. Each classifier is a sorted map of attributes.",
-            examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]"
+            description = "List of classifier objects describing database attributes.",
+            implementation = ClassifierResponse.class,
+            type = SchemaType.ARRAY
     )
-    private List<SortedMap<String, Object>> classifiers;
+    private List<ClassifierResponse> classifiers;
 }
 
