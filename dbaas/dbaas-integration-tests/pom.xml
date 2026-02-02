@@ -14,7 +14,7 @@
         <java.version>21</java.version>
         <skipIT>true</skipIT>
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
-        <logback.version>1.5.23</logback.version>
+        <logback.version>1.5.25</logback.version>
         <junit.version>5.14.1</junit.version>
         <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
@@ -23,7 +23,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.junit.cloudcore</groupId>
             <artifactId>cloud-core-extension</artifactId>
-            <version>8.5.0</version>
+            <version>8.5.1</version>
             <scope>test</scope>
         </dependency>
 
@@ -90,7 +90,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.8</version>
+            <version>42.7.9</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -151,7 +151,7 @@
         <dependency>
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-core</artifactId>
-            <version>4.2.37</version>
+            <version>4.2.38</version>
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
@@ -168,7 +168,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>3.2.5</version>
+            <version>3.2.6</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>
