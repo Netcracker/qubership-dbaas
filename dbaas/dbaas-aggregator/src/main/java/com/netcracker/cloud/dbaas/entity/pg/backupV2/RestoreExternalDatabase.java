@@ -20,7 +20,6 @@ import java.util.UUID;
 public class RestoreExternalDatabase {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @ManyToOne

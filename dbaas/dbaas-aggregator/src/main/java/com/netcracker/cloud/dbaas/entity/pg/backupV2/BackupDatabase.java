@@ -24,7 +24,6 @@ import java.util.UUID;
 public class BackupDatabase {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @ManyToOne
@@ -74,7 +73,8 @@ public class BackupDatabase {
         String role;
     }
 
-    public BackupDatabase(LogicalBackup logicalBackup, String name, List<SortedMap<String, Object>> classifiers, Map<String, Object> settings, List<User> users, boolean configurational) {
+    public BackupDatabase(UUID id, LogicalBackup logicalBackup, String name, List<SortedMap<String, Object>> classifiers, Map<String, Object> settings, List<User> users, boolean configurational) {
+        this.id = id;
         this.logicalBackup = logicalBackup;
         this.name = name;
         this.classifiers = classifiers;

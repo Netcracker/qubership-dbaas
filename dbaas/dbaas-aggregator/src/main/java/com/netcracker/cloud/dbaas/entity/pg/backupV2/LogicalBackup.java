@@ -23,7 +23,6 @@ import java.util.UUID;
 public class LogicalBackup {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @Column(name = "logical_backup_name")
@@ -57,7 +56,8 @@ public class LogicalBackup {
     @Column(name = "completion_time")
     private Instant completionTime;
 
-    public LogicalBackup(Backup backup, String adapterId, String type) {
+    public LogicalBackup(UUID id, Backup backup, String adapterId, String type) {
+        this.id = id;
         this.backup = backup;
         this.adapterId = adapterId;
         this.type = type;

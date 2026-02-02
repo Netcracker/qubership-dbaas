@@ -21,7 +21,6 @@ import java.util.UUID;
 public class BackupExternalDatabase {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @ManyToOne
@@ -39,11 +38,4 @@ public class BackupExternalDatabase {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private List<SortedMap<String, Object>> classifiers;
-
-    public BackupExternalDatabase(Backup backup, String name, String type, List<SortedMap<String, Object>> classifiers) {
-        this.backup = backup;
-        this.name = name;
-        this.type = type;
-        this.classifiers = classifiers;
-    }
 }

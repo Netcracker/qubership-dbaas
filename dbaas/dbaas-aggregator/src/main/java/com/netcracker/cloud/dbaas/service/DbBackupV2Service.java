@@ -177,6 +177,7 @@ public class DbBackupV2Service {
                     Database database = entry.getKey();
                     List<DatabaseRegistry> databaseRegistries = entry.getValue();
                     return new BackupExternalDatabase(
+                            UUID.randomUUID(),
                             backup,
                             database.getName(),
                             database.getDatabaseRegistry().getFirst().getType(),
@@ -202,7 +203,7 @@ public class DbBackupV2Service {
                     Source.builder().build());
         }
 
-        LogicalBackup logicalBackup = new LogicalBackup(backup, adapterId, adapter.type());
+        LogicalBackup logicalBackup = new LogicalBackup(UUID.randomUUID(), backup, adapterId, adapter.type());
 
         // Initializing backup database entity
         logicalBackup.getBackupDatabases().addAll(databaseToRegistry.entrySet().stream()
@@ -210,6 +211,7 @@ public class DbBackupV2Service {
                     Database db = entry.getKey();
                     List<DatabaseRegistry> databaseRegistries = entry.getValue();
                     return new BackupDatabase(
+                            UUID.randomUUID(),
                             logicalBackup,
                             DbaasBackupUtils.getDatabaseName(db),
                             databaseRegistries.stream().map(DatabaseRegistry::getClassifier).toList(),
@@ -689,7 +691,6 @@ public class DbBackupV2Service {
 
     private RestoreResponse applyDryRunRestore(Backup backup, RestoreRequest restoreRequest) {
         Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
-        currRestore.getLogicalRestores().forEach(db -> db.setId(UUID.randomUUID()));
         // DryRun on adapters
         startRestore(currRestore, true);
         aggregateRestoreStatus(currRestore);
@@ -778,6 +779,7 @@ public class DbBackupV2Service {
         List<LogicalRestore> logicalRestores = groupedByTypeAndAdapter.entrySet().stream()
                 .map(entry -> {
                     LogicalRestore logicalRestore = new LogicalRestore();
+                    logicalRestore.setId(UUID.randomUUID());
                     logicalRestore.setType(entry.getValue().getFirst().backupDatabase().getLogicalBackup().getType());
                     logicalRestore.setAdapterId(entry.getKey().adapterId());
 
@@ -1000,6 +1002,7 @@ public class DbBackupV2Service {
                             .toList();
 
                     RestoreDatabase restoreDatabase = new RestoreDatabase();
+                    restoreDatabase.setId(UUID.randomUUID());
                     restoreDatabase.setBackupDatabase(backupDatabase);
                     restoreDatabase.setName(backupDatabase.getName());
                     restoreDatabase.setClassifiers(classifiers);

@@ -11,11 +11,18 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
+import java.util.UUID;
 
 @Data
 @AllArgsConstructor
 @Schema(description = "Logical database backup details")
 public class BackupDatabaseResponse {
+    @Schema(
+            description = "Identifier of the database",
+            examples = {"550e8400-e29b-41d4-a716-446655440000"},
+            required = true
+    )
+    private UUID id;
     @Schema(
             description = "Name of the database",
             examples = {

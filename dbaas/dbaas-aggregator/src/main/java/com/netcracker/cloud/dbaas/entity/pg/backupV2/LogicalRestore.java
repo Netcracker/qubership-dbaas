@@ -20,7 +20,6 @@ import java.util.UUID;
 public class LogicalRestore {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @Column(name = "logical_restore_name")

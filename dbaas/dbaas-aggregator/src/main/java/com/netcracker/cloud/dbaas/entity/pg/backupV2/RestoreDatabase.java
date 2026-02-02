@@ -22,7 +22,6 @@ import java.util.UUID;
 public class RestoreDatabase {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @ManyToOne

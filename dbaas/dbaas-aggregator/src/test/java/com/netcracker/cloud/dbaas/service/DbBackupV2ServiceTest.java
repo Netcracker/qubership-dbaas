@@ -3604,6 +3604,7 @@ class DbBackupV2ServiceTest {
 
     private BackupExternalDatabase getBackupExternalDatabase(String name, String type, List<SortedMap<String, Object>> classifiers) {
         BackupExternalDatabase externalDatabase = new BackupExternalDatabase();
+        externalDatabase.setId(UUID.randomUUID());
         externalDatabase.setName(name);
         externalDatabase.setType(type);
         externalDatabase.setClassifiers(classifiers);
@@ -3616,6 +3617,7 @@ class DbBackupV2ServiceTest {
                                              BackupTaskStatus status,
                                              String errorMessage) {
         BackupDatabase backupDatabase = new BackupDatabase();
+        backupDatabase.setId(UUID.randomUUID());
         backupDatabase.setName(dbName);
         backupDatabase.setClassifiers(classifiers);
         backupDatabase.setSettings(Map.of("setting", "setting"));
@@ -3637,6 +3639,7 @@ class DbBackupV2ServiceTest {
                                            String errorMsg
     ) {
         LogicalBackup logicalBackup = new LogicalBackup();
+        logicalBackup.setId(UUID.randomUUID());
         logicalBackup.setLogicalBackupName(logicalBackupName);
         logicalBackup.setAdapterId(adapterId);
         logicalBackup.setType(type);
@@ -3688,6 +3691,7 @@ class DbBackupV2ServiceTest {
         List<BackupDatabase> backupDatabases = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
             BackupDatabase backupDatabase = new BackupDatabase();
+            backupDatabase.setId(UUID.randomUUID());
             backupDatabase.setName("db" + i);
             backupDatabase.setUsers(List.of(new BackupDatabase.User("username", "role")));
             backupDatabase.setStatus(BackupTaskStatus.COMPLETED);
@@ -3699,6 +3703,7 @@ class DbBackupV2ServiceTest {
         List<LogicalBackup> logicalBackups = new ArrayList<>();
         for (int i = 0; i < 2; i++) {
             LogicalBackup logicalBackup = new LogicalBackup();
+            logicalBackup.setId(UUID.randomUUID());
             logicalBackup.setLogicalBackupName("logicalBackupName" + i);
             logicalBackup.setStatus(BackupTaskStatus.COMPLETED);
             logicalBackup.setAdapterId(Integer.toString(i));
@@ -3745,6 +3750,7 @@ class DbBackupV2ServiceTest {
         List<RestoreDatabase> restoreDatabases = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
             RestoreDatabase restoreDatabase = new RestoreDatabase();
+            restoreDatabase.setId(UUID.randomUUID());
             restoreDatabase.setName("db" + i);
             restoreDatabase.setUsers(List.of(new RestoreDatabase.User("username", "admin")));
             restoreDatabase.setStatus(RestoreTaskStatus.COMPLETED);
@@ -3756,6 +3762,7 @@ class DbBackupV2ServiceTest {
         List<LogicalRestore> logicalRestores = new ArrayList<>();
         for (int i = 0; i < 2; i++) {
             LogicalRestore logicalRestore = new LogicalRestore();
+            logicalRestore.setId(UUID.randomUUID());
             logicalRestore.setLogicalRestoreName("logicalRestoreName" + i);
             logicalRestore.setStatus(RestoreTaskStatus.COMPLETED);
             logicalRestore.setAdapterId(Integer.toString(i));
@@ -3835,6 +3842,7 @@ class DbBackupV2ServiceTest {
                                                long duration,
                                                String errorMessage) {
         RestoreDatabase db = new RestoreDatabase();
+        db.setId(UUID.randomUUID());
         db.setBackupDatabase(backupDatabase);
         db.setName(dbName);
         db.setClassifiers(classifiers);
@@ -3854,6 +3862,7 @@ class DbBackupV2ServiceTest {
                                              RestoreTaskStatus status,
                                              String errorMsg) {
         LogicalRestore logicalRestore = new LogicalRestore();
+        logicalRestore.setId(UUID.randomUUID());
         logicalRestore.setLogicalRestoreName(logicalRestoreName);
         logicalRestore.setAdapterId(adapterId);
         logicalRestore.setType(type);
@@ -3899,6 +3908,7 @@ class DbBackupV2ServiceTest {
             List<Classifier> classifiers
     ) {
         RestoreExternalDatabase db = new RestoreExternalDatabase();
+        db.setId(UUID.randomUUID());
         db.setName(name);
         db.setType(type);
         db.setClassifiers(classifiers);
@@ -3959,6 +3969,7 @@ class DbBackupV2ServiceTest {
         sortedMap.put("key-second", Map.of("inner-key", "inner-value"));
 
         BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
+                UUID.randomUUID(),
                 "backup-database",
                 List.of(sortedMap),
                 Map.of("settings-key", "settings-value"),
@@ -3976,6 +3987,7 @@ class DbBackupV2ServiceTest {
         );
 
         LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+                UUID.randomUUID(),
                 "logicalBackupName",
                 "adapterID",
                 "type",
@@ -3996,6 +4008,7 @@ class DbBackupV2ServiceTest {
         map.put("key", "value");
 
         BackupExternalDatabaseResponse backupExternalDatabase = new BackupExternalDatabaseResponse();
+        backupExternalDatabase.setId(UUID.randomUUID());
         backupExternalDatabase.setName("Name");
         backupExternalDatabase.setType("postgresql");
         backupExternalDatabase.setClassifiers(List.of(map));

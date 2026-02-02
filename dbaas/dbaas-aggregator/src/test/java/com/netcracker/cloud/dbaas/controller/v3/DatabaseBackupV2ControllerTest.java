@@ -23,10 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.*;
 
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
@@ -399,6 +396,7 @@ class DatabaseBackupV2ControllerTest {
         sortedMap.put("key", "value");
 
         BackupDatabaseResponse backupDatabaseResponse = new BackupDatabaseResponse(
+                UUID.randomUUID(),
                 "backup-database",
                 List.of(sortedMap),
                 Map.of("settings-key", "settings-value"),
@@ -416,6 +414,7 @@ class DatabaseBackupV2ControllerTest {
         );
 
         LogicalBackupResponse logicalBackupResponse = new LogicalBackupResponse(
+                UUID.randomUUID(),
                 "logicalBackupName",
                 "adapterID",
                 "type",

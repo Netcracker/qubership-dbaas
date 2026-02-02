@@ -98,7 +98,7 @@ public interface BackupV2Mapper {
         };
     }
 
-    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "id", expression = "java(java.util.UUID.randomUUID())")
     @Mapping(target = "name", source = "backupExternalDatabase.name")
     @Mapping(target = "type", source = "backupExternalDatabase.type")
     @Mapping(target = "classifiers", source = "classifiers")

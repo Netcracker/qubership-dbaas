@@ -140,12 +140,21 @@
       "BackupDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name",
           "status",
           "path"
         ],
         "description": "Logical database backup details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the database"
+          },
           "name": {
             "type": "string",
             "examples": [
@@ -258,10 +267,19 @@
       "BackupExternalDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name"
         ],
         "description": "External database details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the external database"
+          },
           "name": {
             "type": "string",
             "examples": [
@@ -1989,6 +2007,7 @@
       "LogicalBackupResponse": {
         "type": "object",
         "required": [
+          "id",
           "logicalBackupName",
           "adapterId",
           "type",
@@ -1997,6 +2016,14 @@
         ],
         "description": "Logical backup details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the logical backup"
+          },
           "logicalBackupName": {
             "type": "string",
             "description": "Name of the logical backup in adapter"
@@ -2060,6 +2087,7 @@
       "LogicalRestoreResponse": {
         "type": "object",
         "required": [
+          "id",
           "logicalRestoreName",
           "adapterId",
           "type",
@@ -2068,6 +2096,14 @@
         ],
         "description": "Logical restore details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the logical restore"
+          },
           "logicalRestoreName": {
             "type": "string",
             "description": "Name of the logical restore in adapter"
@@ -3081,12 +3117,21 @@
       "RestoreDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name",
           "status",
           "path"
         ],
         "description": "Logical database restore details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the database"
+          },
           "name": {
             "type": "string",
             "examples": [
@@ -3185,10 +3230,19 @@
       "RestoreExternalDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name"
         ],
         "description": "External database details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the database"
+          },
           "name": {
             "type": "string",
             "examples": [
