@@ -242,7 +242,7 @@ public class DbBackupV2Service {
                                         refreshLogicalBackupState(logicalBackup, response)
                                 )
                                 .exceptionally(throwable -> {
-                                    logicalBackup.setStatus(BackupTaskStatus.FAILED);
+                                    logicalBackup.setStatus(BackupTaskStatus.FAILED_WITH_RETRY);
                                     logicalBackup.setErrorMessage(extractErrorMessage(throwable));
                                     return null;
                                 }))
@@ -314,7 +314,7 @@ public class DbBackupV2Service {
         backupsToAggregate.forEach(this::trackAndAggregate);
     }
 
-    protected void  trackAndAggregate(Backup backup) {
+    protected void trackAndAggregate(Backup backup) {
         if (backup.getAttemptCount() > retryCount) {
             log.warn("The number of attempts to track backup {} exceeded {}", backup.getName(), retryCount);
             backup.setStatus(BackupStatus.FAILED);
@@ -329,9 +329,11 @@ public class DbBackupV2Service {
 
     private void fetchAndUpdateStatuses(Backup backup) {
         List<LogicalBackup> notFinishedBackups = backup.getLogicalBackups().stream()
-                .filter(db -> db.getStatus() == BackupTaskStatus.IN_PROGRESS
-                        || db.getStatus() == BackupTaskStatus.NOT_STARTED)
-                .toList();
+                .filter(db ->
+                        db.getStatus() == BackupTaskStatus.IN_PROGRESS
+                                || db.getStatus() == BackupTaskStatus.NOT_STARTED
+                                || db.getStatus() == BackupTaskStatus.FAILED_WITH_RETRY
+                ).toList();
 
         List<CompletableFuture<Void>> futures = notFinishedBackups.stream()
                 .map(this::trackLogicalBackupAsync)
@@ -351,14 +353,20 @@ public class DbBackupV2Service {
                 )
                 .thenAccept(response -> refreshLogicalBackupState(logicalBackup, response))
                 .exceptionally(throwable -> {
+                    logicalBackup.setStatus(BackupTaskStatus.FAILED_WITH_RETRY);
                     logicalBackup.setErrorMessage(extractErrorMessage(throwable));
-                    logicalBackup.setStatus(BackupTaskStatus.FAILED);
                     return null;
                 });
     }
 
     private LogicalBackupAdapterResponse executeTrackBackup(LogicalBackup logicalBackup) {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
+
+        if (logicalBackup.getLogicalBackupName() == null || logicalBackup.getLogicalBackupName().isEmpty()) {
+            LogicalBackupAdapterResponse response = startLogicalBackup(logicalBackup);
+            refreshLogicalBackupState(logicalBackup, response);
+        }
+
         LogicalBackupAdapterResponse response = adapter.trackBackupV2(
                 logicalBackup.getLogicalBackupName(),
                 logicalBackup.getBackup().getStorageName(),
@@ -1087,7 +1095,7 @@ public class DbBackupV2Service {
 
         List<CompletableFuture<Void>> futures = logicalRestores.stream()
                 .map(logicalRestore ->
-                        runLogicalRestoreAsync(logicalRestore, logicalRestore.getRestoreDatabases(), storageName, blobPath, dryRun)
+                        runLogicalRestoreAsync(logicalRestore, storageName, blobPath, dryRun)
                 )
                 .toList();
 
@@ -1095,7 +1103,6 @@ public class DbBackupV2Service {
     }
 
     private CompletableFuture<Void> runLogicalRestoreAsync(LogicalRestore logicalRestore,
-                                                           List<RestoreDatabase> restoreDatabases,
                                                            String storageName,
                                                            String blobPath,
                                                            boolean dryRun
@@ -1104,7 +1111,6 @@ public class DbBackupV2Service {
                         asyncOperations.wrapWithContext(
                                 () -> logicalRestore(
                                         logicalRestore,
-                                        restoreDatabases,
                                         storageName,
                                         blobPath,
                                         dryRun
@@ -1115,7 +1121,7 @@ public class DbBackupV2Service {
                 .thenAccept(response ->
                         refreshLogicalRestoreState(logicalRestore, response))
                 .exceptionally(throwable -> {
-                    logicalRestore.setStatus(RestoreTaskStatus.FAILED);
+                    logicalRestore.setStatus(RestoreTaskStatus.FAILED_WITH_RETRY);
                     logicalRestore.setErrorMessage(extractErrorMessage(throwable));
                     log.error("Logical restore failed: adapterId={}, error={}",
                             logicalRestore.getAdapterId(), logicalRestore.getErrorMessage());
@@ -1168,12 +1174,13 @@ public class DbBackupV2Service {
     }
 
     private LogicalRestoreAdapterResponse logicalRestore(LogicalRestore logicalRestore,
-                                                         List<RestoreDatabase> restoreDatabases,
                                                          String storageName,
                                                          String blobPath,
                                                          boolean dryRun
     ) {
-        String logicalBackupName = restoreDatabases.getFirst()
+        List<RestoreDatabase> restoreDatabases = logicalRestore.getRestoreDatabases();
+        String logicalBackupName = restoreDatabases
+                .getFirst()
                 .getBackupDatabase()
                 .getLogicalBackup()
                 .getLogicalBackupName();
@@ -1320,26 +1327,36 @@ public class DbBackupV2Service {
 
     private void fetchStatuses(Restore restore) {
         List<LogicalRestore> notFinishedLogicalRestores = restore.getLogicalRestores().stream()
-                .filter(db -> RestoreTaskStatus.IN_PROGRESS == db.getStatus()
-                        || RestoreTaskStatus.NOT_STARTED == db.getStatus())
-                .toList();
+                .filter(db ->
+                        db.getStatus() == RestoreTaskStatus.IN_PROGRESS
+                                || db.getStatus() == RestoreTaskStatus.NOT_STARTED
+                                || db.getStatus() == RestoreTaskStatus.FAILED_WITH_RETRY
+                ).toList();
         log.debug("Starting checking status for logical restores: restore={}, logicalRestores={}",
                 restore.getName(),
                 notFinishedLogicalRestores.stream()
-                        .map(LogicalRestore::getLogicalRestoreName)
+                        .map(LogicalRestore::getId)
                         .toList());
 
         List<CompletableFuture<Void>> futures = notFinishedLogicalRestores.stream()
                 .map(logicalRestore -> {
                     RetryPolicy<Object> retryPolicy = buildRetryPolicy(TRACK_RESTORE_OPERATION, LOGICAL_RESTORE, logicalRestore.getId().toString(), logicalRestore.getAdapterId());
                     return CompletableFuture.supplyAsync(
-                                    asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy).get(() -> {
-                                        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                                        return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName(), restore.getStorageName(), restore.getBlobPath());
-                                    })))
+                                    asyncOperations.wrapWithContext(
+                                            () -> Failsafe.with(retryPolicy).get(() -> {
+                                                        DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
+                                                        if (logicalRestore.getLogicalRestoreName() == null || logicalRestore.getLogicalRestoreName().isBlank()) {
+                                                            LogicalRestoreAdapterResponse response = logicalRestore(logicalRestore, restore.getStorageName(), restore.getBlobPath(), false);
+                                                            refreshLogicalRestoreState(logicalRestore, response);
+                                                        }
+                                                        return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName(), restore.getStorageName(), restore.getBlobPath());
+                                                    }
+                                            )
+                                    ), asyncOperations.getBackupPool())
                             .thenAccept(response ->
                                     refreshLogicalRestoreState(logicalRestore, response))
                             .exceptionally(throwable -> {
+                                logicalRestore.setStatus(RestoreTaskStatus.FAILED_WITH_RETRY);
                                 logicalRestore.setErrorMessage(throwable.getCause() != null
                                         ? throwable.getCause().getMessage() : throwable.getMessage());
                                 return null;
@@ -1587,8 +1604,7 @@ public class DbBackupV2Service {
         Restore retriedRestore = restoreLockWrapper(() -> {
             retryRestore(restore);
             aggregateRestoreStatus(restore);
-            restoreRepository.save(restore);
-            return restore;
+            return restoreRepository.save(restore);
         });
         return mapper.toRestoreResponse(retriedRestore);
     }
@@ -1603,27 +1619,18 @@ public class DbBackupV2Service {
     }
 
     private void retryRestore(Restore restore) {
-        List<LogicalRestore> failedLogicalRestores = restore.getLogicalRestores()
-                .stream()
-                .filter(logicalRestore -> RestoreTaskStatus.FAILED == logicalRestore.getStatus())
-                .toList();
-
-        log.info("Starting retry restore process: restore={}, failedLogicalRestoreCount={}",
-                restore.getName(), failedLogicalRestores.size());
-        String storageName = restore.getStorageName();
-        String blobPath = restore.getBlobPath();
-
-        List<CompletableFuture<Void>> futures = failedLogicalRestores.stream()
-                .map(logicalRestore -> {
-                            List<RestoreDatabase> failedRestoreDatabases = logicalRestore.getRestoreDatabases().stream()
-                                    .filter(db -> RestoreTaskStatus.FAILED == db.getStatus())
-                                    .toList();
-                            return runLogicalRestoreAsync(logicalRestore, failedRestoreDatabases, storageName, blobPath, false);
-                        }
+        restore.resetAttempt();
+        restore.setStatus(RestoreStatus.IN_PROGRESS);
+        restore.getLogicalRestores().stream()
+                .filter(logicalRestore ->
+                        RestoreTaskStatus.FAILED == logicalRestore.getStatus()
+                                || logicalRestore.getLogicalRestoreName() == null
+                                || logicalRestore.getLogicalRestoreName().isEmpty()
                 )
-                .toList();
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                .forEach(logicalRestore -> {
+                    logicalRestore.setStatus(RestoreTaskStatus.FAILED_WITH_RETRY);
+                    logicalRestore.setLogicalRestoreName(null);
+                });
     }
 
     protected Map<Database, List<DatabaseRegistry>> validateAndFilterDatabasesForBackup(
@@ -1791,10 +1798,10 @@ public class DbBackupV2Service {
             Function<String, T> taskStatusGetter,
             Function<String, R> resultStatusGetter) {
 
-        if (statusSet.contains(taskStatusGetter.apply("NOT_STARTED")) && statusSet.size() == 1)
-            return resultStatusGetter.apply("NOT_STARTED");
-
         if (statusSet.contains(taskStatusGetter.apply("NOT_STARTED")) && statusSet.size() > 1)
+            return resultStatusGetter.apply("IN_PROGRESS");
+
+        if (statusSet.contains(taskStatusGetter.apply("FAILED_WITH_RETRY")))
             return resultStatusGetter.apply("IN_PROGRESS");
 
         if (statusSet.contains(taskStatusGetter.apply("IN_PROGRESS")))

@@ -87,6 +87,10 @@ public class Restore {
         this.attemptCount++;
     }
 
+    public void resetAttempt() {
+        this.attemptCount = 0;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof Restore restore)) return false;

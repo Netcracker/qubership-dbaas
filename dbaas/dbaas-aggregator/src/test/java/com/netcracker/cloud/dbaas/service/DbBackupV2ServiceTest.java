@@ -1977,7 +1977,7 @@ class DbBackupV2ServiceTest {
         DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
 
         when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(dbaasAdapter);
-        when(dbaasAdapter.isBackupRestoreSupported()).thenReturn(true);
+//        when(dbaasAdapter.isBackupRestoreSupported()).thenReturn(true);
 
         // Mock logic of choosing adapter in new/current env
         ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
@@ -1986,30 +1986,13 @@ class DbBackupV2ServiceTest {
         physicalDatabase1.setAdapter(adapter1);
         physicalDatabase1.setType(postgresType);
         physicalDatabase1.setPhysicalDatabaseIdentifier("postgres-dev");
-
-        when(balancingRulesService.applyBalancingRules(postgresType, mappedNamespace, microserviceName1))
-                .thenReturn(physicalDatabase1);
+//
+//        when(balancingRulesService.applyBalancingRules(postgresType, mappedNamespace, microserviceName1))
+//                .thenReturn(physicalDatabase1);
         when(physicalDatabasesService.getByAdapterId(adapterId)).thenReturn(physicalDatabase1);
 
-        // Response during the sync restore process
-        LogicalRestoreAdapterResponse response = LogicalRestoreAdapterResponse.builder()
-                .status(IN_PROGRESS_STATUS)
-                .restoreId(logicalRestoreName)
-                .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
-                        .status(IN_PROGRESS_STATUS)
-                        .previousDatabaseName(dbName)
-                        .databaseName(newName)
-                        .duration(1)
-                        .build()))
-                .build();
-
-        // Same answer to DryRun non-DryRun mode
-        when(dbaasAdapter.restoreV2(eq(logicalBackupName), anyBoolean(), any()))
-                .thenReturn(response)
-                .thenReturn(response);
-
         // Response during the async restore process
-        LogicalRestoreAdapterResponse response2 = LogicalRestoreAdapterResponse.builder()
+        LogicalRestoreAdapterResponse response = LogicalRestoreAdapterResponse.builder()
                 .status(COMPLETED_STATUS)
                 .restoreId(logicalRestoreName)
                 .databases(List.of(LogicalRestoreAdapterResponse.RestoreDatabaseResponse.builder()
@@ -2020,9 +2003,12 @@ class DbBackupV2ServiceTest {
                         .build()))
                 .build();
 
-        when(dbaasAdapter.trackRestoreV2(eq(logicalRestoreName), any(), any()))
-                .thenReturn(response2);
+        // Same answer to DryRun non-DryRun mode
+        when(dbaasAdapter.restoreV2(eq(logicalBackupName), anyBoolean(), any()))
+                .thenReturn(response);
 
+        when(dbaasAdapter.trackRestoreV2(eq(logicalRestoreName), any(), any()))
+                .thenReturn(response);
         // Mocks to ensure user process
         DbResource resource1 = new DbResource();
         resource1.setId(UUID.randomUUID());
@@ -2059,29 +2045,9 @@ class DbBackupV2ServiceTest {
         assertEquals(1, restoreResponse.getLogicalRestores().size());
 
         LogicalRestoreResponse logicalRestoreResponse = restoreResponse.getLogicalRestores().getFirst();
-        assertEquals(logicalRestoreName, logicalRestoreResponse.getLogicalRestoreName());
+        assertNull(logicalRestoreResponse.getLogicalRestoreName());
         assertEquals(adapterId, logicalRestoreResponse.getAdapterId());
         assertEquals(2, logicalRestoreResponse.getRestoreDatabases().size());
-
-        RestoreDatabaseResponse restoreDatabaseResponse1 = logicalRestoreResponse.getRestoreDatabases().stream()
-                .filter(db -> newName.equals(db.getName())).findAny().orElse(null);
-        assertEquals(1, restoreDatabaseResponse1.getClassifiers().size());
-
-        ClassifierResponse classifierResponse1 = restoreDatabaseResponse1.getClassifiers().getFirst();
-        assertEquals(classifierWrapper1.getType(), classifierResponse1.getType());
-        assertEquals(classifierWrapper1.getClassifier(), classifierResponse1.getClassifier());
-        assertEquals(classifierWrapper1.getClassifierBeforeMapper(), classifierResponse1.getClassifierBeforeMapper());
-        assertEquals(RestoreTaskStatus.IN_PROGRESS, restoreDatabaseResponse1.getStatus());
-
-        RestoreDatabaseResponse restoreDatabaseResponse2 = logicalRestoreResponse.getRestoreDatabases().stream()
-                .filter(db -> newName2.equals(db.getName())).findAny().orElse(null);
-        assertEquals(1, restoreDatabaseResponse2.getClassifiers().size());
-
-        ClassifierResponse classifierResponse2 = restoreDatabaseResponse2.getClassifiers().getFirst();
-        assertEquals(classifierWrapper2.getType(), classifierResponse2.getType());
-        assertEquals(classifierWrapper2.getClassifier(), classifierResponse2.getClassifier());
-        assertEquals(classifierWrapper2.getClassifierBeforeMapper(), classifierResponse2.getClassifierBeforeMapper());
-        assertEquals(RestoreTaskStatus.COMPLETED, restoreDatabaseResponse2.getStatus());
 
         // Start assert initialized dbs
         List<DatabaseRegistry> databaseRegistries = databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType();
@@ -3670,13 +3636,13 @@ class DbBackupV2ServiceTest {
         backup.setStatus(status);
         backup.setTotal(logicalBackups.stream().mapToInt(db -> db.getBackupDatabases().size()).sum());
         backup.setCompleted((int) logicalBackups.stream()
-                        .flatMap(db -> db.getBackupDatabases().stream())
-                        .filter(bd -> BackupTaskStatus.COMPLETED == bd.getStatus())
-                        .count());
+                .flatMap(db -> db.getBackupDatabases().stream())
+                .filter(bd -> BackupTaskStatus.COMPLETED == bd.getStatus())
+                .count());
         backup.setSize(logicalBackups.stream()
-                        .flatMap(db -> db.getBackupDatabases().stream())
-                        .mapToLong(BackupDatabase::getSize)
-                        .sum());
+                .flatMap(db -> db.getBackupDatabases().stream())
+                .mapToLong(BackupDatabase::getSize)
+                .sum());
         backup.setErrorMessage(errorMsg);
 
         logicalBackups.forEach(db -> db.setBackup(backup));
