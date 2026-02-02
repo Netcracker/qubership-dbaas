@@ -5,7 +5,6 @@ import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -18,7 +17,6 @@ import java.util.SortedMap;
 import java.util.UUID;
 
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity
@@ -69,7 +67,6 @@ public class BackupDatabase {
     private Instant creationTime;
 
     @Data
-    @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class User {

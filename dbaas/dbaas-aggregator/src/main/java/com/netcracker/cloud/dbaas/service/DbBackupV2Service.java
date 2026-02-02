@@ -126,13 +126,13 @@ public class DbBackupV2Service {
         Backup backup = initializeFullBackupStructure(filteredDb, backupRequest);
         if (!dryRun) {
             // Saving initialized backup structure
-            backupRepository.save(backup);
+            backup = backupRepository.save(backup);
             startBackup(backup);
         }
         updateAggregatedStatus(backup);
         if (!dryRun) {
             // Saving aggregated backup structure
-            backupRepository.save(backup);
+            backup = backupRepository.save(backup);
         }
         return mapper.toBackupResponse(backup);
     }
@@ -176,14 +176,14 @@ public class DbBackupV2Service {
                 .map(entry -> {
                     Database database = entry.getKey();
                     List<DatabaseRegistry> databaseRegistries = entry.getValue();
-                    return BackupExternalDatabase.builder()
-                            .backup(backup)
-                            .name(database.getName())
-                            .type(database.getDatabaseRegistry().getFirst().getType())
-                            .classifiers(databaseRegistries.stream()
+                    return new BackupExternalDatabase(
+                            backup,
+                            database.getName(),
+                            database.getDatabaseRegistry().getFirst().getType(),
+                            databaseRegistries.stream()
                                     .map(DatabaseRegistry::getClassifier)
-                                    .toList())
-                            .build();
+                                    .toList()
+                    );
                 }).toList();
 
         // Persist and return
@@ -312,7 +312,7 @@ public class DbBackupV2Service {
         backupsToAggregate.forEach(this::trackAndAggregate);
     }
 
-    protected void trackAndAggregate(Backup backup) {
+    protected void  trackAndAggregate(Backup backup) {
         if (backup.getAttemptCount() > retryCount) {
             log.warn("The number of attempts to track backup {} exceeded {}", backup.getName(), retryCount);
             backup.setStatus(BackupStatus.FAILED);
@@ -671,8 +671,7 @@ public class DbBackupV2Service {
 
         Restore restore = restoreLockWrapper(() -> {
             Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
-            restoreRepository.save(currRestore);
-            return currRestore;
+            return restoreRepository.save(currRestore);
         });
 
         // DryRun on adapters
@@ -690,6 +689,7 @@ public class DbBackupV2Service {
 
     private RestoreResponse applyDryRunRestore(Backup backup, RestoreRequest restoreRequest) {
         Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
+        currRestore.getLogicalRestores().forEach(db -> db.setId(UUID.randomUUID()));
         // DryRun on adapters
         startRestore(currRestore, true);
         aggregateRestoreStatus(currRestore);

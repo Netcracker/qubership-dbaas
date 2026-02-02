@@ -15,8 +15,7 @@ public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
 
     public Backup save(Backup backup) {
         EntityManager entityManager = getEntityManager();
-        entityManager.merge(backup);
-        return backup;
+        return entityManager.merge(backup);
     }
 
     public List<Backup> findBackupsToAggregate() {

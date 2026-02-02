@@ -15,8 +15,7 @@ public class RestoreRepository implements PanacheRepositoryBase<Restore, String>
 
     public Restore save(Restore restore) {
         EntityManager entityManager = getEntityManager();
-        entityManager.merge(restore);
-        return restore;
+        return entityManager.merge(restore);
     }
 
     public List<Restore> findRestoresToAggregate() {
