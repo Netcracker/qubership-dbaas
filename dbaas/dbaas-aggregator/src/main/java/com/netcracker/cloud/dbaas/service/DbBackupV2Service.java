@@ -367,7 +367,7 @@ public class DbBackupV2Service {
     private LogicalBackupAdapterResponse executeTrackBackup(LogicalBackup logicalBackup) {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalBackup.getAdapterId());
 
-        if (isNameEmpty(logicalBackup.getLogicalBackupName())) {
+        if (isLogicalBackupNotStarted(logicalBackup)) {
             LogicalBackupAdapterResponse response = startLogicalBackup(logicalBackup);
             refreshLogicalBackupState(logicalBackup, response);
         }
@@ -689,14 +689,14 @@ public class DbBackupV2Service {
         return mapper.toRestoreResponse(currRestore);
     }
 
-    protected List<BackupWithClassifiers> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
+    protected List<DatabaseWithClassifiers> getAllDbByFilter(List<BackupDatabase> backupDatabasesToFilter, FilterCriteria filterCriteria) {
         if (isFilterEmpty(filterCriteria))
             return backupDatabasesToFilter.stream()
                     .map(db ->
-                            new BackupWithClassifiers(
+                            new DatabaseWithClassifiers(
                                     db,
                                     db.getClassifiers().stream()
-                                            .map(c -> new ClassifierDetails(ClassifierType.NEW, db.getName(), null, new TreeMap<>(c)))
+                                            .map(c -> new ClassifierDetails(ClassifierType.NEW, null, null, new TreeMap<>(c)))
                                             .toList()
                             )
                     )
@@ -713,14 +713,14 @@ public class DbBackupV2Service {
                                 return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
                                         && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
                             })
-                            .map(c -> new ClassifierDetails(ClassifierType.NEW, db.getName(), null, new TreeMap<>(c)))
+                            .map(c -> new ClassifierDetails(ClassifierType.NEW, null, null, new TreeMap<>(c)))
                             .toList();
 
                     if (filteredClassifiers.isEmpty()) {
                         return null;
                     }
 
-                    return new BackupWithClassifiers(db, filteredClassifiers);
+                    return new DatabaseWithClassifiers(db, filteredClassifiers);
                 })
                 .filter(Objects::nonNull)
                 .toList();
@@ -737,7 +737,7 @@ public class DbBackupV2Service {
                 restoreRequest.getFilterCriteria());
 
         // Filter internal database classifiers
-        List<BackupWithClassifiers> filteredBackupDatabases = getAllDbByFilter(
+        List<DatabaseWithClassifiers> filteredBackupDatabases = getAllDbByFilter(
                 backup.getLogicalBackups().stream()
                         .flatMap(logicalBackup -> logicalBackup.getBackupDatabases().stream())
                         .toList(),
@@ -751,16 +751,16 @@ public class DbBackupV2Service {
         // Mapping classifiers
         List<RestoreExternalDatabase> mappedExternalDbs =
                 executeMappingForExternalDb(filteredExternalDbs, restoreRequest.getMapping());
-        List<BackupWithClassifiers> mappedBackupDatabases =
+        List<DatabaseWithClassifiers> mappedBackupDatabases =
                 applyMappingToBackupDatabases(filteredBackupDatabases, restoreRequest.getMapping());
 
         checkForCollision(mappedExternalDbs, mappedBackupDatabases);
         // Enrich classifiers
-        List<BackupWithClassifiers> enrichedBackupClassifiers = enrichInternalDbClassifiers(mappedBackupDatabases);
+        List<DatabaseWithClassifiers> enrichedBackupClassifiers = enrichInternalDbClassifiers(mappedBackupDatabases);
         List<RestoreExternalDatabase> enrichedExternalDbs = enrichExternalDbClassifiers(mappedExternalDbs);
 
         // Group BackupDatabases by updated adapter and logicalBackupName
-        Map<AdapterBackupKey, List<BackupWithClassifiers>> groupedByTypeAndAdapter =
+        Map<AdapterBackupKey, List<DatabaseWithClassifiers>> groupedByTypeAndAdapter =
                 groupBackupDatabasesByLogicalBackupNameAndAdapter(enrichedBackupClassifiers);
 
         log.info("Initializing restore structure: restoreName={}, backupName={}",
@@ -810,10 +810,10 @@ public class DbBackupV2Service {
         return restore;
     }
 
-    private List<BackupWithClassifiers> applyMappingToBackupDatabases(List<BackupWithClassifiers> backupDatabases, Mapping mapping) {
+    private List<DatabaseWithClassifiers> applyMappingToBackupDatabases(List<DatabaseWithClassifiers> backupDatabases, Mapping mapping) {
         return backupDatabases.stream()
                 .map(db ->
-                        new BackupWithClassifiers(db.backupDatabase(), applyMapping(db.classifiers(), mapping))
+                        new DatabaseWithClassifiers(db.backupDatabase(), applyMapping(db.classifiers(), mapping))
                 ).toList();
     }
 
@@ -836,12 +836,12 @@ public class DbBackupV2Service {
         return classifiers;
     }
 
-    private List<BackupWithClassifiers> enrichInternalDbClassifiers(List<BackupWithClassifiers> backupDatabases) {
+    private List<DatabaseWithClassifiers> enrichInternalDbClassifiers(List<DatabaseWithClassifiers> backupDatabases) {
         return backupDatabases.stream()
                 .map(db -> {
                     String type = db.backupDatabase().getLogicalBackup().getType();
                     List<ClassifierDetails> updatedClassifiers = findSimilarDbByClassifier(db.classifiers(), type).stream().toList();
-                    return new BackupWithClassifiers(db.backupDatabase(), updatedClassifiers);
+                    return new DatabaseWithClassifiers(db.backupDatabase(), updatedClassifiers);
                 }).toList();
     }
 
@@ -857,7 +857,7 @@ public class DbBackupV2Service {
         return enrichedExternalDbs;
     }
 
-    private void checkForCollision(List<RestoreExternalDatabase> externalDatabases, List<BackupWithClassifiers> backupDatabases) {
+    private void checkForCollision(List<RestoreExternalDatabase> externalDatabases, List<DatabaseWithClassifiers> backupDatabases) {
         Set<SortedMap<String, Object>> uniqueClassifiers = new HashSet<>();
         List<ClassifierDetails> duplicateClassifiers = new ArrayList<>();
 
@@ -971,7 +971,7 @@ public class DbBackupV2Service {
     }
 
     private List<RestoreDatabase> createRestoreDatabases(
-            List<BackupWithClassifiers> backupDatabases
+            List<DatabaseWithClassifiers> backupDatabases
     ) {
         return backupDatabases.stream()
                 .map(delegatedBackupDatabase -> {
@@ -1010,8 +1010,8 @@ public class DbBackupV2Service {
         return map.getOrDefault(oldValue, oldValue);
     }
 
-    private Map<AdapterBackupKey, List<BackupWithClassifiers>> groupBackupDatabasesByLogicalBackupNameAndAdapter(
-            List<BackupWithClassifiers> backupDatabases
+    private Map<AdapterBackupKey, List<DatabaseWithClassifiers>> groupBackupDatabasesByLogicalBackupNameAndAdapter(
+            List<DatabaseWithClassifiers> backupDatabases
     ) {
         return backupDatabases.stream()
                 .map(this::mapToAdapterBackupKeyEntry)
@@ -1021,8 +1021,8 @@ public class DbBackupV2Service {
                 ));
     }
 
-    private Map.Entry<AdapterBackupKey, BackupWithClassifiers> mapToAdapterBackupKeyEntry(
-            BackupWithClassifiers backupDatabaseDelegate
+    private Map.Entry<AdapterBackupKey, DatabaseWithClassifiers> mapToAdapterBackupKeyEntry(
+            DatabaseWithClassifiers backupDatabaseDelegate
     ) {
         List<ClassifierDetails> classifiers = backupDatabaseDelegate.classifiers();
         String type = backupDatabaseDelegate.backupDatabase().getLogicalBackup().getType();
@@ -1048,7 +1048,7 @@ public class DbBackupV2Service {
         }
 
         return Map.entry(new AdapterBackupKey(adapterId, logicalBackupName),
-                new BackupWithClassifiers(backupDatabaseDelegate.backupDatabase(), classifiers));
+                new DatabaseWithClassifiers(backupDatabaseDelegate.backupDatabase(), classifiers));
     }
 
     protected void startRestore(Restore restore, boolean dryRun) {
@@ -1269,9 +1269,9 @@ public class DbBackupV2Service {
                                     return ensuredUser;
                                 });
                     } catch (Exception e) {
-                        log.error("Failed to ensure user in database [{}]", dbId);
+                        log.error("Failed to ensure user in database [{}] with role [{}]", dbId, user.getRole());
                         throw new BackupExecutionException(
-                                String.format("Failed to ensure user in database [%s]", dbId), e);
+                                String.format("Failed to ensure user in database [%s] with role [%s]", dbId, user.getRole()), e);
                     }
                 })
                 .toList();
@@ -1311,7 +1311,7 @@ public class DbBackupV2Service {
                                     asyncOperations.wrapWithContext(
                                             () -> Failsafe.with(retryPolicy).get(() -> {
                                                         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(logicalRestore.getAdapterId());
-                                                        if (isNameEmpty(logicalRestore.getLogicalRestoreName())) {
+                                                        if (isLogicalRestoreNotStarted(logicalRestore)) {
                                                             LogicalRestoreAdapterResponse response = logicalRestore(logicalRestore, restore.getStorageName(), restore.getBlobPath(), false);
                                                             refreshLogicalRestoreState(logicalRestore, response);
                                                         }
@@ -1672,7 +1672,7 @@ public class DbBackupV2Service {
     }
 
     @Transactional
-    public void deleteBackup(String backupName) {
+    public void deleteBackupFromDb(String backupName) {
         if (dbaaSHelper.isProductionMode()) {
             throw new ForbiddenDeleteOperationException();
         }
@@ -1764,8 +1764,12 @@ public class DbBackupV2Service {
         return c == null || c.isEmpty();
     }
 
-    private boolean isNameEmpty(String name) {
-        return name == null || name.isBlank();
+    private boolean isLogicalBackupNotStarted(LogicalBackup logicalBackup) {
+        return logicalBackup.getLogicalBackupName() == null || logicalBackup.getLogicalBackupName().isBlank();
+    }
+
+    private boolean isLogicalRestoreNotStarted(LogicalRestore logicalRestore) {
+        return logicalRestore.getLogicalRestoreName() == null || logicalRestore.getLogicalRestoreName().isBlank();
     }
 
     protected BackupStatus aggregateBackupTaskStatus(Set<BackupTaskStatus> backupTaskStatuses) {

@@ -6,5 +6,5 @@ import com.netcracker.cloud.dbaas.entity.pg.backupV2.BackupDatabase;
 import java.util.List;
 
 
-public record BackupWithClassifiers(BackupDatabase backupDatabase,
-                                    List<ClassifierDetails> classifiers) {}
+public record DatabaseWithClassifiers(BackupDatabase backupDatabase,
+                                      List<ClassifierDetails> classifiers) {}

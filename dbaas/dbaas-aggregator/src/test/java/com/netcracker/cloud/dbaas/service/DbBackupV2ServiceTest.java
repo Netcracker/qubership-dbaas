@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.dto.backupV2.BackupWithClassifiers;
+import com.netcracker.cloud.dbaas.entity.dto.backupV2.DatabaseWithClassifiers;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalBackupAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterResponse;
 import com.netcracker.cloud.dbaas.entity.pg.*;
@@ -2366,11 +2366,11 @@ class DbBackupV2ServiceTest {
         filterCriteria.setExclude(List.of(exclude));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3, backupDatabase4, backupDatabase5, backupDatabase6);
-        List<BackupWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
+        List<DatabaseWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
 
         assertEquals(1, filteredDatabases.size());
 
-        BackupWithClassifiers backupDatabaseDelegate = filteredDatabases.getFirst();
+        DatabaseWithClassifiers backupDatabaseDelegate = filteredDatabases.getFirst();
 
         assertEquals(backupDatabaseDelegate.backupDatabase(), backupDatabase1);
         assertEquals(backupDatabaseDelegate.classifiers().getFirst().getClassifierBeforeMapper(), backupDatabase1.getClassifiers().getFirst());
@@ -2438,11 +2438,11 @@ class DbBackupV2ServiceTest {
         filterCriteria.setExclude(List.of(exclude));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3, backupDatabase4, backupDatabase5, backupDatabase6);
-        List<BackupWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
+        List<DatabaseWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
 
         assertEquals(1, filteredDatabases.size());
 
-        BackupWithClassifiers backupDatabaseDelegate = filteredDatabases.getFirst();
+        DatabaseWithClassifiers backupDatabaseDelegate = filteredDatabases.getFirst();
 
         assertEquals(backupDatabaseDelegate.backupDatabase(), backupDatabase3);
         assertEquals(backupDatabaseDelegate.classifiers().getFirst().getClassifierBeforeMapper(), backupDatabase3.getClassifiers().getFirst());
@@ -2488,11 +2488,11 @@ class DbBackupV2ServiceTest {
         filterCriteria.setFilter(List.of(filter1, filter2));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3);
-        List<BackupWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
+        List<DatabaseWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
 
         assertEquals(2, filteredDatabases.size());
 
-        BackupWithClassifiers backupDatabaseDelegate1 = filteredDatabases.stream()
+        DatabaseWithClassifiers backupDatabaseDelegate1 = filteredDatabases.stream()
                 .filter(db -> dbName1.equals(db.backupDatabase().getName()))
                 .findAny().orElse(null);
         assertNotNull(backupDatabaseDelegate1);
@@ -2508,7 +2508,7 @@ class DbBackupV2ServiceTest {
         assertNotNull(classifier1);
         assertNotNull(classifier2);
 
-        BackupWithClassifiers backupDatabaseDelegate2 = filteredDatabases.stream()
+        DatabaseWithClassifiers backupDatabaseDelegate2 = filteredDatabases.stream()
                 .filter(db -> dbName2.equals(db.backupDatabase().getName()))
                 .findAny().orElse(null);
         assertNotNull(backupDatabaseDelegate2);
@@ -2554,11 +2554,11 @@ class DbBackupV2ServiceTest {
         filterCriteria.setFilter(List.of(filter1));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3);
-        List<BackupWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
+        List<DatabaseWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
 
         assertEquals(1, filteredDatabases.size());
 
-        BackupWithClassifiers backupDatabaseDelegate1 = filteredDatabases.stream()
+        DatabaseWithClassifiers backupDatabaseDelegate1 = filteredDatabases.stream()
                 .filter(db -> dbName1.equals(db.backupDatabase().getName()))
                 .findAny().orElse(null);
         assertNotNull(backupDatabaseDelegate1);
@@ -3246,7 +3246,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void deleteBackup() {
+    void deleteBackupFromDb() {
         String backupName = "backupName";
         String namespace = "namespace";
         Backup backup = getBackup(backupName, namespace);
@@ -3257,7 +3257,7 @@ class DbBackupV2ServiceTest {
 
         when(dbaaSHelper.isProductionMode()).thenReturn(false);
 
-        dbBackupV2Service.deleteBackup(backupName);
+        dbBackupV2Service.deleteBackupFromDb(backupName);
 
         Backup deletedBackup = backupRepository.findById(backupName);
         assertNull(deletedBackup);

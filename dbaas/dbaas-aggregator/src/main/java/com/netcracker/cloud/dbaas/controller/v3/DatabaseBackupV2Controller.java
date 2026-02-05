@@ -340,7 +340,7 @@ public class DatabaseBackupV2Controller {
     }
 
     @Operation(summary = "Remove backup",
-            description = "Deleting a backup by the specified backup name",
+            description = "Deleting a backup entirely from DB by the specified backup name. Only for internal usage.",
             hidden = true
     )
     @APIResponses({
@@ -353,7 +353,7 @@ public class DatabaseBackupV2Controller {
                                  @PathParam("backupName")
                                  @NotBlank String backupName
     ) {
-        dbBackupV2Service.deleteBackup(backupName);
+        dbBackupV2Service.deleteBackupFromDb(backupName);
         return Response.noContent().build();
     }
 }
