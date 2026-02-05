@@ -24,9 +24,9 @@ public class RestoreExternalDatabaseResponse {
     private String type;
     @Schema(
             description = "List of classifier objects describing database attributes.",
-            implementation = ClassifierResponse.class,
+            implementation = ClassifierDetailsResponse.class,
             type = SchemaType.ARRAY
     )
-    private List<ClassifierResponse> classifiers;
+    private List<ClassifierDetailsResponse> classifiers;
 }
 

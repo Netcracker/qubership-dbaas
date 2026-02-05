@@ -67,8 +67,6 @@ public class Restore {
 
     private Integer completed;
 
-    private Long duration;
-
     @Column(name = "error_message")
     private String errorMessage;
 

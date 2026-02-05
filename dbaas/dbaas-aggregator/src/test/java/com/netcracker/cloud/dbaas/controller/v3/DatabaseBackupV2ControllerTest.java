@@ -83,7 +83,7 @@ class DatabaseBackupV2ControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", allOf(
                         containsString("backupName: must not be blank"),
-                        containsString("filter: size must be between 1 and 2147483647")
+                        containsString("filter: there should be at least one filter specified")
                 ));
 
         verify(dbBackupV2Service, times(0)).backup(any(), anyBoolean());
@@ -108,7 +108,7 @@ class DatabaseBackupV2ControllerTest {
                 .when().post("/backup")
                 .then()
                 .statusCode(422)
-                .body("reason", equalTo("Backup not allowed"))
+                .body("reason", equalTo("Operation not allowed"))
                 .body("message", equalTo("The backup/restore request can't be processed. Backup operation unsupported for databases: " + dbNames));
         verify(dbBackupV2Service, times(1)).backup(backupRequest, false);
     }
@@ -137,7 +137,7 @@ class DatabaseBackupV2ControllerTest {
     }
 
     @Test
-    void initiateBackup_emptyFilterCase(){
+    void initiateBackup_emptyFilterCase() {
         String namespace = "namespace";
         String backupName = "backupName";
 
@@ -153,12 +153,16 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("reason", equalTo("Request does not contain required fields"))
-                .body("message", equalTo("filter[0]: Filter must have at least one non-null field"));
+                .body("message", allOf(
+                                containsString("exclude[0]: Filter must have at least one non-null field"),
+                                containsString("filter[0]: Filter must have at least one non-null field")
+                        )
+                );
         verify(dbBackupV2Service, times(0)).backup(backupRequest, false);
     }
 
     @Test
-    void restoreBackup_emptyFilterCase(){
+    void restoreBackup_emptyFilterCase() {
         String namespace = "namespace";
         String restoreName = "restoreName";
         String backupName = "backupName";
@@ -176,9 +180,14 @@ class DatabaseBackupV2ControllerTest {
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("reason", equalTo("Request does not contain required fields"))
-                .body("message", equalTo("filter[0]: Filter must have at least one non-null field"));
+                .body("message", allOf(
+                                containsString("exclude[0]: Filter must have at least one non-null field"),
+                                containsString("filter[0]: Filter must have at least one non-null field")
+                        )
+                );
         verify(dbBackupV2Service, times(0)).restore(backupName, restoreRequest, false);
     }
+
     @Test
     void getBackupStatus_validBackupNameCase() {
         String backupName = "test-backup-name";

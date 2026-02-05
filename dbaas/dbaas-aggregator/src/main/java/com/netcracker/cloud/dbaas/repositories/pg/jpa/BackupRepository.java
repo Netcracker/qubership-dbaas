@@ -18,7 +18,7 @@ public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
         return entityManager.merge(backup);
     }
 
-    public List<Backup> findBackupsToAggregate() {
+    public List<Backup> findBackupsToTrack() {
         return list("status in ?1", List.of(BackupStatus.IN_PROGRESS));
     }
 }

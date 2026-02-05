@@ -18,7 +18,7 @@ public class RestoreRepository implements PanacheRepositoryBase<Restore, String>
         return entityManager.merge(restore);
     }
 
-    public List<Restore> findRestoresToAggregate() {
+    public List<Restore> findRestoresToTrack() {
         return list("status in ?1", List.of(RestoreStatus.IN_PROGRESS));
     }
 

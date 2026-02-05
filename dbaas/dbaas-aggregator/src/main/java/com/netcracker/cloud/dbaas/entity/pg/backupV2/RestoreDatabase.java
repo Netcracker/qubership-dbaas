@@ -37,7 +37,7 @@ public class RestoreDatabase {
     @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private List<Classifier> classifiers;
+    private List<ClassifierDetails> classifiers;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

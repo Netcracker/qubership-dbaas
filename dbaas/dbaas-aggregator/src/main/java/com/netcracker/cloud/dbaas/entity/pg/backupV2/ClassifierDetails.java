@@ -11,7 +11,7 @@ import java.util.SortedMap;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Classifier {
+public class ClassifierDetails {
     private ClassifierType type;
     private String previousDatabase;
     private SortedMap<String, Object> classifier;
@@ -19,7 +19,7 @@ public class Classifier {
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof Classifier that)) return false;
+        if (!(o instanceof ClassifierDetails that)) return false;
         return type == that.type && Objects.equals(classifier, that.classifier) && Objects.equals(classifierBeforeMapper, that.classifierBeforeMapper);
     }
 
