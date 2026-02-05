@@ -338,4 +338,22 @@ public class DatabaseBackupV2Controller {
                                  @NotBlank String restoreName) {
         return Response.accepted(dbBackupV2Service.retryRestore(restoreName)).build();
     }
+
+    @Operation(summary = "Remove backup",
+            description = "Deleting a backup by the specified backup name",
+            hidden = true
+    )
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "The backup operation deleted successfully", content = @Content(schema = @Schema(implementation = String.class))),
+            @APIResponse(responseCode = "403", description = "The DBaaS is working in PROD mode. Deleting backup is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
+    })
+    @Path("/backup/{backupName}/forceDelete")
+    @DELETE
+    public Response deleteBackup(@Parameter(description = "Unique name of the backup operation", required = true)
+                                 @PathParam("backupName")
+                                 @NotBlank String backupName
+    ) {
+        dbBackupV2Service.deleteBackup(backupName);
+        return Response.noContent().build();
+    }
 }

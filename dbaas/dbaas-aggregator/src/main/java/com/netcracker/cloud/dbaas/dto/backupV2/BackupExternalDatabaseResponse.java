@@ -13,7 +13,7 @@ import java.util.UUID;
 @Schema(description = "External database details")
 public class BackupExternalDatabaseResponse {
     @Schema(
-            description = "Identifier of the external database",
+            description = "Identifier of the external backup database",
             examples = {"550e8400-e29b-41d4-a716-446655440000"},
             required = true
     )

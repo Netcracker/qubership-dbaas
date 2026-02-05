@@ -214,7 +214,7 @@ public enum ErrorCodes implements ErrorCode {
             "Resource with name '%s' already exists"),
     CORE_DBAAS_4047(
             "CORE-DBAAS-4047",
-            "Backup not allowed",
+            "Operation not allowed",
             "The backup/restore request can't be processed. %s"
     ),
     CORE_DBAAS_4048(

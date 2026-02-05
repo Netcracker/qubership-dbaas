@@ -16,7 +16,7 @@ import java.util.UUID;
 @Schema(description = "Logical database restore details")
 public class RestoreDatabaseResponse {
     @Schema(
-            description = "Identifier of the database",
+            description = "Identifier of the restore database",
             examples = {"550e8400-e29b-41d4-a716-446655440000"},
             required = true
     )
