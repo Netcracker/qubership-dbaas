@@ -663,32 +663,64 @@
           }
         }
       },
-      "ClassifierResponse": {
+      "ClassifierDetailsResponse": {
         "type": "object",
+        "required": [
+          "type",
+          "previousDatabase",
+          "classifier",
+          "classifierBeforeMapper"
+        ],
+        "description": "Classifier details used during restore operation",
         "properties": {
           "type": {
-            "$ref": "#/components/schemas/ClassifierType"
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NEW",
+              "REPLACED",
+              "TRANSIENT_REPLACED"
+            ],
+            "description": "Type of classifier in restore context"
           },
           "previousDatabase": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "oldDb"
+            ],
+            "description": "Name of the source database. From which the classifier was obtained via backup"
           },
           "classifier": {
             "type": "object",
-            "additionalProperties": {}
+            "examples": [
+              [
+                {
+                  "namespace": "namespace",
+                  "microserviceName": "microserviceName",
+                  "scope": "service"
+                }
+              ]
+            ],
+            "additionalProperties": {},
+            "description": "Final classifier used to create a database in the target environment. "
           },
           "classifierBeforeMapper": {
             "type": "object",
-            "additionalProperties": {}
+            "examples": [
+              [
+                {
+                  "namespace": "namespace",
+                  "microserviceName": "microserviceName",
+                  "scope": "service"
+                }
+              ]
+            ],
+            "additionalProperties": {},
+            "description": "Classifier state before applying restore-side mapping. Represents classifier data coming from backup, adapted to restore model but not yet transformed"
           }
         }
-      },
-      "ClassifierType": {
-        "type": "string",
-        "enum": [
-          "NEW",
-          "REPLACED",
-          "TRANSIENT_REPLACED"
-        ]
       },
       "ClassifierWithRolesRequest": {
         "type": "object",
@@ -3154,7 +3186,7 @@
               ]
             ],
             "items": {
-              "$ref": "#/components/schemas/ClassifierResponse"
+              "$ref": "#/components/schemas/ClassifierDetailsResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           },
@@ -3264,7 +3296,7 @@
           "classifiers": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ClassifierResponse"
+              "$ref": "#/components/schemas/ClassifierDetailsResponse"
             },
             "description": "List of classifier objects describing database attributes."
           }
