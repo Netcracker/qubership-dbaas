@@ -1028,11 +1028,7 @@ public class DbBackupV2Service {
         String type = backupDatabaseDelegate.backupDatabase().getLogicalBackup().getType();
         String logicalBackupName = backupDatabaseDelegate.backupDatabase().getLogicalBackup().getLogicalBackupName();
 
-        SortedMap<String, Object> firstNewClassifier = classifiers.stream()
-                .map(ClassifierDetails::getClassifier)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElseGet(() -> classifiers.getFirst().getClassifier());
+        SortedMap<String, Object> firstNewClassifier = classifiers.getFirst().getClassifier();
         String targetNamespace = (String) firstNewClassifier.get(NAMESPACE);
         String microserviceName = (String) firstNewClassifier.get(MICROSERVICE_NAME);
         PhysicalDatabase physicalDatabase = balancingRulesService
