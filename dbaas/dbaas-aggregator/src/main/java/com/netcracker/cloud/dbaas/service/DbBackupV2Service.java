@@ -94,7 +94,6 @@ public class DbBackupV2Service {
                              PasswordEncryption encryption,
                              BgNamespaceRepository bgNamespaceRepository,
                              LockProvider lockProvider,
-                             DbaaSHelper dbaaSHelper,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.attempts") int retryAttempts,
                              @ConfigProperty(name = "dbaas.backup-restore.check.attempts") int retryCount
@@ -1467,12 +1466,11 @@ public class DbBackupV2Service {
                                         type,
                                         currClassifier
                                 );
-                            }, () -> {
-                                log.debug("Database not found for classifier: dbType={}, classifierType={}, classifier={}",
+                            }, () -> log.debug("Database not found for classifier: dbType={}, classifierType={}, classifier={}",
                                         type,
                                         classifier.getType(),
-                                        currClassifier);
-                            });
+                                        currClassifier)
+                            );
                 });
     }
 
