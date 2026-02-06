@@ -8,7 +8,7 @@ on:
 
 jobs:
   mvn:
-    uses: netcracker/qubership-core-infra/.github/workflows/maven-build-with-sonar.yaml@48158cb845bca0d124fdcb12ce51eb578312daf9 # v1.3.1
+    uses: netcracker/qubership-core-infra/.github/workflows/maven-build-with-sonar.yaml@32a5b506971a029acc41bc69fd42d06137caeb36 # v1.3.3
     with:
       event-name: ${{ github.event_name }}
       actor: ${{ github.actor }}
@@ -16,6 +16,6 @@ jobs:
 
   docker-build:
     needs: [mvn]
-    uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@48158cb845bca0d124fdcb12ce51eb578312daf9 # v1.3.1
+    uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@32a5b506971a029acc41bc69fd42d06137caeb36 # v1.3.3
     with:
       dry-run: false
