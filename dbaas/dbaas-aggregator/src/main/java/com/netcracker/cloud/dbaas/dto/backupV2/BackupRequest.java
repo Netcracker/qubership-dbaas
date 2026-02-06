@@ -1,12 +1,11 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
 
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
-import com.netcracker.cloud.dbaas.utils.validation.BackupGroup;
+import com.netcracker.cloud.dbaas.utils.validation.group.BackupGroup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.groups.ConvertGroup;
-import jakarta.validation.groups.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -17,7 +16,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 public class BackupRequest {
     @NotBlank
     @Schema(
-            description = "Unique identifier of the backup",
+            description = "Unique name of the backup",
             examples = {
                     "before-prod-update-20251013T1345-G5s8"
             },
@@ -45,7 +44,7 @@ public class BackupRequest {
     )
     @Valid
     @NotNull
-    @ConvertGroup(from = Default.class, to = BackupGroup.class)
+    @ConvertGroup(to = BackupGroup.class)
     private FilterCriteria filterCriteria;
     @Schema(
             description = "How to handle external databases during backup",

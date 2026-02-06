@@ -214,8 +214,8 @@ public enum ErrorCodes implements ErrorCode {
             "Resource with name '%s' already exists"),
     CORE_DBAAS_4047(
             "CORE-DBAAS-4047",
-            "Backup not allowed",
-            "The backup/restore request can`t be processed. %s"
+            "Operation not allowed",
+            "The backup/restore request can't be processed. %s"
     ),
     CORE_DBAAS_4048(
             "CORE-DBAAS-4048",
@@ -225,7 +225,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4049(
             "CORE-DBAAS-4049",
             "Unprocessable resource",
-            "Resource '%s' can`t be processed: %s"
+            "Resource '%s' can't be processed: %s"
     ),
     CORE_DBAAS_4050(
             "CORE-DBAAS-4050",
@@ -241,6 +241,11 @@ public enum ErrorCodes implements ErrorCode {
             "CORE-DBAAS-4052",
             "Digest mismatch",
             "Digest header mismatch: %s"
+    ),
+    CORE_DBAAS_4053(
+            "CORE-DBAAS-4053",
+            "Operation already running",
+            "Operation '%s' is already in progress"
     ),
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",

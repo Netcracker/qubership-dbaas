@@ -140,12 +140,21 @@
       "BackupDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name",
           "status",
           "path"
         ],
         "description": "Logical database backup details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the backup database"
+          },
           "name": {
             "type": "string",
             "examples": [
@@ -173,7 +182,9 @@
           "settings": {
             "type": "object",
             "examples": [
-              "{\"key\":value, \"key\":value}"
+              {
+                "key": "value"
+              }
             ],
             "additionalProperties": {},
             "description": "Database settings as a key-value map"
@@ -181,7 +192,12 @@
           "users": {
             "type": "array",
             "examples": [
-              "[{\"name\":\"username\",\"role\":\"admin\"}"
+              [
+                {
+                  "name": "username",
+                  "role": "admin"
+                }
+              ]
             ],
             "items": {
               "$ref": "#/components/schemas/User"
@@ -204,6 +220,7 @@
               "NOT_STARTED",
               "IN_PROGRESS",
               "FAILED",
+              "RETRYABLE_FAIL",
               "COMPLETED"
             ],
             "description": "Current state of the backup database"
@@ -251,10 +268,19 @@
       "BackupExternalDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name"
         ],
         "description": "External database details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the external backup database"
+          },
           "name": {
             "type": "string",
             "examples": [
@@ -306,7 +332,7 @@
               "before-prod-update-20251013T1345-G5s8"
             ],
             "pattern": "\\S",
-            "description": "Unique identifier of the backup"
+            "description": "Unique name of the backup"
           },
           "storageName": {
             "type": "string",
@@ -326,18 +352,8 @@
           },
           "filterCriteria": {
             "type": "object",
-            "required": [
-              "filter"
-            ],
             "description": "Filter criteria",
             "properties": {
-              "filter": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Apply the filter to the remaining databases"
-              },
               "include": {
                 "type": "array",
                 "items": {
@@ -388,7 +404,10 @@
           "blobPath",
           "externalDatabaseStrategy",
           "ignoreNotBackupableDatabases",
-          "status"
+          "status",
+          "total",
+          "completed",
+          "size"
         ],
         "description": "Response containing backup operation details",
         "properties": {
@@ -398,7 +417,7 @@
               "before-prod-update-20251013T1345-G5s8"
             ],
             "pattern": "\\S",
-            "description": "Unique identifier of the backup"
+            "description": "Unique name of the backup"
           },
           "storageName": {
             "type": "string",
@@ -436,22 +455,12 @@
             "examples": [
               false
             ],
-            "description": "Whether external databases were skipped during the backup"
+            "description": "Whether non‑backupable databases were ignored during backup"
           },
           "filterCriteria": {
             "type": "object",
-            "required": [
-              "filter"
-            ],
             "description": "Filter criteria",
             "properties": {
-              "filter": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Apply the filter to the remaining databases"
-              },
               "include": {
                 "type": "array",
                 "items": {
@@ -651,6 +660,65 @@
         "properties": {
           "BGState": {
             "$ref": "#/components/schemas/BGState"
+          }
+        }
+      },
+      "ClassifierDetailsResponse": {
+        "type": "object",
+        "required": [
+          "type",
+          "classifier"
+        ],
+        "description": "Classifier details used during restore operation",
+        "properties": {
+          "type": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "enum": [
+              "NEW",
+              "REPLACED",
+              "TRANSIENT_REPLACED"
+            ],
+            "description": "Type of classifier in restore context"
+          },
+          "previousDatabase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "dbaas_12345"
+            ],
+            "description": "Name of the existing database previously associated with this classifier, used when the classifier replaces or transiently replaces another database during restore"
+          },
+          "classifier": {
+            "type": "object",
+            "examples": [
+              {
+                "namespace": "namespace",
+                "microserviceName": "microserviceName",
+                "scope": "service"
+              }
+            ],
+            "additionalProperties": {},
+            "description": "Final classifier used to create a database in the target environment."
+          },
+          "classifierBeforeMapper": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "examples": [
+              {
+                "namespace": "namespace",
+                "microserviceName": "microserviceName",
+                "scope": "service"
+              }
+            ],
+            "additionalProperties": {},
+            "description": "Original (pre-mapping) classifier from backup database preserved to track how mapping changed the classifier during restore"
           }
         }
       },
@@ -1790,18 +1858,8 @@
       },
       "FilterCriteria": {
         "type": "object",
-        "required": [
-          "filter"
-        ],
         "description": "Filter criteria",
         "properties": {
-          "filter": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Filter"
-            },
-            "description": "Apply the filter to the remaining databases"
-          },
           "include": {
             "type": "array",
             "items": {
@@ -1982,6 +2040,7 @@
       "LogicalBackupResponse": {
         "type": "object",
         "required": [
+          "id",
           "logicalBackupName",
           "adapterId",
           "type",
@@ -1990,6 +2049,14 @@
         ],
         "description": "Logical backup details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the logical backup"
+          },
           "logicalBackupName": {
             "type": "string",
             "description": "Name of the logical backup in adapter"
@@ -2014,6 +2081,7 @@
               "NOT_STARTED",
               "IN_PROGRESS",
               "FAILED",
+              "RETRYABLE_FAIL",
               "COMPLETED"
             ],
             "description": "Current state of the backup databases of one adapter"
@@ -2053,6 +2121,7 @@
       "LogicalRestoreResponse": {
         "type": "object",
         "required": [
+          "id",
           "logicalRestoreName",
           "adapterId",
           "type",
@@ -2061,6 +2130,14 @@
         ],
         "description": "Logical restore details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the logical restore"
+          },
           "logicalRestoreName": {
             "type": "string",
             "description": "Name of the logical restore in adapter"
@@ -2095,6 +2172,7 @@
               "NOT_STARTED",
               "IN_PROGRESS",
               "FAILED",
+              "RETRYABLE_FAIL",
               "COMPLETED"
             ],
             "description": "Current state of the restore operation"
@@ -3074,12 +3152,21 @@
       "RestoreDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name",
           "status",
           "path"
         ],
         "description": "Logical database restore details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the restore database"
+          },
           "name": {
             "type": "string",
             "examples": [
@@ -3099,8 +3186,7 @@
               ]
             ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierDetailsResponse"
             },
             "description": "List of database classifiers. Each classifier is a sorted map of attributes."
           },
@@ -3117,7 +3203,9 @@
           "settings": {
             "type": "object",
             "examples": [
-              "{\"key\":value, \"key\":value}"
+              {
+                "key": "value"
+              }
             ],
             "additionalProperties": {},
             "description": "Database settings as a key-value map"
@@ -3138,6 +3226,7 @@
               "NOT_STARTED",
               "IN_PROGRESS",
               "FAILED",
+              "RETRYABLE_FAIL",
               "COMPLETED"
             ],
             "description": "Current state of the restore database"
@@ -3162,7 +3251,7 @@
             "examples": [
               "Restore Not Found"
             ],
-            "description": "Error message if the backup failed"
+            "description": "Error message if the restore failed"
           },
           "creationTime": {
             "$ref": "#/components/schemas/Instant",
@@ -3177,10 +3266,19 @@
       "RestoreExternalDatabaseResponse": {
         "type": "object",
         "required": [
+          "id",
           "name"
         ],
         "description": "External database details",
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID",
+            "type": "string",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "description": "Identifier of the external restore database"
+          },
           "name": {
             "type": "string",
             "examples": [
@@ -3197,20 +3295,10 @@
           },
           "classifiers": {
             "type": "array",
-            "examples": [
-              [
-                {
-                  "namespace": "namespace",
-                  "microserviceName": "microserviceName",
-                  "scope": "service"
-                }
-              ]
-            ],
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "$ref": "#/components/schemas/ClassifierDetailsResponse"
             },
-            "description": "List of database classifiers. Each classifier is a sorted map of attributes."
+            "description": "List of classifier objects describing database attributes."
           }
         }
       },
@@ -3252,13 +3340,15 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
-            "description": "Unique identifier of the restore"
+            "pattern": "\\S",
+            "description": "Unique name of the restore"
           },
           "storageName": {
             "type": "string",
             "examples": [
               "s3-backend"
             ],
+            "pattern": "\\S",
             "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
@@ -3266,22 +3356,13 @@
             "examples": [
               "/backups"
             ],
+            "pattern": "\\S",
             "description": "Path to the restore file in the storage"
           },
           "filterCriteria": {
             "type": "object",
-            "required": [
-              "filter"
-            ],
             "description": "Filter criteria",
             "properties": {
-              "filter": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Apply the filter to the remaining databases"
-              },
               "include": {
                 "type": "array",
                 "items": {
@@ -3350,8 +3431,12 @@
         "type": "object",
         "required": [
           "restoreName",
+          "backupName",
+          "storageName",
           "externalDatabaseStrategy",
-          "status"
+          "status",
+          "total",
+          "completed"
         ],
         "description": "Response containing the restore operation details",
         "properties": {
@@ -3360,20 +3445,23 @@
             "examples": [
               "restore-before-prod-update-20251203T1020-4t6S"
             ],
-            "description": "Unique identifier of the restore"
+            "pattern": "\\S",
+            "description": "Unique name of the restore"
           },
           "backupName": {
             "type": "string",
             "examples": [
               "before-prod-update-20251013T1345-G5s8"
             ],
-            "description": "Unique identifier of the backup"
+            "pattern": "\\S",
+            "description": "Unique name of the backup"
           },
           "storageName": {
             "type": "string",
             "examples": [
               "s3-backend"
             ],
+            "pattern": "\\S",
             "description": "Name of the storage backend containing the restore"
           },
           "blobPath": {
@@ -3400,18 +3488,8 @@
           },
           "filterCriteria": {
             "type": "object",
-            "required": [
-              "filter"
-            ],
             "description": "Criteria used to filter restore operations",
             "properties": {
-              "filter": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Filter"
-                },
-                "description": "Apply the filter to the remaining databases"
-              },
               "include": {
                 "type": "array",
                 "items": {
@@ -3494,22 +3572,6 @@
               "Backup Not Found"
             ],
             "description": "Aggregated error messages during restore operation"
-          },
-          "duration": {
-            "type": "integer",
-            "format": "int64",
-            "examples": [
-              1200
-            ],
-            "description": "Aggregated duration of databases"
-          },
-          "attemptCount": {
-            "type": "integer",
-            "format": "int32",
-            "examples": [
-              1
-            ],
-            "description": "Total number of adapter requests"
           },
           "logicalRestores": {
             "type": "array",
@@ -4224,7 +4286,7 @@
     "/api/backups/v1/backup": {
       "post": {
         "summary": "Initiate database backup",
-        "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup identifier that can be used to track progress.",
+        "description": "Starts an asynchronous backup operation for the specified databases. Returns immediately with a backup name that can be used to track progress.",
         "tags": [
           "Backup \u0026 Restore"
         ],
@@ -4240,14 +4302,14 @@
         ],
         "requestBody": {
           "description": "Backup request",
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BackupRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -4307,7 +4369,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4318,16 +4380,6 @@
           },
           "500": {
             "description": "An unexpected error occurred on the server",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not support the functionality required to fulfill the request",
             "content": {
               "application/json": {
                 "schema": {
@@ -4355,12 +4407,13 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the backup",
+            "description": "Unique name of the backup",
             "required": true,
             "name": "backupName",
             "in": "path",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
@@ -4371,6 +4424,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BackupResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
@@ -4418,12 +4481,13 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the backup",
+            "description": "Unique name of the backup",
             "required": true,
             "name": "backupName",
             "in": "path",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           },
           {
@@ -4442,14 +4506,24 @@
           "204": {
             "description": "Backup deleted successfully"
           },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Authentication is required and has failed or has not been provided"
           },
           "403": {
             "description": "The request was valid, but the server is refusing action"
           },
-          "404": {
-            "description": "The requested resource could not be found",
+          "422": {
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4487,7 +4561,7 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the backup",
+            "description": "Unique name of the backup",
             "required": true,
             "name": "backupName",
             "in": "path",
@@ -4519,6 +4593,16 @@
               }
             }
           },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Authentication is required and has failed or has not been provided"
           },
@@ -4536,7 +4620,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4568,13 +4652,13 @@
     "/api/backups/v1/backup/{backupName}/restore": {
       "post": {
         "summary": "Restore from backup",
-        "description": "Initiate a database restore operation from an existing backup.This operation is asynchronous and returns immediately with a restore identifier that can be used to track progress.Operation is not idempotent",
+        "description": "Initiate a database restore operation from an existing backup.This operation is asynchronous and returns immediately with a restore name that can be used to track progress.Operation is not idempotent",
         "tags": [
           "Backup \u0026 Restore"
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the backup",
+            "description": "Unique name of the backup",
             "required": true,
             "name": "backupName",
             "in": "path",
@@ -4594,14 +4678,14 @@
         ],
         "requestBody": {
           "description": "Restore request",
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RestoreRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -4661,7 +4745,7 @@
             }
           },
           "422": {
-            "description": "The request was accepted, but the server could`t process due to incompatible resource",
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4672,16 +4756,6 @@
           },
           "500": {
             "description": "An unexpected error occurred on the server",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TmfErrorResponse"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not support the functionality required to fulfill the request",
             "content": {
               "application/json": {
                 "schema": {
@@ -4709,7 +4783,7 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the backup",
+            "description": "Unique name of the backup",
             "required": true,
             "name": "backupName",
             "in": "path",
@@ -4726,6 +4800,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BackupStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
@@ -4769,34 +4853,34 @@
     "/api/backups/v1/operation/uploadMetadata": {
       "post": {
         "summary": "Upload backup metadata",
-        "description": "Metadata upload done",
+        "description": "Upload backup metadata",
         "tags": [
           "Backup \u0026 Restore"
         ],
         "parameters": [
           {
-            "description": "Digest header in format: sha-256\u003d\u003cbase64-hash\u003e",
+            "description": "Digest header in format: SHA-256\u003d\u003cbase64-hash\u003e",
             "in": "header",
             "name": "Digest",
             "required": true,
             "schema": {
               "type": "string",
               "examples": [
-                "sha-256\u003dnOJRJg..."
+                "SHA-256\u003dnOJRJg..."
               ]
             }
           }
         ],
         "requestBody": {
           "description": "Backup metadata",
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BackupResponse"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -4857,7 +4941,7 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the restore operation",
+            "description": "Unique name of the restore operation",
             "required": true,
             "name": "restoreName",
             "in": "path",
@@ -4874,6 +4958,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
@@ -4921,12 +5015,13 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the restore operation",
+            "description": "Unique name of the restore operation",
             "required": true,
             "name": "restoreName",
             "in": "path",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
@@ -4940,8 +5035,8 @@
           "403": {
             "description": "The request was valid, but the server is refusing action"
           },
-          "404": {
-            "description": "The requested resource could not be found",
+          "422": {
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -4979,26 +5074,17 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the restore operation",
+            "description": "Unique name of the restore operation",
             "required": true,
             "name": "restoreName",
             "in": "path",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "\\S"
             }
           }
         ],
         "responses": {
-          "200": {
-            "description": "Restore operation retried successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RestoreResponse"
-                }
-              }
-            }
-          },
           "202": {
             "description": "Restore retry accepted and is being processed",
             "content": {
@@ -5017,6 +5103,26 @@
           },
           "404": {
             "description": "The requested resource could not be found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request could not be completed due to a conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request was accepted, but the server couldn\u0027t process due to incompatible resource",
             "content": {
               "application/json": {
                 "schema": {
@@ -5054,7 +5160,7 @@
         ],
         "parameters": [
           {
-            "description": "Unique identifier of the restore operation",
+            "description": "Unique name of the restore operation",
             "required": true,
             "name": "restoreName",
             "in": "path",

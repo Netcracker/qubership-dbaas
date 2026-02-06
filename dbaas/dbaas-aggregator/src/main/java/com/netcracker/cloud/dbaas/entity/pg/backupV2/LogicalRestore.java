@@ -2,7 +2,10 @@ package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.time.Instant;
 import java.util.List;
@@ -10,7 +13,6 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity
@@ -18,7 +20,6 @@ import java.util.UUID;
 public class LogicalRestore {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @Column(name = "logical_restore_name")
@@ -39,7 +40,7 @@ public class LogicalRestore {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private RestoreTaskStatus status;
+    private RestoreTaskStatus status = RestoreTaskStatus.NOT_STARTED;
 
     @Column(name = "error_message")
     private String errorMessage;
