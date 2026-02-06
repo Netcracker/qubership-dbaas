@@ -5,8 +5,10 @@ import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
+import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
 import com.netcracker.cloud.dbaas.exceptions.IntegrityViolationException;
 import com.netcracker.cloud.dbaas.service.DbBackupV2Service;
+import com.netcracker.cloud.dbaas.service.DbaaSHelper;
 import com.netcracker.cloud.dbaas.utils.DigestUtil;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -41,10 +43,12 @@ import static com.netcracker.cloud.dbaas.DbaasApiPath.BACKUP_PATH_V1;
 public class DatabaseBackupV2Controller {
 
     private final DbBackupV2Service dbBackupV2Service;
+    private final DbaaSHelper dbaaSHelper;
 
     @Inject
-    public DatabaseBackupV2Controller(DbBackupV2Service dbBackupV2Service) {
+    public DatabaseBackupV2Controller(DbBackupV2Service dbBackupV2Service, DbaaSHelper dbaaSHelper) {
         this.dbBackupV2Service = dbBackupV2Service;
+        this.dbaaSHelper = dbaaSHelper;
     }
 
     @Operation(summary = "Initiate database backup",
@@ -72,6 +76,7 @@ public class DatabaseBackupV2Controller {
     @POST
     public Response initiateBackup(@RequestBody(description = "Backup request") @Valid BackupRequest backupRequest,
                                    @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
+        log.info("Request to start backup with backup request {}, with dryRun mode {}", backupRequest, dryRun);
         BackupResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
         BackupStatus status = response.getStatus();
         if (status == BackupStatus.COMPLETED || status == BackupStatus.FAILED)
@@ -97,6 +102,7 @@ public class DatabaseBackupV2Controller {
     public Response getBackup(@Parameter(description = "Unique name of the backup", required = true)
                               @PathParam("backupName")
                               @NotBlank String backupName) {
+        log.info("Request to get backup {}", backupName);
         return Response.ok(dbBackupV2Service.getBackup(backupName)).build();
     }
 
@@ -118,6 +124,7 @@ public class DatabaseBackupV2Controller {
     public Response deleteBackup(@Parameter(description = "Unique name of the backup", required = true)
                                  @PathParam("backupName") @NotBlank String backupName,
                                  @QueryParam("force") @DefaultValue("false") boolean force) {
+        log.info("Request to delete backup {} with flag force {}", backupName, force);
         dbBackupV2Service.deleteBackup(backupName, force);
         if (force)
             return Response.accepted().build();
@@ -142,6 +149,7 @@ public class DatabaseBackupV2Controller {
     public Response getBackupStatus(@Parameter(description = "Unique name of the backup", required = true)
                                     @PathParam("backupName")
                                     @NotBlank String backupName) {
+        log.info("Request to get backup status {}", backupName);
         return Response.ok(dbBackupV2Service.getCurrentStatus(backupName)).build();
     }
 
@@ -177,6 +185,7 @@ public class DatabaseBackupV2Controller {
     public Response getBackupMetadata(@Parameter(description = "Unique name of the backup", required = true)
                                       @PathParam("backupName")
                                       @NotBlank String backupName) {
+        log.info("Request to get backup metadata {}", backupName);
         BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
         String digestHeader = DigestUtil.calculateDigest(response);
         return Response.ok(response)
@@ -212,6 +221,8 @@ public class DatabaseBackupV2Controller {
             @HeaderParam("Digest") @NotNull String digestHeader,
             @RequestBody(description = "Backup metadata") @Valid BackupResponse backupResponse
     ) {
+        log.info("Request to upload backup metadata {}", backupResponse);
+        log.debug("Backup digest {}", digestHeader);
         String calculatedDigest = DigestUtil.calculateDigest(backupResponse);
         if (!calculatedDigest.equals(digestHeader))
             throw new IntegrityViolationException(
@@ -250,7 +261,32 @@ public class DatabaseBackupV2Controller {
                                   @RequestBody(description = "Restore request")
                                   @Valid RestoreRequest restoreRequest,
                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, dryRun);
+        log.info("Request to restore backup {}, restore request {}, dryRun mode {}", backupName, restoreRequest, dryRun);
+        return restore(backupName, restoreRequest, dryRun, false);
+    }
+
+    @Operation(
+            summary = "Restore from backup with parallel execution allowed",
+            description = "Only for internal usage",
+            hidden = true
+    )
+    @Path("/backup/{backupName}/restore/allowParallel")
+    @POST
+    public Response restoreBackupAllowParallel(@Parameter(description = "Unique name of the backup", required = true)
+                                               @PathParam("backupName") @NotBlank String backupName,
+                                               @RequestBody(description = "Restore request")
+                                               @Valid RestoreRequest restoreRequest,
+                                               @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
+        log.info("Request to restore backup with parallel execution allowed," +
+                " backup name {}, restore request {}, dryRun mode {}", backupName, restoreRequest, dryRun);
+        if (dbaaSHelper.isProductionMode()) {
+            throw new ForbiddenDeleteOperationException();
+        }
+        return restore(backupName, restoreRequest, dryRun, true);
+    }
+
+    private Response restore(String backupName, RestoreRequest restoreRequest, boolean dryRun, boolean allowParallel) {
+        RestoreResponse response = dbBackupV2Service.restore(backupName, restoreRequest, dryRun, allowParallel);
         RestoreStatus status = response.getStatus();
         if (status == RestoreStatus.COMPLETED || status == RestoreStatus.FAILED)
             return Response.ok(response).build();
@@ -275,6 +311,7 @@ public class DatabaseBackupV2Controller {
     public Response getRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                @PathParam("restoreName")
                                @NotBlank String restoreName) {
+        log.info("Request to get restore {}", restoreName);
         return Response.ok(dbBackupV2Service.getRestore(restoreName)).build();
     }
 
@@ -293,6 +330,7 @@ public class DatabaseBackupV2Controller {
     public Response deleteRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                   @PathParam("restoreName")
                                   @NotBlank String restoreName) {
+        log.info("Request to delete restore {}", restoreName);
         dbBackupV2Service.deleteRestore(restoreName);
         return Response.noContent().build();
     }
@@ -313,6 +351,7 @@ public class DatabaseBackupV2Controller {
     public Response getRestoreStatus(@Parameter(description = "Unique name of the restore operation", required = true)
                                      @PathParam("restoreName")
                                      @NotBlank String restoreName) {
+        log.info("Request to get restore status {}", restoreName);
         return Response.ok(dbBackupV2Service.getRestoreStatus(restoreName)).build();
     }
 
@@ -336,23 +375,41 @@ public class DatabaseBackupV2Controller {
     public Response retryRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                  @PathParam("restoreName")
                                  @NotBlank String restoreName) {
-        return Response.accepted(dbBackupV2Service.retryRestore(restoreName)).build();
+        log.info("Request to retry restore {}", restoreName);
+        return Response.accepted(dbBackupV2Service.retryRestore(restoreName, false)).build();
+    }
+
+    @Operation(
+            summary = "Retry restore with parallel execution allowed",
+            description = "Only for internal usage",
+            hidden = true
+    )
+    @Path("/restore/{restoreName}/retry/allowParallel")
+    @POST
+    public Response retryRestoreAllowParallel(@Parameter(description = "Unique name of the restore operation", required = true)
+                                              @PathParam("restoreName")
+                                              @NotBlank String restoreName) {
+        log.info("Request to retry restore with parallel execution alllowed, restore name {}", restoreName);
+        if (dbaaSHelper.isProductionMode()) {
+            throw new ForbiddenDeleteOperationException();
+        }
+        return Response.accepted(dbBackupV2Service.retryRestore(restoreName, true)).build();
     }
 
     @Operation(summary = "Remove backup",
             description = "Deleting a backup entirely from DB by the specified backup name. Only for internal usage.",
             hidden = true
     )
-    @APIResponses({
-            @APIResponse(responseCode = "204", description = "The backup operation deleted successfully", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "403", description = "The DBaaS is working in PROD mode. Deleting backup is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
-    })
     @Path("/backup/{backupName}/forceDelete")
     @DELETE
-    public Response deleteBackup(@Parameter(description = "Unique name of the backup operation", required = true)
-                                 @PathParam("backupName")
-                                 @NotBlank String backupName
+    public Response deleteBackupFromDb(@Parameter(description = "Unique name of the backup operation", required = true)
+                                       @PathParam("backupName")
+                                       @NotBlank String backupName
     ) {
+        log.info("Request to delete backup from db, backup name {}", backupName);
+        if (dbaaSHelper.isProductionMode()) {
+            throw new ForbiddenDeleteOperationException();
+        }
         dbBackupV2Service.deleteBackupFromDb(backupName);
         return Response.noContent().build();
     }

@@ -77,7 +77,6 @@ public class DbBackupV2Service {
     private final PasswordEncryption encryption;
     private final BgNamespaceRepository bgNamespaceRepository;
     private final LockProvider lockProvider;
-    private final DbaaSHelper dbaaSHelper;
 
     private final Duration retryDelay;
     private final int retryAttempts;
@@ -111,17 +110,15 @@ public class DbBackupV2Service {
         this.encryption = encryption;
         this.bgNamespaceRepository = bgNamespaceRepository;
         this.lockProvider = lockProvider;
-        this.dbaaSHelper = dbaaSHelper;
         this.retryDelay = retryDelay;
         this.retryAttempts = retryAttempts;
         this.retryCount = retryCount;
     }
 
     public BackupResponse backup(BackupRequest backupRequest, boolean dryRun) {
-        String backupName = backupRequest.getBackupName();
-        backupExistenceCheck(backupName);
+        backupExistenceCheck(backupRequest.getBackupName());
 
-        log.info("Start backup process with name {}", backupName);
+        log.info("Start backup process with backupRequest {}", backupRequest);
         Map<Database, List<DatabaseRegistry>> filteredDb = validateAndFilterDatabasesForBackup(
                 getAllDbByFilter(backupRequest.getFilterCriteria()),
                 backupRequest.getIgnoreNotBackupableDatabases(),
@@ -433,7 +430,7 @@ public class DbBackupV2Service {
 
     protected Map<Database, List<DatabaseRegistry>> getAllDbByFilter(FilterCriteria filterCriteria) {
         List<DatabaseRegistry> filteredDatabases = databaseRegistryDbaasRepository
-                .findAllDatabasesByFilter(filterCriteria.getFilter())
+                .findAllDatabasesByFilter(filterCriteria.getInclude())
                 .stream()
                 .filter(registry -> {
                     if (!isValidRegistry(registry))
@@ -648,7 +645,7 @@ public class DbBackupV2Service {
         backupRepository.save(backup);
     }
 
-    public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun) {
+    public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun, boolean allowParallel) {
         String restoreName = restoreRequest.getRestoreName();
         if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
             log.error("Restore with name {} already exists", restoreName);
@@ -666,7 +663,7 @@ public class DbBackupV2Service {
         Restore restore = restoreLockWrapper(() -> {
             Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
             return restoreRepository.save(currRestore);
-        });
+        }, allowParallel);
 
         // DryRun on adapters
         startRestore(restore, true);
@@ -683,7 +680,6 @@ public class DbBackupV2Service {
 
     private RestoreResponse applyDryRunRestore(Backup backup, RestoreRequest restoreRequest) {
         Restore currRestore = initializeFullRestoreStructure(backup, restoreRequest);
-        // DryRun on adapters
         startRestore(currRestore, true);
         aggregateRestoreStatus(currRestore);
         return mapper.toRestoreResponse(currRestore);
@@ -710,7 +706,7 @@ public class DbBackupV2Service {
                                 String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
                                 String type = db.getLogicalBackup().getType();
                                 boolean configurational = db.isConfigurational();
-                                return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
+                                return filterCriteria.getInclude().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, configurational))
                                         && filterCriteria.getExclude().stream().noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, configurational));
                             })
                             .map(c -> new ClassifierDetails(ClassifierType.NEW, null, null, new TreeMap<>(c)))
@@ -918,8 +914,7 @@ public class DbBackupV2Service {
                                             .toList()
                             ))
                             .toList();
-                }
-                else {
+                } else {
                     restoreExternalDatabases = externalDatabases.stream()
                             .map(db -> {
                                 List<ClassifierDetails> filteredClassifiers = db.getClassifiers().stream()
@@ -927,7 +922,7 @@ public class DbBackupV2Service {
                                             String namespace = (String) classifier.get(NAMESPACE);
                                             String microserviceName = (String) classifier.get(MICROSERVICE_NAME);
                                             String type = db.getType();
-                                            return filterCriteria.getFilter().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
+                                            return filterCriteria.getInclude().stream().anyMatch(filter -> isMatches(filter, namespace, microserviceName, type, false))
                                                     && filterCriteria.getExclude().stream().filter(this::isFilled).noneMatch(ex -> isMatches(ex, namespace, microserviceName, type, false));//isFilled
                                         })
                                         .map(c -> new ClassifierDetails(ClassifierType.NEW, db.getName(), null, new TreeMap<>(c)))
@@ -1231,7 +1226,7 @@ public class DbBackupV2Service {
                         )
                         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a));
 
-                initializeLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
+                createLogicalDatabasesFromRestore(restore, dbNameToEnsuredUsers);
                 restoreRepository.save(restore);
             } catch (Exception e) {
                 log.error("Exception occurred during restore process", e);
@@ -1366,8 +1361,8 @@ public class DbBackupV2Service {
     }
 
     @Transactional
-    protected void initializeLogicalDatabasesFromRestore(Restore restore,
-                                                         Map<String, List<EnsuredUser>> dbNameToEnsuredUsers) {
+    protected void createLogicalDatabasesFromRestore(Restore restore,
+                                                     Map<String, List<EnsuredUser>> dbNameToEnsuredUsers) {
         log.info("Start creating logical databases from restore {}", restore.getName());
         // Creating LogicalDb based logicalRestores
         restore.getLogicalRestores().forEach(logicalRestore -> {
@@ -1463,10 +1458,20 @@ public class DbBackupV2Service {
                     SortedMap<String, Object> currClassifier = classifier.getClassifier();
                     databaseRegistryDbaasRepository
                             .getDatabaseByClassifierAndType(currClassifier, type)
-                            .ifPresent(dbRegistry -> {
+                            .ifPresentOrElse(dbRegistry -> {
                                 dBaaService.markDatabasesAsOrphan(dbRegistry);
-                                log.info("Database {} marked as orphan", dbRegistry.getDatabase().getId());
                                 databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+                                log.info(
+                                        "Database marked as orphan: dbId={}, dbType={}, classifier={}",
+                                        dbRegistry.getDatabase().getId(),
+                                        type,
+                                        currClassifier
+                                );
+                            }, () -> {
+                                log.debug("Database not found for classifier: dbType={}, classifierType={}, classifier={}",
+                                        type,
+                                        classifier.getType(),
+                                        currClassifier);
                             });
                 });
     }
@@ -1546,10 +1551,9 @@ public class DbBackupV2Service {
         restoreRepository.save(restore);
     }
 
-    public RestoreResponse retryRestore(String restoreName) {
-        // Check existence of restore by restoreName
+    public RestoreResponse retryRestore(String restoreName, boolean allowParallel) {
         Restore restore = getRestoreOrThrowException(restoreName);
-        // Check if the status of the restor has FAILED
+
         if (RestoreStatus.FAILED != restore.getStatus()) {
             throw new UnprocessableEntityException(
                     restoreName,
@@ -1564,7 +1568,8 @@ public class DbBackupV2Service {
             retryRestore(restore);
             aggregateRestoreStatus(restore);
             return restoreRepository.save(restore);
-        });
+        }, allowParallel);
+
         return mapper.toRestoreResponse(retriedRestore);
     }
 
@@ -1669,9 +1674,6 @@ public class DbBackupV2Service {
 
     @Transactional
     public void deleteBackupFromDb(String backupName) {
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
         backupRepository.deleteById(backupName);
     }
 
@@ -1696,7 +1698,10 @@ public class DbBackupV2Service {
                 .orElseThrow(() -> new BackupRestorationNotFoundException(restoreName, Source.builder().build()));
     }
 
-    private <T> T restoreLockWrapper(Supplier<T> action) {
+    private <T> T restoreLockWrapper(Supplier<T> action, boolean allowParallel) {
+        if (allowParallel)
+            return action.get();
+
         // Only one restore operation able to process
         LockConfiguration config = new LockConfiguration(
                 Instant.now(),
@@ -1753,7 +1758,7 @@ public class DbBackupV2Service {
 
     private boolean isFilterEmpty(FilterCriteria filterCriteria) {
         return filterCriteria == null
-                || (isEmpty(filterCriteria.getFilter()) && isEmpty(filterCriteria.getExclude()));
+                || (isEmpty(filterCriteria.getInclude()) && isEmpty(filterCriteria.getExclude()));
     }
 
     private boolean isEmpty(Collection<?> c) {

@@ -83,7 +83,7 @@ class DatabaseBackupV2ControllerTest {
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", allOf(
                         containsString("backupName: must not be blank"),
-                        containsString("filter: there should be at least one filter specified")
+                        containsString("include: there should be at least one filter specified")
                 ));
 
         verify(dbBackupV2Service, times(0)).backup(any(), anyBoolean());
@@ -143,7 +143,7 @@ class DatabaseBackupV2ControllerTest {
 
         BackupRequest backupRequest = createBackupRequest(namespace, backupName);
         FilterCriteria emptyFilterCriteria = backupRequest.getFilterCriteria();
-        emptyFilterCriteria.setFilter(List.of(new Filter()));
+        emptyFilterCriteria.setInclude(List.of(new Filter()));
         emptyFilterCriteria.setExclude(List.of(new Filter()));
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
@@ -155,7 +155,7 @@ class DatabaseBackupV2ControllerTest {
                 .body("reason", equalTo("Request does not contain required fields"))
                 .body("message", allOf(
                                 containsString("exclude[0]: Filter must have at least one non-null field"),
-                                containsString("filter[0]: Filter must have at least one non-null field")
+                                containsString("include[0]: Filter must have at least one non-null field")
                         )
                 );
         verify(dbBackupV2Service, times(0)).backup(backupRequest, false);
@@ -169,7 +169,7 @@ class DatabaseBackupV2ControllerTest {
 
         RestoreRequest restoreRequest = createRestoreRequest(namespace, restoreName);
         FilterCriteria emptyFilterCriteria = restoreRequest.getFilterCriteria();
-        emptyFilterCriteria.setFilter(List.of(new Filter()));
+        emptyFilterCriteria.setInclude(List.of(new Filter()));
         emptyFilterCriteria.setExclude(List.of(new Filter()));
 
         given().auth().preemptive().basic("backup_manager", "backup_manager")
@@ -182,10 +182,10 @@ class DatabaseBackupV2ControllerTest {
                 .body("reason", equalTo("Request does not contain required fields"))
                 .body("message", allOf(
                                 containsString("exclude[0]: Filter must have at least one non-null field"),
-                                containsString("filter[0]: Filter must have at least one non-null field")
+                                containsString("include[0]: Filter must have at least one non-null field")
                         )
                 );
-        verify(dbBackupV2Service, times(0)).restore(backupName, restoreRequest, false);
+        verify(dbBackupV2Service, times(0)).restore(backupName, restoreRequest, false, false);
     }
 
     @Test
@@ -371,7 +371,7 @@ class DatabaseBackupV2ControllerTest {
         filter.setNamespace(List.of(namespace));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         BackupRequest dto = new BackupRequest();
         dto.setFilterCriteria(filterCriteria);
@@ -388,7 +388,7 @@ class DatabaseBackupV2ControllerTest {
         filter.setNamespace(List.of(namespace));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         RestoreRequest dto = new RestoreRequest();
         dto.setRestoreName(restoreName);
@@ -445,7 +445,7 @@ class DatabaseBackupV2ControllerTest {
         filter.setNamespace(List.of("namespace"));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         SortedMap<String, Object> map = new TreeMap<>();
         map.put("key", "value");

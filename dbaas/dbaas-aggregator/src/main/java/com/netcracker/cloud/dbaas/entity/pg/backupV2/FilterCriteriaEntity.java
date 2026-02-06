@@ -6,6 +6,6 @@ import java.util.List;
 
 @Data
 public class FilterCriteriaEntity {
-    private List<FilterEntity> filter;
+    private List<FilterEntity> include;
     private List<FilterEntity> exclude;
 }

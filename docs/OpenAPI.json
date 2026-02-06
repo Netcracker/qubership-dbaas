@@ -354,7 +354,7 @@
             "type": "object",
             "description": "Filter criteria",
             "properties": {
-              "filter": {
+              "include": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/Filter"
@@ -461,7 +461,7 @@
             "type": "object",
             "description": "Filter criteria",
             "properties": {
-              "filter": {
+              "include": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/Filter"
@@ -667,9 +667,7 @@
         "type": "object",
         "required": [
           "type",
-          "previousDatabase",
-          "classifier",
-          "classifierBeforeMapper"
+          "classifier"
         ],
         "description": "Classifier details used during restore operation",
         "properties": {
@@ -686,39 +684,41 @@
             "description": "Type of classifier in restore context"
           },
           "previousDatabase": {
-            "type": "string",
-            "examples": [
-              "oldDb"
+            "type": [
+              "string",
+              "null"
             ],
-            "description": "Name of the source database. From which the classifier was obtained via backup"
+            "examples": [
+              "dbaas_12345"
+            ],
+            "description": "Name of the existing database previously associated with this classifier, used when the classifier replaces or transiently replaces another database during restore"
           },
           "classifier": {
             "type": "object",
             "examples": [
-              [
-                {
-                  "namespace": "namespace",
-                  "microserviceName": "microserviceName",
-                  "scope": "service"
-                }
-              ]
+              {
+                "namespace": "namespace",
+                "microserviceName": "microserviceName",
+                "scope": "service"
+              }
             ],
             "additionalProperties": {},
-            "description": "Final classifier used to create a database in the target environment. "
+            "description": "Final classifier used to create a database in the target environment."
           },
           "classifierBeforeMapper": {
-            "type": "object",
+            "type": [
+              "object",
+              "null"
+            ],
             "examples": [
-              [
-                {
-                  "namespace": "namespace",
-                  "microserviceName": "microserviceName",
-                  "scope": "service"
-                }
-              ]
+              {
+                "namespace": "namespace",
+                "microserviceName": "microserviceName",
+                "scope": "service"
+              }
             ],
             "additionalProperties": {},
-            "description": "Classifier state before applying restore-side mapping. Represents classifier data coming from backup, adapted to restore model but not yet transformed"
+            "description": "Original (pre-mapping) classifier from backup database preserved to track how mapping changed the classifier during restore"
           }
         }
       },
@@ -1860,7 +1860,7 @@
         "type": "object",
         "description": "Filter criteria",
         "properties": {
-          "filter": {
+          "include": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Filter"
@@ -3363,7 +3363,7 @@
             "type": "object",
             "description": "Filter criteria",
             "properties": {
-              "filter": {
+              "include": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/Filter"
@@ -3490,7 +3490,7 @@
             "type": "object",
             "description": "Criteria used to filter restore operations",
             "properties": {
-              "filter": {
+              "include": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/Filter"

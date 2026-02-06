@@ -286,8 +286,8 @@ class DbBackupV2ServiceTest {
 
         FilterCriteriaEntity backupFilter = backup.getFilterCriteria();
         assertNotNull(backupFilter);
-        assertEquals(1, backupFilter.getFilter().size());
-        assertEquals(namespace, backupFilter.getFilter().getFirst().getNamespace().getFirst());
+        assertEquals(1, backupFilter.getInclude().size());
+        assertEquals(namespace, backupFilter.getInclude().getFirst().getNamespace().getFirst());
 
         List<BackupExternalDatabase> externalDatabases = backup.getExternalDatabases();
         assertNotNull(externalDatabases);
@@ -890,7 +890,7 @@ class DbBackupV2ServiceTest {
         RestoreResponse restoreResponse = dbBackupV2Service.restore(
                 backupName,
                 getRestoreRequest(restoreName, List.of(namespace), ExternalDatabaseStrategy.FAIL, null, null),
-                false);
+                false, false);
 
         assertNotNull(restoreResponse);
         assertEquals(restoreName, restoreResponse.getRestoreName());
@@ -1169,7 +1169,7 @@ class DbBackupV2ServiceTest {
         RestoreResponse restoreResponse = dbBackupV2Service.restore(
                 backupName,
                 getRestoreRequest(restoreName, List.of(namespace), ExternalDatabaseStrategy.INCLUDE, namespaceMap, tenantMap),
-                false);
+                false, false);
 
         assertNotNull(restoreResponse);
         assertEquals(restoreName, restoreResponse.getRestoreName());
@@ -1371,7 +1371,7 @@ class DbBackupV2ServiceTest {
 
         IllegalResourceStateException ex = assertThrows(IllegalResourceStateException.class, () -> dbBackupV2Service.restore(backupName,
                 getRestoreRequest(restoreName, List.of(namespace), ExternalDatabaseStrategy.FAIL, mapping.getNamespaces(), mapping.getTenants()),
-                false
+                false, false
         ));
 
         String msg = mappedClassifier.toString();
@@ -1487,7 +1487,7 @@ class DbBackupV2ServiceTest {
 
         dbBackupV2Service.restore(backupName,
                 getRestoreRequest(restoreName, List.of(namespace), ExternalDatabaseStrategy.INCLUDE, namespaceMap, tenantMap),
-                false
+                false, false
         );
         dbBackupV2Service.checkRestoresAsync();
 
@@ -1661,7 +1661,7 @@ class DbBackupV2ServiceTest {
 
         RestoreResponse restoreResponse = dbBackupV2Service.restore(backupName,
                 getRestoreRequest(restoreName, List.of(namespace), ExternalDatabaseStrategy.INCLUDE, namespaceMap, tenantMap),
-                true
+                true, false
         );
         assertNull(restoreRepository.findById(restoreName));
         assertNotNull(restoreResponse);
@@ -1849,7 +1849,7 @@ class DbBackupV2ServiceTest {
 
         when(dbaasAdapter.ensureUser(null, null, newName2, "admin")).thenReturn(user2);
 
-        RestoreResponse restoreResponse = dbBackupV2Service.retryRestore(restoreName);
+        RestoreResponse restoreResponse = dbBackupV2Service.retryRestore(restoreName, false);
         dbBackupV2Service.checkRestoresAsync();
 
         assertEquals(restoreName, restoreResponse.getRestoreName());
@@ -2083,7 +2083,7 @@ class DbBackupV2ServiceTest {
         exclude.setMicroserviceName(List.of(microserviceName1));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
         filterCriteria.setExclude(List.of(exclude));
 
         Map<Database, List<DatabaseRegistry>> dbToBackup = dbBackupV2Service.getAllDbByFilter(filterCriteria);
@@ -2154,7 +2154,7 @@ class DbBackupV2ServiceTest {
         exclude2.setMicroserviceName(List.of(microserviceName4));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter1, filter2));
+        filterCriteria.setInclude(List.of(filter1, filter2));
         filterCriteria.setExclude(List.of(exclude, exclude2));
 
         Map<Database, List<DatabaseRegistry>> dbToBackup = dbBackupV2Service.getAllDbByFilter(filterCriteria);
@@ -2213,7 +2213,7 @@ class DbBackupV2ServiceTest {
         filter.setMicroserviceName(List.of(microserviceName1));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         Map<Database, List<DatabaseRegistry>> filteredDbs = dbBackupV2Service.getAllDbByFilter(filterCriteria);
         assertEquals(1, filteredDbs.size());
@@ -2285,7 +2285,7 @@ class DbBackupV2ServiceTest {
         filter1.setNamespace(List.of(namespace1));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter, filter1));
+        filterCriteria.setInclude(List.of(filter, filter1));
 
         Map<Database, List<DatabaseRegistry>> allDbByFilter = dbBackupV2Service.getAllDbByFilter(filterCriteria);
 
@@ -2302,7 +2302,7 @@ class DbBackupV2ServiceTest {
         Filter filter = new Filter();
         filter.setNamespace(List.of("namespace"));
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         assertThrows(DbNotFoundException.class,
                 () -> dbBackupV2Service.getAllDbByFilter(filterCriteria));
@@ -2362,7 +2362,7 @@ class DbBackupV2ServiceTest {
         exclude.setMicroserviceName(List.of(microserviceName4));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
         filterCriteria.setExclude(List.of(exclude));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3, backupDatabase4, backupDatabase5, backupDatabase6);
@@ -2434,7 +2434,7 @@ class DbBackupV2ServiceTest {
         exclude.setDatabaseType(List.of(DatabaseType.POSTGRESQL));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter1, filter2));
+        filterCriteria.setInclude(List.of(filter1, filter2));
         filterCriteria.setExclude(List.of(exclude));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3, backupDatabase4, backupDatabase5, backupDatabase6);
@@ -2485,7 +2485,7 @@ class DbBackupV2ServiceTest {
         filter2.setNamespace(List.of(namespace2));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter1, filter2));
+        filterCriteria.setInclude(List.of(filter1, filter2));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3);
         List<DatabaseWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
@@ -2551,7 +2551,7 @@ class DbBackupV2ServiceTest {
         filter1.setNamespace(List.of(namespace1));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter1));
+        filterCriteria.setInclude(List.of(filter1));
 
         List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3);
         List<DatabaseWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
@@ -2599,7 +2599,7 @@ class DbBackupV2ServiceTest {
         exclude.setMicroserviceName(List.of(microserviceName2));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
         filterCriteria.setExclude(List.of(exclude));
 
         List<RestoreExternalDatabase> restoreExternalDatabases = dbBackupV2Service.validateAndFilterExternalDb(List.of(externalDatabase1, externalDatabase2, externalDatabase3), ExternalDatabaseStrategy.INCLUDE, filterCriteria);
@@ -2904,8 +2904,8 @@ class DbBackupV2ServiceTest {
 
         FilterCriteria responseFilterCriteria = response.getFilterCriteria();
         assertNotNull(responseFilterCriteria);
-        assertEquals(1, responseFilterCriteria.getFilter().size());
-        assertEquals(namespace, responseFilterCriteria.getFilter().getFirst().getNamespace().getFirst());
+        assertEquals(1, responseFilterCriteria.getInclude().size());
+        assertEquals(namespace, responseFilterCriteria.getInclude().getFirst().getNamespace().getFirst());
 
         List<BackupExternalDatabase> externalDatabases = backup.getExternalDatabases();
         assertNull(externalDatabases);
@@ -2978,8 +2978,8 @@ class DbBackupV2ServiceTest {
 
         FilterCriteria responseFilterCriteria = response.getFilterCriteria();
         assertNotNull(responseFilterCriteria);
-        assertEquals(1, responseFilterCriteria.getFilter().size());
-        assertEquals(namespace, responseFilterCriteria.getFilter().getFirst().getNamespace().getFirst());
+        assertEquals(1, responseFilterCriteria.getInclude().size());
+        assertEquals(namespace, responseFilterCriteria.getInclude().getFirst().getNamespace().getFirst());
 
         List<RestoreExternalDatabase> externalDatabases = restore.getExternalDatabases();
         assertNull(externalDatabases);
@@ -3470,7 +3470,7 @@ class DbBackupV2ServiceTest {
         filter.setNamespace(List.of(namespace));
 
         FilterCriteriaEntity criteriaEntity = new FilterCriteriaEntity();
-        criteriaEntity.setFilter(List.of(filter));
+        criteriaEntity.setInclude(List.of(filter));
 
         Backup backup = new Backup();
         backup.setName(backupName);
@@ -3528,7 +3528,7 @@ class DbBackupV2ServiceTest {
         FilterEntity filter = new FilterEntity();
         filter.setNamespace(List.of(namespace));
         FilterCriteriaEntity criteriaEntity = new FilterCriteriaEntity();
-        criteriaEntity.setFilter(List.of(filter));
+        criteriaEntity.setInclude(List.of(filter));
 
         Restore restore = new Restore();
         restore.setName(restoreName);
@@ -3668,7 +3668,7 @@ class DbBackupV2ServiceTest {
         filter.setNamespace(namespaces);
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         BackupRequest dto = new BackupRequest();
         dto.setFilterCriteria(filterCriteria);
@@ -3691,7 +3691,7 @@ class DbBackupV2ServiceTest {
         filter.setNamespace(namespaces);
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         Mapping mapping = new Mapping();
         mapping.setNamespaces(namespaceMapping);
@@ -3746,7 +3746,7 @@ class DbBackupV2ServiceTest {
         filter.setNamespace(List.of(namespace));
 
         FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
 
         SortedMap<String, Object> map = new TreeMap<>();
         map.put("key", "value");
@@ -3780,7 +3780,7 @@ class DbBackupV2ServiceTest {
         filter.setNamespace(namespaces);
 
         FilterCriteriaEntity filterCriteria = new FilterCriteriaEntity();
-        filterCriteria.setFilter(List.of(filter));
+        filterCriteria.setInclude(List.of(filter));
         return filterCriteria;
     }
 }

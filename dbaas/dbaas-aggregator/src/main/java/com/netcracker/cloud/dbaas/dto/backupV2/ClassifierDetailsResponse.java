@@ -19,26 +19,27 @@ public class ClassifierDetailsResponse {
             implementation = ClassifierType.class
     )
     private ClassifierType type;
+
     @Schema(
-            description = "Name of the source database. From which the classifier was obtained via backup",
-            required = true,
-            examples = {
-                    "oldDb"
-            }
+            description = "Name of the existing database previously associated with this classifier," +
+                    " used when the classifier replaces or transiently replaces another database during restore",
+            nullable = true,
+            examples = {"dbaas_12345"}
     )
     private String previousDatabase;
+
     @Schema(
-            description = "Final classifier used to create a database in the target environment. ",
-            examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]",
+            description = "Final classifier used to create a database in the target environment.",
+            examples = "{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}",
             required = true
     )
     private SortedMap<String, Object> classifier;
+
     @Schema(
-            description = "Classifier state before applying restore-side mapping. " +
-                    "Represents classifier data coming from backup, adapted to restore model " +
-                    "but not yet transformed",
-            examples = "[{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}]",
-            required = true
+            description = "Original (pre-mapping) classifier from backup database preserved " +
+                    "to track how mapping changed the classifier during restore",
+            examples = "{\"namespace\":\"namespace\", \"microserviceName\":\"microserviceName\", \"scope\":\"service\"}",
+            nullable = true
     )
     private SortedMap<String, Object> classifierBeforeMapper;
 }

@@ -15,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @Schema(description = "Group of filters for backup and restore operations. Filters are applied in the following order:\n" +
         "\n" +
-        "1. `filter`\n" +
+        "1. `include`\n" +
         "2. `exclude`")
 public class FilterCriteria {
     @Schema(
@@ -24,7 +24,7 @@ public class FilterCriteria {
     @NotNull(groups = {BackupGroup.class})
     @Size(min = 1, groups = {BackupGroup.class}, message = "there should be at least one filter specified")
     @Valid
-    private List<Filter> filter = new ArrayList<>();
+    private List<Filter> include = new ArrayList<>();
 
     @Schema(
             description = "Exclude databases that match any of the filters in the list"
