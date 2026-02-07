@@ -375,7 +375,7 @@ Source: [`../diagrams/backup-and-restore-v2/start-restore-sequence.puml`](../dia
 
 **Steps 12,20,24:** Step updates a LogicalRestore from adapter response: sets restore ID, status, error, creation/completion times, then for each returned DB updates the matching RestoreDatabase (by previous DB name) with status, duration, path, error, creation time, and possibly new name. If a returned DB isn’t found in current restore list, it logs a warning and marks the logical restore as FAILED with an error message.
 
-**Steps 13,21,25:**: Step aggregates overall restore status and metrics: collects LogicalRestore statuses, counts total and completed restore databases, sums durations, gathers/logs error messages, then sets restore.status, total, completed, duration, and errorMessage (and logs the aggregated result)
+**Steps 13,21,25:**: Step aggregates overall restore status and metrics: collects LogicalRestore statuses, counts total and completed restore databases, gathers/logs error messages, then sets restore.status, total, completed, duration, and errorMessage (and logs the aggregated result)
 
 **Step 15:** Step ensures only one restore runs at a time. It acquires a lock, rejects the operation if another restore is already in progress, runs the supplied action, and always releases the lock at the end
 
@@ -391,7 +391,7 @@ Source: [`../diagrams/backup-and-restore-v2/check-restore-async-sequence.puml`](
 
 **Steps 6,9:** Step updates a LogicalRestore from adapter response: sets restore ID, status, error, creation/completion times, then updates each matching RestoreDatabase (by previous DB name) with status, duration, path, error, creation time, and new name if changed. If a returned DB isn’t found, it marks the logical restore as FAILED with an error.
 
-**Step 10:** Step aggregates overall restore status and metrics: collects LogicalRestore statuses, counts total and completed restore databases, sums durations, gathers/logs error messages, then sets restore.status, total, completed, duration, and errorMessage.
+**Step 10:** Step aggregates overall restore status and metrics: collects LogicalRestore statuses, counts total and completed restore databases, gathers/logs error messages, then sets restore.status, total, completed, duration, and errorMessage.
 
 **Step 13:** Step makes sure all required users exist in the target database by calling the adapter for each user (with retries). It logs progress and returns the list of ensured users; if any user cannot be ensured, it throws an error.
 
@@ -407,7 +407,7 @@ Source: [`../diagrams/backup-and-restore-v2/retry-restore-sequence.puml`](../dia
 
 **Step 7:** Step ensures only one restore runs at a time. It acquires a lock, rejects the operation if another restore is already in progress, runs the supplied action, and always releases the lock at the end
 
-**Step 9:** Step aggregates overall restore status and metrics: collects LogicalRestore statuses, counts total and completed restore databases, sums durations, gathers/logs error messages, then sets restore.status, total, completed, duration, and errorMessage.
+**Step 9:** Step aggregates overall restore status and metrics: collects LogicalRestore statuses, counts total and completed restore databases, gathers/logs error messages, then sets restore.status, total, completed, duration, and errorMessage.
 
 ### Get Backup Metadata
 
