@@ -1,0 +1,19 @@
+@startuml
+title Restore V2 State Diagram
+[*] --> NOT_STARTED : restore created
+
+NOT_STARTED --> IN_PROGRESS : restore starts/aggregation\n(has IN_PROGRESS/RETRYABLE_FAIL\nor mix of NOT_STARTED+others)
+NOT_STARTED --> COMPLETED : all tasks COMPLETED
+NOT_STARTED --> FAILED : all tasks FAILED
+
+IN_PROGRESS --> IN_PROGRESS : tracking continues
+IN_PROGRESS --> COMPLETED : all tasks COMPLETED
+IN_PROGRESS --> FAILED : no IN_PROGRESS/RETRYABLE_FAIL/NOT_STARTED\nand FAILED exists (final FAILED)\nor tracking attempts exceeded
+
+FAILED --> IN_PROGRESS : retryRestore
+
+COMPLETED --> DELETED : deleteRestore
+FAILED --> DELETED : deleteRestore
+DELETED --> DELETED : repeated deleteRestore
+
+@enduml
