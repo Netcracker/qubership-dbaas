@@ -1,0 +1,62 @@
+@startuml
+autonumber
+actor Client
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+participant "DBaaS Adapter" as Adapter
+
+Client -> DBaaS: POST /backup/{backupName}/restore\n(RestoreRequest, dryRun)
+DBaaS -> DBaaS: restore(backupName, restoreRequest, dryRun)
+
+DBaaS -> DB: find restore by restoreName
+alt restore already exists
+  DB --> DBaaS: present
+  DBaaS --> Client: HTTP 409 (TmfErrorResponse)
+else ok
+  DB --> DBaaS: empty
+  DBaaS -> DBaaS: find Backup by backupName
+  DBaaS -> DBaaS: check Backup status for restore
+
+  alt dryRun == true
+    DBaaS -> DBaaS: initialize full Restore structure
+
+    loop for each LogicalRestore (requests to adapters with dryRun=true)
+      DBaaS -> Adapter: send request to chek possibility to initiate logical restore
+      Adapter --> DBaaS: recieve response
+      DBaaS -> DBaaS: refresh LogicalRestore state
+    end
+
+    DBaaS -> DBaaS: aggregate Restore status
+    DBaaS --> Client: RestoreResponse
+  else dryRun == false
+    DBaaS -> DBaaS: check lock
+    DBaaS -> DBaaS: initialize full Restore structure
+    DBaaS -> DB: save(restore)
+
+    loop for each LogicalRestore (requests to adapters with dryRun=true)
+      DBaaS -> Adapter: send request to chek possibility to initiate logical restore
+      Adapter --> DBaaS: recieve response
+      DBaaS -> DBaaS: refresh LogicalRestore state
+    end
+    DBaaS -> DBaaS: aggregate Restore status
+
+    alt status != FAILED
+      loop for each LogicalRestore
+        DBaaS -> Adapter: send request to initiate logical restore
+        Adapter --> DBaaS: recieve response
+        DBaaS -> DBaaS: refresh LogicalRestore state
+      end
+      DBaaS -> DBaaS: aggregate Restore status
+    end
+
+    DBaaS -> DB: save Restore
+    DBaaS --> Client: RestoreResponse
+  end
+
+  alt status COMPLETED or FAILED
+    DBaaS --> Client: HTTP 200 OK (RestoreResponse)
+  else
+    DBaaS --> Client: HTTP 202 Accepted (RestoreResponse)
+  end
+end
+@enduml
