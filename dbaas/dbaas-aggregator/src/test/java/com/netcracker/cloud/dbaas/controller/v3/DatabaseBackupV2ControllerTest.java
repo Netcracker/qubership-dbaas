@@ -310,6 +310,7 @@ class DatabaseBackupV2ControllerTest {
         backupResponse.setBackupName("backupName");
         backupResponse.setBlobPath("path");
         backupResponse.setStorageName("storageName");
+        backupResponse.setStatus(BackupStatus.COMPLETED);
         backupResponse.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
         backupResponse.setTotal(0);
         backupResponse.setSize(0L);
