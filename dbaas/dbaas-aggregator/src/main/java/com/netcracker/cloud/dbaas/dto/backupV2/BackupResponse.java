@@ -76,6 +76,7 @@ public class BackupResponse {
             description = "Current state of the backup operation",
             required = true,
             implementation = BackupStatus.class)
+    @NotNull
     private BackupStatus status;
     @Schema(
             description = "Total number of databases being backed up",

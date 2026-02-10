@@ -217,17 +217,8 @@ class DbBackupV2ServiceTest {
 
         when(adapter2.backupV2(any())).thenReturn(adapterResponse2);
 
-
-        // Saving databases
         Stream.of(registry1, registry3, registry4, registry5, registry6)
                 .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
-
-        // Sleep to wait saving of databases
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
 
         BackupResponse response = dbBackupV2Service.backup(backupRequest, false);
         assertEquals(BackupStatus.IN_PROGRESS, response.getStatus());
@@ -459,17 +450,8 @@ class DbBackupV2ServiceTest {
 
         when(adapter2.backupV2(any())).thenReturn(adapterResponse2);
 
-
-        // Saving databases
         Stream.of(registry1, registry3, registry4, registry5, registry6)
                 .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
-
-        // Sleep to wait saving of databases
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
 
         BackupResponse response = dbBackupV2Service.backup(backupRequest, false);
         assertEquals(BackupStatus.IN_PROGRESS, response.getStatus());
@@ -1346,7 +1328,6 @@ class DbBackupV2ServiceTest {
         SortedMap<String, Object> classifier2 = getClassifier(namespace, microserviceName, anotherTenantId);
         SortedMap<String, Object> mappedClassifier = getClassifier(mappedNamespace, microserviceName, anotherTenantId);
 
-
         BackupDatabase backupDatabase = getBackupDatabase(dbName, List.of(classifier1, classifier2), false, BackupTaskStatus.COMPLETED, "");
         LogicalBackup logicalBackup = getLogicalBackup(logicalBackupName, adapterId, postgresType, List.of(backupDatabase), BackupTaskStatus.COMPLETED, "");
         Backup backup = getBackup(backupName, ExternalDatabaseStrategy.FAIL, getFilterCriteriaEntity(List.of(namespace)), List.of(logicalBackup), List.of(), BackupStatus.COMPLETED, "");
@@ -1792,7 +1773,6 @@ class DbBackupV2ServiceTest {
         DbaasAdapter dbaasAdapter = Mockito.mock(DbaasAdapter.class);
 
         when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(dbaasAdapter);
-//        when(dbaasAdapter.isBackupRestoreSupported()).thenReturn(true);
 
         // Mock logic of choosing adapter in new/current env
         ExternalAdapterRegistrationEntry adapter1 = new ExternalAdapterRegistrationEntry();
@@ -1801,9 +1781,7 @@ class DbBackupV2ServiceTest {
         physicalDatabase1.setAdapter(adapter1);
         physicalDatabase1.setType(postgresType);
         physicalDatabase1.setPhysicalDatabaseIdentifier("postgres-dev");
-//
-//        when(balancingRulesService.applyBalancingRules(postgresType, mappedNamespace, microserviceName1))
-//                .thenReturn(physicalDatabase1);
+
         when(physicalDatabasesService.getByAdapterId(adapterId)).thenReturn(physicalDatabase1);
 
         // Response during the async restore process
@@ -1871,21 +1849,21 @@ class DbBackupV2ServiceTest {
         DatabaseRegistry databaseRegistry1 = databaseRegistries.stream()
                 .filter(db -> newName.equals(db.getName()))
                 .findAny().orElse(null);
-        assert databaseRegistry1 != null;
+        assertNotNull(databaseRegistry1);
         assertEquals(classifierWrapper1.getClassifier(), databaseRegistry1.getClassifier());
         assertEquals("postgres-dev", databaseRegistry1.getPhysicalDatabaseId());
 
         DatabaseRegistry databaseRegistry2 = databaseRegistries.stream()
                 .filter(db -> newName2.equals(db.getName()))
                 .findAny().orElse(null);
-        assert databaseRegistry2 != null;
+        assertNotNull(databaseRegistry2);
         assertEquals(classifierWrapper2.getClassifierBeforeMapper(), databaseRegistry2.getClassifier());
         assertEquals("postgres-dev", databaseRegistry2.getPhysicalDatabaseId());
 
         DatabaseRegistry databaseRegistry3 = databaseRegistries.stream()
                 .filter(db -> externalName.equals(db.getName()))
                 .findAny().orElse(null);
-        assert databaseRegistry3 != null;
+        assertNotNull(databaseRegistry3);
         assertEquals(classifierWrapper3.getClassifierBeforeMapper(), databaseRegistry3.getClassifier());
         assertNull(databaseRegistry3.getPhysicalDatabaseId());
 
@@ -2032,7 +2010,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_1() {
+    void getAllDbByFilter_excludeByNamespaceAndMicroserviceName() {
         String namespace1 = "namespace1";
         String namespace2 = "namespace2";
         String namespace3 = "namespace3";
@@ -2099,7 +2077,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_2() {
+    void getAllDbByFilter_includeExcludeList() {
         String namespace1 = "namespace1";
         String namespace2 = "namespace2";
         String namespace3 = "namespace3";
@@ -2169,7 +2147,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_3() {
+    void getAllDbByFilter_includeByNamespaceAndMicroserviceName() {
         String namespace1 = "namespace1";
         String namespace2 = "namespace2";
         String namespace3 = "namespace3";
@@ -2238,7 +2216,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_4() {
+    void getAllDbByFilter_includeList() {
         String namespace1 = "namespace1";
         String namespace2 = "namespace2";
         String namespace3 = "namespace3";
@@ -2309,7 +2287,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_RestorePart_1() {
+    void getAllDbByFilter_restorePart_excludeByMicroserviceName() {
         String dbName1 = "db1";
         String dbName2 = "db2";
         String dbName3 = "db3";
@@ -2377,7 +2355,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_RestorePart_2() {
+    void getAllDbByFilter_restorePart_excludeByDbType() {
         String dbName1 = "db1";
         String dbName2 = "db2";
         String dbName3 = "db3";
@@ -2449,7 +2427,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_RestorePart_3() {
+    void getAllDbByFilter_restorePart_includeList() {
         String dbName1 = "db1";
         String dbName2 = "db2";
         String dbName3 = "db3";
@@ -2518,7 +2496,7 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_RestorePart_4() {
+    void getAllDbByFilter_restorePart_excludeEmpty() {
         String dbName1 = "db1";
         String dbName2 = "db2";
         String dbName3 = "db3";
@@ -2569,6 +2547,63 @@ class DbBackupV2ServiceTest {
                 .filter(classifier -> namespace1.equals(classifier.get(NAMESPACE)))
                 .findAny().orElse(null);
         assertNotNull(classifier1);
+    }
+
+    @Test
+    void getAllDbByFilter_restorePart_includeNull() {
+        String dbName1 = "db1";
+        String dbName2 = "db2";
+        String dbName3 = "db3";
+
+        String logicalBackupName1 = "lb1";
+        String logicalBackupName2 = "db2";
+
+        String adapterId1 = "adpater1";
+        String adapterId2 = "adapter2";
+
+        String postgresqlType = "postgresql";
+        String cassandraType = "cassandra";
+
+        String namespace1 = "namespace1";
+        String namespace2 = "namespace2";
+        String namespace3 = "namespace3";
+
+        String microserviceName1 = "microserviceName1";
+        String microserviceName2 = "microserviceName2";
+        String microserviceName3 = "microserviceName3";
+
+        BackupDatabase backupDatabase1 = getBackupDatabase(dbName1, List.of(getClassifier(namespace1, microserviceName1, null), getClassifier(namespace2, microserviceName1, null)), false, BackupTaskStatus.COMPLETED, null);
+        BackupDatabase backupDatabase2 = getBackupDatabase(dbName2, List.of(getClassifier(namespace2, microserviceName2, null)), false, BackupTaskStatus.COMPLETED, null);
+        BackupDatabase backupDatabase3 = getBackupDatabase(dbName3, List.of(getClassifier(namespace3, microserviceName3, null)), true, BackupTaskStatus.COMPLETED, null);
+
+        LogicalBackup logicalBackup1 = getLogicalBackup(logicalBackupName1, adapterId1, postgresqlType, List.of(backupDatabase1, backupDatabase2), BackupTaskStatus.COMPLETED, null);
+        LogicalBackup logicalBackup2 = getLogicalBackup(logicalBackupName2, adapterId2, cassandraType, List.of(backupDatabase3), BackupTaskStatus.COMPLETED, null);
+
+        Filter exclude = new Filter();
+        exclude.setNamespace(List.of(namespace3));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setInclude(null);
+        filterCriteria.setExclude(List.of(exclude));
+
+        List<BackupDatabase> backupDatabases = List.of(backupDatabase1, backupDatabase2, backupDatabase3);
+        List<DatabaseWithClassifiers> filteredDatabases = dbBackupV2Service.getAllDbByFilter(backupDatabases, filterCriteria);
+
+        assertEquals(2, filteredDatabases.size());
+
+        DatabaseWithClassifiers backupDatabaseDelegate1 = filteredDatabases.stream()
+                .filter(db -> dbName1.equals(db.backupDatabase().getName()))
+                .findAny().orElse(null);
+        assertNotNull(backupDatabaseDelegate1);
+        assertEquals(backupDatabaseDelegate1.backupDatabase(), backupDatabase1);
+        assertEquals(2, backupDatabaseDelegate1.classifiers().size());
+
+        DatabaseWithClassifiers backupDatabaseDelegate2 = filteredDatabases.stream()
+                .filter(db -> dbName2.equals(db.backupDatabase().getName()))
+                .findAny().orElse(null);
+        assertNotNull(backupDatabaseDelegate2);
+        assertEquals(backupDatabaseDelegate2.backupDatabase(), backupDatabase2);
+        assertEquals(1, backupDatabaseDelegate2.classifiers().size());
     }
 
     @Test
@@ -3266,11 +3301,12 @@ class DbBackupV2ServiceTest {
     private Database getDatabase(String adapterId, String name, boolean isExternal, boolean isBackupDisabled, String bgVersion) {
         DbState dbState = new DbState();
         dbState.setId(UUID.randomUUID());
-        dbState.setState(AbstractDbState.DatabaseStateStatus.CREATED);
-        dbState.setDatabaseState(AbstractDbState.DatabaseStateStatus.CREATED);
-        dbState.setDescription("descripton");
-        dbState.setPodName("podName");
-
+        if (!isExternal) {
+            dbState.setState(AbstractDbState.DatabaseStateStatus.CREATED);
+            dbState.setDatabaseState(AbstractDbState.DatabaseStateStatus.CREATED);
+            dbState.setDescription("descripton");
+            dbState.setPodName("podName");
+        }
         Map<String, Object> map = new HashMap<>();
         map.put("role", "admin");
         map.put("username", "oldUsername");
