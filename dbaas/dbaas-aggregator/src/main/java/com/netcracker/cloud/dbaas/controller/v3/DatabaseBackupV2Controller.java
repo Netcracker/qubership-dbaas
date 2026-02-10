@@ -237,8 +237,6 @@ public class DatabaseBackupV2Controller {
             "This operation is asynchronous and returns immediately with a restore name that can be used to track progress." +
             "Operation is not idempotent")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Restore operation completed successfully",
-                    content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "202", description = "Restore operation initiated successfully",
                     content = @Content(schema = @Schema(implementation = RestoreResponse.class))),
             @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served",
