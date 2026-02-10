@@ -269,7 +269,7 @@ class DbBackupV2ServiceTest {
         assertEquals(BLOB_PATH, backup.getBlobPath());
         assertEquals(ExternalDatabaseStrategy.INCLUDE, backup.getExternalDatabaseStrategy());
         assertEquals(BackupStatus.COMPLETED, backup.getStatus());
-        assertEquals(3, backup.getCompleted());
+        assertEquals(4, backup.getCompleted());
         assertEquals(3, backup.getSize());
         assertTrue(backup.getErrorMessage().isBlank());
         assertEquals(1, backup.getAttemptCount());
@@ -1166,8 +1166,8 @@ class DbBackupV2ServiceTest {
         assertNotNull(restore.getMapping());
         assertEquals(ExternalDatabaseStrategy.INCLUDE, restore.getExternalDatabaseStrategy());
         assertEquals(RestoreStatus.COMPLETED, restore.getStatus());
-        assertEquals(2, restore.getTotal());
-        assertEquals(2, restore.getCompleted());
+        assertEquals(3, restore.getTotal());
+        assertEquals(3, restore.getCompleted());
         assertTrue(restore.getErrorMessage().isBlank());
         assertEquals(1, restore.getAttemptCount());
         assertEquals(2, restore.getLogicalRestores().size());
@@ -1833,8 +1833,8 @@ class DbBackupV2ServiceTest {
         assertEquals(restoreName, restoreResponse.getRestoreName());
         assertEquals(backupName, restoreResponse.getBackupName());
         assertEquals(RestoreStatus.IN_PROGRESS, restoreResponse.getStatus());
-        assertEquals(2, restoreResponse.getTotal());
-        assertEquals(1, restoreResponse.getCompleted());
+        assertEquals(3, restoreResponse.getTotal());
+        assertEquals(2, restoreResponse.getCompleted());
         assertEquals(1, restoreResponse.getLogicalRestores().size());
 
         LogicalRestoreResponse logicalRestoreResponse = restoreResponse.getLogicalRestores().getFirst();
