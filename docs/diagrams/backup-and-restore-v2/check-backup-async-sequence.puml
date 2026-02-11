@@ -1,0 +1,34 @@
+@startuml
+autonumber
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+participant "DBaaS Adapter" as Adapter
+
+DBaaS -> DB: find backups for processing
+DB --> DBaaS: list of backups
+
+loop for each Backup
+  alt attemptCount > retryCount
+    DBaaS -> DBaaS: set backup status to FAILED\nset error message
+  else
+
+    loop for each LogicalBackup (not finished)
+
+      alt logicalBackupName is null/empty
+        DBaaS -> Adapter: send request to initiate logical backup
+        Adapter --> DBaaS: recieve response
+        DBaaS -> DBaaS: refresh LogicalBackup state
+      end
+
+      DBaaS -> Adapter: track LogicalBackup state
+      Adapter --> DBaaS: recieve response
+      DBaaS -> DBaaS: refresh LogicalBackup state
+    end
+
+    DBaaS -> DBaaS: update aggregated status for Backup
+    DBaaS -> DBaaS: increment attemptCount for Backup
+  end
+
+  DBaaS -> DB: save Backup
+end
+@enduml
