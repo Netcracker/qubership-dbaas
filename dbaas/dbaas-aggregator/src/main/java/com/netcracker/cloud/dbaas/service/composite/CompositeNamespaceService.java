@@ -1,12 +1,16 @@
 package com.netcracker.cloud.dbaas.service.composite;
 
+import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeProperties;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
+import com.netcracker.cloud.dbaas.exceptions.NamespaceCompositeValidationException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;
+import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceModifyIndexesDbaasRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
-
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
@@ -19,14 +23,28 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class CompositeNamespaceService {
 
-    private CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository;
+    private final CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository;
+    private final CompositeNamespaceModifyIndexesDbaasRepository compositeNamespaceModifyIndexesDbaasRepository;
+    private final EntityManager entityManager;
 
-    public CompositeNamespaceService(CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository) {
+    public CompositeNamespaceService(CompositeNamespaceDbaasRepository compositeNamespaceDbaasRepository,
+                                     CompositeNamespaceModifyIndexesDbaasRepository compositeNamespaceModifyIndexesDbaasRepository,
+                                     EntityManager entityManager) {
         this.compositeNamespaceDbaasRepository = compositeNamespaceDbaasRepository;
+        this.compositeNamespaceModifyIndexesDbaasRepository = compositeNamespaceModifyIndexesDbaasRepository;
+        this.entityManager = entityManager;
     }
 
     @Transactional
     public void saveOrUpdateCompositeStructure(CompositeStructureDto compositeRequest) {
+        if (compositeRequest.getModifyIndex() != null) {
+            txLock(compositeRequest.getId());
+            Optional<CompositeProperties> currentModifyIndex = compositeNamespaceModifyIndexesDbaasRepository.findByBaselineName(compositeRequest.getId());
+            if (currentModifyIndex.isPresent() && compositeRequest.getModifyIndex() < currentModifyIndex.get().getModifyIndex()) {
+                throw new NamespaceCompositeValidationException(Source.builder().pointer("/modifyIndex").build(), "new modify index '%s' should be greater than current index '%s'".formatted(compositeRequest.getModifyIndex(), currentModifyIndex.get().getModifyIndex()));
+            }
+        }
+
         deleteCompositeStructure(compositeRequest.getId());
         compositeNamespaceDbaasRepository.flush(); // need to flush because jpa first tries to save data without deleting it
         compositeRequest.getNamespaces().add(compositeRequest.getId());
@@ -34,6 +52,10 @@ public class CompositeNamespaceService {
                 .map(ns -> buildCompositeNamespace(compositeRequest, ns))
                 .toList();
         compositeNamespaceDbaasRepository.saveAll(compositeNamespaces);
+        if (compositeRequest.getModifyIndex() != null) {
+            compositeNamespaceDbaasRepository.findBaselineByNamespace(compositeRequest.getId())
+                    .ifPresent(compositeNamespace -> compositeNamespaceModifyIndexesDbaasRepository.save(new CompositeProperties(compositeNamespace, compositeRequest.getModifyIndex())));
+        }
     }
 
     @NotNull
@@ -94,5 +116,13 @@ public class CompositeNamespaceService {
     public Optional<String> getBaselineByNamespace(String namespace) {
         return compositeNamespaceDbaasRepository.findBaselineByNamespace(namespace)
                 .map(CompositeNamespace::getBaseline);
+    }
+
+    private void txLock(String baseline) {
+        entityManager.createNativeQuery(
+                        "SELECT pg_advisory_xact_lock(hashtext(:baseline))"
+                )
+                .setParameter("baseline", baseline)
+                .getSingleResult();
     }
 }
