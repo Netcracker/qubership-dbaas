@@ -57,7 +57,7 @@ public class BackupResponse {
     @NotNull
     private ExternalDatabaseStrategy externalDatabaseStrategy;
     @Schema(
-            description = "Whether non‑backupable databases were ignored during backup",
+            description = "Whether non-backupable databases were ignored during backup",
             examples = {
                     "false"
             }

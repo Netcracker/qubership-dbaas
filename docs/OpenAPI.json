@@ -455,7 +455,7 @@
             "examples": [
               false
             ],
-            "description": "Whether non‑backupable databases were ignored during backup"
+            "description": "Whether non-backupable databases were ignored during backup"
           },
           "filterCriteria": {
             "type": "object",
