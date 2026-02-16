@@ -15,7 +15,7 @@
         <skipIT>true</skipIT>
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
         <logback.version>1.5.25</logback.version>
-        <junit.version>5.14.3</junit.version>
+        <junit.version>6.0.3</junit.version>
         <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
 
@@ -42,7 +42,7 @@
         <dependency>
             <groupId>org.springframework.data</groupId>
             <artifactId>spring-data-mongodb</artifactId>
-            <version>4.5.8</version>
+            <version>5.0.2</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains</groupId>
@@ -156,7 +156,7 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-web</artifactId>
-            <version>6.2.15</version>
+            <version>7.0.3</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
