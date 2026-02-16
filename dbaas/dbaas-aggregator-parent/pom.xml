@@ -31,9 +31,9 @@
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
         <jacoco.plugin.version>0.8.14</jacoco.plugin.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
-        <jackson-bom.version>2.20.1</jackson-bom.version>
+        <jackson-bom.version>2.20.2</jackson-bom.version>
         <lombok.version>1.18.42</lombok.version>
-        <junit.version>6.0.1</junit.version>
+        <junit.version>6.0.2</junit.version>
         <jaxb.version>4.0.6</jaxb.version>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${project.basedir}/../dbaas-report-aggregate/target/site/jacoco-aggregate/jacoco.xml
