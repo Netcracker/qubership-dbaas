@@ -134,24 +134,24 @@ Source: [`../diagrams/backup-and-restore-v2/backup-v2-data-model.puml`](../diagr
 Backup is the top-level backup operation entity that stores the requested filters and strategy plus the aggregated state of the backup (status, totals, size, errors) and links to all logical and external
 database backups.
 
-| Field | Type | Description | Source |
-|---|---|---|---|
-| name | String | Unique name of the backup | BackupRequest.backupName |
-| storageName | String | Name of the storage backend containing the backup | BackupRequest.storageName |
-| blobPath | String | Path in the storage where backup will be stored | BackupRequest.blobPath |
-| externalDatabaseStrategy | ExternalDatabaseStrategy | How to handle external databases during backup | BackupRequest.externalDatabaseStrategy |
-| filterCriteria | FilterCriteriaEntity (jsonb) | Filter criteria | BackupRequest.filterCriteria |
+| Field | Type | Description                                                                                                                                                          | Source |
+|---|---|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
+| name | String | Unique name of the backup                                                                                                                                            | BackupRequest.backupName |
+| storageName | String | Name of the storage backend containing the backup                                                                                                                    | BackupRequest.storageName |
+| blobPath | String | Path in the storage where backup will be stored                                                                                                                      | BackupRequest.blobPath |
+| externalDatabaseStrategy | ExternalDatabaseStrategy | How to handle external databases during backup                                                                                                                       | BackupRequest.externalDatabaseStrategy |
+| filterCriteria | FilterCriteriaEntity (jsonb) | Filter criteria                                                                                                                                                      | BackupRequest.filterCriteria |
 | logicalBackups | List<LogicalBackup> | Collection of logical backups grouped by adapter/database type; each entry contains its backup databases and tracks the progress/status of the backup for that group | - |
-| externalDatabases | List<BackupExternalDatabase> | List of externally managed databases included in the backup (according to the external database strategy), with their names, types, and classifiers | - |
-| status | BackupStatus | Current state of the backup operation | - |
-| total | Integer | Total number of databases being backed up | - |
-| completed | Integer | Number of databases successfully backed up | - |
-| size | Long | Total size of the backup in bytes | - |
-| errorMessage | String | Error details if the backup failed | - |
-| attemptCount | int | Number of tracking/aggregation attempts made for this backup (used by the scheduler to limit retries) | — |
-| imported | boolean | Indicates that the backup metadata was imported from an external source (backup metadata) rather than created by a local backup operation | — |
-| digest | String | SHA-256 digest of the backup metadata, used to verify integrity during upload/import | — |
-| ignoreNotBackupableDatabases | boolean | Whether non-backupable databases were ignored during backup | BackupRequest.ignoreNotBackupableDatabases |
+| externalDatabases | List<BackupExternalDatabase> | List of externally managed databases included in the backup (according to the external database strategy), with their names, types, and classifiers                  | - |
+| status | BackupStatus | Current state of the backup operation                                                                                                                                | - |
+| total | Integer | Total number of databases being backed up                                                                                                                            | - |
+| completed | Integer | Number of databases successfully backed up                                                                                                                           | - |
+| size | Long | Total size of the backup in bytes                                                                                                                                    | - |
+| errorMessage | String | Error details if the backup failed                                                                                                                                   | - |
+| attemptCount | int | Number of tracking/aggregation attempts made for this backup (used by the scheduler to limit retries)                                                                | — |
+| imported | boolean | Indicates that the backup metadata was imported from an external source (backup metadata) rather than created by a local backup operation                            | — |
+| digest | String | SHA-256 digest of the backup metadata, used to verify integrity during upload/import                                                                                 | — |
+| ignoreNotBackupableDatabases | boolean | Whether non-backupable databases were ignored during backup                                                                                                          | BackupRequest.ignoreNotBackupableDatabases |
 
 #### LogicalBackup
 
