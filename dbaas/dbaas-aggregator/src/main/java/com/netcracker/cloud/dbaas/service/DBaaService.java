@@ -368,8 +368,9 @@ public class DBaaService {
                         log.info("Started deletion of logical database with id {}", logicalDatabaseId);
 
                         for (var databaseRegistry : new ArrayList<>(CollectionUtils.emptyIfNull(logicalDatabase.getDatabaseRegistry()))) {
-
-                            dropDatabase(databaseRegistry);
+                            if (!databaseRegistry.isExternallyManageable()) {
+                                dropDatabase(databaseRegistry);
+                            }
                             encryption.deletePassword(databaseRegistry.getDatabase());
                             logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().deleteById(databaseRegistry.getId());
                         }
