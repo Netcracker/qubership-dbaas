@@ -1446,35 +1446,47 @@ public class DbBackupV2Service {
     }
 
     private Set<ClassifierDetails> findSimilarDbByClassifier(List<ClassifierDetails> classifiers, String type) {
-        Set<ClassifierDetails> uniqueClassifiers = new HashSet<>();
-        classifiers.forEach(classifier -> {
-            SortedMap<String, Object> currClassifier = classifier.getClassifier();
-            log.debug("Classifier candidate: {}", currClassifier);
+        Set<ClassifierDetails> result = new HashSet<>();
+        Map<UUID, Database> databases = new HashMap<>();
+        Set<SortedMap<String, Object>> foundClassifier = new HashSet<>();
 
-            Optional<DatabaseRegistry> optionalDatabaseRegistry = databaseRegistryDbaasRepository
+        for (ClassifierDetails classifierDetails : classifiers) {
+            SortedMap<String, Object> currClassifier = classifierDetails.getClassifier();
+
+            Optional<DatabaseRegistry> opt = databaseRegistryDbaasRepository
                     .getDatabaseByClassifierAndType(currClassifier, type);
 
-            if (optionalDatabaseRegistry.isPresent()) {
-                DatabaseRegistry dbRegistry = optionalDatabaseRegistry.get();
-                Database db = dbRegistry.getDatabase();
-                classifier.setType(ClassifierType.REPLACED);
-                classifier.setPreviousDatabase(db.getName());
-                log.info("Found existing database {} for classifier {}", db.getId(), currClassifier);
-                Set<ClassifierDetails> existClassifiers = db.getDatabaseRegistry().stream()
-                        .map(AbstractDatabaseRegistry::getClassifier)
-                        .filter(c -> !c.containsKey(MARKED_FOR_DROP))
-                        .map(TreeMap::new)
-                        .map(c -> currClassifier.equals(c)
-                                ? classifier
-                                : new ClassifierDetails(ClassifierType.TRANSIENT_REPLACED, db.getName(), new TreeMap<>(c), null)
-                        )
-                        .collect(Collectors.toSet());
+            if (opt.isEmpty()) {
+                result.add(classifierDetails); // NEW
+                continue;
+            }
 
-                uniqueClassifiers.addAll(existClassifiers);
-            } else
-                uniqueClassifiers.add(classifier);
-        });
-        return uniqueClassifiers;
+            DatabaseRegistry databaseRegistry = opt.get();
+
+            classifierDetails.setType(ClassifierType.REPLACED);
+            classifierDetails.setPreviousDatabase(databaseRegistry.getName());
+
+            result.add(classifierDetails);
+            foundClassifier.add(classifierDetails.getClassifier());
+
+            Database database = databaseRegistry.getDatabase();
+
+            if (!databases.containsKey(database.getId())) {
+                databases.put(database.getId(), database);
+            }
+        }
+
+
+        for (Database database : databases.values()) {
+            for (DatabaseRegistry databaseRegistry : database.getDatabaseRegistry()) {
+                if (!foundClassifier.contains(databaseRegistry.getClassifier())) {
+                    result.add(
+                            new ClassifierDetails(ClassifierType.TRANSIENT_REPLACED, database.getName(), new TreeMap<>(databaseRegistry.getClassifier()), null)
+                    );
+                }
+            }
+        }
+        return result;
     }
 
     private void findAndMarkDatabaseAsOrphan(List<ClassifierDetails> classifiers, String type) {
