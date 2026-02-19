@@ -684,16 +684,8 @@ class DbBackupV2ServiceTest {
         when(adapter.type()).thenReturn(postgresType);
         when(adapter.isBackupRestoreSupported()).thenReturn(true);
 
-        // Saving databases
         Stream.of(registry1)
                 .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
-
-        // Sleep to wait saving of databases
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
 
         BackupResponse response = dbBackupV2Service.backup(backupRequest, true);
         assertNotNull(response);
@@ -2276,17 +2268,6 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_whenDatabasesNotFound() {
-        Filter filter = new Filter();
-        filter.setNamespace(List.of("namespace"));
-        FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setInclude(List.of(filter));
-
-        assertThrows(DbNotFoundException.class,
-                () -> dbBackupV2Service.getAllDbByFilter(filterCriteria));
-    }
-
-    @Test
     void getAllDbByFilter_restorePart_excludeByMicroserviceName() {
         String dbName1 = "db1";
         String dbName2 = "db2";
@@ -2754,6 +2735,12 @@ class DbBackupV2ServiceTest {
                 ));
 
         assertTrue(ex.getMessage().contains("External databases not allowed for backup by strategy=FAIL: " + db1Name));
+    }
+
+    @Test
+    void validateAndFilterDatabasesForBackup_whenDatabasesNotFound() {
+        assertThrows(DbNotFoundException.class,
+                () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(Map.of(), false, ExternalDatabaseStrategy.FAIL));
     }
 
     @Test

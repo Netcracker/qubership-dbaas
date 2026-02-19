@@ -7,7 +7,6 @@ import com.netcracker.cloud.dbaas.entity.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
-import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import com.netcracker.cloud.dbaas.enums.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
@@ -142,7 +141,6 @@ public class DbBackupV2Service {
     }
 
     protected Backup initializeFullBackupStructure(Map<Database, List<DatabaseRegistry>> databasesForBackup, BackupRequest backupRequest) {
-        // Create base backup
         Backup backup = new Backup(
                 backupRequest.getBackupName(),
                 backupRequest.getStorageName(),
@@ -152,14 +150,12 @@ public class DbBackupV2Service {
                 backupRequest.getIgnoreNotBackupableDatabases()
         );
 
-        // Partition databases into externally manageable and non-externally manageable
         Map<Boolean, Map<Database, List<DatabaseRegistry>>> partitioned = databasesForBackup.entrySet().stream()
                 .collect(Collectors.partitioningBy(entry ->
                                 entry.getKey().isExternallyManageable(),
                         Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)
                 ));
 
-        // Handle non-externally managed databases
         List<LogicalBackup> logicalBackups = partitioned
                 .getOrDefault(false, Map.of())
                 .entrySet()
@@ -172,7 +168,6 @@ public class DbBackupV2Service {
                 .map(entry -> createLogicalBackup(entry.getKey(), entry.getValue(), backup))
                 .toList();
 
-        // Handle externally managed databases
         List<BackupExternalDatabase> externalDatabases = partitioned
                 .getOrDefault(true, Map.of())
                 .entrySet()
@@ -191,7 +186,6 @@ public class DbBackupV2Service {
                     );
                 }).toList();
 
-        // Persist and return
         backup.setExternalDatabases(externalDatabases);
         backup.setLogicalBackups(logicalBackups);
         return backup;
@@ -459,11 +453,6 @@ public class DbBackupV2Service {
                 })
                 .toList();
 
-        if (filteredDatabases.isEmpty()) {
-            log.warn("No databases matching the filtering criteria were found during the backup");
-            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
-        }
-
         return filteredDatabases.stream()
                 .collect(Collectors.groupingBy(DatabaseRegistry::getDatabase));
     }
@@ -603,8 +592,15 @@ public class DbBackupV2Service {
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .whenComplete(asyncOperations.wrapWithContext((res, ex) ->
-                        finalizeBackupDeletion(backup, failedAdapters)));
+                .whenComplete(asyncOperations.wrapWithContext((res, ex) -> {
+                    if (!failedAdapters.isEmpty()) {
+                        finalizeBackupDeletion(backup, failedAdapters);
+                    } else {
+                        backup.setStatus(BackupStatus.DELETED);
+                        log.info("Backup {} deleted successfully", backup.getName());
+                    }
+                    backupRepository.save(backup);
+                }));
     }
 
     private CompletableFuture<Void> deleteLogicalBackupAsync(
@@ -629,28 +625,24 @@ public class DbBackupV2Service {
                         asyncOperations.getBackupPool()
                 )
                 .exceptionally(throwable -> {
+                    if (is4xxError(throwable))
+                        return null;
                     String errorMessage = extractErrorMessage(throwable);
-                    log.error("Delete backup with adapter id {} (logicalBackup={}) failed: {}",
-                            adapterId, logicalBackup.getLogicalBackupName(), errorMessage);
+                    log.error("Delete logicalBackup={} with adapterId={}, errorMsg={}",
+                            logicalBackup.getId(), adapterId, errorMessage);
                     failedAdapters.put(adapterId, errorMessage);
                     return null;
                 });
     }
 
     private void finalizeBackupDeletion(Backup backup, Map<String, String> failedAdapters) {
-        if (failedAdapters.isEmpty()) {
-            backup.setStatus(BackupStatus.DELETED);
-            log.info("Backup {} deleted successfully", backup.getName());
-        } else {
-            String aggregatedError = String.format(
-                    "Not all backups were deleted successfully in backup %s, failed adapters: %s",
-                    backup.getName(), failedAdapters
-            );
-            log.error(aggregatedError);
-            backup.setStatus(BackupStatus.FAILED);
-            backup.setErrorMessage(aggregatedError);
-        }
-        backupRepository.save(backup);
+        String aggregatedError = String.format(
+                "Not all backups were deleted successfully in backup %s, failed adapters: %s",
+                backup.getName(), failedAdapters
+        );
+        log.error(aggregatedError);
+        backup.setStatus(BackupStatus.FAILED);
+        backup.setErrorMessage(aggregatedError);
     }
 
     public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun, boolean allowParallel) {
@@ -1707,12 +1699,60 @@ public class DbBackupV2Service {
         if (ExternalDatabaseStrategy.INCLUDE.equals(strategy))
             filteredDatabases.putAll(externalDatabases);
 
+        if (filteredDatabases.isEmpty()) {
+            log.warn("No databases matching the filtering criteria were found during the backup");
+            throw new DbNotFoundException("No databases matching the filtering criteria were found during the backup", Source.builder().build());
+        }
+
         return filteredDatabases;
     }
 
     @Transactional
     public void deleteBackupFromDb(String backupName) {
         backupRepository.deleteById(backupName);
+    }
+
+    public void deleteAllBackupByBackupNames(Set<String> backupNames) {
+        List<Backup> backups = backupRepository.findAllBackupByBackupNames(backupNames);
+
+        log.info("Found {} backups by {} backupNames", backups.size(), backupNames.size());
+
+        for (Backup backup : backups) {
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            Map<String, String> failedAdapters = new ConcurrentHashMap<>();
+
+            backup.getLogicalBackups()
+                    .forEach(logicalBackup ->
+                            futures.add(deleteLogicalBackupAsync(logicalBackup, backup.getBlobPath(), failedAdapters)));
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .whenComplete((res, ex) -> {
+                        if (!failedAdapters.isEmpty()) {
+                            finalizeBackupDeletion(backup, failedAdapters);
+                            backupRepository.save(backup);
+                        } else {
+                            backupRepository.delete(backup);
+                            log.debug("Backup={} deleted physically", backup.getName());
+                        }
+                    });
+        }
+    }
+
+    public void deleteAllRestoreByRestoreNames(Set<String> restoreNames) {
+        List<Restore> restores = restoreRepository.findAllRestoreByNames(restoreNames);
+        log.info("Found {} restores by {} restoreNames", restores.size(), restoreNames.size());
+        for (Restore restore : restores) {
+            restoreRepository.delete(restore);
+            log.debug("Restore={} deleted physically", restore.getName());
+        }
+    }
+
+    public List<String> getAllBackupNames() {
+        return backupRepository.findAll().list().stream().map(Backup::getName).toList();
+    }
+
+    public List<String> getAllRestoresNames() {
+        return restoreRepository.findAll().list().stream().map(Restore::getName).toList();
     }
 
     private boolean isBackupRestoreUnsupported(DbaasAdapter adapter) {

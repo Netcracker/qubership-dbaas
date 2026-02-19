@@ -30,6 +30,9 @@ import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import org.jboss.resteasy.annotations.Separator;
+
+import java.util.Set;
 
 import static com.netcracker.cloud.dbaas.Constants.BACKUP_MANAGER;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.BACKUP_PATH_V1;
@@ -410,5 +413,65 @@ public class DatabaseBackupV2Controller {
         }
         dbBackupV2Service.deleteBackupFromDb(backupName);
         return Response.noContent().build();
+    }
+
+    @Operation(summary = "Remove all backup by names",
+            description = "Find by names all backup and delete entirely ",
+            hidden = true
+    )
+    @DELETE
+    @Path("/backup/deleteAll")
+    public Response deleteAllBackupByNames(@QueryParam("backupNames")
+                                                   @NotNull @Separator(",") Set<String> backupNames) {
+        log.info("Request to delete backups by names={}", backupNames);
+        if (dbaaSHelper.isProductionMode()) {
+            throw new ForbiddenDeleteOperationException();
+        }
+        dbBackupV2Service.deleteAllBackupByBackupNames(backupNames);
+        return Response.noContent().build();
+    }
+
+    @Operation(summary = "Remove all restore by names",
+            description = "Find by names all restores and delete entirely ",
+            hidden = true
+    )
+    @DELETE
+    @Path("/restore/deleteAll")
+    public Response deleteAllRestoreByNames(@QueryParam("restoreNames")
+                                               @NotNull @Separator(",") Set<String> restoreNames) {
+        log.info("Request to delete restore by names={}", restoreNames);
+        if (dbaaSHelper.isProductionMode()) {
+            throw new ForbiddenDeleteOperationException();
+        }
+        dbBackupV2Service.deleteAllRestoreByRestoreNames(restoreNames);
+        return Response.noContent().build();
+    }
+
+    @Operation(summary = "Get all backup names",
+            description = "Find all backup names",
+            hidden = true
+    )
+    @GET
+    @Path("/backup/getAllBackupNames")
+    public Response getAllBackupNames() {
+        log.info("Request to get all backup names");
+        if (dbaaSHelper.isProductionMode()) {
+            throw new ForbiddenDeleteOperationException();
+        }
+        return Response.ok(dbBackupV2Service.getAllBackupNames()).build();
+    }
+
+    @Operation(summary = "Get all restore names",
+            description = "Find all restore names",
+            hidden = true
+    )
+    @GET
+    @Path("/restore/getAllRestoreNames")
+    public Response getAllRestoreNames() {
+        log.info("Request to get all restore names");
+        if (dbaaSHelper.isProductionMode()) {
+            throw new ForbiddenDeleteOperationException();
+        }
+        return Response.ok(dbBackupV2Service.getAllRestoresNames()).build();
     }
 }

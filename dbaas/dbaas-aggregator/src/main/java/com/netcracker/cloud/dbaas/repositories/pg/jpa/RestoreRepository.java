@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 @Transactional
 @ApplicationScoped
@@ -24,5 +25,9 @@ public class RestoreRepository implements PanacheRepositoryBase<Restore, String>
 
     public long countNotCompletedRestores() {
         return count("status in ?1", List.of(RestoreStatus.NOT_STARTED, RestoreStatus.IN_PROGRESS));
+    }
+
+    public List<Restore> findAllRestoreByNames(Set<String> restoreNames) {
+        return list("name IN ?1", restoreNames);
     }
 }
