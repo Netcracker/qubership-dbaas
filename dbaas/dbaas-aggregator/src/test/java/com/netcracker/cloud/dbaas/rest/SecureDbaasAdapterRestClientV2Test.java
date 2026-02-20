@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.rest;
 
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
-import com.netcracker.cloud.dbaas.security.filters.AuthFilterSelector;
+import com.netcracker.cloud.dbaas.security.filters.AuthFilterSetter;
 import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
 import jakarta.ws.rs.WebApplicationException;
@@ -28,12 +28,12 @@ class SecureDbaasAdapterRestClientV2Test {
     private KubernetesTokenAuthFilter kubernetesTokenAuthFilter;
 
     @Mock
-    private AuthFilterSelector authFilterSelector;
+    private AuthFilterSetter authFilterSetter;
 
     @Test
     void shouldExecuteRequestWithBasicAuthWhenJwtDisabled() {
         SecureDbaasAdapterRestClientV2 secureClient = new SecureDbaasAdapterRestClientV2(
-                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSelector, false);
+                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSetter, false);
         AdapterHealthStatus healthStatus = new AdapterHealthStatus("ok");
         when(restClient.getHealth()).thenReturn(healthStatus);
 
@@ -41,14 +41,14 @@ class SecureDbaasAdapterRestClientV2Test {
 
         assertSame(healthStatus, result);
         verify(restClient).getHealth();
-        verify(authFilterSelector, never()).selectAuthFilter(any());
+        verify(authFilterSetter, never()).setAuthFilter(any());
     }
 
     @Test
     void shouldSwitchToBasicAuthOn401WhenUsingTokenAuth() {
-        when(authFilterSelector.getAuthFilter()).thenReturn(kubernetesTokenAuthFilter);
+        when(authFilterSetter.getAuthFilter()).thenReturn(kubernetesTokenAuthFilter);
         SecureDbaasAdapterRestClientV2 secureClient = new SecureDbaasAdapterRestClientV2(
-                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSelector, true);
+                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSetter, true);
 
         Response unauthorizedResponse = mock(Response.class);
         when(unauthorizedResponse.getStatus()).thenReturn(401);
@@ -63,15 +63,15 @@ class SecureDbaasAdapterRestClientV2Test {
         AdapterHealthStatus result = secureClient.getHealth();
 
         assertSame(healthStatus, result);
-        verify(authFilterSelector).selectAuthFilter(basicAuthFilter);
+        verify(authFilterSetter).setAuthFilter(basicAuthFilter);
         verify(restClient, times(2)).getHealth();
     }
 
     @Test
     void shouldRethrowExceptionWhenNotUnauthorizedOrNotTokenAuth() {
-        when(authFilterSelector.getAuthFilter()).thenReturn(basicAuthFilter);
+        when(authFilterSetter.getAuthFilter()).thenReturn(basicAuthFilter);
         SecureDbaasAdapterRestClientV2 secureClient = new SecureDbaasAdapterRestClientV2(
-                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSelector, true);
+                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSetter, true);
 
         Response forbiddenResponse = mock(Response.class);
         when(forbiddenResponse.getStatus()).thenReturn(403);
@@ -80,14 +80,14 @@ class SecureDbaasAdapterRestClientV2Test {
         when(restClient.getHealth()).thenThrow(forbiddenException);
 
         assertThrows(WebApplicationException.class, secureClient::getHealth);
-        verify(authFilterSelector, never()).selectAuthFilter(any());
+        verify(authFilterSetter, never()).setAuthFilter(any());
         verify(restClient, times(1)).getHealth();
     }
 
     @Test
     void shouldDelegateAllMethodsToRestClient() throws Exception {
         SecureDbaasAdapterRestClientV2 secureClient = new SecureDbaasAdapterRestClientV2(
-                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSelector, false);
+                restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSetter, false);
 
         secureClient.handshake("postgres");
         verify(restClient).handshake("postgres");

@@ -32,11 +32,17 @@ class BasicAndKubernetesAuthMechanismTest {
 
     @BeforeEach
     void setUp() {
-        mechanism = new BasicAndKubernetesAuthMechanism();
         basicAuth = mock(BasicAuthenticationMechanism.class);
         jwtAuth = mock(JWTAuthMechanism.class);
-        mechanism.basicAuth = basicAuth;
-        mechanism.jwtAuth = jwtAuth;
+
+        Set<Class<? extends AuthenticationRequest>> basicTypes =
+                new HashSet<>(Collections.singleton(AuthenticationRequest.class));
+        Set<Class<? extends AuthenticationRequest>> jwtTypes =
+                new HashSet<>(Collections.singleton(AuthenticationRequest.class));
+        when(basicAuth.getCredentialTypes()).thenReturn(basicTypes);
+        when(jwtAuth.getCredentialTypes()).thenReturn(jwtTypes);
+
+        mechanism = new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth);
 
         context = mock(RoutingContext.class);
         request = mock(HttpServerRequest.class);
@@ -96,14 +102,6 @@ class BasicAndKubernetesAuthMechanismTest {
 
     @Test
     void testGetCredentialTypes() {
-        Set<Class<? extends AuthenticationRequest>> basicTypes =
-                new HashSet<>(Collections.singleton(AuthenticationRequest.class));
-        Set<Class<? extends AuthenticationRequest>> jwtTypes =
-                new HashSet<>(Collections.singleton(AuthenticationRequest.class));
-
-        when(basicAuth.getCredentialTypes()).thenReturn(basicTypes);
-        when(jwtAuth.getCredentialTypes()).thenReturn(jwtTypes);
-
         Set<Class<? extends AuthenticationRequest>> result = mechanism.getCredentialTypes();
 
         assertNotNull(result);

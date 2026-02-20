@@ -22,11 +22,22 @@ import java.util.Set;
 @ApplicationScoped
 @Slf4j
 public class BasicAndKubernetesAuthMechanism implements HttpAuthenticationMechanism {
-    @Inject
+    private static final String BEARER_PREFIX = "Bearer ";
+
     BasicAuthenticationMechanism basicAuth;
+    JWTAuthMechanism jwtAuth;
+    Set<Class<? extends AuthenticationRequest>> credentialTypes;
 
     @Inject
-    JWTAuthMechanism jwtAuth;
+    public BasicAndKubernetesAuthMechanism(BasicAuthenticationMechanism basicAuth, JWTAuthMechanism jwtAuth) {
+        this.basicAuth = basicAuth;
+        this.jwtAuth = jwtAuth;
+
+        Set<Class<? extends AuthenticationRequest>> credentialTypes = new HashSet<>();
+        credentialTypes.addAll(basicAuth.getCredentialTypes());
+        credentialTypes.addAll(jwtAuth.getCredentialTypes());
+        this.credentialTypes = credentialTypes;
+    }
 
     @Override
     public Uni<SecurityIdentity> authenticate(RoutingContext context, IdentityProviderManager identityProviderManager) {
@@ -40,10 +51,7 @@ public class BasicAndKubernetesAuthMechanism implements HttpAuthenticationMechan
 
     @Override
     public Set<Class<? extends AuthenticationRequest>> getCredentialTypes() {
-        Set<Class<? extends AuthenticationRequest>> types = new HashSet<>();
-        types.addAll(basicAuth.getCredentialTypes());
-        types.addAll(jwtAuth.getCredentialTypes());
-        return types;
+        return credentialTypes;
     }
 
     @Override
@@ -61,6 +69,6 @@ public class BasicAndKubernetesAuthMechanism implements HttpAuthenticationMechan
 
     private boolean isBearerTokenPresent(RoutingContext context) {
         String authHeader = context.request().getHeader("Authorization");
-        return authHeader != null && authHeader.startsWith("Bearer ");
+        return authHeader != null && authHeader.startsWith(BEARER_PREFIX);
     }
 }

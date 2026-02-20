@@ -37,10 +37,6 @@ public class ServiceAccountRolesAugmentor implements SecurityIdentityAugmentor {
     @Inject
     ServiceAccountRolesManager rolesManager;
 
-    public ServiceAccountRolesAugmentor(ServiceAccountRolesManager rolesManager) {
-        this.rolesManager = rolesManager;
-    }
-
     @Override
     public Uni<SecurityIdentity> augment(SecurityIdentity identity, AuthenticationRequestContext context) {
         if (identity.isAnonymous()) {

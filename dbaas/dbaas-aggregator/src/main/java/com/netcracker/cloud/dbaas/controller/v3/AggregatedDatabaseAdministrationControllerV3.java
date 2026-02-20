@@ -426,10 +426,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
         if (!Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT)) {
             return;
         }
-        String tenantId = ((TenantContextObject) ContextManager.get(BaseTenantProvider.TENANT_CONTEXT_NAME)).getTenant();
-        if (tenantId.equals(classifier.get(TENANT_ID))) {
-            return;
+        TenantContextObject tenantContext = ContextManager.get(BaseTenantProvider.TENANT_CONTEXT_NAME);
+        if (tenantContext == null || !tenantContext.getTenant().equals(classifier.get(TENANT_ID))) {
+            throw new ForbiddenTenantIdException();
         }
-        throw new ForbiddenTenantIdException();
     }
 }

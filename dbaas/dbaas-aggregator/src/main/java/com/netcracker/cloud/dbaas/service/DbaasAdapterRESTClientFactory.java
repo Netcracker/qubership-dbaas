@@ -23,7 +23,6 @@ import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class DbaasAdapterRESTClientFactory {
-    @Inject
     @ConfigProperty(name = "dbaas.security.k8s.jwt.enabled")
     boolean jwtEnabled;
 

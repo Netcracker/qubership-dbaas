@@ -11,7 +11,7 @@ import com.netcracker.cloud.dbaas.entity.dto.backupV2.RestoreAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
-import com.netcracker.cloud.dbaas.security.filters.AuthFilterSelector;
+import com.netcracker.cloud.dbaas.security.filters.AuthFilterSetter;
 import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
 import jakarta.ws.rs.WebApplicationException;
@@ -33,29 +33,29 @@ public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 
     private final KubernetesTokenAuthFilter kubernetesTokenAuthFilter;
 
     private final DbaasAdapterRestClientV2 restClient;
-    private final AuthFilterSelector authFilterSelector;
+    private final AuthFilterSetter authFilterSetter;
 
     private final AtomicReference<Instant> lastTokenAuthSetTime;
 
-    public SecureDbaasAdapterRestClientV2(DbaasAdapterRestClientV2 restClient, BasicAuthFilter basicAuthFilter, KubernetesTokenAuthFilter kubernetesTokenAuthFilter, AuthFilterSelector authFilterSelector, boolean isJwtEnabled) {
+    public SecureDbaasAdapterRestClientV2(DbaasAdapterRestClientV2 restClient, BasicAuthFilter basicAuthFilter, KubernetesTokenAuthFilter kubernetesTokenAuthFilter, AuthFilterSetter authFilterSetter, boolean isJwtEnabled) {
         this.restClient = restClient;
         this.basicAuthFilter = basicAuthFilter;
         this.kubernetesTokenAuthFilter = kubernetesTokenAuthFilter;
-        this.authFilterSelector = authFilterSelector;
+        this.authFilterSetter = authFilterSetter;
         this.lastTokenAuthSetTime = new AtomicReference<>(Instant.now());
         this.isJwtEnabled = isJwtEnabled;
     }
 
     private <R> R executeRequest(final Supplier<R> supplier) {
         try {
-            if (isJwtEnabled && authFilterSelector.getAuthFilter() instanceof BasicAuthFilter && Duration.between(lastTokenAuthSetTime.get(), Instant.now()).toMinutes() >= 60) {
-                authFilterSelector.selectAuthFilter(kubernetesTokenAuthFilter);
+            if (isJwtEnabled && authFilterSetter.getAuthFilter() instanceof BasicAuthFilter && Duration.between(lastTokenAuthSetTime.get(), Instant.now()).toMinutes() >= 60) {
+                authFilterSetter.setAuthFilter(kubernetesTokenAuthFilter);
                 lastTokenAuthSetTime.set(Instant.now());
             }
             return supplier.get();
         } catch (WebApplicationException e) {
-            if (isJwtEnabled && e.getResponse().getStatus() == Response.Status.UNAUTHORIZED.getStatusCode() && authFilterSelector.getAuthFilter() instanceof KubernetesTokenAuthFilter) {
-                authFilterSelector.selectAuthFilter(basicAuthFilter);
+            if (isJwtEnabled && e.getResponse().getStatus() == Response.Status.UNAUTHORIZED.getStatusCode() && authFilterSetter.getAuthFilter() instanceof KubernetesTokenAuthFilter) {
+                authFilterSetter.setAuthFilter(basicAuthFilter);
                 return supplier.get();
             }
             throw e;

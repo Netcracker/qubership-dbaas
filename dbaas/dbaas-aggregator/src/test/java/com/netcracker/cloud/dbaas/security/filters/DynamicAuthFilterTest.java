@@ -36,7 +36,7 @@ class DynamicAuthFilterTest {
         verify(defaultFilter).filter(requestContext);
         verifyNoInteractions(newFilter);
 
-        dynamicFilter.selectAuthFilter(newFilter);
+        dynamicFilter.setAuthFilter(newFilter);
 
         assertSame(newFilter, dynamicFilter.getAuthFilter());
         assertNotSame(defaultFilter, dynamicFilter.getAuthFilter());
