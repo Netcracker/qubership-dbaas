@@ -49,8 +49,9 @@ public class JdbcUtils {
         if (ssl) {
             log.info("Using secured connection to postgres");
             url += SSL_URL_PARAMS;
+        } else {
+            log.info("Using not secured connection to postgres");
         }
-        log.info("Using not secured connection to postgres");
         return url;
     }
 

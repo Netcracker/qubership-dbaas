@@ -121,7 +121,7 @@ else
 	@echo "$(CYAN)--- Skipping nodes check (ADD_DBAAS_NODE_LABEL=false)...$(NC)"
 	@echo "$(CYAN)--- Please ensure your cluster has at least 1 node with label '$(NODE_SELECTOR_DBAAS_KEY)=$(REGION_DBAAS)'$(NC)"
 endif
-	@echo ""	
+	@echo ""
 
 # Setup repositories
 .PHONY: setup-repos
@@ -328,6 +328,22 @@ smoke-test:
 		echo "$(RED)Error: Could not retrieve DBaaS credentials$(NC)"; \
 		exit 1; \
 	fi; \
+	start_port_forward() { \
+		port=$$1; \
+		kubectl port-forward -n $(DBAAS_NAMESPACE) service/$(DBAAS_SERVICE_NAME) $$port:8080 >/tmp/dbaas-port-forward.log 2>&1 & \
+		PORT_FORWARD_PID=$$!; \
+		echo "$(CYAN)--- Port forward started with PID: $$PORT_FORWARD_PID$(NC)"; \
+		sleep 2; \
+		if ! kill -0 $$PORT_FORWARD_PID 2>/dev/null; then \
+			echo "$(RED)Error: Port forward process exited. See /tmp/dbaas-port-forward.log$(NC)"; \
+			return 1; \
+		fi; \
+		if ! timeout 2 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/$$port" >/dev/null 2>&1; then \
+			echo "$(RED)Error: Port $$port not listening after port-forward start$(NC)"; \
+			return 1; \
+		fi; \
+		return 0; \
+	}; \
 	echo "$(GREEN)--- Credentials retrieved successfully$(NC)"; \
 	echo "$(CYAN)--- Setting up port forward to DBaaS service...$(NC)";\
 	PORT_FOUND=false;\
@@ -337,10 +353,12 @@ smoke-test:
 		echo "$(CYAN)--- Attempt $$ATTEMPT: Trying port $$RANDOM_PORT$(NC)"; \
 		if ! netstat -tuln 2>/dev/null | grep -q ":$$RANDOM_PORT "; then \
 			echo "$(GREEN)--- Port $$RANDOM_PORT is available$(NC)"; \
-			kubectl port-forward -n $(DBAAS_NAMESPACE) service/$(DBAAS_SERVICE_NAME) $$RANDOM_PORT:8080 >/dev/null 2>&1 & \
-			PORT_FORWARD_PID=$$!; \
-			echo "$(CYAN)--- Port forward started with PID: $$PORT_FORWARD_PID$(NC)"; \
-			PORT_FOUND=true; \
+			if start_port_forward $$RANDOM_PORT; then \
+				PORT_FOUND=true; \
+			else \
+				kill $$PORT_FORWARD_PID 2>/dev/null || true; \
+				ATTEMPT=$$((ATTEMPT + 1)); \
+			fi; \
 		else \
 			echo "$(CYAN)--- Port $$RANDOM_PORT is already in use, trying another port$(NC)"; \
 			ATTEMPT=$$((ATTEMPT + 1)); \
@@ -352,7 +370,7 @@ smoke-test:
 	fi; \
 	sleep 10;\
 	echo "$(CYAN)--- Creating test database via REST API (10 attempts with 10s sleep)...$(NC)";\
-	BASIC_AUTH_HEADER=$$(echo -n "$$DBAAS_USERNAME:$$DBAAS_PASSWORD" | base64);\
+	BASIC_AUTH_HEADER=$$(printf '%s' "$$DBAAS_USERNAME:$$DBAAS_PASSWORD" | base64 | tr -d '\n');\
 	DB_CREATION_SUCCESS=false;\
 	DB_ATTEMPT=1;\
 	while [ $$DB_ATTEMPT -le 10 ] && [ "$$DB_CREATION_SUCCESS" != "true" ]; do \
@@ -372,6 +390,13 @@ smoke-test:
 			}' 2>/dev/null); \
 		HTTP_STATUS=$$(echo "$$TEST_DB_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2); \
 		RESPONSE_BODY=$$(echo "$$TEST_DB_RESPONSE" | sed 's/HTTPSTATUS:[0-9]*//'); \
+		if [ -z "$$HTTP_STATUS" ] || [ "$$HTTP_STATUS" = "000" ]; then \
+			echo "$(CYAN)--- Detected HTTPSTATUS 000/empty. Restarting port forward...$(NC)"; \
+			kill $$PORT_FORWARD_PID 2>/dev/null || true; \
+			if ! start_port_forward $$RANDOM_PORT; then \
+				echo "$(RED)Error: Failed to restart port forward$(NC)"; \
+			fi; \
+		fi; \
 		if [ "$$HTTP_STATUS" = "200" ] || [ "$$HTTP_STATUS" = "201" ] || [ "$$HTTP_STATUS" = "202" ]; then \
 			echo "$(GREEN)--- Database creation successful on attempt $$DB_ATTEMPT! HTTP Status: $$HTTP_STATUS$(NC)"; \
 			echo "$(CYAN)--- Response: $$RESPONSE_BODY$(NC)"; \
@@ -496,7 +521,7 @@ manual-cleanup:
 	@kubectl get pv -o custom-columns=name:metadata.name --no-headers 2>/dev/null | \
 		xargs -I {} sh -c 'kubectl get pv {} -o jsonpath="{.spec.claimRef.namespace}" | \
 		grep -q "^$(PG_NAMESPACE)$$" && echo {}' | \
-		xargs -r kubectl delete pv || echo "PVs not found or already deleted"	
+		xargs -r kubectl delete pv || echo "PVs not found or already deleted"
 	@echo "$(CYAN)--- kubectl delete service -n $(PG_NAMESPACE) --all$(NC)"
 	@kubectl delete service -n $(PG_NAMESPACE) --all || echo "Service not found or already deleted"
 	@echo "$(GREEN)--- Manual cleanup completed$(NC)"
@@ -528,4 +553,4 @@ cleanup-namespaces:
 		echo ""; \
 	fi
 
-	
+

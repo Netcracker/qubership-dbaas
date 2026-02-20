@@ -24,7 +24,7 @@ jobs:
           EOF
 
       - name: Set up Kind
-        uses: helm/kind-action@v1.13.0
+        uses: helm/kind-action@v1.14.0
         with:
           cluster_name: kind
           config: kind-config.yaml
@@ -38,6 +38,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
+
+      - name: Deploy Fluent Bit
+        run: |
+          kubectl apply -f .github/declarations/fluent-bit-logging.yaml
 
       - name: Create namespace minio
         run: |
@@ -178,6 +182,20 @@ jobs:
         with:
           name: surefire-reports
           path: artifacts/*
+
+      - name: Collect Fluent Bit logs
+        id: collect_fluentbit_logs
+        run: |
+          chmod +x .github/scripts/collect-fluentbit-logs.sh && \
+          .github/scripts/collect-fluentbit-logs.sh
+
+      - name: Upload Fluent Bit logs
+        if: always() && steps.collect_fluentbit_logs.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: dbaas-pod-logs
+          path: fluentbit-logs/**
+          if-no-files-found: warn
 
       - name: Collect DBaaS logs
         id: collect_logs

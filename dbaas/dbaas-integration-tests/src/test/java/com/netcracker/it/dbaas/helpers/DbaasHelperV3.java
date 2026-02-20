@@ -53,8 +53,10 @@ import org.opensearch.client.transport.httpclient5.ApacheHttpClient5TransportBui
 import org.opentest4j.AssertionFailedError;
 import org.slf4j.MDC;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.URL;
+import java.net.SocketException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -67,6 +69,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.test.AbstractIT.DEFAULT_RETRY_POLICY;
+import static com.netcracker.it.dbaas.test.AbstractIT.DBAAS_SERVICE_NAME;
+import static com.netcracker.it.dbaas.test.AbstractIT.HTTP_PORT;
 import static com.netcracker.it.dbaas.test.AbstractIT.OPENSEARCH_TYPE;
 import static io.undertow.server.handlers.SSLHeaderHandler.HTTPS;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -123,7 +127,7 @@ public class DbaasHelperV3 {
     private static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     @NonNull
-    private final URL dbaasServiceUrl;
+    private volatile URL dbaasServiceUrl;
     @NonNull
     private final KubernetesClient kubernetesClient;
     @Getter
@@ -149,6 +153,80 @@ public class DbaasHelperV3 {
         this.dbaasMigrationAuthorization = dbaasUsers.getBasicAuthorizationForRoles("MIGRATION_CLIENT");
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
+    }
+
+    public URL getDbaasServiceUrl() {
+        return dbaasServiceUrl;
+    }
+
+    public void setDbaasServiceUrl(@NotNull URL dbaasServiceUrl) {
+        this.dbaasServiceUrl = dbaasServiceUrl;
+    }
+
+    private Response executeWithPortForwardRetry(Request request) throws IOException {
+        if (!isDbaasRequest(request)) {
+            return okHttpClient.newCall(request).execute();
+        }
+
+        var retryPolicy = new RetryPolicy<Response>()
+                .handle(IOException.class)
+                .withMaxRetries(1)
+                .withDelay(Duration.ofSeconds(1));
+
+        return Failsafe.with(retryPolicy).get(() -> {
+            try {
+                return okHttpClient.newCall(request).execute();
+            } catch (IOException e) {
+                if (isPortForwardFailure(e)) {
+                    log.warn("DBaaS port-forward failed during request {}, recreating it", request.url());
+                    refreshDbaasPortForward();
+                }
+                throw e;
+            }
+        });
+    }
+
+    private boolean isDbaasRequest(Request request) {
+        return request.url().host().equals(dbaasServiceUrl.getHost())
+                && request.url().port() == dbaasServiceUrl.getPort();
+    }
+
+    private void refreshDbaasPortForward() {
+        try {
+            portForwardService.closePortForward(new Endpoint(dbaasServiceUrl.getHost(), dbaasServiceUrl.getPort()));
+        } catch (RuntimeException e) {
+            log.debug("Failed to close stale DBaaS port-forward", e);
+        }
+
+        dbaasServiceUrl = portForwardService
+                .portForward(ServicePortForwardParams.builder(DBAAS_SERVICE_NAME, HTTP_PORT).build())
+                .toHttpUrl();
+    }
+
+    private static boolean isPortForwardFailure(IOException e) {
+        return hasPortForwardMarker(e)
+                || (e.getMessage() != null && e.getMessage().contains("unexpected end of stream"));
+    }
+
+    private static boolean hasPortForwardMarker(Throwable t) {
+        Throwable current = t;
+        while (current != null) {
+            if (current instanceof EOFException) {
+                return true;
+            }
+            if (current instanceof SocketException
+                    && current.getMessage() != null
+                    && current.getMessage().contains("Connection reset")) {
+                return true;
+            }
+            for (Throwable suppressed : current.getSuppressed()) {
+                if (hasPortForwardMarker(suppressed)) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     /**
@@ -180,8 +258,7 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .get()
                 .build();
-        Call call = okHttpClient.newCall(request);
-        try (Response response = call.execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             if (response.code() != 200) {
                 log.info("There are no physical databases of type {}.", dbType);
                 return false;
@@ -264,7 +341,7 @@ public class DbaasHelperV3 {
                 .delete()
                 .build();
 
-        try (var response = okHttpClient.newCall(request).execute()) {
+        try (var response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
 
             assertThat(response.code(), is(HttpStatus.SC_OK));
@@ -290,7 +367,7 @@ public class DbaasHelperV3 {
                 .delete()
                 .build();
 
-        try (var response = okHttpClient.newCall(request).execute()) {
+        try (var response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
 
             assertThat(response.code(), is(HttpStatus.SC_OK));
@@ -315,7 +392,7 @@ public class DbaasHelperV3 {
 
     public String deleteDatabases(String api, String authorization, String namespace, int httpCode) throws IOException {
         Request request = deleteDatabasesRequest(api, authorization, namespace);
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
             assertThat(response.code(), is(httpCode));
             // wait for all databases to get deleted
@@ -401,7 +478,7 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .get()
                 .build();
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             assertThat(response.code(), is(expectStatusCode));
             String body = response.body().string();
             log.info("Registered physical databases for {} type: {}", dbType, body);
@@ -930,7 +1007,7 @@ public class DbaasHelperV3 {
                                            List<String> initialScriptIds, String namespace, Boolean backupDisabled,
                                            String physicalDatabaseId, String prefixName, Map<String, Object> settings) throws IOException {
         Request request = createDbRequest(uri, authorization, testClassifierValue, type, initialScriptIds, namespace, backupDisabled, physicalDatabaseId, prefixName, settings);
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -943,7 +1020,7 @@ public class DbaasHelperV3 {
                                            List<String> initialScriptIds, String namespace, Boolean backupDisabled,
                                            String physicalDatabaseId, String prefixName, Map<String, Object> settings) throws IOException {
         Request request = createDbRequest(uri, authorization, testClassifierValue, type, initialScriptIds, namespace, backupDisabled, physicalDatabaseId, prefixName, settings);
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -1006,7 +1083,7 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .post(RequestBody.create(classifierJson, JSON))
                 .build();
-        return okHttpClient.newCall(request).execute();
+        return executeWithPortForwardRetry(request);
     }
 
     Response getDatabaseByClassifierAsResponse(String authorization, Map<String, Object> classifier, String type, String namespace, String role) throws IOException {
@@ -1022,7 +1099,7 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .post(RequestBody.create(classifierJson, JSON))
                 .build();
-        return okHttpClient.newCall(request).execute();
+        return executeWithPortForwardRetry(request);
     }
 
     public DatabaseResponse getDatabaseByClassifierAsPOJO(String authorization, Map<String, Object> classifier, String namespace, String type, int expectCode) throws IOException {
@@ -1156,7 +1233,7 @@ public class DbaasHelperV3 {
                 .addHeader("Authorization", "Basic " + clusterDbaAuthorization)
                 .post(RequestBody.create(passwordChangeRequestJson, JSON))
                 .build();
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -1177,7 +1254,7 @@ public class DbaasHelperV3 {
     }
 
     public <T> T executeRequest(Request request, Class<T> clazz, Integer... expectHttpCode) {
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -1192,7 +1269,7 @@ public class DbaasHelperV3 {
     }
 
     public Response executeRequest(Request request, Integer expectHttpCode) throws IOException {
-        Response response = okHttpClient.newCall(request).execute();
+        Response response = executeWithPortForwardRetry(request);
         log.info("Response: {}", response);
         assertThat(response.code(), is(expectHttpCode));
         return response;
@@ -1421,7 +1498,7 @@ public class DbaasHelperV3 {
 
     public void deleteDatabasesByClassifierRequest(String namespace, String dbType, ClassifierWithRolesRequest classifierWithRolesRequest, int expected) throws IOException {
         Request request = createRequest(String.format("api/v3/dbaas/%s/databases/%s", namespace, dbType), clusterDbaAuthorization, classifierWithRolesRequest, "DELETE");
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        try (Response response = executeWithPortForwardRetry(request)) {
             assertThat(response.code(), is(expected));
         }
     }
@@ -1443,7 +1520,7 @@ public class DbaasHelperV3 {
 
     public Response sendRequest(String url, Object body, String method) throws IOException {
         Request request = createRequest(url, clusterDbaAuthorization, body, method);
-        Response response = okHttpClient.newCall(request).execute();
+        Response response = executeWithPortForwardRetry(request);
         log.info("Response: {}", response);
         log.info("Response body: {}", response.peekBody(Long.MAX_VALUE).string());
         return response;

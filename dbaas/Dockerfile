@@ -1,4 +1,4 @@
-FROM ghcr.io/netcracker/qubership/java-base:21-alpine-2.0.0
+FROM ghcr.io/netcracker/qubership-java-base:25-alpine-2.2.1
 LABEL maintainer="qubership"
 
 ARG BASE_PATH=.
