@@ -15,11 +15,10 @@ public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
 
     public Backup save(Backup backup) {
         EntityManager entityManager = getEntityManager();
-        entityManager.merge(backup);
-        return backup;
+        return entityManager.merge(backup);
     }
 
-    public List<Backup> findBackupsToAggregate() {
-        return list("status in ?1", List.of(BackupStatus.NOT_STARTED, BackupStatus.IN_PROGRESS));
+    public List<Backup> findBackupsToTrack() {
+        return list("status in ?1", List.of(BackupStatus.IN_PROGRESS));
     }
 }

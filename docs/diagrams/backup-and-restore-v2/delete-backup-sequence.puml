@@ -1,0 +1,40 @@
+@startuml
+autonumber
+actor Client
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+participant "DBaaS Adapter" as Adapter
+
+Client -> DBaaS: DELETE /backup/{backupName}?force=...
+
+DBaaS -> DB: find backup by name
+alt backup not found
+  DB --> DBaaS: null
+  DBaaS --> Client: HTTP 204 No Content
+else backup found
+  DB --> DBaaS: Backup
+  alt status not in {COMPLETED, FAILED, DELETED}
+    DBaaS --> Client: HTTP 422 (TmfErrorResponse)
+  else valid status
+    alt force == false
+      DBaaS -> DB: save Backup (set status=DELETED)
+      DBaaS --> Client: HTTP 204 No Content
+    else force == true
+      DBaaS -> DB: save Backup (set status=DELETE_IN_PROGRESS)
+
+      loop for each LogicalBackup
+        DBaaS -> Adapter: send request to adapter to delete backup
+        Adapter --> DBaaS: recieve response
+      end
+
+      alt failed adapter list is empty
+        DBaaS -> DB: save Backup (status=DELETED)
+      else failed adapter list is not empty
+        DBaaS -> DB: save Backup (set status=FAILED, set error message)
+      end
+
+      DBaaS --> Client: HTTP 202 Accepted
+    end
+  end
+end
+@enduml

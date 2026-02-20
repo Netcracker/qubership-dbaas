@@ -1077,7 +1077,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testDeleteBackupAfterWarmup() throws IOException, SQLException {
-        BackupHelperV3 backupsHelper = new BackupHelperV3(dbaasServiceUrl, helperV3);
+        BackupHelperV3 backupsHelper = new BackupHelperV3(helperV3);
 
         try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
             Assertions.assertEquals(200, initResponse.code());

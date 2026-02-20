@@ -41,8 +41,8 @@ class BackupV3IT extends AbstractIT {
 
     @BeforeAll
     static void initHelper() {
-        backupHelperV3 = new BackupHelperV3(dbaasServiceUrl, helperV3);
-        backupHelperV1 = new BackupHelperV1(dbaasServiceUrl, helperV3);
+        backupHelperV3 = new BackupHelperV3(helperV3);
+        backupHelperV1 = new BackupHelperV1(helperV3);
         deleteTestData();
     }
 
