@@ -684,16 +684,8 @@ class DbBackupV2ServiceTest {
         when(adapter.type()).thenReturn(postgresType);
         when(adapter.isBackupRestoreSupported()).thenReturn(true);
 
-        // Saving databases
         Stream.of(registry1)
                 .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
-
-        // Sleep to wait saving of databases
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
 
         BackupResponse response = dbBackupV2Service.backup(backupRequest, true);
         assertNotNull(response);
@@ -2276,17 +2268,6 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
-    void getAllDbByFilter_whenDatabasesNotFound() {
-        Filter filter = new Filter();
-        filter.setNamespace(List.of("namespace"));
-        FilterCriteria filterCriteria = new FilterCriteria();
-        filterCriteria.setInclude(List.of(filter));
-
-        assertThrows(DbNotFoundException.class,
-                () -> dbBackupV2Service.getAllDbByFilter(filterCriteria));
-    }
-
-    @Test
     void getAllDbByFilter_restorePart_excludeByMicroserviceName() {
         String dbName1 = "db1";
         String dbName2 = "db2";
@@ -2729,7 +2710,6 @@ class DbBackupV2ServiceTest {
         assertEquals(db4, filteredDatabase4);
     }
 
-
     @Test
     void validateAndFilterDatabasesForBackup_whenStrategyFail() {
         String namespace = "namespace";
@@ -2754,6 +2734,108 @@ class DbBackupV2ServiceTest {
                 ));
 
         assertTrue(ex.getMessage().contains("External databases not allowed for backup by strategy=FAIL: " + db1Name));
+    }
+
+    @Test
+    void validateAndFilterDatabasesForBackup_whenDatabasesNotFound() {
+        String externalDbName = "externalDbName";
+
+        Database external = getDatabase(null, externalDbName, true, true, null);
+        getDatabaseRegistry(external, "namespace", "microserviceName", null, "postgresql");
+
+        Map<Database, List<DatabaseRegistry>> dbToRegistry = Map.of(
+                external, external.getDatabaseRegistry()
+        );
+
+        assertThrows(DbNotFoundException.class,
+                () -> dbBackupV2Service.validateAndFilterDatabasesForBackup(dbToRegistry, false, ExternalDatabaseStrategy.SKIP));
+    }
+
+    @Test
+    void deleteRestoreDoNotAffectBackup() {
+        String namespace = "namespace";
+        String externalMicroserviceName = "externalMicroserviceName";
+        String internalMicroserviceName = "internalMicroserviceName";
+
+        String adapterId = "adapterId";
+        String postgresql = "postgresql";
+
+        String backupName = "backup";
+        String restoreName = "restore";
+
+        String logicalBackupName = "logicalBackup";
+        String logicalRestoreName = "logicalRestore";
+
+        String externalDbName = "externalDb";
+        String internalDbName = "internalDbName";
+        String newInternalDbName = "newInternalDbName";
+
+
+        BackupExternalDatabase backupExternalDatabase = getBackupExternalDatabase(externalDbName, postgresql, List.of(getClassifier(namespace, externalMicroserviceName, null)));
+        BackupDatabase backupDatabase = getBackupDatabase(internalDbName, List.of(getClassifier(namespace, internalMicroserviceName, null)), true, BackupTaskStatus.COMPLETED, "");
+        LogicalBackup logicalBackup = getLogicalBackup(logicalBackupName, adapterId, postgresql, List.of(backupDatabase), BackupTaskStatus.COMPLETED, "");
+        Backup backup = getBackup(backupName, ExternalDatabaseStrategy.INCLUDE, getFilterCriteriaEntity(List.of(namespace)), List.of(logicalBackup), List.of(backupExternalDatabase), BackupStatus.COMPLETED, "");
+        backupRepository.save(backup);
+
+        RestoreExternalDatabase restoreExternalDatabase = getRestoreExternalDb(externalDbName, postgresql, List.of(getClassifier(ClassifierType.NEW, namespace, externalMicroserviceName, null, namespace, null)));
+        RestoreDatabase restoreDatabase = getRestoreDatabase(backupDatabase, newInternalDbName, List.of(getClassifier(ClassifierType.NEW, namespace, internalMicroserviceName, null, namespace, null)), Map.of(), null, RestoreTaskStatus.COMPLETED, 1, "");
+        LogicalRestore logicalRestore = getLogicalRestore(logicalRestoreName, adapterId, postgresql, List.of(restoreDatabase), RestoreTaskStatus.COMPLETED, "");
+        Restore restore = getRestore(backup, restoreName, getFilterCriteriaEntity(List.of(namespace)), null, List.of(logicalRestore), ExternalDatabaseStrategy.INCLUDE, List.of(restoreExternalDatabase), RestoreStatus.COMPLETED, "");
+        Restore savedRestore = restoreRepository.save(restore);
+
+        restoreRepository.delete(savedRestore);
+
+        assertNotNull(backupRepository.findById(backupName));
+        assertNull(restoreRepository.findById(restoreName));
+    }
+
+    @Test
+    void findSimilarDbByClassifier() {
+        String dbName = "dbName";
+        String type = "postgresql";
+
+        String namespace1 = "namespace1";
+        String namespace2 = "namespace2";
+        String namespace3 = "namespace3";
+
+        String namespaceBefore1 = "namespaceBefore1";
+        String namespaceBefore2 = "namespaceBefore2";
+
+        String microserviceName = "microserviceName";
+
+        Database database = getDatabase("adapterId", dbName, false, false, "");
+        DatabaseRegistry databaseRegistry = getDatabaseRegistry(database, namespace1, microserviceName, null, type);
+        getDatabaseRegistry(database, namespace2, microserviceName, null, type);
+        getDatabaseRegistry(database, namespace3, microserviceName, null, type);
+
+        databaseRegistryDbaasRepository.saveInternalDatabase(databaseRegistry);
+
+        ClassifierDetails classifierDetails1 = getClassifier(ClassifierType.NEW, namespace1, microserviceName, null, namespaceBefore1, null);
+        ClassifierDetails classifierDetails2 = getClassifier(ClassifierType.NEW, namespace2, microserviceName, null, namespaceBefore2, null);
+
+        Set<ClassifierDetails> enrichedClassifiers = dbBackupV2Service.findSimilarDbByClassifier(List.of(classifierDetails1, classifierDetails2), type);
+        assertEquals(3, enrichedClassifiers.size());
+
+        ClassifierDetails replacedClassifier1 = enrichedClassifiers.stream()
+                .filter(db -> namespace1.equals(db.getClassifier().get(NAMESPACE)))
+                .findAny().orElse(null);
+        assertNotNull(replacedClassifier1);
+        assertEquals(dbName, replacedClassifier1.getPreviousDatabase());
+        assertEquals(ClassifierType.REPLACED, replacedClassifier1.getType());
+
+        ClassifierDetails replacedClassifier2 = enrichedClassifiers.stream()
+                .filter(db -> namespace2.equals(db.getClassifier().get(NAMESPACE)))
+                .findAny().orElse(null);
+        assertNotNull(replacedClassifier2);
+        assertEquals(dbName, replacedClassifier2.getPreviousDatabase());
+        assertEquals(ClassifierType.REPLACED, replacedClassifier2.getType());
+
+        ClassifierDetails transientClassifier = enrichedClassifiers.stream()
+                .filter(db -> namespace3.equals(db.getClassifier().get(NAMESPACE)))
+                .findAny().orElse(null);
+        assertNotNull(transientClassifier);
+        assertEquals(dbName, transientClassifier.getPreviousDatabase());
+        assertEquals(ClassifierType.TRANSIENT_REPLACED, transientClassifier.getType());
     }
 
     @Test
@@ -3321,6 +3403,7 @@ class DbBackupV2ServiceTest {
         database.setExternallyManageable(isExternal);
         database.setBgVersion(bgVersion);
         database.setConnectionProperties(List.of(map));
+        database.setPhysicalDatabaseId("phyDbId");
         database.setClassifier(getClassifier("namespace", "microserviceName", "tenantId"));
         return database;
     }
