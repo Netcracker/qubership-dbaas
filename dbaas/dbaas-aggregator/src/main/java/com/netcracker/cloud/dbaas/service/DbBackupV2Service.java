@@ -1714,9 +1714,7 @@ public class DbBackupV2Service {
 
     public void deleteAllBackupByBackupNames(Set<String> backupNames) {
         List<Backup> backups = backupRepository.findAllBackupByBackupNames(backupNames);
-
         log.info("Found {} backups by {} backupNames", backups.size(), backupNames.size());
-
         for (Backup backup : backups) {
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             Map<String, String> failedAdapters = new ConcurrentHashMap<>();
@@ -1727,13 +1725,8 @@ public class DbBackupV2Service {
 
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
                     .whenComplete((res, ex) -> {
-                        if (!failedAdapters.isEmpty()) {
-                            finalizeBackupDeletion(backup, failedAdapters);
-                            backupRepository.save(backup);
-                        } else {
-                            backupRepository.delete(backup);
-                            log.debug("Backup={} deleted physically", backup.getName());
-                        }
+                        backupRepository.delete(backup);
+                        log.debug("Backup={} deleted physically", backup.getName());
                     });
         }
     }
