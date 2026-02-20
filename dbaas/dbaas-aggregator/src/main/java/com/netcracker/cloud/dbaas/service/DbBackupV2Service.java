@@ -1437,7 +1437,7 @@ public class DbBackupV2Service {
         log.info("Finished initializing logical databases from restore {}", restore.getName());
     }
 
-    private Set<ClassifierDetails> findSimilarDbByClassifier(List<ClassifierDetails> classifiers, String type) {
+    protected Set<ClassifierDetails> findSimilarDbByClassifier(List<ClassifierDetails> classifiers, String type) {
         Set<ClassifierDetails> result = new HashSet<>();
         Map<UUID, Database> databases = new HashMap<>();
         Set<SortedMap<String, Object>> foundClassifier = new HashSet<>();
