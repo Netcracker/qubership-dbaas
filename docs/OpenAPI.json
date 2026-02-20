@@ -725,8 +725,7 @@
       "ClassifierWithRolesRequest": {
         "type": "object",
         "required": [
-          "classifier",
-          "originService"
+          "classifier"
         ],
         "properties": {
           "classifier": {
@@ -989,8 +988,7 @@
         "type": "object",
         "required": [
           "classifier",
-          "type",
-          "originService"
+          "type"
         ],
         "description": "V3 Request model for adding database to DBaaS",
         "properties": {
@@ -4214,6 +4212,14 @@
             "description": "Default physical databases for each registered type."
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "SecurityScheme": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Authentication"
       }
     }
   },

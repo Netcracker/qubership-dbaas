@@ -1,4 +1,4 @@
-package com.netcracker.cloud.dbaas.rest;
+package com.netcracker.cloud.dbaas.security.filters;
 
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.client.ClientRequestContext;
@@ -13,7 +13,7 @@ import static jakarta.ws.rs.Priorities.AUTHENTICATION;
 @Priority(AUTHENTICATION)
 public class BasicAuthFilter implements ClientRequestFilter {
 
-    private String header;
+    private final String header;
 
     public BasicAuthFilter(String username, String password) {
         header = "Basic " + Base64.getEncoder().encodeToString((username + ":" + password).getBytes());

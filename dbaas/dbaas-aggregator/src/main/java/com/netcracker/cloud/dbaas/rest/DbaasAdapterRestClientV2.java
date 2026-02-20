@@ -110,7 +110,6 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
             @QueryParam("blobPath") String blobPath
     );
 
-
     @DELETE
     @Path("/api/v2/dbaas/adapter/{type}/backups/{backupId}")
     String deleteBackup(@PathParam("type") String type, @PathParam("backupId") String backupId);

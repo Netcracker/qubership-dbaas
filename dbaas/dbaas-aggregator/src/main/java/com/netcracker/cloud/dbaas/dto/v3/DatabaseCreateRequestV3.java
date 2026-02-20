@@ -18,7 +18,7 @@ public class DatabaseCreateRequestV3 extends AbstractDatabaseCreateRequest imple
         super(classifier, type);
     }
 
-    @Schema(description = "Origin service which send request", required = true)
+    @Schema(description = "Origin service which send request")
     private String originService;
 
     @Schema(description = "Indicates connection properties with which user role should be returned to a client")
