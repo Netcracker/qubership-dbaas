@@ -6,8 +6,13 @@ import com.clickhouse.jdbc.ClickHouseDataSource;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.gson.GsonBuilder;
 import com.mongodb.*;
 import com.netcracker.cloud.junit.cloudcore.extension.provider.LocalHostAddressGenerator;
@@ -15,6 +20,7 @@ import com.netcracker.cloud.junit.cloudcore.extension.service.Endpoint;
 import com.netcracker.cloud.junit.cloudcore.extension.service.NetSocketAddress;
 import com.netcracker.cloud.junit.cloudcore.extension.service.PortForwardService;
 import com.netcracker.cloud.junit.cloudcore.extension.service.ServicePortForwardParams;
+import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v3.NamespaceBackupV3;
 import com.netcracker.it.dbaas.entity.config.PolicyRole;
@@ -53,10 +59,10 @@ import org.opensearch.client.transport.httpclient5.ApacheHttpClient5TransportBui
 import org.opentest4j.AssertionFailedError;
 import org.slf4j.MDC;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.net.URL;
-import java.net.SocketException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -69,8 +75,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.test.AbstractIT.DEFAULT_RETRY_POLICY;
-import static com.netcracker.it.dbaas.test.AbstractIT.DBAAS_SERVICE_NAME;
-import static com.netcracker.it.dbaas.test.AbstractIT.HTTP_PORT;
 import static com.netcracker.it.dbaas.test.AbstractIT.OPENSEARCH_TYPE;
 import static io.undertow.server.handlers.SSLHeaderHandler.HTTPS;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -88,6 +92,10 @@ public class DbaasHelperV3 {
     public static final String TEST_NAMESPACE = "dbaas-autotests";
     public static final String TEST_MICROSERVICE_NAME = "dbaas-test-service";
     public static final String TEST_DECLARATIVE_MICROSERVICE_NAME = "dbaas-declarative-service";
+
+    public static final String MARKED_FOR_DROP = "MARKED_FOR_DROP";
+    public static final String MICROSERVICE_NAME = "microserviceName";
+    public static final String NAMESPACE = "namespace";
 
     public static final String DATABASES_V3 = "api/v3/dbaas/%s/databases";
     public static final String DATABASES_V3_ASYNC = DATABASES_V3 + "?async=true";
@@ -122,12 +130,13 @@ public class DbaasHelperV3 {
     private static final OkHttpClient okHttpClient = new OkHttpClient.Builder()
             .readTimeout(60, TimeUnit.SECONDS)
             .addNetworkInterceptor(chain -> chain.proceed(chain.request().newBuilder().addHeader("Connection", "close").build()))
+            .sslSocketFactory(TlsUtils.getSslContext().getSocketFactory(), TlsUtils.getTrustManager())
             .build();
 
-    private static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    public static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     @NonNull
-    private volatile URL dbaasServiceUrl;
+    private final URL dbaasServiceUrl;
     @NonNull
     private final KubernetesClient kubernetesClient;
     @Getter
@@ -153,80 +162,6 @@ public class DbaasHelperV3 {
         this.dbaasMigrationAuthorization = dbaasUsers.getBasicAuthorizationForRoles("MIGRATION_CLIENT");
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
-    }
-
-    public URL getDbaasServiceUrl() {
-        return dbaasServiceUrl;
-    }
-
-    public void setDbaasServiceUrl(@NotNull URL dbaasServiceUrl) {
-        this.dbaasServiceUrl = dbaasServiceUrl;
-    }
-
-    private Response executeWithPortForwardRetry(Request request) throws IOException {
-        if (!isDbaasRequest(request)) {
-            return okHttpClient.newCall(request).execute();
-        }
-
-        var retryPolicy = new RetryPolicy<Response>()
-                .handle(IOException.class)
-                .withMaxRetries(1)
-                .withDelay(Duration.ofSeconds(1));
-
-        return Failsafe.with(retryPolicy).get(() -> {
-            try {
-                return okHttpClient.newCall(request).execute();
-            } catch (IOException e) {
-                if (isPortForwardFailure(e)) {
-                    log.warn("DBaaS port-forward failed during request {}, recreating it", request.url());
-                    refreshDbaasPortForward();
-                }
-                throw e;
-            }
-        });
-    }
-
-    private boolean isDbaasRequest(Request request) {
-        return request.url().host().equals(dbaasServiceUrl.getHost())
-                && request.url().port() == dbaasServiceUrl.getPort();
-    }
-
-    private void refreshDbaasPortForward() {
-        try {
-            portForwardService.closePortForward(new Endpoint(dbaasServiceUrl.getHost(), dbaasServiceUrl.getPort()));
-        } catch (RuntimeException e) {
-            log.debug("Failed to close stale DBaaS port-forward", e);
-        }
-
-        dbaasServiceUrl = portForwardService
-                .portForward(ServicePortForwardParams.builder(DBAAS_SERVICE_NAME, HTTP_PORT).build())
-                .toHttpUrl();
-    }
-
-    private static boolean isPortForwardFailure(IOException e) {
-        return hasPortForwardMarker(e)
-                || (e.getMessage() != null && e.getMessage().contains("unexpected end of stream"));
-    }
-
-    private static boolean hasPortForwardMarker(Throwable t) {
-        Throwable current = t;
-        while (current != null) {
-            if (current instanceof EOFException) {
-                return true;
-            }
-            if (current instanceof SocketException
-                    && current.getMessage() != null
-                    && current.getMessage().contains("Connection reset")) {
-                return true;
-            }
-            for (Throwable suppressed : current.getSuppressed()) {
-                if (hasPortForwardMarker(suppressed)) {
-                    return true;
-                }
-            }
-            current = current.getCause();
-        }
-        return false;
     }
 
     /**
@@ -258,7 +193,8 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .get()
                 .build();
-        try (Response response = executeWithPortForwardRetry(request)) {
+        Call call = okHttpClient.newCall(request);
+        try (Response response = call.execute()) {
             if (response.code() != 200) {
                 log.info("There are no physical databases of type {}.", dbType);
                 return false;
@@ -341,7 +277,7 @@ public class DbaasHelperV3 {
                 .delete()
                 .build();
 
-        try (var response = executeWithPortForwardRetry(request)) {
+        try (var response = okHttpClient.newCall(request).execute()) {
             log.info("Response: {}", response);
 
             assertThat(response.code(), is(HttpStatus.SC_OK));
@@ -367,7 +303,7 @@ public class DbaasHelperV3 {
                 .delete()
                 .build();
 
-        try (var response = executeWithPortForwardRetry(request)) {
+        try (var response = okHttpClient.newCall(request).execute()) {
             log.info("Response: {}", response);
 
             assertThat(response.code(), is(HttpStatus.SC_OK));
@@ -392,7 +328,7 @@ public class DbaasHelperV3 {
 
     public String deleteDatabases(String api, String authorization, String namespace, int httpCode) throws IOException {
         Request request = deleteDatabasesRequest(api, authorization, namespace);
-        try (Response response = executeWithPortForwardRetry(request)) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             log.info("Response: {}", response);
             assertThat(response.code(), is(httpCode));
             // wait for all databases to get deleted
@@ -478,7 +414,7 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .get()
                 .build();
-        try (Response response = executeWithPortForwardRetry(request)) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             assertThat(response.code(), is(expectStatusCode));
             String body = response.body().string();
             log.info("Registered physical databases for {} type: {}", dbType, body);
@@ -602,6 +538,7 @@ public class DbaasHelperV3 {
 
             transportBuilder.setHttpClientConfigCallback(httpClientBuilder -> {
                 var tlsStrategy = ClientTlsStrategyBuilder.create()
+                        .setSslContext(TlsUtils.getSslContext())
                         .buildAsync();
 
                 var connectionManager = PoolingAsyncClientConnectionManagerBuilder.create()
@@ -1007,7 +944,18 @@ public class DbaasHelperV3 {
                                            List<String> initialScriptIds, String namespace, Boolean backupDisabled,
                                            String physicalDatabaseId, String prefixName, Map<String, Object> settings) throws IOException {
         Request request = createDbRequest(uri, authorization, testClassifierValue, type, initialScriptIds, namespace, backupDisabled, physicalDatabaseId, prefixName, settings);
-        try (Response response = executeWithPortForwardRetry(request)) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            log.info("Response: {}", response);
+            String body = response.body().string();
+            log.debug("Response body: {}", body);
+            assertThat(response.code(), is(expected));
+            return objectMapper.readValue(body, DatabaseResponse.class);
+        }
+    }
+
+    public DatabaseResponse createDatabase(Map<String, Object> classifier, String type, int expected) throws IOException {
+        Request request = createDbRequest(classifier, type);
+        try (Response response = okHttpClient.newCall(request).execute()) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -1020,7 +968,7 @@ public class DbaasHelperV3 {
                                            List<String> initialScriptIds, String namespace, Boolean backupDisabled,
                                            String physicalDatabaseId, String prefixName, Map<String, Object> settings) throws IOException {
         Request request = createDbRequest(uri, authorization, testClassifierValue, type, initialScriptIds, namespace, backupDisabled, physicalDatabaseId, prefixName, settings);
-        try (Response response = executeWithPortForwardRetry(request)) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -1083,7 +1031,7 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .post(RequestBody.create(classifierJson, JSON))
                 .build();
-        return executeWithPortForwardRetry(request);
+        return okHttpClient.newCall(request).execute();
     }
 
     Response getDatabaseByClassifierAsResponse(String authorization, Map<String, Object> classifier, String type, String namespace, String role) throws IOException {
@@ -1099,7 +1047,7 @@ public class DbaasHelperV3 {
                 .addHeader("X-Request-Id", getRequestId())
                 .post(RequestBody.create(classifierJson, JSON))
                 .build();
-        return executeWithPortForwardRetry(request);
+        return okHttpClient.newCall(request).execute();
     }
 
     public DatabaseResponse getDatabaseByClassifierAsPOJO(String authorization, Map<String, Object> classifier, String namespace, String type, int expectCode) throws IOException {
@@ -1176,6 +1124,22 @@ public class DbaasHelperV3 {
                 .build();
     }
 
+    private Request createDbRequest(Map<String, Object> classifier, String type) {
+        Map<String, Object> jsonReq = new HashMap<>();
+        jsonReq.put("classifier", classifier);
+        jsonReq.put("type", type);
+        jsonReq.put("originService", classifier.get(MICROSERVICE_NAME));
+        jsonReq.put("userRole", Role.ADMIN.getRoleValue());
+        String createDatabaseReqJson = new GsonBuilder().create().toJson(jsonReq);
+
+        return new Request.Builder()
+                .url(dbaasServiceUrl + String.format(DATABASES_V3, classifier.get(NAMESPACE)))
+                .addHeader("X-Request-Id", getRequestId())
+                .addHeader("Authorization", "Basic " + getClusterDbaAuthorization())
+                .put(RequestBody.create(createDatabaseReqJson, JSON))
+                .build();
+    }
+
     private static String getBasicAuthorization(String user, String password) {
         return Base64.getEncoder().encodeToString((user + ":" + password).getBytes());
     }
@@ -1233,7 +1197,7 @@ public class DbaasHelperV3 {
                 .addHeader("Authorization", "Basic " + clusterDbaAuthorization)
                 .post(RequestBody.create(passwordChangeRequestJson, JSON))
                 .build();
-        try (Response response = executeWithPortForwardRetry(request)) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -1254,7 +1218,7 @@ public class DbaasHelperV3 {
     }
 
     public <T> T executeRequest(Request request, Class<T> clazz, Integer... expectHttpCode) {
-        try (Response response = executeWithPortForwardRetry(request)) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             log.info("Response: {}", response);
             String body = response.body().string();
             log.debug("Response body: {}", body);
@@ -1269,7 +1233,7 @@ public class DbaasHelperV3 {
     }
 
     public Response executeRequest(Request request, Integer expectHttpCode) throws IOException {
-        Response response = executeWithPortForwardRetry(request);
+        Response response = okHttpClient.newCall(request).execute();
         log.info("Response: {}", response);
         assertThat(response.code(), is(expectHttpCode));
         return response;
@@ -1498,7 +1462,7 @@ public class DbaasHelperV3 {
 
     public void deleteDatabasesByClassifierRequest(String namespace, String dbType, ClassifierWithRolesRequest classifierWithRolesRequest, int expected) throws IOException {
         Request request = createRequest(String.format("api/v3/dbaas/%s/databases/%s", namespace, dbType), clusterDbaAuthorization, classifierWithRolesRequest, "DELETE");
-        try (Response response = executeWithPortForwardRetry(request)) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             assertThat(response.code(), is(expected));
         }
     }
@@ -1520,7 +1484,7 @@ public class DbaasHelperV3 {
 
     public Response sendRequest(String url, Object body, String method) throws IOException {
         Request request = createRequest(url, clusterDbaAuthorization, body, method);
-        Response response = executeWithPortForwardRetry(request);
+        Response response = okHttpClient.newCall(request).execute();
         log.info("Response: {}", response);
         log.info("Response body: {}", response.peekBody(Long.MAX_VALUE).string());
         return response;
@@ -1587,5 +1551,27 @@ public class DbaasHelperV3 {
 
     public static void regenerateRequestId() {
         setRequestId(UUID.randomUUID().toString());
+    }
+
+    public static String calculateDigest(Object obj) {
+        final String ALGORITHM = "SHA-256";
+        final ObjectMapper OBJECT_MAPPER = JsonMapper.builder()
+                .addModule(new JavaTimeModule())
+                .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+                .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
+                .build();
+        try {
+            String json = OBJECT_MAPPER.writeValueAsString(obj);
+
+            MessageDigest digest = MessageDigest.getInstance(ALGORITHM);
+            byte[] hash = digest.digest(json.getBytes());
+            String base64Hash = Base64.getEncoder().encodeToString(hash);
+
+            return ALGORITHM + "=" + base64Hash;
+        } catch (JsonProcessingException | NoSuchAlgorithmException e) {
+            log.error("Failed to calculate digest", e);
+            throw new RuntimeException(e.getMessage());
+        }
     }
 }

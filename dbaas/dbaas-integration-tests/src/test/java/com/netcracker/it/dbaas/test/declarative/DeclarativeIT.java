@@ -84,6 +84,31 @@ public class DeclarativeIT extends AbstractIT {
     }
 
     @Test
+    void postgresTestGlobalPermissionsRoles() throws IOException, SQLException {
+        helperV3.createServicesRoles(POSTGRES_TYPE, false);
+        log.info("Create database");
+        DatabaseResponse databaseWithAdminConnection = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE),
+                helperV3.getCreateDeclarativeDatabaseRequest(TEST_DECLARATIVE_MICROSERVICE_NAME, POSTGRES_TYPE, null),
+                201);
+        log.info("Check connection to created database with admin role");
+        helperV3.checkConnectionPostgres(databaseWithAdminConnection, "test", "test");
+
+        log.info("Get database for service with global permission");
+        DatabaseResponse connectionsForServiceWithGlobalAccess = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE),
+                helperV3.getCreateDeclarativeDatabaseRequest("data-slicing-tool", POSTGRES_TYPE, null),
+                200);
+        log.info("Check connection to database for service with global permissions");
+        helperV3.checkConnectionPostgres(connectionsForServiceWithGlobalAccess, "test", "test");
+
+        log.info("Disable global permissions");
+        helperV3.createServicesRoles(POSTGRES_TYPE, true);
+        log.info("Try to get database");
+        helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE),
+                helperV3.getCreateDeclarativeDatabaseRequest("data-slicing-tool", POSTGRES_TYPE, null),
+                403);
+    }
+
+    @Test
     void getAccessGrantsTest() {
         ServiceRole rwServiceRole = new ServiceRole();
         rwServiceRole.setName("rw-service");

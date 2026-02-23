@@ -1,14 +1,25 @@
 package com.netcracker.it.dbaas.helpers;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netcracker.it.dbaas.entity.BgDomainForList;
 import com.netcracker.it.dbaas.entity.BgNamespaceRequest;
 import com.netcracker.it.dbaas.entity.BgStateRequest;
 import com.netcracker.it.dbaas.entity.DeleteOrphansRequest;
 import lombok.extern.slf4j.Slf4j;
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.RetryPolicy;
 import okhttp3.Response;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.Assertions;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
+
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_NAMESPACE_PATTERN;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @Slf4j
 public class BGHelper {
@@ -21,8 +32,45 @@ public class BGHelper {
     public static final String CANDIDATE_STATE = "candidate";
     private final DbaasHelperV3 dhv3;
 
+    public final static RetryPolicy<Object> OPERATION_STATUS_RETRY_POLICY = new RetryPolicy<>()
+            .withMaxRetries(-1).withDelay(Duration.ofSeconds(1)).withMaxDuration(Duration.ofMinutes(1));
+    public ObjectMapper objectMapper = new ObjectMapper();
+
     public BGHelper(DbaasHelperV3 dhv3) {
         this.dhv3 = dhv3;
+    }
+
+    public String doWarmup(String activeNamespace, String candidateNamespace) throws IOException {
+        String trackingId;
+        try (Response warmupResponse = warmupDomain(activeNamespace, candidateNamespace)) {
+            Assertions.assertEquals(202, warmupResponse.code());
+            JsonNode node = objectMapper.readTree(warmupResponse.body().string());
+            trackingId = node.get("trackingId").asText();
+        }
+        Failsafe.with(OPERATION_STATUS_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(3))).run(() -> {
+            try (Response operationStatus = getOperationStatus(trackingId)) {
+                JsonNode node = objectMapper.readTree(operationStatus.body().string());
+                assertFalse(node.get("status").asText().equals("in progress") || node.get("status").asText().equals("not started"));
+            }
+        });
+        return trackingId;
+    }
+
+    public void destroyDomains() throws IOException {
+        try (Response response = listDomains()) {
+            Assertions.assertEquals(200, response.code());
+            String responseBody = response.body().string();
+            log.info("List domains response: {}", responseBody);
+            List<BgDomainForList> domains = objectMapper.readValue(responseBody, new TypeReference<List<BgDomainForList>>() {
+            }).stream().filter(domain ->
+                    TEST_NAMESPACE_PATTERN.matcher(domain.getOriginNamespace()).matches()
+                            && TEST_NAMESPACE_PATTERN.matcher(domain.getPeerNamespace()).matches()
+            ).toList();
+
+            for (BgDomainForList bgDomainForList : domains) {
+                destroyDomain(new BgNamespaceRequest(bgDomainForList.getOriginNamespace(), bgDomainForList.getPeerNamespace())).close();
+            }
+        }
     }
 
     public Response initDomain(String activeNamespace, String idleNamespace) throws IOException {

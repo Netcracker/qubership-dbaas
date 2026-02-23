@@ -24,7 +24,7 @@ public class BalancingRulesHelperV3 {
     public Map.Entry<String, String> getUniqLabelsByDbType(String dbType) {
         try {
             Collection<PhysicalDatabaseRegistrationResponseDTOV3>
-                databases = dbaasHelperV3.getRegisteredPhysicalDatabases(dbType, dbaasHelperV3.getClusterDbaAuthorization(), 200).getIdentified().values();
+                    databases = dbaasHelperV3.getRegisteredPhysicalDatabases(dbType, dbaasHelperV3.getClusterDbaAuthorization(), 200).getIdentified().values();
             for (PhysicalDatabaseRegistrationResponseDTOV3 database : databases) {
                 for (Map.Entry<String, String> map : database.getLabels().entrySet()) {
                     if (databases.stream().filter(o -> o.getLabels().containsKey(map.getKey())).count() == 1) {
@@ -49,14 +49,14 @@ public class BalancingRulesHelperV3 {
 
     public void deletePermanentRules(String namespace) throws IOException {
         var permanentRulesToBeDeleted = List.of(
-            new PermanentPerNamespaceRuleDeleteDTO("", List.of(namespace))
+                new PermanentPerNamespaceRuleDeleteDTO("", List.of(namespace))
         );
 
         Request cleanupRequest = dbaasHelperV3.createRequest(
-            DbaasHelperV3.PERMANENT_RULES_V3,
-            dbaasHelperV3.getClusterDbaAuthorization(),
-            permanentRulesToBeDeleted,
-            "DELETE"
+                DbaasHelperV3.PERMANENT_RULES_V3,
+                dbaasHelperV3.getClusterDbaAuthorization(),
+                permanentRulesToBeDeleted,
+                "DELETE"
         );
 
         Response response = dbaasHelperV3.executeRequest(cleanupRequest, 200);

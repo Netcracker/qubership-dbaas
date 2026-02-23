@@ -3,6 +3,7 @@ package com.netcracker.it.dbaas.helpers;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.mongodb.MongoException;
+import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v3.*;
 import com.netcracker.it.dbaas.exceptions.CannotCheckData;
@@ -54,15 +55,15 @@ public class BackupHelperV3 {
     private static final int RESTORE_TIMEOUT_MINUTES = 10;
 
     private static final OkHttpClient okHttpClient = new OkHttpClient.Builder()
+            .sslSocketFactory(TlsUtils.getSslContext().getSocketFactory(), TlsUtils.getTrustManager())
             .readTimeout(30, TimeUnit.SECONDS)
             .build();
 
     @NonNull
-    private DbaasHelperV3 helper;
+    private URL dbaasServiceUrl;
 
-    private URL dbaasServiceUrl() {
-        return helper.getDbaasServiceUrl();
-    }
+    @NonNull
+    private DbaasHelperV3 helper;
 
     public void testCollectNamespaceBackupWithTwoLogicalDatabasesAndRestoreItToTargetNamespace(String databaseType) throws IOException, InterruptedException {
         testCollectNamespaceBackupWithTwoLogicalDatabasesAndRestoreItToTargetNamespace(databaseType, databaseType);
@@ -382,7 +383,7 @@ public class BackupHelperV3 {
 
     public Request collectBackupRequest(String authorization, String namespace, Boolean ignoreNotBackupableDatabases) {
         return new Request.Builder()
-                .url(dbaasServiceUrl() + String.format(BACKUPS_NAMESPACED, namespace) + "/collect" + (!ignoreNotBackupableDatabases ? "" : "?ignoreNotBackupableDatabases=true"))
+                .url(dbaasServiceUrl + String.format(BACKUPS_NAMESPACED, namespace) + "/collect" + (!ignoreNotBackupableDatabases ? "" : "?ignoreNotBackupableDatabases=true"))
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .post(RequestBody.create("", null))
@@ -391,7 +392,7 @@ public class BackupHelperV3 {
 
     public Request restoreBackupRequest(String authorization, NamespaceBackupV3 backup, String targetNamespace) {
         return new Request.Builder()
-                .url(dbaasServiceUrl() + BACKUPS + "/" + backup.getId() + "/restorations"
+                .url(dbaasServiceUrl + BACKUPS + "/" + backup.getId() + "/restorations"
                         + (targetNamespace != null ? ("?targetNamespace=" + targetNamespace) : ""))
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
@@ -402,7 +403,7 @@ public class BackupHelperV3 {
 
     public Request oldRestoreBackupRequest(String authorization, NamespaceBackupV3 backup) {
         return new Request.Builder()
-                .url(dbaasServiceUrl() + "api/v3/dbaas/" + backup.getNamespace() + "/backups" + "/" + backup.getId() + "/restore")
+                .url(dbaasServiceUrl + "api/v3/dbaas/" + backup.getNamespace() + "/backups" + "/" + backup.getId() + "/restore")
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .post(RequestBody.create("", null))
@@ -506,7 +507,7 @@ public class BackupHelperV3 {
         log.info("Track backup restoration on {}", location);
 
         try (var response = okHttpClient.newCall(new Request.Builder()
-                .url(helper.urlNormalize(dbaasServiceUrl().toString(), location))
+                .url(helper.urlNormalize(dbaasServiceUrl.toString(), location))
                 .addHeader("Authorization", "Basic " + helper.getBackupDaemonAuthorization())
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .get()
@@ -529,7 +530,7 @@ public class BackupHelperV3 {
         log.info("Track backup collection on {}", location);
 
         try (var response = okHttpClient.newCall(new Request.Builder()
-                .url(dbaasServiceUrl() + location)
+                .url(dbaasServiceUrl + location)
                 .addHeader("Authorization", "Basic " + helper.getBackupDaemonAuthorization())
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .get()
@@ -570,7 +571,7 @@ public class BackupHelperV3 {
 
     public Request deleteBackupRequest(String authorization, NamespaceBackupV3 backup) {
         return new Request.Builder()
-                .url(dbaasServiceUrl() + "api/v3/dbaas/" + backup.getNamespace() + "/backups/" + backup.getId())
+                .url(dbaasServiceUrl + "api/v3/dbaas/" + backup.getNamespace() + "/backups/" + backup.getId())
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .delete()
@@ -591,7 +592,7 @@ public class BackupHelperV3 {
 
     public Request getBackupRequest(String authorization, NamespaceBackupV3 backup) {
         return new Request.Builder()
-                .url(dbaasServiceUrl() + "api/v3/dbaas/" + backup.getNamespace() + "/backups/" + backup.getId())
+                .url(dbaasServiceUrl + "api/v3/dbaas/" + backup.getNamespace() + "/backups/" + backup.getId())
                 .addHeader("Authorization", "Basic " + authorization)
                 .addHeader("X-Request-Id", DbaasHelperV3.getRequestId())
                 .get()

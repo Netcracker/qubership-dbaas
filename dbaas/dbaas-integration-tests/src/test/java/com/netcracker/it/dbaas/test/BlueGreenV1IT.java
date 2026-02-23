@@ -13,7 +13,6 @@ import io.fabric8.kubernetes.api.model.Service;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
-import net.jodah.failsafe.RetryPolicy;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.apache.hc.core5.http.HttpStatus;
@@ -36,8 +35,6 @@ import static org.junit.jupiter.api.Assertions.*;
 @Slf4j
 @Tag("bg")
 class BlueGreenV1IT extends AbstractIT {
-    protected final static RetryPolicy<Object> OPERATION_STATUS_RETRY_POLICY = new RetryPolicy<>()
-            .withMaxRetries(-1).withDelay(Duration.ofSeconds(1)).withMaxDuration(Duration.ofMinutes(1));
     private final static String TEST_NAMESPACE_ACTIVE = "active-test-namespace";
 
     private final static String TEST_NAMESPACE_CANDIDATE = "candidate-test-namespace";
@@ -145,7 +142,7 @@ class BlueGreenV1IT extends AbstractIT {
 
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -170,7 +167,7 @@ class BlueGreenV1IT extends AbstractIT {
 
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -249,7 +246,7 @@ class BlueGreenV1IT extends AbstractIT {
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
 
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -269,7 +266,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
             assertTrue(response.isSuccessful());
@@ -294,7 +291,7 @@ class BlueGreenV1IT extends AbstractIT {
 
             applyDeclarativeDBConfig("toNew", "service", "new");
 
-            doWarmup();
+            bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
             List<DatabaseV3> candidateNamespaces = helperV3.getDatabasesByNamespace(TEST_NAMESPACE_CANDIDATE);
             Assertions.assertEquals(1, candidateNamespaces.size());
             List<DatabaseV3> activeNamespaces = helperV3.getDatabasesByNamespace(TEST_NAMESPACE_ACTIVE);
@@ -345,7 +342,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
             assertTrue(response.isSuccessful());
@@ -380,7 +377,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         checkBgDomainStatus(ACTIVE_STATE, CANDIDATE_STATE);
     }
@@ -454,7 +451,7 @@ class BlueGreenV1IT extends AbstractIT {
 
         Thread.sleep(5000);
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -472,7 +469,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_CANDIDATE), 200);
@@ -498,7 +495,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_ACTIVE), 200);
@@ -545,7 +542,7 @@ class BlueGreenV1IT extends AbstractIT {
         DatabaseResponse activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -571,7 +568,7 @@ class BlueGreenV1IT extends AbstractIT {
                 getSimplePostgresCreateRequest("toNew", TEST_NAMESPACE_ACTIVE), 200);
         helperV3.checkConnectionPostgres(activeDatabase, "toNew", "toNew");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toNew", TEST_NAMESPACE_CANDIDATE), 200);
@@ -619,7 +616,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -683,7 +680,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -734,7 +731,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase1, "tenant1", "tenant1");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         Map<String, Object> tenantClassifier2 = new HashMap<>(tenantClassifier1);
         tenantClassifier2.put("microserviceName", TEST_MICROSERVICE_NAME);
@@ -775,7 +772,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 201);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -837,7 +834,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -871,7 +868,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_ACTIVE), 201);
@@ -888,7 +885,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_CANDIDATE), 201);
@@ -905,7 +902,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
             assertTrue(response.isSuccessful());
@@ -942,7 +939,7 @@ class BlueGreenV1IT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_CANDIDATE), 200);
@@ -969,7 +966,7 @@ class BlueGreenV1IT extends AbstractIT {
         DatabaseResponse sharedDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("SHARED", TEST_NAMESPACE_ACTIVE), 201);
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("CANDIDATE", TEST_NAMESPACE_CANDIDATE), 201);
@@ -1014,7 +1011,7 @@ class BlueGreenV1IT extends AbstractIT {
                 simplePostgresCreateRequest, 200);
         helperV3.checkConnectionPostgres(activeVersionedDb, "active", "active");
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         versioningClassifier.put("namespace", TEST_NAMESPACE_CANDIDATE);
         DatabaseResponse candidateVersionedDb = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
@@ -1067,7 +1064,7 @@ class BlueGreenV1IT extends AbstractIT {
         assertEquals(true, accessGrantsResponseActive.getDisableGlobalPermissions());
         helperV3.getAccessRoles(TEST_NAMESPACE_CANDIDATE, TEST_MICROSERVICE_NAME, 404);
 
-        doWarmup();
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
 
         BalancingRulesV3IT.createPerNamespaceRule(TEST_NAMESPACE_CANDIDATE, 200);
         AccessGrantsResponse accessGrantsResponseCandidate = helperV3.getAccessRoles(TEST_NAMESPACE_CANDIDATE, TEST_MICROSERVICE_NAME, 200);
@@ -1077,7 +1074,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testDeleteBackupAfterWarmup() throws IOException, SQLException {
-        BackupHelperV3 backupsHelper = new BackupHelperV3(helperV3);
+        BackupHelperV3 backupsHelper = new BackupHelperV3(dbaasServiceUrl, helperV3);
 
         try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
             Assertions.assertEquals(200, initResponse.code());
@@ -1093,7 +1090,7 @@ class BlueGreenV1IT extends AbstractIT {
         helperV3.checkConnectionPostgres(activeDatabase1, "toClone", "toClone");
         helperV3.checkConnectionPostgres(activeDatabase2, "toClone", "toClone");
 
-        String trackingId = doWarmup();
+        String trackingId = bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
         List<UUID> backups = new ArrayList<>();
         try (Response operationStatus = bgHelper.getOperationStatus(trackingId)) {
             JsonNode node = objectMapper.readTree(operationStatus.body().string());
@@ -1124,22 +1121,6 @@ class BlueGreenV1IT extends AbstractIT {
                 .versioning(approach)
                 .build().asPayload(TEST_NAMESPACE_ACTIVE, TEST_MICROSERVICE_NAME);
         declarativeHelper.applyDeclarativeConfig(payload);
-    }
-
-    private String doWarmup() throws IOException {
-        String trackingId;
-        try (Response warmupResponse = bgHelper.warmupDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
-            Assertions.assertEquals(202, warmupResponse.code());
-            JsonNode node = objectMapper.readTree(warmupResponse.body().string());
-            trackingId = node.get("trackingId").asText();
-        }
-        Failsafe.with(OPERATION_STATUS_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(3))).run(() -> {
-            try (Response operationStatus = bgHelper.getOperationStatus(trackingId)) {
-                JsonNode node = objectMapper.readTree(operationStatus.body().string());
-                assertFalse(node.get("status").asText().equals("in progress") || node.get("status").asText().equals("not started"));
-            }
-        });
-        return trackingId;
     }
 
     private Response getDomain(String namespace) throws IOException {

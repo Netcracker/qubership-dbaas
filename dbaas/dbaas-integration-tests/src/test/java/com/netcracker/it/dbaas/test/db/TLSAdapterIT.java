@@ -1,5 +1,6 @@
 package com.netcracker.it.dbaas.test.db;
 
+import com.netcracker.cloud.security.core.utils.tls.TlsUtils;
 import com.netcracker.it.dbaas.entity.PhysicalDatabaseRegistrationResponseDTOV3;
 import com.netcracker.it.dbaas.entity.RegisteredPhysicalDatabasesDTOV3;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
@@ -78,6 +79,7 @@ public class TLSAdapterIT extends AbstractIT {
         OkHttpClient securedHttpClient = new OkHttpClient.Builder()
                 .readTimeout(60, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
+                .sslSocketFactory(TlsUtils.getSslContext().getSocketFactory(), TlsUtils.getTrustManager())
                 .build();
         for (PhysicalDatabaseRegistrationResponseDTOV3 value : identified.values()) {
             String adapterAddress = value.getAdapterAddress();
