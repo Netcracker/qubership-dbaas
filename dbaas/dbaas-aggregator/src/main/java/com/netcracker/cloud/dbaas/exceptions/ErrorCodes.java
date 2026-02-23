@@ -250,11 +250,11 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4054(
             "CORE-DBAAS-4054",
             "Invalid tenantId in classifier",
-            "tenantId from classifier and tenantId from request don't match"),
+            "tenantId from classifier '%s' and tenantId from request '%s' don't match"),
     CORE_DBAAS_4055(
             "CORE-DBAAS-4055",
             "Failed namespace isolation check",
-            "Namespace from path and namespace from jwt token doesn't not match or aren't in the same composite structure"),
+            "Namespace from path '%s' and namespace from jwt token '%s' doesn't not match or aren't in the same composite structure"),
 
 
     CORE_DBAAS_7002(

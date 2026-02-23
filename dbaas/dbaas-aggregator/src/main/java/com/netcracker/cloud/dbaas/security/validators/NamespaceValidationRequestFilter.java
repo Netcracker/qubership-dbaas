@@ -29,8 +29,9 @@ public class NamespaceValidationRequestFilter implements ContainerRequestFilter 
         if (namespaceFromPath == null || !(requestContext.getSecurityContext().getUserPrincipal() instanceof JWTCallerPrincipal)) {
             return;
         }
-        if (!namespaceValidator.checkNamespaceIsolation(namespaceFromPath, JwtUtils.getNamespace(requestContext.getSecurityContext()))) {
-            throw new FailedNamespaceIsolationCheckException();
+        String namespaceFromToken = JwtUtils.getNamespace(requestContext.getSecurityContext());
+        if (!namespaceValidator.checkNamespaceIsolation(namespaceFromPath, namespaceFromToken)) {
+            throw new FailedNamespaceIsolationCheckException(namespaceFromPath, namespaceFromToken);
         }
     }
 }
