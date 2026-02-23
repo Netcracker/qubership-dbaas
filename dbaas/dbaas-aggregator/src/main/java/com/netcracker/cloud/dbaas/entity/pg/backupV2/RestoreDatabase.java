@@ -28,7 +28,7 @@ public class RestoreDatabase {
     @JoinColumn(name = "logical_restore_id")
     private LogicalRestore logicalRestore;
 
-    @OneToOne(cascade = CascadeType.ALL)
+    @OneToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinColumn(name = "backup_db_id")
     private BackupDatabase backupDatabase;
 
