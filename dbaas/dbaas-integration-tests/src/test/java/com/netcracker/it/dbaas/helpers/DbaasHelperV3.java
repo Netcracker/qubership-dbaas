@@ -6,8 +6,13 @@ import com.clickhouse.jdbc.ClickHouseDataSource;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.gson.GsonBuilder;
 import com.mongodb.*;
 import com.netcracker.cloud.junit.cloudcore.extension.provider.LocalHostAddressGenerator;
@@ -57,6 +62,8 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.URL;
 import java.net.SocketException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -88,6 +95,10 @@ public class DbaasHelperV3 {
     public static final String TEST_NAMESPACE = "dbaas-autotests";
     public static final String TEST_MICROSERVICE_NAME = "dbaas-test-service";
     public static final String TEST_DECLARATIVE_MICROSERVICE_NAME = "dbaas-declarative-service";
+
+    public static final String MARKED_FOR_DROP = "MARKED_FOR_DROP";
+    public static final String MICROSERVICE_NAME = "microserviceName";
+    public static final String NAMESPACE = "namespace";
 
     public static final String DATABASES_V3 = "api/v3/dbaas/%s/databases";
     public static final String DATABASES_V3_ASYNC = DATABASES_V3 + "?async=true";
@@ -124,7 +135,7 @@ public class DbaasHelperV3 {
             .addNetworkInterceptor(chain -> chain.proceed(chain.request().newBuilder().addHeader("Connection", "close").build()))
             .build();
 
-    private static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    public static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     @NonNull
     private volatile URL dbaasServiceUrl;
@@ -952,6 +963,17 @@ public class DbaasHelperV3 {
         }).collect(Collectors.toList());
     }
 
+    public DatabaseResponse createDatabase(Map<String, Object> classifier, String type, int expected) throws IOException {
+        Request request = createDbRequest(classifier, type);
+        try (Response response = executeWithPortForwardRetry(request)) {
+            log.info("Response: {}", response);
+            String body = response.body().string();
+            log.debug("Response body: {}", body);
+            assertThat(response.code(), is(expected));
+            return objectMapper.readValue(body, DatabaseResponse.class);
+        }
+    }
+
     public DatabaseResponse createDatabase(String api, Map<String, Object> classifier, String type,
                                            Boolean backupDisabled, int expected) throws IOException {
         DatabaseCreateRequestV3 databaseCreateRequestV3 = new DatabaseCreateRequestV3(classifier, type);
@@ -1172,6 +1194,22 @@ public class DbaasHelperV3 {
                 .url(dbaasServiceUrl + uri)
                 .addHeader("X-Request-Id", getRequestId())
                 .addHeader("Authorization", "Basic " + authorization)
+                .put(RequestBody.create(createDatabaseReqJson, JSON))
+                .build();
+    }
+
+    private Request createDbRequest(Map<String, Object> classifier, String type) {
+        Map<String, Object> jsonReq = new HashMap<>();
+        jsonReq.put("classifier", classifier);
+        jsonReq.put("type", type);
+        jsonReq.put("originService", classifier.get(MICROSERVICE_NAME));
+        jsonReq.put("userRole", Role.ADMIN.getRoleValue());
+        String createDatabaseReqJson = new GsonBuilder().create().toJson(jsonReq);
+
+        return new Request.Builder()
+                .url(dbaasServiceUrl + String.format(DATABASES_V3, classifier.get(NAMESPACE)))
+                .addHeader("X-Request-Id", getRequestId())
+                .addHeader("Authorization", "Basic " + getClusterDbaAuthorization())
                 .put(RequestBody.create(createDatabaseReqJson, JSON))
                 .build();
     }
@@ -1587,5 +1625,27 @@ public class DbaasHelperV3 {
 
     public static void regenerateRequestId() {
         setRequestId(UUID.randomUUID().toString());
+    }
+
+    public static String calculateDigest(Object obj) {
+        final String ALGORITHM = "SHA-256";
+        final ObjectMapper OBJECT_MAPPER = JsonMapper.builder()
+                .addModule(new JavaTimeModule())
+                .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+                .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
+                .build();
+        try {
+            String json = OBJECT_MAPPER.writeValueAsString(obj);
+
+            MessageDigest digest = MessageDigest.getInstance(ALGORITHM);
+            byte[] hash = digest.digest(json.getBytes());
+            String base64Hash = Base64.getEncoder().encodeToString(hash);
+
+            return ALGORITHM + "=" + base64Hash;
+        } catch (JsonProcessingException | NoSuchAlgorithmException e) {
+            log.error("Failed to calculate digest", e);
+            throw new RuntimeException(e.getMessage());
+        }
     }
 }

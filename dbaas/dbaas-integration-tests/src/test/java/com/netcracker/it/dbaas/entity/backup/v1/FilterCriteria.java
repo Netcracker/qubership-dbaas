@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -12,7 +13,6 @@ import java.util.List;
 public class FilterCriteria {
     @NotNull(groups = {BackupGroup.class})
     @Size(min = 1, groups = {BackupGroup.class})
-    private List<Filter> filter;
-    private List<Filter> include;
-    private List<Filter> exclude;
+    private List<Filter> include = new ArrayList<>();
+    private List<Filter> exclude = new ArrayList<>();
 }
