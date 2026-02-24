@@ -7,18 +7,19 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
 public class RestoreDatabaseResponse {
 
-    private String id;
+    private UUID id;
 
     private String logicalBackupId;
 
     private String name;
 
-    private List<Map<String, Object>> classifiers;
+    private List<ClassifierResponse> classifiers;
 
     private List<User> users;
 
