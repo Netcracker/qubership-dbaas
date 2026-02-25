@@ -507,53 +507,6 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     }
 
     @Test
-    void testClassifierWithTenantIdToCreateDatabase() throws JsonProcessingException {
-        when(dBaaService.getConnectionPropertiesService()).thenReturn(processConnectionPropertiesService);
-        final DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample();
-        when(declarativeConfigRepository.findFirstByClassifierAndType(any(), any())).thenReturn(Optional.empty());
-        Mockito.when(databaseRolesService.getSupportedRoleFromRequest(any(DatabaseCreateRequestV3.class), any(), any())).thenReturn(Role.ADMIN.toString());
-        when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("constraint violation", new PSQLException("constraint violation", PSQLState.UNIQUE_VIOLATION), "database_registry_classifier_and_type_index"));
-        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(anyMap(), anyString())).thenReturn(Optional.of(Mockito.mock(DatabaseRegistry.class)));
-
-        final DatabaseRegistry database = getDatabaseSample();
-        when(dBaaService.findDatabaseByClassifierAndType(any(), any(), anyBoolean())).thenReturn(database.getDatabaseRegistry().get(0));
-
-        String tenantId = UUID.randomUUID().toString();
-        databaseCreateRequest.getClassifier().put("scope", "tenant");
-        databaseCreateRequest.getClassifier().put(TENANT_ID, tenantId);
-
-        when(dBaaService.detach(database)).thenReturn(database);
-        when(dBaaService.isModifiedFields(any(), any())).thenReturn(false);
-        DatabaseResponseV3 response = new DatabaseResponseV3SingleCP(database.getDatabaseRegistry().get(0), PHYSICAL_DATABASE_ID, Role.ADMIN.toString());
-        when(dBaaService.processConnectionPropertiesV3(any(DatabaseRegistry.class), any())).thenReturn(response);
-
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .header(TENANT_HEADER, tenantId)
-                .body(objectMapper.writeValueAsString(databaseCreateRequest))
-                .when().put()
-                .then()
-                .statusCode(OK.getStatusCode());
-    }
-
-    @Test
-    void testClassifierWithInvalidTenantIdToCreateDatabase() throws JsonProcessingException {
-        Map<String, Object> classifier = getSampleClassifier();
-        classifier.put("scope", "tenant");
-        classifier.put(TENANT_ID, UUID.randomUUID().toString());
-        DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample(classifier);
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .header(TENANT_HEADER, UUID.randomUUID().toString())
-                .body(objectMapper.writeValueAsString(databaseCreateRequest))
-                .when().put()
-                .then()
-                .statusCode(FORBIDDEN.getStatusCode());
-    }
-
-    @Test
     void testClassifierWithWrongScopeToCreateDatabase() throws JsonProcessingException {
         Map<String, Object> classifier = getSampleClassifier();
         classifier.put("scope", "different");

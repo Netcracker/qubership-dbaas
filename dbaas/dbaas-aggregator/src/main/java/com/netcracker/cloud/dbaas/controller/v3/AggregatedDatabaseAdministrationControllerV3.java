@@ -18,6 +18,7 @@ import com.netcracker.cloud.dbaas.service.*;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
 import com.netcracker.cloud.framework.contexts.tenant.BaseTenantProvider;
 import com.netcracker.cloud.framework.contexts.tenant.TenantContextObject;
+import com.netcracker.cloud.framework.contexts.tenant.TenantNotFoundException;
 import io.smallrye.jwt.auth.principal.DefaultJWTCallerPrincipal;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -423,14 +424,22 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     }
 
     private void checkTenantId(Map<String, Object> classifier) {
+        if (!(securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal)) {
+            return;
+        }
         if (!Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT)) {
             return;
         }
+
         String idFromClassifier = classifier.get(TENANT_ID).toString();
-        TenantContextObject tenantContext = ContextManager.get(BaseTenantProvider.TENANT_CONTEXT_NAME);
-        String idFromRequest = tenantContext == null ? "" : tenantContext.getTenant();
-        if (!Objects.equals(idFromClassifier, idFromRequest)) {
-            throw new ForbiddenTenantIdException(idFromClassifier, idFromRequest);
+        try {
+            TenantContextObject tenantContext = ContextManager.get(BaseTenantProvider.TENANT_CONTEXT_NAME);
+            String idFromRequest = tenantContext == null ? "" : tenantContext.getTenant();
+            if (!Objects.equals(idFromClassifier, idFromRequest)) {
+                throw new ForbiddenTenantIdException(idFromClassifier, idFromRequest);
+            }
+        } catch (TenantNotFoundException e) {
+            throw new ForbiddenTenantIdException(idFromClassifier, "");
         }
     }
 }
