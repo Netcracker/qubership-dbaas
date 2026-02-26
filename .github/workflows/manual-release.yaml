@@ -37,7 +37,7 @@ jobs:
     with:
       upload-artifact: true
       ref: "refs/tags/v${{ inputs.version }}"
-      maven-command: ${{ inputs.dry-run == 'true' && 'verify' || 'deploy' }}
+      maven-command: ${{ inputs.dry-run && 'verify' || 'deploy' }}
       java-version: 25
 
   docker-build:
