@@ -12,9 +12,3 @@ jobs:
     with:
       upload-artifact: true
       java-version: 21
-
-  docker-build:
-    needs: [mvn]
-    uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@81251ff6dcf6feecf760e02d09b6bc9cd8c99e53 # v2.0.0
-    with:
-      dry-run: false

@@ -40,15 +40,8 @@ jobs:
       maven-command: ${{ inputs.dry-run && 'verify' || 'deploy' }}
       java-version: 21
 
-  docker-build:
-    needs: mvn-build
-    uses: netcracker/qubership-core-infra/.github/workflows/docker-build.yaml@v2.0.0
-    with:
-      ref: "refs/tags/v${{ inputs.version }}"
-      dry-run: ${{ inputs.dry-run }}
-
   cleanup-on-dry-run:
-    needs: docker-build
+    needs: mvn-build
     if: ${{ inputs.dry-run }}
     runs-on: ubuntu-latest
     steps:
@@ -60,7 +53,7 @@ jobs:
           delete-tag: true
 
   cleanup-on-failure:
-    needs: [create-tag, mvn-build, docker-build]
+    needs: [create-tag, mvn-build]
     if: ${{ failure() && needs.create-tag.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -72,7 +65,7 @@ jobs:
           delete-tag: true
 
   github-release:
-    needs: [ docker-build ]
+    needs: [ mvn-build ]
     if: ${{ !inputs.dry-run }}
     uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v1.0.7
     with:
