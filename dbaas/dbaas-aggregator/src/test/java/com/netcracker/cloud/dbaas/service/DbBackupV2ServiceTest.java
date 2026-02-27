@@ -2045,7 +2045,7 @@ class DbBackupV2ServiceTest {
         Filter filter = new Filter();
         filter.setNamespace(List.of(namespace1, namespace2));
         filter.setMicroserviceName(List.of(microserviceName1, microserviceName4));
-        filter.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter.setDatabaseType(List.of("postgresql", "cassandra"));
         filter.setDatabaseKind(List.of(DatabaseKind.TRANSACTIONAL));
 
         Filter exclude = new Filter();
@@ -2110,11 +2110,11 @@ class DbBackupV2ServiceTest {
 
         Filter filter1 = new Filter();
         filter1.setNamespace(List.of(namespace1));
-        filter1.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter1.setDatabaseType(List.of("postgresql", "cassandra"));
 
         Filter filter2 = new Filter();
         filter2.setNamespace(List.of(namespace2));
-        filter2.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter2.setDatabaseType(List.of("postgresql", "cassandra"));
 
         Filter exclude = new Filter();
         exclude.setMicroserviceName(List.of(microserviceName1));
@@ -2314,7 +2314,7 @@ class DbBackupV2ServiceTest {
         Filter filter = new Filter();
         filter.setNamespace(List.of(namespace1, namespace2));
         filter.setMicroserviceName(List.of(microserviceName1, microserviceName4));
-        filter.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter.setDatabaseType(List.of("postgresql", "cassandra"));
         filter.setDatabaseKind(List.of(DatabaseKind.TRANSACTIONAL));
 
         Filter exclude = new Filter();
@@ -2381,16 +2381,16 @@ class DbBackupV2ServiceTest {
 
         Filter filter1 = new Filter();
         filter1.setNamespace(List.of(namespace1));
-        filter1.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter1.setDatabaseType(List.of("postgresql", "cassandra"));
         filter1.setDatabaseKind(List.of(DatabaseKind.TRANSACTIONAL));
 
         Filter filter2 = new Filter();
         filter2.setNamespace(List.of(namespace2));
         filter2.setMicroserviceName(List.of(microserviceName3));
-        filter2.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter2.setDatabaseType(List.of("postgresql", "cassandra"));
 
         Filter exclude = new Filter();
-        exclude.setDatabaseType(List.of(DatabaseType.POSTGRESQL));
+        exclude.setDatabaseType(List.of("postgresql"));
 
         FilterCriteria filterCriteria = new FilterCriteria();
         filterCriteria.setInclude(List.of(filter1, filter2));

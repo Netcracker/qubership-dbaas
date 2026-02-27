@@ -478,7 +478,7 @@ public class DbBackupV2Service {
         }
 
         if (!filter.getDatabaseType().isEmpty() &&
-                filter.getDatabaseType().stream().noneMatch(dt -> dt.getType().equals(type))) {
+                filter.getDatabaseType().stream().noneMatch(dt -> dt.equals(type))) {
             return false;
         }
 
