@@ -44,9 +44,8 @@ public class StartupPhysicalDbRegistrationService {
     }
 
     private void notifyAdapter(String adapterAddress) {
-        try {
-            DbaasAdapterRestClientV2 restClientV2 = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
-                .build(DbaasAdapterRestClientV2.class);    
+        try (DbaasAdapterRestClientV2 restClientV2 = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
+                .build(DbaasAdapterRestClientV2.class)) {
             Response response = restClientV2.forceRegistration();
             if (response.getStatus() == Response.Status.ACCEPTED.getStatusCode()) {
                 log.info("Adapter {} was successfully notified about dbaas-aggregator startup via v2.", adapterAddress);
@@ -61,9 +60,8 @@ public class StartupPhysicalDbRegistrationService {
             log.warn("Couldn't notify adapter {} via v2, error:", adapterAddress, e);
         }
 
-        try {
-            DbaasAdapterRestClient restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
-                .build(DbaasAdapterRestClient.class);
+        try (DbaasAdapterRestClient restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
+                .build(DbaasAdapterRestClient.class)) {
             Response response = restClient.forceRegistration();   
             if (response.getStatus() == Response.Status.ACCEPTED.getStatusCode()) {
                 log.info("Adapter {} was successfully notified about dbaas-aggregator startup.", adapterAddress);
