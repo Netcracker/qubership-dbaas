@@ -1786,13 +1786,20 @@ public class DbBackupV2Service {
 
         Optional<SimpleLock> optLock = lockProvider.lock(config);
 
-        if (optLock.isEmpty())
-            throw new OperationAlreadyRunningException("restore");
+        if (optLock.isEmpty()) {
+            throw new OperationAlreadyRunningException("restore", "");
+        }
         // Start locking action
         SimpleLock lock = optLock.get();
         try {
-            if (restoreRepository.countNotCompletedRestores() > 0)
-                throw new OperationAlreadyRunningException("restore");
+            List<String> notCompletedRestores = getActiveRestoreNames();
+
+            if (!notCompletedRestores.isEmpty()) {
+                throw new OperationAlreadyRunningException("restore",
+                        String.format(" The following processes are running: %s", notCompletedRestores)
+                );
+            }
+
             return action.get();
         } finally {
             try {
@@ -1801,6 +1808,12 @@ public class DbBackupV2Service {
                 log.debug("Lock is already unlocked", ex);
             }
         }
+    }
+
+    private List<String> getActiveRestoreNames() {
+        return restoreRepository.findNotCompletedRestores().stream()
+                .map(Restore::getName)
+                .toList();
     }
 
     private RetryPolicy<Object> buildRetryPolicy(String operation, String entityType, String entityId, String adapterId) {

@@ -1715,6 +1715,21 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void restore_parallelRestoreProcessing() {
+        Restore restore = getRestore("oldRestore", "namespace");
+        restore.setStatus(RestoreStatus.NOT_STARTED);
+        restoreRepository.save(restore);
+
+        Backup backup = getBackup("backupName", "namespace");
+        backup.setStatus(BackupStatus.COMPLETED);
+        backupRepository.save(backup);
+        RestoreRequest restoreRequest = getRestoreRequest("newRestore", List.of("namespace"), ExternalDatabaseStrategy.INCLUDE, null, null);
+
+        assertThrows(OperationAlreadyRunningException.class,
+                () -> dbBackupV2Service.restore(backup.getName(), restoreRequest, false, false));
+    }
+
+    @Test
     void retryRestore() {
         // 1 ExternalDatabase 2 RestoreDatabase (1 FAILED, 1 COMPLETED), 1 logicalRestore (FAILED), 1 restore (FAILED)
         // 1 mapping { namespace : mappedNamespace }
