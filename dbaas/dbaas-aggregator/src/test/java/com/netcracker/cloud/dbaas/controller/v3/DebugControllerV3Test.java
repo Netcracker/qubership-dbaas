@@ -201,7 +201,7 @@ class DebugControllerV3Test {
     protected DumpResponseV3 createEmptyDumpResponse() {
         return new DumpResponseV3(
             new DumpRulesV3(List.of(), List.of(), List.of(), List.of()),
-            List.of(), List.of(), List.of(), List.of()
+            List.of(), List.of(), List.of(), List.of(), List.of(), List.of()
         );
     }
 

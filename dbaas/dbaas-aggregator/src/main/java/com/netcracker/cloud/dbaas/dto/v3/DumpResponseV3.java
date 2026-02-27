@@ -4,6 +4,8 @@ import com.netcracker.cloud.dbaas.entity.pg.BgDomain;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.Backup;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.Restore;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -20,4 +22,6 @@ public class DumpResponseV3 {
     private List<PhysicalDatabase> physicalDatabases;
     private List<DatabaseDeclarativeConfig> declarativeConfigurations;
     private List<BgDomain> blueGreenDomains;
+    private List<Backup> backups;
+    private List<Restore> restores;
 }

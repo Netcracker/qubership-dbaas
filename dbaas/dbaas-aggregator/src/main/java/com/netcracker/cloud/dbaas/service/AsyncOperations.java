@@ -21,6 +21,7 @@ public class AsyncOperations {
     int asyncBackupThreadPoolSize;
 
     private ThreadPoolExecutor backupExecutor;
+    private ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
     @PostConstruct
     void initPools() {
@@ -29,10 +30,15 @@ public class AsyncOperations {
                 asyncBackupThreadPoolSize,
                 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<>(), new NamedThreadFactory("backups-"));
+        executorService = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     public ThreadPoolExecutor getBackupPool() {
         return backupExecutor;
+    }
+
+    public ExecutorService getExecutorService() {
+        return executorService;
     }
 
     class NamedThreadFactory implements ThreadFactory {
