@@ -33,12 +33,13 @@ jobs:
 
   mvn-build:
     needs: create-tag
-    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@v2.0.0
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@v2.0.1
     with:
       upload-artifact: true
       ref: "refs/tags/v${{ inputs.version }}"
       maven-command: ${{ inputs.dry-run && 'verify' || 'deploy' }}
       java-version: 21
+      dry-run: ${{ inputs.dry-run }}
 
   cleanup-on-dry-run:
     needs: mvn-build
