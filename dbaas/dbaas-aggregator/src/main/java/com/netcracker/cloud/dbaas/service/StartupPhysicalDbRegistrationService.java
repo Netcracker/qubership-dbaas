@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
-import com.netracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 
