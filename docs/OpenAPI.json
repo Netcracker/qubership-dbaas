@@ -137,6 +137,133 @@
           }
         }
       },
+      "Backup": {
+        "type": "object",
+        "required": [
+          "name",
+          "storageName",
+          "blobPath",
+          "externalDatabaseStrategy"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "storageName": {
+            "type": "string"
+          },
+          "blobPath": {
+            "type": "string"
+          },
+          "externalDatabaseStrategy": {
+            "$ref": "#/components/schemas/ExternalDatabaseStrategy"
+          },
+          "filterCriteria": {
+            "$ref": "#/components/schemas/FilterCriteriaEntity"
+          },
+          "logicalBackups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalBackup"
+            }
+          },
+          "externalDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupExternalDatabase"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/BackupStatus"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "completed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "imported": {
+            "type": "boolean"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "ignoreNotBackupableDatabases": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BackupDatabase": {
+        "type": "object",
+        "required": [
+          "classifiers",
+          "users"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "logicalBackup": {
+            "$ref": "#/components/schemas/LogicalBackup"
+          },
+          "name": {
+            "type": "string"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User3"
+            }
+          },
+          "configurational": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BackupTaskStatus"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "duration": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "path": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/Instant"
+          }
+        }
+      },
       "BackupDatabaseResponse": {
         "type": "object",
         "required": [
@@ -262,6 +389,35 @@
               "2025-11-13T12:34:56Z"
             ],
             "description": "Timestamp when the backup was created"
+          }
+        }
+      },
+      "BackupExternalDatabase": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "classifiers"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "backup": {
+            "$ref": "#/components/schemas/Backup"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
           }
         }
       },
@@ -539,6 +695,17 @@
           }
         }
       },
+      "BackupStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_STARTED",
+          "IN_PROGRESS",
+          "FAILED",
+          "COMPLETED",
+          "DELETE_IN_PROGRESS",
+          "DELETED"
+        ]
+      },
       "BackupStatusResponse": {
         "type": "object",
         "required": [
@@ -593,6 +760,16 @@
             "description": "Error details if the backup failed"
           }
         }
+      },
+      "BackupTaskStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_STARTED",
+          "IN_PROGRESS",
+          "FAILED",
+          "RETRYABLE_FAIL",
+          "COMPLETED"
+        ]
       },
       "BgDomain": {
         "type": "object",
@@ -663,6 +840,25 @@
           }
         }
       },
+      "ClassifierDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ClassifierType"
+          },
+          "previousDatabase": {
+            "type": "string"
+          },
+          "classifier": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "classifierBeforeMapper": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
       "ClassifierDetailsResponse": {
         "type": "object",
         "required": [
@@ -721,6 +917,14 @@
             "description": "Original (pre-mapping) classifier from backup database preserved to track how mapping changed the classifier during restore"
           }
         }
+      },
+      "ClassifierType": {
+        "type": "string",
+        "enum": [
+          "NEW",
+          "REPLACED",
+          "TRANSIENT_REPLACED"
+        ]
       },
       "ClassifierWithRolesRequest": {
         "type": "object",
@@ -1074,6 +1278,13 @@
             "type": "string"
           }
         }
+      },
+      "DatabaseKind": {
+        "type": "string",
+        "enum": [
+          "CONFIGURATION",
+          "TRANSACTIONAL"
+        ]
       },
       "DatabaseRegistry": {
         "type": "object",
@@ -1691,6 +1902,18 @@
             "items": {
               "$ref": "#/components/schemas/BgDomain"
             }
+          },
+          "backups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Backup"
+            }
+          },
+          "restores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Restore"
+            }
           }
         }
       },
@@ -1779,6 +2002,14 @@
           }
         }
       },
+      "ExternalDatabaseStrategy": {
+        "type": "string",
+        "enum": [
+          "FAIL",
+          "SKIP",
+          "INCLUDE"
+        ]
+      },
       "FailureRegistrationV3": {
         "type": "object",
         "required": [
@@ -1832,14 +2063,7 @@
           "databaseType": {
             "type": "array",
             "items": {
-              "type": "string",
-              "enum": [
-                "POSTGRESQL",
-                "ARANGODB",
-                "CLICKHOUSE",
-                "MONGODB",
-                "CASSANDRA"
-              ]
+              "type": "string"
             },
             "description": "Filter by database types"
           },
@@ -1873,6 +2097,52 @@
               "$ref": "#/components/schemas/Filter"
             },
             "description": "Exclude databases that match any of the filters in the list"
+          }
+        }
+      },
+      "FilterCriteriaEntity": {
+        "type": "object",
+        "properties": {
+          "include": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterEntity"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterEntity"
+            }
+          }
+        }
+      },
+      "FilterEntity": {
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "microserviceName": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "databaseType": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "databaseKind": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseKind"
+            }
           }
         }
       },
@@ -2037,6 +2307,44 @@
           }
         }
       },
+      "LogicalBackup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "logicalBackupName": {
+            "type": "string"
+          },
+          "backup": {
+            "$ref": "#/components/schemas/Backup"
+          },
+          "adapterId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "backupDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupDatabase"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/BackupTaskStatus"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "completionTime": {
+            "$ref": "#/components/schemas/Instant"
+          }
+        }
+      },
       "LogicalBackupResponse": {
         "type": "object",
         "required": [
@@ -2115,6 +2423,44 @@
               "$ref": "#/components/schemas/BackupDatabaseResponse"
             },
             "description": "List of logical backup databases"
+          }
+        }
+      },
+      "LogicalRestore": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "logicalRestoreName": {
+            "type": "string"
+          },
+          "restore": {
+            "$ref": "#/components/schemas/Restore"
+          },
+          "adapterId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "restoreDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreDatabase"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/RestoreTaskStatus"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "completionTime": {
+            "$ref": "#/components/schemas/Instant"
           }
         }
       },
@@ -2220,6 +2566,23 @@
               "type": "string"
             },
             "description": "Mapping of source tenant to target tenant"
+          }
+        }
+      },
+      "MappingEntity": {
+        "type": "object",
+        "properties": {
+          "namespaces": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "tenants": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         }
       },
@@ -3149,6 +3512,123 @@
           }
         }
       },
+      "Restore": {
+        "type": "object",
+        "required": [
+          "name",
+          "blobPath",
+          "externalDatabaseStrategy"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "backup": {
+            "$ref": "#/components/schemas/Backup"
+          },
+          "storageName": {
+            "type": "string"
+          },
+          "blobPath": {
+            "type": "string"
+          },
+          "filterCriteria": {
+            "$ref": "#/components/schemas/FilterCriteriaEntity"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/MappingEntity"
+          },
+          "logicalRestores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogicalRestore"
+            }
+          },
+          "externalDatabaseStrategy": {
+            "$ref": "#/components/schemas/ExternalDatabaseStrategy"
+          },
+          "externalDatabases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreExternalDatabase"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/RestoreStatus"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "completed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "RestoreDatabase": {
+        "type": "object",
+        "required": [
+          "classifiers",
+          "users"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "logicalRestore": {
+            "$ref": "#/components/schemas/LogicalRestore"
+          },
+          "backupDatabase": {
+            "$ref": "#/components/schemas/BackupDatabase"
+          },
+          "name": {
+            "type": "string"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifierDetails"
+            }
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User2"
+            }
+          },
+          "bgVersion": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RestoreTaskStatus"
+          },
+          "duration": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "path": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "creationTime": {
+            "$ref": "#/components/schemas/Instant"
+          }
+        }
+      },
       "RestoreDatabaseResponse": {
         "type": "object",
         "required": [
@@ -3260,6 +3740,34 @@
               "2025-11-13T12:34:56Z"
             ],
             "description": "Timestamp when the restore was created"
+          }
+        }
+      },
+      "RestoreExternalDatabase": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "classifiers"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "restore": {
+            "$ref": "#/components/schemas/Restore"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "classifiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifierDetails"
+            }
           }
         }
       },
@@ -3617,6 +4125,16 @@
           }
         }
       },
+      "RestoreStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_STARTED",
+          "IN_PROGRESS",
+          "FAILED",
+          "COMPLETED",
+          "DELETED"
+        ]
+      },
       "RestoreStatusResponse": {
         "type": "object",
         "required": [
@@ -3664,6 +4182,16 @@
             "description": "Error details if the restore failed"
           }
         }
+      },
+      "RestoreTaskStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_STARTED",
+          "IN_PROGRESS",
+          "FAILED",
+          "RETRYABLE_FAIL",
+          "COMPLETED"
+        ]
       },
       "RestoreUsersRequest": {
         "type": "object",
@@ -4167,6 +4695,28 @@
               "admin"
             ],
             "description": "Role of the database user"
+          }
+        }
+      },
+      "User2": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "User3": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
           }
         }
       },
