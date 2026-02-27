@@ -16,6 +16,7 @@ import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
+@Slf4j
 public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 {
     private final boolean isJwtEnabled;
 
@@ -55,6 +57,7 @@ public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 
             return supplier.get();
         } catch (WebApplicationException e) {
             if (isJwtEnabled && e.getResponse().getStatus() == Response.Status.UNAUTHORIZED.getStatusCode() && authFilterSetter.getAuthFilter() instanceof KubernetesTokenAuthFilter) {
+                log.info("Request with M2M authentication failed with 'UNAUTHORIZED'. Falling back to Basic authentication");
                 authFilterSetter.setAuthFilter(basicAuthFilter);
                 return supplier.get();
             }
