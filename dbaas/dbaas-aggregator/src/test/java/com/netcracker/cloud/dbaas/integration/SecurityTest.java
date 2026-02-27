@@ -8,6 +8,7 @@ import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
 import com.netcracker.cloud.dbaas.dto.UpdateConnectionPropertiesRequest;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.UpdateClassifierRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
@@ -41,11 +42,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.DATABASE_OPERATION_PATH_V3;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.LIST_DATABASES_PATH;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
+import static com.netcracker.cloud.framework.contexts.tenant.TenantContextObject.TENANT_HEADER;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.CREATED;
 import static jakarta.ws.rs.core.Response.Status.FORBIDDEN;
@@ -270,6 +272,43 @@ class SecurityTest {
     void testCreateDatabaseWithInvalidKubernetesToken() {
         createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace")+"pad-to-make-invalid-signature")
                 .statusCode(UNAUTHORIZED.getStatusCode());
+    }
+
+    @Test
+    void testCreateDatabaseWithKubernetesTokenAndTenantScope() throws JsonProcessingException {
+        String token = jwtUtils.getJwt("test-name", "unit-test-namespace");
+        String tenantId = UUID.randomUUID().toString();
+
+        var classifier = new HashMap<String, Object>();
+        classifier.put("scope", SCOPE_VALUE_TENANT);
+        classifier.put("tenantId", tenantId);
+        classifier.put("microserviceName", "test-name"); // dynamic
+        classifier.put("namespace", "unit-test-namespace");               // dynamic
+
+        var req = new DatabaseCreateRequestV3();
+        req.setOriginService("test-name");
+        req.setType(TEST_TYPE);
+        req.setClassifier(classifier);
+
+        given().auth().preemptive().oauth2(token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, tenantId)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(CREATED.getStatusCode());
+
+        String tenantIdDifferentFromHeader = UUID.randomUUID().toString();
+        req.getClassifier().put(TENANT_ID, tenantIdDifferentFromHeader);
+        given().auth().preemptive().oauth2(token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, tenantId)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(FORBIDDEN.getStatusCode());
     }
 
     private ValidatableResponse updateClassifier(String user, String password, UpdateClassifierRequestV3 updateClassifierRequest, String namespace, String type) throws JsonProcessingException {
