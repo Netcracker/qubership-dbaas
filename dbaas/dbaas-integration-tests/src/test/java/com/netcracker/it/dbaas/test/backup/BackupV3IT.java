@@ -477,6 +477,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testExternalDbBackupRestore(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE));
+
         String sourceNamespace1 = helperV3.generateTestNamespace();
         String sourceNamespace2 = helperV3.generateTestNamespace();
         String targetNamespace = helperV3.generateTestNamespace();
@@ -519,6 +521,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testExternalInternalDbBackupRestore(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE));
+
         String sourceNamespace1 = helperV3.generateTestNamespace();
         String sourceNamespace2 = helperV3.generateTestNamespace();
         String targetNamespace = helperV3.generateTestNamespace();
