@@ -45,7 +45,7 @@ public class StartupPhysicalDbRegistrationService {
 
     private void notifyAdapter(String adapterAddress) {
         try {
-            DbaasAdapterRestClient restClientV2 = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
+            DbaasAdapterRestClientV2 restClientV2 = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
                 .build(DbaasAdapterRestClientV2.class);    
             Response response = restClientV2.forceRegistration();
             if (response.getStatus() == Response.Status.ACCEPTED.getStatusCode()) {
