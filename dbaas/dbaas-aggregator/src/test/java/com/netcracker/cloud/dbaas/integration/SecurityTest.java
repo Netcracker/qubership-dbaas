@@ -282,8 +282,8 @@ class SecurityTest {
         var classifier = new HashMap<String, Object>();
         classifier.put("scope", SCOPE_VALUE_TENANT);
         classifier.put("tenantId", tenantId);
-        classifier.put("microserviceName", "test-name"); // dynamic
-        classifier.put("namespace", "unit-test-namespace");               // dynamic
+        classifier.put("microserviceName", "test-name");
+        classifier.put("namespace", "unit-test-namespace");
 
         var req = new DatabaseCreateRequestV3();
         req.setOriginService("test-name");
@@ -309,6 +309,26 @@ class SecurityTest {
                 .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
                 .then()
                 .statusCode(FORBIDDEN.getStatusCode());
+
+        req.getClassifier().put(TENANT_ID, tenantId);
+        given().auth().preemptive().oauth2(token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(FORBIDDEN.getStatusCode());
+
+        tenantIdDifferentFromHeader = UUID.randomUUID().toString();
+        req.getClassifier().put(TENANT_ID, tenantIdDifferentFromHeader);
+        given().auth().preemptive().basic("test_only_db_client", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, tenantId)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(CREATED.getStatusCode());
     }
 
     private ValidatableResponse updateClassifier(String user, String password, UpdateClassifierRequestV3 updateClassifierRequest, String namespace, String type) throws JsonProcessingException {
