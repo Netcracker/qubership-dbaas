@@ -53,6 +53,17 @@ such as type of database (service or tenant), microservice name and namespace, t
   * [Aggregated Backup Restore](#aggregatedbackuprestore)
     * [Bulk restore database](#bulk-restore-database)
     * [Bulk get restoration info](#bulk-get-restoration-info)
+  * [Backup and Restore](#backup-and-restore)
+    * [Initiate database backup](#initiate-database-backup)
+    * [Get backup status](#get-backup-status)
+    * [Get backup details](#get-backup-details)
+    * [Delete backup](#delete-backup)
+    * [Restore from backup](#restore-from-backup)
+    * [Get restore status](#get-restore-status)
+    * [Get restore details](#get-restore-details)
+    * [Delete restore](#delete-restore)
+    * [Get backup metadata](#get-backup-metadata)
+    * [Upload backup metadata](#upload-backup-metadata)
   * [Migration](#migration)
     * [Register database](#register-databases)
     * [Register databases with user creation](#register-databases-with-user-creation)
@@ -2657,6 +2668,823 @@ Returns restoration info
     ```text
     OK 200
     ```
+## Backup and Restore
+Backup & Restore operations for DBaaS
+
+### Initiate database backup
+Starts an asynchronous backup operation for the specified databases. Returns the backup name that can be used to track progress.
+
+* **URI:**  `POST {dbaas_host}/api/backups/v1/backup`
+* **Headers:**  
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type      | Name                              | Description                   | Schema                          |
+|-----------|-----------------------------------|-------------------------------|---------------------------------|
+| **Body**  | **backupRequest**  <br>*required* | Backup request                | [BackupRequest](#backuprequest) |
+| **Query** | **dryRun**  <br>*optional*        | Processes backup in test mode | boolean                         |
+
+* **Success Response:**
+
+| HTTP Code | Description                             | Schema                            |
+|-----------|-----------------------------------------|-----------------------------------|
+| **200**   | Backup operation completed successfully | [BackupResponse](#backupresponse) |
+| **202**   | Backup operation initiated successfully | [BackupResponse](#backupresponse) |
+    
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                                 | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **404**   | Selected backup or restoration not found                                                    | [TmfErrorResponse](#tmferrorresponse) |
+| **409**   | The request could not be completed due to a conflict with the current state of the resource | [TmfErrorResponse](#tmferrorresponse) |
+| **422**   | The request was accepted, but the server couldn't process due to incompatible resource      | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request POST 'http://localhost:8080/api/backups/v1/backup?dryRun=true' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' \
+        --data '{
+          "backupName": "backup",
+          "storageName": "minio",
+          "blobPath": "tmp/a/b/c",
+          "filterCriteria": {
+          "include": [
+            {
+              "namespace": [
+                "testNamespace"
+              ],
+              "microserviceName": [
+                "microserviceName"
+              ],
+              "databaseType": [
+                "databaseType"
+              ],
+              "databaseKind": [
+                "databasekind"
+              ]
+            }
+          ],
+          "exclude": [
+              {
+                "namespace": [
+                  "testNamespace"
+                ],
+                "microserviceName": [
+                  "microserviceName"
+                ],
+                "databaseType": [
+                  "databaseType"
+                ],
+                "databaseKind": [
+                  "databasekind"
+                ]
+              }
+          ]
+        },
+        "externalDatabaseStrategy": "INCLUDE",
+        "ignoreNotBackupableDatabases": true
+      }'
+    ```
+  Response:
+    ```text
+    OK 200
+    or
+    Accepted 202
+    ```  
+  ResponseBody:
+    ```
+      {
+        "backupName": "backup",
+        "storageName": "minio",
+        "blobPath": "tmp/a/b/c",
+        "externalDatabaseStrategy": "INCLUDE",
+        "ignoreNotBackupableDatabases": true,
+        "filterCriteria": {
+            "include": [
+                {
+                    "namespace": [
+                        "namespace"
+                    ],
+                    "microserviceName": [
+                        "microserviceName"
+                    ],
+                    "databaseType": [
+                        "databaseType"
+                    ],
+                    "databaseKind": [
+                        "databasekind"
+                    ]
+                }
+            ],
+            "exclude": [
+                {
+                    "namespace": [
+                        "namespace"
+                    ],
+                    "microserviceName": [
+                        "microserviceName"
+                    ],
+                    "databaseType": [
+                        "databaseType"
+                    ],
+                    "databaseKind": [
+                        "databasekind"
+                    ]
+                }
+            ],
+        },
+        "status": "COMPLTED",
+        "total": 1,
+        "completed": 1,
+        "size": 100,
+        "duration": 100,
+        "errorMessage": "",
+        "logicalBackups": [
+            {...}
+        ],
+        "externalDatabases": []
+      }
+    ```
+
+### Get backup status
+Retrieve the current status of a backup operation
+
+* **URI:**  `GET {dbaas_host}/api/backups/v1/backup/{backupName}/status`
+* **Headers:**  
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type     | Name                           | Description                | Schema  |
+|----------|--------------------------------|----------------------------|---------|
+| **Path** | **backupName**  <br>*required* | Unique name of the backup  | String  |
+
+* **Success Response:**
+
+| HTTP Code | Description                          | Schema                                        |
+|-----------|--------------------------------------|-----------------------------------------------|
+| **200**   | Backup status retrieved successfully | [BackupStatusResponse](#backupstatusresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                                 | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **404**   | Selected backup or restoration not found                                                    | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/status' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    OK 200
+    ```  
+  ResponseBody:
+  ```
+    {
+      "status": "COMPLETED",
+      "total": 1,
+      "completed": 1,
+      "size": 55091,
+      "errorMessage": ""
+    }
+  ```
+
+### Get backup details
+Retrieve details about a specific backup operation
+
+* **URI:**  `GET {dbaas_host}/api/backups/v1/backup/{backupName}`
+* **Headers:**  
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type     | Name                           | Description                | Schema  |
+|----------|--------------------------------|----------------------------|---------|
+| **Path** | **backupName**  <br>*required* | Unique name of the backup  | String  |
+
+* **Success Response:**
+
+| HTTP Code | Description                           | Schema                            |
+|-----------|---------------------------------------|-----------------------------------|
+| **200**   | Backup details retrieved successfully | [BackupResponse](#backupresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                                 | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **404**   | Selected backup or restoration not found                                                    | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    OK 200
+    ```  
+  ResponseBody:
+    ```
+      {
+        "backupName": "0b53eb7c-a0bb-419a-a81c-27bc3f716b2a",
+        "storageName": "minio",
+        "blobPath": "tmp/a/b/c",
+        "externalDatabaseStrategy": "INCLUDE",
+        "ignoreNotBackupableDatabases": true,
+        "filterCriteria": {
+            "include": [
+                {
+                    "namespace": [
+                        "namespace"
+                    ],
+                    "microserviceName": [
+                        "microserviceName"
+                    ],
+                    "databaseType": [
+                        "databaseType"
+                    ],
+                    "databaseKind": [
+                        "databasekind"
+                    ]
+                }
+            ],
+            "exclude": [
+                {
+                    "namespace": [
+                        "namespace"
+                    ],
+                    "microserviceName": [
+                        "microserviceName"
+                    ],
+                    "databaseType": [
+                        "databaseType"
+                    ],
+                    "databaseKind": [
+                        "databasekind"
+                    ]
+                }
+            ],
+        },
+        "status": "COMPLTED",
+        "total": 1,
+        "completed": 1,
+        "size": 100,
+        "duration": 100,
+        "errorMessage": "",
+        "logicalBackups": [
+            {...}
+        ],
+        "externalDatabases": []
+      }
+    ```
+  
+### Delete backup
+Delete the backup operation
+
+* **URI:**  `DELETE {dbaas_host}/api/backups/v1/backup/{backupName}`
+* **Headers:**  
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type      | Name                           | Description                    | Schema  |
+|-----------|--------------------------------|--------------------------------|---------|
+| **Path**  | **backupName**  <br>*required* | Unique name of the backup      | String  |
+| **Query** | **force**  <br>*optional*      | Specifies deleting on adapters | boolean |
+
+* **Success Response:**
+
+| HTTP Code | Description                            | Schema                            |
+|-----------|----------------------------------------|-----------------------------------|
+| **202**   | Backup delete initialized successfully | [BackupResponse](#backupresponse) |
+| **204**   | Backup deleted successfully            | [BackupResponse](#backupresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                                 | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **422**   | The request was accepted, but the server couldn't process due to incompatible resource      | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request DELETE 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a?force=true' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    Accepted 202
+    or
+    No content 204
+    ```
+
+### Get backup metadata
+Retrieve metadata about a completed backup
+
+* **URI:**  `GET {dbaas_host}/api/backups/v1/backup/{backupName}/metadata`
+* **Headers:**  
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type      | Name                           | Description                    | Schema  |
+|-----------|--------------------------------|--------------------------------|---------|
+| **Path**  | **backupName**  <br>*required* | Unique name of the backup      | String  |
+
+* **Success Response:**
+
+| HTTP Code | Description                            | Schema                            |
+|-----------|----------------------------------------|-----------------------------------|
+| **200**   | Backup metadata retrieved successfully | [BackupResponse](#backupresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                            | Schema                                |
+|-----------|----------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                            | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                     | String                                |
+| **403**   | The request was valid, but the server is refusing action                               | String                                |
+| **404**   | The requested resource could not be found                                              | [TmfErrorResponse](#tmferrorresponse) |                                                                                             |                                       |
+| **422**   | The request was accepted, but the server couldn't process due to incompatible resource | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                             | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/metadata' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    OK 200
+    ```
+  ResponseHeader:
+  ```
+  Digest SHA-256=abc123
+  ```
+  ResponseBody:
+    ```
+      {
+        "backupName": "0b53eb7c-a0bb-419a-a81c-27bc3f716b2a",
+        "storageName": "minio",
+        "blobPath": "tmp/a/b/c",
+        "externalDatabaseStrategy": "INCLUDE",
+        "ignoreNotBackupableDatabases": true,
+        "filterCriteria": {
+            "include": [
+                {
+                    "namespace": [
+                        "namespace"
+                    ],
+                    "microserviceName": [
+                        "microserviceName"
+                    ],
+                    "databaseType": [
+                        "databaseType"
+                    ],
+                    "databaseKind": [
+                        "databasekind"
+                    ]
+                }
+            ],
+            "exclude": [
+                {
+                    "namespace": [
+                        "namespace"
+                    ],
+                    "microserviceName": [
+                        "microserviceName"
+                    ],
+                    "databaseType": [
+                        "databaseType"
+                    ],
+                    "databaseKind": [
+                        "databasekind"
+                    ]
+                }
+            ],
+        },
+        "status": "COMPLTED",
+        "total": 1,
+        "completed": 1,
+        "size": 100,
+        "duration": 100,
+        "errorMessage": "",
+        "logicalBackups": [
+            {...}
+        ],
+        "externalDatabases": []
+      }
+    ```
+  
+### Upload backup metadata
+Upload backup metadata
+
+* **URI:**  `POST {dbaas_host}/api/backups/v1/backup/operation/uploadMetadata`
+* **Headers:**
+  Digest header in format: `SHA-256=<base64-hash>`
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type       | Name                           | Description     | Schema                            |
+|------------|--------------------------------|-----------------|-----------------------------------|
+| **Header** | **Digest**      <br>*required* | Digest header   | String                            |
+| **Body**   | **backupName**  <br>*required* | Backup metadata | [BackupResponse](#backupresponse) |
+
+* **Success Response:**
+
+| HTTP Code | Description                            | Schema                            |
+|-----------|----------------------------------------|-----------------------------------|
+| **200**   | Backup metadata retrieved successfully | [BackupResponse](#backupresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                                 | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **409**   | The request could not be completed due to a conflict with the current state of the resource | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request POST 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/uploadMetadata' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' \
+        --header 'Digest: SHA-256=+4ZeCotmlJDgTsVq2zynwNOiN7VqgzP9JHy6IL3leJA='
+        --data '{
+            "backupName": "0b53eb7c-a0bb-419a-a81c-27bc3f716b2a",
+            "storageName": "minio",
+            "blobPath": "tmp/a/b",
+            "externalDatabaseStrategy": "FAIL",
+            "ignoreNotBackupableDatabases": false,
+            "filterCriteria": {
+                "include": [
+                    {
+                        "namespace": [
+                            "namespace",
+                        ],
+                        "microserviceName": [],
+                        "databaseType": [],
+                        "databaseKind": []
+                    }
+                ],
+                "exclude": []
+            },
+            "status": "COMPLETED",
+            "total": 2,
+            "completed": 2,
+            "size": 30412,
+            "errorMessage": "",
+            "logicalBackups": [
+                {....}
+            ],
+            "externalDatabases": [{...}]
+    ```
+  Response:
+    ```text
+    OK 200
+    ```
+
+### Restore from backup
+Initiate a database restore operation from an existing backup.
+This operation is asynchronous and returns immediately with a restore name that can be used to track progress.
+Operation is not idempotent
+
+* **URI:**  `POST {dbaas_host}/api/backups/v1/backup/{backupName}/restore`
+* **Headers:**
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type       | Name                               | Description                    | Schema                            |
+|------------|------------------------------------|--------------------------------|-----------------------------------|
+| **Path**   | **backupName**      <br>*required* | Unique name of the backup      | String                            |
+| **Body**   | **restoreRequest**  <br>*required* | Restore request                | [RestoreRequest](#restorerequest) |
+| **dryRun** | **dryRun**          <br>*optional* | Processes restore in test mode | boolean                           |
+
+* **Success Response:**
+
+| HTTP Code | Description                              | Schema                              |
+|-----------|------------------------------------------|-------------------------------------|
+| **202**   | Restore operation initiated successfully | [RestoreResponse](#restoreresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                                 | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **404**   | The requested resource could not be found                                                   | [TmfErrorResponse](#tmferrorresponse) |
+| **409**   | The request could not be completed due to a conflict with the current state of the resource | [TmfErrorResponse](#tmferrorresponse) |
+| **422**   | The request was accepted, but the server couldn't process due to incompatible resource      | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request POST 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/restore' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    Accepted 202
+    ```
+  ResponseBody:
+  ```
+    {
+      "restoreName": "restoreName",
+      "backupName": "backup-example",
+      "storageName": "minio",
+      "blobPath": "tmp/a/b/c",
+      "externalDatabaseStrategy": "INCLUDE",
+      "filterCriteria": {
+          "include": [],
+          "exclude": []
+      },
+      "mapping": {
+          "namespaces": null,
+          "tenants": null
+      },
+      "status": "COMPLETED",
+      "total": 1,
+      "completed": 100,
+      "duration": 100,
+      "errorMessage": "",
+      "logicalRestores": [
+          {...}
+      ],
+      "externalDatabases": [{...}]
+    }
+  ```
+
+### Get restore status
+Retrieve the current status of a restore operation
+
+* **URI:**  `GET {dbaas_host}/api/backups/v1/backup/{restore}/restore`
+* **Headers:**
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type       | Name                                | Description                | Schema                            |
+|------------|-------------------------------------|----------------------------|-----------------------------------|
+| **Path**   | **restoreName**      <br>*required* | Unique name of the restore | String                            |
+
+* **Success Response:**
+
+| HTTP Code | Description                            | Schema                              |
+|-----------|----------------------------------------|-------------------------------------|
+| **200**   | Restore details retrieved successfully | [RestoreResponse](#restoreresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **404**   | The requested resource could not be found                                                   | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/restore' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    Accepted 202
+    ```
+  ResponseBody:
+  ```
+    {
+      "status": "COMPLETED",
+      "total": 1,
+      "completed": 1,
+      "errorMessage": ""
+    }
+  ```
+
+### Get restore details
+Retrieve details about a specific restore operation
+
+* **URI:**  `GET {dbaas_host}/api/backups/v1/backup/restore/{restoreName}`
+* **Headers:**
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type     |   | Name                                | Description                          | Schema |
+|----------|:--|-------------------------------------|--------------------------------------|--------|
+| **Path** |   | **restoreName**      <br>*required* | Unique name of the restore operation | String |
+
+* **Success Response:**
+
+| HTTP Code | Description                            | Schema                              |
+|-----------|----------------------------------------|-------------------------------------|
+| **200**   | Restore details retrieved successfully | [RestoreResponse](#restoreresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **400**   | The request was invalid or cannot be served                                                 | [TmfErrorResponse](#tmferrorresponse) |
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **404**   | The requested resource could not be found                                                   | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request GET 'http://localhost:8080/api/backups/v1/backup/restore/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    Accepted 202
+    ```
+  ResponseBody:
+  ```
+    {
+      "restoreName": "restoreName",
+      "backupName": "backup-example",
+      "storageName": "minio",
+      "blobPath": "tmp/a/b/c",
+      "externalDatabaseStrategy": "INCLUDE",
+      "filterCriteria": {
+          "include": [],
+          "exclude": []
+      },
+      "mapping": {
+          "namespaces": null,
+          "tenants": null
+      },
+      "status": "COMPLETED",
+      "total": 1,
+      "completed": 100,
+      "duration": 100,
+      "errorMessage": "",
+      "logicalRestores": [
+          {...}
+      ],
+      "externalDatabases": [{...}]
+    }
+  ```
+  
+### Delete restore
+Delete a restore operation
+
+* **URI:**  `DELETE {dbaas_host}/api/backups/v1/backup/restore/{restoreName}`
+* **Headers:**
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type     | Name                                | Description                          | Schema |
+|----------|-------------------------------------|--------------------------------------|--------|
+| **Path** | **restoreName**      <br>*required* | Unique name of the restore operation | String |
+
+* **Success Response:**
+
+| HTTP Code | Description                            | Schema                              |
+|-----------|----------------------------------------|-------------------------------------|
+| **204**   | Restore operation deleted successfully | [RestoreResponse](#restoreresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                            | Schema                                |
+|-----------|----------------------------------------------------------------------------------------|---------------------------------------|
+| **401**   | Authentication is required and has failed or has not been provided                     | String                                |
+| **403**   | The request was valid, but the server is refusing action                               | String                                |
+| **422**   | The request was accepted, but the server couldn't process due to incompatible resource | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                             | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request DELETE 'http://localhost:8080/api/backups/v1/backup/restore/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    No content 204
+    ```
+
+### Retry restore
+Retry a failed restore operation
+
+* **URI:**  `POST {dbaas_host}/api/backups/v1/backup/restore/{restoreName}/retry`
+* **Headers:**
+  Not Required
+* **Authorization:**
+  Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`.
+* **Request body:**
+
+| Type     | Name                                | Description                          | Schema |
+|----------|-------------------------------------|--------------------------------------|--------|
+| **Path** | **restoreName**      <br>*required* | Unique name of the restore operation | String |
+
+* **Success Response:**
+
+| HTTP Code | Description                            | Schema                              |
+|-----------|----------------------------------------|-------------------------------------|
+| **202**   | Restore operation deleted successfully | [RestoreResponse](#restoreresponse) |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                                                 | Schema                                |
+|-----------|---------------------------------------------------------------------------------------------|---------------------------------------|
+| **401**   | Authentication is required and has failed or has not been provided                          | String                                |
+| **403**   | The request was valid, but the server is refusing action                                    | String                                |
+| **404**   | The requested resource could not be found                                                   | [TmfErrorResponse](#tmferrorresponse) |
+| **409**   | The request could not be completed due to a conflict with the current state of the resource | [TmfErrorResponse](#tmferrorresponse) |
+| **422**   | The request was accepted, but the server couldn't process due to incompatible resource      | [TmfErrorResponse](#tmferrorresponse) |
+| **500**   | An unexpected error occurred on the server                                                  | [TmfErrorResponse](#tmferrorresponse) |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl --request POST 'http://localhost:8080/api/backups/v1/backup/restore/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/retry' \
+        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+    ```
+  Response:
+    ```text
+    Accepted 202
+    ```
+  ResponseBody:
+  ```
+    {
+      "restoreName": "restoreName",
+      "backupName": "backup-example",
+      "storageName": "minio",
+      "blobPath": "tmp/a/b/c",
+      "externalDatabaseStrategy": "INCLUDE",
+      "filterCriteria": {
+          "include": [],
+          "exclude": []
+      },
+      "mapping": {
+          "namespaces": null,
+          "tenants": null
+      },
+      "status": "COMPLETED",
+      "total": 1,
+      "completed": 100,
+      "duration": 100,
+      "errorMessage": "",
+      "logicalRestores": [
+          {...}
+      ],
+      "externalDatabases": [{...}]
+    }
+  ``` 
 
 ## Migration
 Provides API to migrate: database registration from another source, database passwords to external system.
@@ -4749,6 +5577,209 @@ Request to add database to registration
 | **physicalDatabaseId**  <br>*required* | Physical database identifier                                  | String |
 | **healthStatus**  <br>*required*       | Overall health status of adapter                              | String |
 | **logicalDbNumber**  <br>*required*    | Number of logical databases related to this physical database | String |
+
+### BackupRequest
+
+| Name                                            | Description                                                      | Schema                            |
+|-------------------------------------------------|------------------------------------------------------------------|-----------------------------------|
+| **backupName**  <br>*required*                  | Unique name of the backup                                        | String                            |
+| **storageName**  <br>*required*                 | Name of the storage backend containing the backup                | String                            |
+| **blobPath**  <br>*required*                    | Path in the storage where backup will be stored                  | String                            |
+| **filterCriteria** <br>*required*               | Group of filters for backup operations                           | [FilterCriteria](#filterCriteria) |
+| **externalDatabaseStrategy** <br>*required*     | How to handle external databases during backup                   | enum(FAIL, SKIP, INCLUDE)         |
+| **ignoreNotBackupableDatabases** <br>*required* | Whether non-backupable databases should be ignored during backup | boolean                           |
+
+### FilterCriteria
+
+| Name                        | Description                                                 | Schema                  |
+|-----------------------------|-------------------------------------------------------------|-------------------------|
+| **include**  <br>*optional* | Include databases that match any of the filters in the list | List<[Filter](#filter)> |
+| **exclude**  <br>*optional* | Exclude databases that match any of the filters in the list | List<[Filter](#filter)> |
+
+### BackupResponse
+
+| Name                                            | Description                                                      | Schema                                                                         |
+|-------------------------------------------------|------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| **backupName**  <br>*required*                  | Unique name of the backup                                        | String                                                                         |
+| **storageName**  <br>*required*                 | Name of the storage backend containing the backup                | String                                                                         |
+| **blobPath**  <br>*required*                    | Path in the storage where backup will be stored                  | String                                                                         |
+| **filterCriteria** <br>*required*               | Group of filters for backup operations                           | [FilterCriteria](#filtercriteria)                                              |
+| **externalDatabaseStrategy** <br>*required*     | How to handle external databases during backup                   | enum(FAIL, SKIP, INCLUDE)                                                      |
+| **ignoreNotBackupableDatabases** <br>*required* | Whether non-backupable databases should be ignored during backup | boolean                                                                        |
+| **status** <br>*required*                       | Current state of the backup operation                            | enum(NOT_STARTED, IN_PROGRESS, FAILED, COMPLETED, DELETE_IN_PROGRESS, DELETED) |
+| **total** <br>*required*                        | Total number of databases being backed up                        | Integer                                                                        |
+| **completed** <br>*required*                    | Number of databases successfully backed up                       | Integer                                                                        |
+| **size** <br>*required*                         | Total size of the backup in bytes                                | Long                                                                           |
+| **errorMessage** <br>*optional*                 | Error details if the backup failed                               | String                                                                         |
+| **logicalBackups** <br>*optional*               | List of logical backups                                          | List<[LogicalBackupResponse](#logicalbackupresponse)>                          |
+| **externalDatabases** <br>*optional*            | List of external databases                                       | List<[BackupExternalDatabaseResponse](#backupexternaldatabaseresponse)>        |
+
+### LogicalBackupResponse
+
+| Name                                  | Description                                          | Schema                                                            |
+|---------------------------------------|------------------------------------------------------|-------------------------------------------------------------------|
+| **id**  <br>*required*                | Identifier of the logical backup                     | UUID                                                              |
+| **logicalBackupName**  <br>*required* | Name of the logical backup in adapter                | String                                                            |
+| **adapterId**  <br>*required*         | Unique identifier of the adapter                     | String                                                            |
+| **type** <br>*required*               | Type of the adapter                                  | String                                                            |
+| **status** <br>*required*             | Current state of the backup databases of one adapter | enum(NOT_STARTED, IN_PROGRESS, FAILED, RETRYABLE_FAIL, COMPLETED) |
+| **errorMessage** <br>*optional*       | Error message if backup failed                       | String                                                            |
+| **creationTime** <br>*optional*       | Timestamp when the backup was created                | Instant                                                           |
+| **completionTime** <br>*optional*     | Timestamp when the backup completed                  | Instant                                                           |
+| **backupDatabases** <br>*required*    | List of logical backup databases                     | List<[BackupDatabaseResponse](#backupdatabaseresponse)>           |
+
+### BackupDatabaseResponse
+
+| Name                               | Description                                                                 | Schema                                                            |
+|------------------------------------|-----------------------------------------------------------------------------|-------------------------------------------------------------------|
+| **id**  <br>*required*             | Identifier of the backup database                                           | UUID                                                              |
+| **name**  <br>*required*           | Name of the database                                                        | String                                                            |
+| **classifiers**  <br>*required*    | List of database classifiers. Each classifier is a sorted map of attributes | List<Map<String, Object>>                                         |
+| **settings** <br>*required*        | Database settings as a key-value map                                        | Map<String, Object>                                               |
+| **users** <br>*required*           | List of database users                                                      | List<[BackupDatabaseResponse.User](#backupdatabaseresponseuser)>  |
+| **configurational** <br>*required* | Indicates the type of the database                                          | boolean                                                           |
+| **status** <br>*required*          | Current state of the backup database                                        | enum(NOT_STARTED, IN_PROGRESS, FAILED, RETRYABLE_FAIL, COMPLETED) |
+| **size** <br>*required*            | Size of the backup                                                          | long                                                              |
+| **duration** <br>*required*        | Duration of the backup operation                                            | long                                                              |
+| **path** <br>*required*            | Path to the backup file in the storage                                      | String                                                            |
+| **errorMessage** <br>*optional*    | Error message if the backup failed                                          | String                                                            |
+| **creationTime** <br>*required*    | Timestamp when the backup was created                                       | Instant                                                           |
+| **creationTime** <br>*required*    | Timestamp when the backup was created                                       | Instant                                                           |
+
+### BackupDatabaseResponse.User
+
+| Name                     | Description               | Schema |
+|--------------------------|---------------------------|--------|
+| **name**  <br>*optional* | Name of the database user | String |
+| **role**  <br>*required* | Role of the database user | String |
+
+### BackupExternalDatabaseResponse
+
+| Name                           | Description                                                                 | Schema                    |
+|--------------------------------|-----------------------------------------------------------------------------|---------------------------|
+| **id**  <br>*required*         | BackupExternalDatabaseResponse                                              | UUID                      |
+| **name**  <br>*required*       | Name of the external database                                               | String                    |
+| **type**  <br>*required*       | Type of the database                                                        | String                    |
+| **classifiers** <br>*required* | List of database classifiers. Each classifier is a sorted map of attributes | List<Map<String, Object>> |
+
+### BackupStatusResponse
+
+| Name                            | Description                                | Schema                                                                         |
+|---------------------------------|--------------------------------------------|--------------------------------------------------------------------------------|
+| **status**  <br>*required*      | Current state of the backup operation      | enum(NOT_STARTED, IN_PROGRESS, FAILED, COMPLETED, DELETE_IN_PROGRESS, DELETED) |
+| **total**  <br>*required*       | Total number of databases being backed up  | Integer                                                                        |
+| **completed**  <br>*required*   | Number of databases successfully backed up | Integer                                                                        |
+| **size** <br>*required*         | Total size of the backup in bytes          | Long                                                                           |
+| **errorMessage** <br>*required* | Error details if the backup failed         | String                                                                         |
+
+### RestoreRequest
+
+| Name                                        | Description                                       | Schema                            |
+|---------------------------------------------|---------------------------------------------------|-----------------------------------|
+| **restoreName**  <br>*required*             | Unique name of the restore                        | String                            |
+| **storageName**  <br>*required*             | Name of the storage backend containing the backup | String                            |
+| **blobPath**  <br>*required*                | Path in the storage where backup will be stored   | String                            |
+| **filterCriteria** <br>*optional*           | Group of filters for restore operations           | [FilterCriteria](#filterCriteria) |
+| **mapping** <br>*optional*                  | Mapping to use for the restore operation          | [Mapping](#mapping)               |
+| **externalDatabaseStrategy** <br>*required* | How to handle external databases during backup    | enum(FAIL, SKIP, INCLUDE)         |
+
+### Mapping
+
+| Name                           | Description                                     | Schema              |
+|--------------------------------|-------------------------------------------------|---------------------|
+| **namespaces**  <br>*optional* | Mapping of source namespace to target namespace | Map<String, String> |
+| **tenants**  <br>*optional*    | Mapping of source tenant to target tenant       | Map<String, String> |
+
+### RestoreResponse
+
+| Name                                        | Description                                        | Schema                                                                    |
+|---------------------------------------------|----------------------------------------------------|---------------------------------------------------------------------------|
+| **restoreName**  <br>*required*             | Unique name of the restore                         | String                                                                    |
+| **backupName**  <br>*required*              | Unique name of the backup                          | String                                                                    |
+| **storageName**  <br>*required*             | Name of the storage backend containing the restore | String                                                                    |
+| **blobPath**  <br>*required*                | Path to the restore file in the storage            | String                                                                    |
+| **filterCriteria** <br>*optional*           | Group of filters for restore operations            | [FilterCriteria](#filtercriteria)                                         |
+| **mapping** <br>*optional*                  | Mapping configuration for the restore              | [Mapping](#mapping)                                                       |
+| **externalDatabaseStrategy** <br>*required* | How to handle external databases during restore    | enum(FAIL, SKIP, INCLUDE)                                                 |
+| **status** <br>*required*                   | Current state of the restore operation             | enum(NOT_STARTED, IN_PROGRESS, FAILED, COMPLETED, DELETED)                |
+| **total** <br>*required*                    | Total number of databases being restored           | Integer                                                                   |
+| **completed** <br>*required*                | Number of databases successfully restored          | Integer                                                                   |
+| **errorMessage** <br>*optional*             | Error details if the restore failed                | String                                                                    |
+| **logicalRestores** <br>*optional*          | List of logical restores                           | List<[LogicalRestoreResponse](#logicalrestoreresponse)>                   |
+| **externalDatabases** <br>*optional*        | List of external databases                         | List<[RestoreExternalDatabaseResponse](#restoreexternaldatabaseresponse)> |
+
+### LogicalRestoreResponse
+
+| Name                                   | Description                                           | Schema                                                            |
+|----------------------------------------|-------------------------------------------------------|-------------------------------------------------------------------|
+| **id**  <br>*required*                 | Identifier of the logical restore                     | UUID                                                              |
+| **logicalRestoreName**  <br>*required* | Name of the logical restore in adapter                | String                                                            |
+| **adapterId**  <br>*required*          | Unique identifier of the adapter                      | String                                                            |
+| **type** <br>*required*                | Type of the adapter                                   | String                                                            |
+| **status** <br>*required*              | Current state of the restore databases of one adapter | enum(NOT_STARTED, IN_PROGRESS, FAILED, RETRYABLE_FAIL, COMPLETED) |
+| **errorMessage** <br>*optional*        | Error message if restore failed                       | String                                                            |
+| **creationTime** <br>*optional*        | Timestamp when the restore was created                | Instant                                                           |
+| **completionTime** <br>*optional*      | Timestamp when the restore completed                  | Instant                                                           |
+| *restoreDatabases** <br>*required*     | List of logical restore databases                     | List<[RestoreDatabaseResponse](#restoredatabaseresponse)>         |
+
+### RestoreDatabaseResponse
+
+| Name                            | Description                                                                 | Schema                                                             |
+|---------------------------------|-----------------------------------------------------------------------------|--------------------------------------------------------------------|
+| **id**  <br>*required*          | Identifier of the restore database                                          | UUID                                                               |
+| **name**  <br>*required*        | Name of the database                                                        | String                                                             |
+| **classifiers**  <br>*required* | List of database classifiers. Each classifier is a sorted map of attributes | List<[ClassifierDetailsResponse](#classifierdetailsresponse)>      |
+| **settings** <br>*required*     | Database settings as a key-value map                                        | Map<String, Object>                                                |
+| **users** <br>*required*        | List of database users                                                      | List<[RestoreDatabaseResponse.User](#restoredatabaseresponseuser)> |
+| **bgVersion** <br>*required*    | Blue-Green version of database                                              | boolean                                                            |
+| **status** <br>*required*       | Current state of the restore database                                       | enum(NOT_STARTED, IN_PROGRESS, FAILED, RETRYABLE_FAIL, COMPLETED)  |
+| **size** <br>*required*         | Size of the backup                                                          | long                                                               |
+| **duration** <br>*required*     | Duration of the restore operation                                           | long                                                               |
+| **path** <br>*required*         | Path to the restore file in the storage                                     | String                                                             |
+| **errorMessage** <br>*optional* | Error message if the restore failed                                         | String                                                             |
+| **creationTime** <br>*required* | Timestamp when the restore was created                                      | Instant                                                            |
+| **creationTime** <br>*required* | Timestamp when the restore was created                                      | Instant                                                            |
+
+### RestoreDatabaseResponse
+
+| Name                            | Description                                                                 | Schema                                                             |
+|---------------------------------|-----------------------------------------------------------------------------|--------------------------------------------------------------------|
+| **id**  <br>*required*          | Identifier of the restore database                                          | UUID                                                               |
+| **name**  <br>*required*        | Name of the database                                                        | String                                                             |
+| **classifiers**  <br>*required* | List of database classifiers. Each classifier is a sorted map of attributes | List<[ClassifierDetailsResponse](#classifierdetailsresponse)>      |
+| **settings** <br>*required*     | Database settings as a key-value map                                        | Map<String, Object>                                                |
+| **users** <br>*required*        | List of database users                                                      | List<[RestoreDatabaseResponse.User](#restoredatabaseresponseuser)> |
+| **bgVersion** <br>*required*    | Blue-Green version of database                                              | String                                                             |
+| **status** <br>*required*       | Current state of the restore database                                       | enum(NOT_STARTED, IN_PROGRESS, FAILED, RETRYABLE_FAIL, COMPLETED)  |
+| **duration**  <br>*required*    | Duration of the restore operation                                           | long                                                               |
+| **path**  <br>*required*        | Path to the restore file in the storage                                     | String                                                             |
+| **errorMessage** <br>*required* | Error message if the restore failed                                         | String                                                             |
+| **creationTime** <br>*required* | Timestamp when the restore was created                                      | Instant                                                            |
+
+### RestoreDatabaseResponse.User
+
+| Name                     | Description               | Schema |
+|--------------------------|---------------------------|--------|
+| **name**  <br>*required* | Name of the database user | String |
+| **role**  <br>*required* | Role of the database user | String |
+
+### ClassifierDetailsResponse
+
+| Name                                      | Description                                                                                                                                                                                                                                                  | Schema                                  |
+|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|
+| **type**  <br>*required*                  | Type of classifier in restore context                                                                                                                                                                                                                        | enum(NEW, REPLACED, TRANSIENT_REPLACED) |
+| **previousDatabase**  <br>*optional*      | Name of the existing database previously associated with this classifier used when the classifier replaces or transiently replaces another database during restore                                                                                           | String                                  |
+| **classifiers**  <br>*required*           | Final classifier used to create a database in the target environment                                                                                                                                                                                         | Map<String, Object>                     |
+| **classifierBeforeMapper** <br>*optional* | Original (pre-mapping) classifier from backup database preserved to track how mapping changed the classifier during restore                                                                                                                                  | Map<String, Object>                     |
+
+### RestoreStatusResponse
+
+| Name                            | Description                               | Schema                                                     |
+|---------------------------------|-------------------------------------------|------------------------------------------------------------|
+| **status**  <br>*required*      | Current state of the restore operation    | enum(NOT_STARTED, IN_PROGRESS, FAILED, COMPLETED, DELETED) |
+| **total**  <br>*optional*       | Total number of databases to be restored  | String                                                     |
+| **completed**  <br>*required*   | Number of databases successfully restored | Map<String, Object>                                        |
+| **errorMessage** <br>*optional* | Error details if the restore failed       | String                                                     |
 
 
 
