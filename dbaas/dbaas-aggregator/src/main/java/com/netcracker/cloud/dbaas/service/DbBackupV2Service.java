@@ -312,9 +312,15 @@ public class DbBackupV2Service {
     @SchedulerLock(name = "checkBackupsAsync")
     public void checkBackupsAsync() {
         //TODO propagate correct business id
-        log.info("Starting backup scheduler");
+        log.debug("Starting backup scheduler");
         LockAssert.assertLocked();
         List<Backup> backupsToAggregate = backupRepository.findBackupsToTrack();
+
+        if (!backupsToAggregate.isEmpty()) {
+            log.debug("Found backups to aggregate {}",
+                    backupsToAggregate.stream().map(Backup::getName).toList());
+        }
+
         backupsToAggregate.forEach(this::trackAndAggregate);
     }
 
@@ -1212,12 +1218,14 @@ public class DbBackupV2Service {
     @Scheduled(every = "${dbaas.backup-restore.check.interval}", concurrentExecution = SKIP)
     @SchedulerLock(name = "checkRestoresAsync")
     protected void checkRestoresAsync() {
-        log.info("Starting restore scheduler");
+        log.debug("Starting restore scheduler");
         LockAssert.assertLocked();
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToTrack();
 
-        log.info("Found restores to aggregate {}",
-                restoresToAggregate.stream().map(Restore::getName).toList());
+        if (!restoresToAggregate.isEmpty()) {
+            log.debug("Found restores to aggregate {}",
+                    restoresToAggregate.stream().map(Restore::getName).toList());
+        }
 
         restoresToAggregate.forEach(restore -> {
             trackAndAggregateRestore(restore);
