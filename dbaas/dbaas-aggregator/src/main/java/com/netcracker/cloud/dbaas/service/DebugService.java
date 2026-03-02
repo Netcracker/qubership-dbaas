@@ -30,8 +30,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -106,7 +104,7 @@ public class DebugService {
     public DumpResponseV3 loadDumpV3() {
         try {
             log.info("Start loading dump from DBaaS database");
-            var executorService = asyncOperations.getExecutorService();
+            var executorService = asyncOperations.getDebugExecutor();
             var physicalDatabasesTask = executorService.submit(() -> physicalDatabasesRepository.listAll());
             var logicalDatabasesTask = executorService.submit(() -> databasesRepository.listAll());
             var declarativeConfigsTask = executorService.submit(() -> databaseDeclarativeConfigRepository.listAll());
@@ -213,7 +211,7 @@ public class DebugService {
     @PreDestroy
     public void cleanUp() {
         log.info("Start shutting down executor service");
-        var executorService = asyncOperations.getExecutorService();
+        var executorService = asyncOperations.getDebugExecutor();
         executorService.shutdown();
 
         try {

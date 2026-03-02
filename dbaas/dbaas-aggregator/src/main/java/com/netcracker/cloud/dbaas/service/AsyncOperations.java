@@ -2,9 +2,8 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
-import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
-
+import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.*;
@@ -17,27 +16,29 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 @ApplicationScoped
 public class AsyncOperations {
 
-    @ConfigProperty(name = "backup.aggregator.async.thread.pool.size", defaultValue = "10")
-    int asyncBackupThreadPoolSize;
+    private final ThreadPoolExecutor backupExecutor;
+    private final ExecutorService executorService;
 
-    private ThreadPoolExecutor backupExecutor;
-    private ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
-
-    @PostConstruct
-    void initPools() {
-        backupExecutor = new ThreadPoolExecutor(
-                asyncBackupThreadPoolSize,
-                asyncBackupThreadPoolSize,
-                0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>(), new NamedThreadFactory("backups-"));
-        executorService = Executors.newVirtualThreadPerTaskExecutor();
+    @Inject
+    public AsyncOperations(
+            @ConfigProperty(
+                    name = "backup.aggregator.async.thread.pool.size",
+                    defaultValue = "10"
+            ) int poolSize
+    ) {
+        this.backupExecutor = new ThreadPoolExecutor(
+                poolSize, poolSize, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(),
+                new NamedThreadFactory("backups-")
+        );
+        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     public ThreadPoolExecutor getBackupPool() {
         return backupExecutor;
     }
 
-    public ExecutorService getExecutorService() {
+    public ExecutorService getDebugExecutor() {
         return executorService;
     }
 

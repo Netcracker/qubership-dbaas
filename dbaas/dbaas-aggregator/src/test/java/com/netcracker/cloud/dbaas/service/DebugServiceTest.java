@@ -86,7 +86,7 @@ class DebugServiceTest {
     @Mock
     private RestoreRepository restoreRepository;
     @Spy
-    private AsyncOperations asyncOperations;
+    private AsyncOperations asyncOperations = new AsyncOperations(1);
     @Mock
     private HealthService healthService;
     @Spy
