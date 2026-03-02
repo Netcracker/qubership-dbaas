@@ -720,6 +720,50 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void backup_requestDbByUppercaseType() {
+        String backupName = "backupName";
+        String namespace = "test-namespace";
+        String tenantId = "test-tenant";
+        String adapterId = "pg_adapter_1";
+        String microserviceName = "microservice_1";
+        String dbName = "pg_db_1";
+        String lowercasePostgres = "postgresql";
+        String uppercasePostgres = lowercasePostgres.toUpperCase();
+
+        Database database = getDatabase(adapterId, dbName, false, false, null);
+        DatabaseRegistry registry1 = getDatabaseRegistry(database, namespace, microserviceName, tenantId, lowercasePostgres);
+
+        Stream.of(registry1)
+                .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
+
+        Filter filter = new Filter();
+        filter.setDatabaseType(List.of(uppercasePostgres));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setInclude(List.of(filter));
+
+        BackupRequest backupRequest = new BackupRequest();
+        backupRequest.setBackupName(backupName);
+        backupRequest.setBlobPath("blobPath");
+        backupRequest.setStorageName("storageName");
+        backupRequest.setFilterCriteria(filterCriteria);
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(adapter);
+        when(adapter.type()).thenReturn(lowercasePostgres);
+        when(adapter.isBackupRestoreSupported()).thenReturn(true);
+
+        BackupResponse backup = dbBackupV2Service.backup(backupRequest, true);
+
+        String dbTypeResponse = backup.getFilterCriteria().getInclude().getFirst().getDatabaseType().getFirst();
+        assertEquals(dbTypeResponse, lowercasePostgres);
+
+        String actualDbType = backup.getLogicalBackups().getFirst().getType();
+        assertEquals(actualDbType, lowercasePostgres);
+    }
+
+    @Test
     void restore_withoutMapping_finishedWithStatusCompleted() {
         String restoreName = "restoreName";
         String backupName = "backupName";
