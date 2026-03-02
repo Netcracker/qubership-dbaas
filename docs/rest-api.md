@@ -181,7 +181,7 @@ Creates new database and returns it with connection information, or returns the 
     curl -X PUT \
       http://localhost:8080/api/v3/dbaas/cloud-core-dev1/databases \
       -H 'Content-Type: application/json' \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      -H 'Authorization: Basic ...' \
       -d '{
         "classifier":{
             "microserviceName":"test-service",
@@ -261,7 +261,7 @@ Returns the list of all databases.
     ```bash
     curl -X GET \
       http://localhost:8080/api/v3/dbaas/cloud-core-dev-1/databases/list?withResources=false \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' 
+      -H 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -337,13 +337,13 @@ Returns the list of databases by logical database name.
     ```bash
     curl -X GET \
       http://localhost:8080/api/v3/dbaas/databases/find-by-name/dbaas_e905eef3c79841e09c4e916c2cc2bb14 \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' 
+      -H 'Authorization: Basic ...' 
     ```
   or
     ```bash
     curl -X GET \
       http://localhost:8080/api/v3/dbaas/databases/find-by-name/dbaas_e905eef3c79841e09c4e916c2cc2bb14?namespace=cloud-core-dev-1 \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' 
+      -H 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -415,7 +415,7 @@ Request:
   ```bash
     curl -X GET \
       http://localhost:8080/api/v3/dbaas/databases/find-by-name/dbaas_e905eef3c79841e09c4e916c2cc2bb14?namespace=cloud-core-dev-1&withDecryptedPassword=true \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' 
+      -H 'Authorization: Basic ...' 
   ```
 
 Response:
@@ -521,7 +521,7 @@ Returns connection to an already created database using classifier to search.
     ```bash
     curl -X POST \
      http://localhost:8080/api/v3/dbaas/cloud-core-dev1/databases/get-by-classifier/postgresql \
-      -H "Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '{
         "classifier": {
@@ -602,7 +602,7 @@ Deletes database by classifier in the specific namespace.
     ```bash
     curl -X DELETE \
      http://localhost:8080/api/v3/dbaas/test-dbaas/databases/postgresql \
-      -H "Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '{
         "classifier":{
@@ -653,7 +653,7 @@ An existing database stays as a ghost if it was not registered in DBaaS.
     ```bash
     curl -X GET \
      http://localhost:8080/api/v3/dbaas/test-dbaas/databases/statuses \
-      -H "Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8="
+      -H "Authorization: Basic ..."
     ```
   Response:
     ```text
@@ -751,7 +751,7 @@ This API supports registration in DbaaS for any external logical database.
     ```bash
     curl -X PUT \
      http://localhost:8080/api/v3/dbaas/test-dbaas/databases/registration/externally_manageable \
-      -H "Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '{
         "classifier":{
@@ -840,7 +840,7 @@ If classifier is not passed then all passwords of databases in the namespace and
     ```bash
     curl -X POST \
      http://localhost:8080/api/v3/dbaas/namespaces/test-namespace/password-changes \
-      -H "Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '{
         "classifier":{
@@ -922,7 +922,7 @@ The previous database is not deleted but is marked as archived.
     ```bash
     curl -X POST \
      http://localhost:8080/api/v3/dbaas/namespaces/test-namespace/databases/recreate \
-      -H "Authorization: Basic ZGJhYXMtZGItZWRpdG9yOjllUm1fUTU1ZmU=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '[
         {
@@ -1025,7 +1025,7 @@ The API allows to update existing database classifier
     ```bash
     curl -X PUT \
      http://localhost:8080/api/v3/dbaas/namespaces/test-namespace/databases/update-classifier/postgresql \
-      -H "Authorization: Basic ZGJhYXMtZGItZWRpdG9yOjllUm1fUTU1ZmU=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '
       {
@@ -1092,7 +1092,7 @@ An error response may occur if there is an issue with the input parameters or an
     ```bash
     curl -X POST \
       http://localhost:8080/api/v3/dbaas/databases/update-host \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      -H 'Authorization: Basic ...' \
       -H 'Content-Type: application/json' \
       -d '[
         {
@@ -1180,7 +1180,7 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/Update+Connection
     ```bash
     curl -X PUT \
      http://localhost:8080/api/v3/dbaas/namespaces/test-namespace/databases/update-connection/postgresql \
-      -H "Authorization: Basic ZGJhYXMtZGItZWRpdG9yOjllUm1fUTU1ZmU=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '
       {
@@ -1270,7 +1270,7 @@ This action will create additional classifiers for required databases in the tar
     ```bash
     curl -X POST \
      http://localhost:8080/api/v3/dbaas/namespaces/test-namespace-1/databases/link \
-      -H "Authorization: Basic ZGJhYXMtZGItZWRpdG9yOjllUm1fUTU1ZmU=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '
       {
@@ -1366,7 +1366,7 @@ Related page: https://perch.qubership.org/display/CLOUDCORE/How+to+configure+nam
     ```bash
     curl -X PUT \
      http://localhost:8080/api/v3/dbaas/test-namespace/physical_databases/balancing/rules/test-rule \
-      -H "Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '{
         "rule": {
@@ -1430,7 +1430,7 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/Physical+DB+perma
     ```bash
     curl -X PUT \
      http://localhost:8080/api/v3/dbaas/balancing/rules/permanent \
-      --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      --header 'Authorization: Basic ...' \
       --header 'Content-Type: application/json' \
       --data '[
         {
@@ -1511,7 +1511,7 @@ Get list of applied permanent balancing rules.
   Request:
     ```bash
     curl  'http://localhost:8080/api/v3/dbaas/balancing/rules/permanent' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -1569,7 +1569,7 @@ Delete all permanent balancing rules on namespace.
   Request:
     ```bash
     curl  --request DELETE 'http://localhost:8080/api/v3/dbaas/balancing/rules/permanent' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '[
           {
@@ -1628,7 +1628,7 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/On+Microservice+p
     ```bash
     curl -X PUT \
      http://localhost:8080/api/v3/dbaas/test-namespace/physical_databases/rules/onMicroservices \
-      -H "Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=" \
+      -H "Authorization: Basic ..." \
       -H 'Content-Type: application/json' \
       -d '[
         {
@@ -1722,7 +1722,7 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/On+microservice+b
   Request:
     ```bash
     curl  --request PUT 'http://localhost:8080/api/v3/dbaas/cloud-core-dev-1/physical_databases/rules/onMicroservices/validation' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '[
           {
@@ -1799,7 +1799,7 @@ a list of labels for the assigned physical database to help analyze which rule w
   Request:
     ```bash
     curl  --request POST 'http://localhost:8080/api/v3/dbaas/cloud-core-dev-1/physical_databases/rules/debug' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '{
           "rules": [
@@ -1886,7 +1886,7 @@ a list of labels for the assigned physical database to help analyze which rule w
   Request:
     ```bash
     curl  --request POST 'http://localhost:8080/api/v3/dbaas/cloud-core-dev-1/physical_databases/rules/debug' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '{
           "rules": [
@@ -1967,7 +1967,7 @@ Moves the 'global' flag to the specified existing physical database
   Request:
     ```bash
     curl --request PUT 'https://localhost:8080/api/v3/dbaas/postgresql/physical_databases/postgresql-core-tls/global' \
-      --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      --header 'Authorization: Basic ...' \
       --header 'Content-Type: application/json'
     ```
   Response:
@@ -2007,7 +2007,7 @@ Get on microservice physical database balancing rules.
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/v3/dbaas/test-namespace/physical_databases/rules/onMicroservices' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -2074,7 +2074,7 @@ Creates new physical database and returns path to it with physical database iden
   Request:
     ```bash
     curl --request PUT 'https://localhost:8080/api/v3/dbaas/postgresql/physical_databases/postgresql-core-tls' \
-      --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      --header 'Authorization: Basic ...' \
       --header 'Content-Type: application/json' \
       --data '{
         "adapterAddress":"https://dbaas-postgres-adapter.postgresql-core-tls:8080",
@@ -2136,7 +2136,7 @@ then all registered physical databases for all types will be shown.
   Request:
     ```bash
     curl 'http://localhost:8080/api/v3/dbaas/all/physical_databases' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -2217,7 +2217,7 @@ Deletes physical database by database type and physical database id
   Request:
     ```bash
     curl --request DELETE 'http://localhost:8080/api/v3/dbaas/postgresql/physical_databases/postgresql-core' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -2256,7 +2256,7 @@ Lists all backups prepared for specified namespace
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/v3/dbaas/test-database/backups' \
-      --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+      --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2299,7 +2299,7 @@ Restores database within the initial namespace which was used during backup or t
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/v3/dbaas/test-namespace/backups/backup-id-123/restorations' \
-      --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+      --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2340,7 +2340,7 @@ Validates backup of the specified namespace
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/v3/dbaas/dbaas-autotests/backups/00175878-a80f-43e4-990c-2036df499297/validate' \
-      --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+      --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2381,7 +2381,7 @@ Returns restoration info
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/v3/dbaas/backups/00175878-a80f-43e4-990c-2036df499297/restorations/00878571-a80f-43e4-990c-792994fd6301' \
-      --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+      --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2421,7 +2421,7 @@ Returns restoration info
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/v3/dbaas/dbaas-autotests/backups/00175878-a80f-43e4-990c-2036df499297' \
-      --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+      --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2462,7 +2462,7 @@ Adds new backup info to specific backup id
   Request:
     ```bash
     curl --request PUT 'http://localhost:8080/api/v3/dbaas/dbaas-autotest/backups/00175878-a80f-43e4-990c-2036df499297' \
-      --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' \
+      --header 'Authorization: Basic ...' \
       --header 'Content-Type: application/json' \
       --data '{
         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -2511,7 +2511,7 @@ Start backup collection process for specified namespace
   Request:
     ```bash
     curl  --request POST 'http://localhost:8080/api/v3/dbaas/backup-namespace/backups/collect' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+        --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2553,7 +2553,7 @@ Start backup collection process for specified namespace
   Request:
     ```bash
     curl --request DELETE 'http://localhost:8080/api/v3/dbaas/dbaas-autotests_source/backups/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+        --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2622,7 +2622,7 @@ Start backup collection process for specified namespace
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/v3/dbaas/backups/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/restorations' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+        --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2662,7 +2662,7 @@ Returns restoration info
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/v3/dbaas/backups/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/restorations/0888888-restore-id' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' 
+        --header 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -2710,7 +2710,7 @@ Starts an asynchronous backup operation for the specified databases. Returns the
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/backups/v1/backup?dryRun=true' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' \
+        --header 'Authorization: Basic ...' \
         --data '{
           "backupName": "backup",
           "storageName": "minio",
@@ -2849,7 +2849,7 @@ Retrieve the current status of a backup operation
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/status' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -2901,7 +2901,7 @@ Retrieve details about a specific backup operation
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -2999,7 +2999,7 @@ Delete the backup operation
   Request:
     ```bash
     curl --request DELETE 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a?force=true' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -3044,7 +3044,7 @@ Retrieve metadata about a completed backup
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/metadata' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -3145,8 +3145,8 @@ Upload backup metadata
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/uploadMetadata' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ=' \
-        --header 'Digest: SHA-256=+4ZeCotmlJDgTsVq2zynwNOiN7VqgzP9JHy6IL3leJA='
+        --header 'Authorization: Basic ...' \
+        --header 'Digest: SHA-256=...'
         --data '{
             "backupName": "0b53eb7c-a0bb-419a-a81c-27bc3f716b2a",
             "storageName": "minio",
@@ -3222,7 +3222,7 @@ Operation is not idempotent
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/restore' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -3290,7 +3290,7 @@ Retrieve the current status of a restore operation
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/backups/v1/backup/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/restore' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -3341,7 +3341,7 @@ Retrieve details about a specific restore operation
   Request:
     ```bash
     curl --request GET 'http://localhost:8080/api/backups/v1/backup/restore/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -3409,7 +3409,7 @@ Delete a restore operation
   Request:
     ```bash
     curl --request DELETE 'http://localhost:8080/api/backups/v1/backup/restore/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -3452,7 +3452,7 @@ Retry a failed restore operation
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/backups/v1/backup/restore/0b53eb7c-a0bb-419a-a81c-27bc3f716b2a/retry' \
-        --header 'Authorization: Basic YmFja3VwLWRhZW1vbjpoZmZfZTM0X0pmcnQ='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -3525,7 +3525,7 @@ Related article:[https://perch.qubership.org/display/CLOUDCORE/Register+logical+
   Request:
     ```bash
     curl --request PUT 'http://localhost:8080/api/v3/dbaas/migration/databases' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '[
             {
@@ -3611,7 +3611,7 @@ Related article:[https://perch.qubership.org/display/CLOUDCORE/Register+logical+
   Request:
     ```bash
     curl --request PUT 'http://localhost:8080/api/v3/dbaas/migration/databases/with-user-creation' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '[
           {
@@ -3673,7 +3673,7 @@ The API allows to get or create specific user for database.
   Request:
     ```bash
     curl --request PUT 'http://localhost:8080/api/v3/dbaas/users' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '{
             "classifier":{
@@ -3744,7 +3744,7 @@ The API allows to delete specific user for database.
   Request:
     ```bash
     curl --request DELETE 'http://localhost:8080/api/v3/dbaas/users' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '{
             "userId": "e54c65c92d464c2f885078d03354ade6"          
@@ -3791,7 +3791,7 @@ The API allows to rotate password for specific user.
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/v3/dbaas/users/rotate-password' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '{
             "userId": "e54c65c92d464c2f885078d03354ade6"          
@@ -3851,7 +3851,7 @@ The API allows to restore used for one database or for databases in namespace
   Request:
     ```bash
     curl --request POST 'http://localhost:8080/api/v3/dbaas/users/restore' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --header 'Content-Type: application/json' \
         --data '{
             "classifier":{
@@ -3935,7 +3935,7 @@ The API allows to get actual access grants of microservice databases.
   Request:
     ```bash
     curl --request PUT 'http://localhost:8080/api/v3/dbaas/namespaces/{namespace}/services/{serviceName}/access-grants' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
     ```
   Response:
     ```text
@@ -4003,7 +4003,7 @@ The API allows to get list of databases with ORPHAN status. In non-PROD mode suc
     ```bash
     curl --location --request GET 'http://localhost:8080/api/bluegreen/v1/operation/orphans' \
                 --header 'Content-Type: application/json' \
-                --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+                --header 'Authorization: Basic ...' \
                 --data '{
                     "namespaces": [
                         "sosh-ns-1",
@@ -4090,7 +4090,7 @@ list of databases ready for deletion.
     ```bash
     curl --location --request DELETE 'http://localhost:8080/api/bluegreen/v1/operation/orphans' \
         --header 'Content-Type: application/json' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+        --header 'Authorization: Basic ...' \
         --data '{
             "namespaces": [
                 "sosh-ns-1",
@@ -4176,7 +4176,7 @@ The API allows to get an extended info about process status for troubleshooting 
   Request:
     ```bash
     curl --location --request GET 'http://localhost:8080/api/declarations/v1/operation/{trackingId}/extendedTroubleshootingInfo' \
-        --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+        --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -4267,7 +4267,7 @@ Save or update composite structure in DBaaS.
   Request:
     ```bash
         curl GET 'http://localhost:8090/api/composite/v1/structures' \
-            --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+            --header 'Authorization: Basic ...' \
             --data '
                 {
                     "id": "ns-1",
@@ -4308,7 +4308,7 @@ Get list of all registered composite structures in DBaaS.
   Request:
     ```bash
         curl GET 'http://localhost:8090/api/composite/v1/structures' \
-            --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+            --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -4369,7 +4369,7 @@ Get composite structure by id
   Request:
     ```bash
         curl GET 'http://localhost:8090/api/composite/v1/structures/ns-1' \
-            --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+            --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -4420,7 +4420,7 @@ This API removes registration of composite structure by Id in DBaaS
   Request:
     ```bash
         curl DELETE 'http://localhost:8080/api/composite/v1/structures/ns-1/delete' \
-            --header 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8='
+            --header 'Authorization: Basic ...'
     ```
   Response:
     ```text
@@ -4465,7 +4465,7 @@ However, it is possible to get response body in JSON format instead of file.
   Request:
     ```bash
     curl --location --request GET http://localhost:8080/api/v3/dbaas/debug/internal/dump \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      -H 'Authorization: Basic ...' \
       -H "Accept: application/json"
     ```
   Response:
@@ -4524,7 +4524,7 @@ However, it is possible to get response body in JSON format instead of file.
   Request:
     ```bash
     curl --location --request GET http://localhost:8080/api/v3/dbaas/debug/internal/dump \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      -H 'Authorization: Basic ...' \
       -H "Accept: application/octet-stream"
     ```
   Response:
@@ -4570,7 +4570,7 @@ Returns the list of lost databases (databases that registered in DBaaS, but not 
     ```bash
     curl -X GET \
       http://localhost:8080/api/v3/dbaas/debug/internal/lost \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' 
+      -H 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -4667,7 +4667,7 @@ Returns the list of ghost databases (databases that exists in adapter, but not r
     ```bash
     curl -X GET \
       http://localhost:8080/api/v3/dbaas/debug/internal/ghost \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' 
+      -H 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -4733,7 +4733,7 @@ Get DBaaS overall status. Status contains information about number of logical da
   Request:
     ```bash
     curl --location --request GET http://localhost:8080/api/v3/dbaas/debug/internal/info \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' 
+      -H 'Authorization: Basic ...' 
     ```
   Response:
     ```text
@@ -4820,7 +4820,7 @@ Operation supports filters in 'filter' query parameter in style of RESTful Servi
             roles=in=("ro","rw"); \
             physicalDbId==postgresql-dev:postgres; \
             physicalDbAdapterUrl==http://dbaas-postgres-adapter.postgresql-dev:8080 \
-      -H 'Authorization: Basic Y2x1c3Rlci1kYmE6Qm5tcTU1NjdfUE8=' \
+      -H 'Authorization: Basic ...' \
       -H "Accept: application/json"
     ```
   Response:
@@ -5590,11 +5590,22 @@ Request to add database to registration
 | **ignoreNotBackupableDatabases** <br>*required* | Whether non-backupable databases should be ignored during backup | boolean                           |
 
 ### FilterCriteria
+For backup requests, include is mandatory and must contain at least one filter with at least one non-empty field.
+For restore requests, include is optional.
 
 | Name                        | Description                                                 | Schema                  |
 |-----------------------------|-------------------------------------------------------------|-------------------------|
 | **include**  <br>*optional* | Include databases that match any of the filters in the list | List<[Filter](#filter)> |
 | **exclude**  <br>*optional* | Exclude databases that match any of the filters in the list | List<[Filter](#filter)> |
+
+### Filter
+
+| Name                                 | Description                     | Schema                                  |
+|--------------------------------------|---------------------------------|-----------------------------------------|
+| **namespace**  <br>*optional*        | Filter by Kubernetes namespaces | List<String>                            |
+| **microserviceName**  <br>*optional* | Filter by microservice names    | List<String>                            |
+| **databaseType**  <br>*optional*     | Filter by database types        | List<String>                            |
+| **databaseKind**   <br>*optional*    | Filter by database kinds        | List<enum(CONFIGURATION, TRANSACTIONAL) |
 
 ### BackupResponse
 
