@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 @Transactional
 @ApplicationScoped
@@ -20,5 +21,9 @@ public class BackupRepository implements PanacheRepositoryBase<Backup, String> {
 
     public List<Backup> findBackupsToTrack() {
         return list("status in ?1", List.of(BackupStatus.IN_PROGRESS));
+    }
+
+    public List<Backup> findAllBackupByBackupNames(Set<String> backupNames) {
+        return list("name IN ?1", backupNames);
     }
 }

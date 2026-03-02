@@ -27,7 +27,7 @@ public class Restore {
     @NotNull
     private String name;
 
-    @OneToOne(cascade = CascadeType.ALL)
+    @OneToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinColumn(name = "backup_name")
     private Backup backup;
 

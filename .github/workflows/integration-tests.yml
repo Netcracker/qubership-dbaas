@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload Surefire reports
         if: always() && steps.collect_reports.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: surefire-reports
           path: artifacts/*
@@ -191,7 +191,7 @@ jobs:
 
       - name: Upload Fluent Bit logs
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dbaas-pod-logs
           path: fluentbit-logs/**
@@ -205,7 +205,7 @@ jobs:
 
       - name: Upload DBaaS logs
         if: always() && steps.collect_logs.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dbaas-logs
           path: logs/*

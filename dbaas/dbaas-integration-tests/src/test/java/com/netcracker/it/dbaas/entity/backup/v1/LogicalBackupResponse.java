@@ -5,12 +5,14 @@ import lombok.Data;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Data
 @AllArgsConstructor
 public class LogicalBackupResponse {
 
-    String logicalBackupName;
+    private UUID id;
+    private String logicalBackupName;
     private String adapterId;
     private String type;
 

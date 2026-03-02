@@ -2,15 +2,15 @@ package com.netcracker.it.dbaas.test.backup;
 
 import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtension;
 import com.netcracker.it.dbaas.entity.DatabaseV3;
+import com.netcracker.it.dbaas.entity.LinkDatabasesRequest;
+import com.netcracker.it.dbaas.entity.backup.v1.*;
 import com.netcracker.it.dbaas.entity.backup.v3.Status;
-import com.netcracker.it.dbaas.entity.backup.v1.BackupStatus;
-import com.netcracker.it.dbaas.entity.backup.v1.ExternalDatabaseStrategy;
-import com.netcracker.it.dbaas.entity.backup.v1.RestoreStatus;
-import com.netcracker.it.dbaas.helpers.BackupHelperV1;
-import com.netcracker.it.dbaas.helpers.BackupHelperV3;
-import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
+import com.netcracker.it.dbaas.entity.config.DatabaseDeclaration;
+import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.bson.Document;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.parallel.Execution;
@@ -18,11 +18,13 @@ import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import java.io.IOException;
 import java.text.MessageFormat;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
-import static com.netcracker.it.dbaas.helpers.BackupHelperV1.DEFAULT_BLOB_PATH;
-import static com.netcracker.it.dbaas.helpers.BackupHelperV1.DEFAULT_STORAGE;
+import static com.netcracker.it.dbaas.helpers.BackupHelperV1.*;
 import static com.netcracker.it.dbaas.helpers.BackupHelperV3.*;
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.EXTERNALLY_MANAGEABLE_V3;
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.calculateDigest;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,32 +36,39 @@ class BackupV3IT extends AbstractIT {
 
     private static BackupHelperV3 backupHelperV3;
     private static BackupHelperV1 backupHelperV1;
+    private static DeclarativeConfigHelper declarativeHelper;
+    private static BGHelper bgHelper;
 
     @Override
     protected void closePortForwardAfterTest() {
     }
 
     @BeforeAll
-    static void initHelper() {
+    static void initHelper() throws IOException {
         backupHelperV3 = new BackupHelperV3(helperV3);
         backupHelperV1 = new BackupHelperV1(helperV3);
+        bgHelper = new BGHelper(helperV3);
+        declarativeHelper = new DeclarativeConfigHelper(helperV3);
         deleteTestData();
     }
 
     @AfterAll
-    static void cleanUp() {
+    static void cleanUp() throws IOException {
         deleteTestData();
 
         helperV3.closePortForwardConnections();
     }
 
-    private static void deleteTestData() {
+    private static void deleteTestData() throws IOException {
         log.info("Deleting test data");
 
         helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
+        bgHelper.destroyDomains();
+        backupHelperV1.deleteBackupRestore();
 
         log.info("Deleted test data");
     }
+
 
     @Nested
     @EnableExtension
@@ -150,48 +159,43 @@ class BackupV3IT extends AbstractIT {
             }
 
             @Test
-            void testBackupRestoreV1_BackupDBsAndRestoreToEmptyNamespace() throws IOException {
-                var sourceNamespace = helperV3.generateTestNamespace();
-                var targetNamespace = helperV3.generateTestNamespace();
+            void testBackupRestoreV1_importAndExportBackupMetadata() throws IOException {
+                BackupV3IT.this.testImportAndExportBackupMetadata(POSTGRES_TYPE);
+            }
 
-                var backupedLogicalDatabaseInSource1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), DBAAS_AUTO_TEST_1, 201, POSTGRES_TYPE, null, sourceNamespace, false);
-                var backupedLogicalDatabaseInSource2 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), DBAAS_AUTO_TEST_2, 201, POSTGRES_TYPE, null, sourceNamespace, false);
+            @Test
+            void testBackupRestoreV1_testFailedBackup() throws IOException {
+                BackupV3IT.this.testFailedBackup();
+            }
 
-                backupHelperV3.checkConnections(false, List.of(backupedLogicalDatabaseInSource1, backupedLogicalDatabaseInSource2), BACKUPED_DATA, BACKUPED_DATA, false);
+            @Test
+            void testBackupRestoreV1_testExternalDbBackupRestore() throws IOException {
+                BackupV3IT.this.testExternalDbBackupRestore(POSTGRES_TYPE);
+            }
 
-                var backupRequest = backupHelperV1.getBackupRequest(UUID.randomUUID().toString(), DEFAULT_STORAGE, DEFAULT_BLOB_PATH, List.of(sourceNamespace), ExternalDatabaseStrategy.FAIL, false);
-                var backupResponse = backupHelperV1.executeBackup(backupRequest, false);
-                assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+            @Test
+            void testBackupRestoreV1_externalInternalDbBackupRestore() throws IOException {
+                BackupV3IT.this.testExternalInternalDbBackupRestore(POSTGRES_TYPE);
+            }
 
-                var restoreRequest = backupHelperV1.getRestoreRequest(UUID.randomUUID().toString(), DEFAULT_STORAGE, DEFAULT_BLOB_PATH, List.of(sourceNamespace), Map.of(sourceNamespace, targetNamespace), Map.of(), ExternalDatabaseStrategy.FAIL);
-                var restoreResponse = backupHelperV1.executeRestore(backupRequest.getBackupName(), restoreRequest, false);
-                assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+            @Test
+            void testBackupRestoreV1_testEnrichingBackupRestore() throws IOException {
+                BackupV3IT.this.testEnrichingBackupRestore(POSTGRES_TYPE);
+            }
 
-                var restoredLogicalDatabaseInTarget1 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
-                        new ClassifierBuilder().test(DBAAS_AUTO_TEST_1).ns(targetNamespace).build(),
-                        targetNamespace, POSTGRES_TYPE, 200
-                );
+            @Test
+            void testBackupRestoreV1_testParallelBackupRestore() throws IOException {
+                BackupV3IT.this.testParallelBackupRestore(POSTGRES_TYPE);
+            }
 
-                var restoredLogicalDatabaseInTarget2 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
-                        new ClassifierBuilder().test(DBAAS_AUTO_TEST_1).ns(targetNamespace).build(),
-                        targetNamespace, POSTGRES_TYPE, 200
-                );
+            @Test
+            void testBackupRestoreV1_restoreDeletedBackup() throws IOException {
+                BackupV3IT.this.testRestoreDeletedBackup(POSTGRES_TYPE);
+            }
 
-                assertNotEquals(backupedLogicalDatabaseInSource1.getName(), restoredLogicalDatabaseInTarget1.getName());
-                assertNotEquals(backupedLogicalDatabaseInSource2.getName(), restoredLogicalDatabaseInTarget2.getName());
-                assertNotEquals(backupedLogicalDatabaseInSource1.getConnectionProperties(), restoredLogicalDatabaseInTarget1.getConnectionProperties());
-                assertNotEquals(backupedLogicalDatabaseInSource2.getConnectionProperties(), restoredLogicalDatabaseInTarget2.getConnectionProperties());
-
-                assertEquals(backupedLogicalDatabaseInSource1.getType(), restoredLogicalDatabaseInTarget1.getType());
-                assertEquals(backupedLogicalDatabaseInSource2.getType(), restoredLogicalDatabaseInTarget2.getType());
-
-                assertEquals(targetNamespace, restoredLogicalDatabaseInTarget1.getClassifier().get("namespace"));
-                assertEquals(targetNamespace, restoredLogicalDatabaseInTarget2.getClassifier().get("namespace"));
-                assertEquals(targetNamespace, restoredLogicalDatabaseInTarget1.getNamespace());
-                assertEquals(targetNamespace, restoredLogicalDatabaseInTarget2.getNamespace());
-
-                var restoredLogicalDatabasesInTarget = Arrays.asList(restoredLogicalDatabaseInTarget1, restoredLogicalDatabaseInTarget2);
-                backupHelperV3.checkConnections(false, restoredLogicalDatabasesInTarget, null, BACKUPED_DATA, false);
+            @Test
+            void testBackupRestoreV1_backupRestore() throws IOException {
+                BackupV3IT.this.testBackupRestoreToSameNamespace(POSTGRES_TYPE);
             }
         }
 
@@ -412,5 +416,394 @@ class BackupV3IT extends AbstractIT {
         backupHelperV3.checkConnections(false, additionalLogicalDatabasesInTarget, null, null, false);
 
         backupHelperV3.assertBackupNotExist(helperV3.getBackupDaemonAuthorization(), namespaceBackup);
+    }
+
+    private void testFailedBackup() throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(CLICKHOUSE_TYPE));
+
+        String namespace = helperV3.generateTestNamespace();
+        var sourceDbIncludedInBackup1 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(namespace).build(), CLICKHOUSE_TYPE, 201);
+
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc -> fc.include(
+                        f -> f.dbType(DatabaseType.CLICKHOUSE)
+                ))
+                .build();
+        var backupResponse = backupHelperV1.startBackup(backupRequest, false, 200);
+        assertEquals(BackupStatus.FAILED, backupResponse.getStatus());
+    }
+
+    private void testImportAndExportBackupMetadata(String type) throws IOException {
+        String sourceNamespace = helperV3.generateTestNamespace();
+        String targetNamespace = helperV3.generateTestNamespace();
+
+        var backupedLogicalDatabase1 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace).build(), type, 201);
+        var backupedLogicalDatabase2 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(sourceNamespace).build(), type, 201);
+
+        backupHelperV3.checkConnections(false, List.of(backupedLogicalDatabase1, backupedLogicalDatabase2), BACKUPED_DATA, BACKUPED_DATA, false);
+
+        var backupRequest = new BackupRequestBuilder().filterCriteria(fc -> fc.include(f -> f.ns(sourceNamespace))).build();
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+
+        String backupName = backupResponse.getBackupName();
+        var backupMetadata = backupHelperV1.getBackupMetadata(backupName);
+        helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), sourceNamespace);
+        backupHelperV1.deleteBackupFromDb(backupName);
+        assertNull(backupHelperV1.getBackup(backupName, 404));
+
+        backupHelperV1.uploadBackupMetadata((String) backupMetadata.get(DIGEST), (BackupResponse) backupMetadata.get(BACKUP_METADATA), 200);
+
+        var restoreRequest = new RestoreRequestBuilder().mapping(m -> m.ns(sourceNamespace, targetNamespace)).build();
+        var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+        assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+        var restoredLogicalDatabaseInTarget1 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(targetNamespace).build(),
+                targetNamespace, type, 200
+        );
+        var restoredLogicalDatabaseInTarget2 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(targetNamespace).build(),
+                targetNamespace, type, 200
+        );
+
+        assertNotEquals(backupedLogicalDatabase1.getName(), restoredLogicalDatabaseInTarget1.getName());
+        assertNotEquals(backupedLogicalDatabase2.getName(), restoredLogicalDatabaseInTarget2.getName());
+        assertNotEquals(backupedLogicalDatabase1.getConnectionProperties(), restoredLogicalDatabaseInTarget1.getConnectionProperties());
+        assertNotEquals(backupedLogicalDatabase2.getConnectionProperties(), restoredLogicalDatabaseInTarget2.getConnectionProperties());
+
+        backupHelperV3.checkConnections(true, List.of(backupedLogicalDatabase1, backupedLogicalDatabase2), null, BACKUPED_DATA, false);
+        backupHelperV3.checkConnections(false, List.of(restoredLogicalDatabaseInTarget1, restoredLogicalDatabaseInTarget2), null, BACKUPED_DATA, false);
+    }
+
+    private void testExternalDbBackupRestore(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE));
+
+        String sourceNamespace1 = helperV3.generateTestNamespace();
+        String sourceNamespace2 = helperV3.generateTestNamespace();
+        String targetNamespace = helperV3.generateTestNamespace();
+
+        var excludedInternalDb1 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace1).build(), type, 201);
+        var excludedInternalDb2 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace1).build(), CASSANDRA_TYPE, 201);
+        var backupedExternalDb1 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(sourceNamespace1).build(), type, 201);
+        var backupedExternalDb2 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_3).ns(sourceNamespace2).build(), type, 201);
+
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc -> fc
+                        .include(f -> f.ns(sourceNamespace1).dbType(mapDbType(type)))
+                        .include(f -> f.ns(sourceNamespace2).ms(DBAAS_AUTO_TEST_3))
+                        .exclude(f -> f.ns(sourceNamespace1).ms(DBAAS_AUTO_TEST_1))
+                ).externalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE).build();
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+        assertEquals(0, backupResponse.getLogicalBackups().size());
+        assertEquals(2, backupResponse.getExternalDatabases().size());
+
+        var restoreRequest = new RestoreRequestBuilder()
+                .mapping(m -> m
+                        .ns(sourceNamespace1, targetNamespace)
+                        .ns(sourceNamespace2, targetNamespace)
+                ).externalDbStrategy(ExternalDatabaseStrategy.INCLUDE).build();
+        var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+        assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+        var restoredExternalDb1 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(targetNamespace).build(), type, 200);
+        var restoredExternalDb2 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_3).ns(targetNamespace).build(), type, 200);
+
+        assertNotEquals(backupedExternalDb1.getId(), restoredExternalDb1.getId());
+        assertNotEquals(backupedExternalDb2.getId(), restoredExternalDb2.getId());
+
+        assertEquals(backupedExternalDb1.getName(), restoredExternalDb1.getName());
+        assertEquals(backupedExternalDb2.getName(), restoredExternalDb2.getName());
+
+        assertEquals(List.of(), restoredExternalDb1.getConnectionProperties());
+        assertEquals(List.of(), restoredExternalDb2.getConnectionProperties());
+    }
+
+    private void testExternalInternalDbBackupRestore(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE));
+
+        String sourceNamespace1 = helperV3.generateTestNamespace();
+        String sourceNamespace2 = helperV3.generateTestNamespace();
+        String targetNamespace = helperV3.generateTestNamespace();
+
+        String sourceTenantId = helperV3.generateTestNamespace();
+        String targetTenantId = helperV3.generateTestNamespace();
+
+        var backupedInternalDb1 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace1).tenantId(sourceTenantId).tenant().build(), type, 201);
+        var excludedInternalDb2 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace1).build(), CASSANDRA_TYPE, 201);
+        var backupedExternalDb1 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(sourceNamespace1).build(), type, 201);
+        var backupedExternalDb2 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_3).ns(sourceNamespace2).build(), type, 201);
+
+        backupHelperV3.checkConnections(false, List.of(backupedInternalDb1, excludedInternalDb2), BACKUPED_DATA, BACKUPED_DATA, false);
+
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc -> fc
+                        .include(f -> f.ns(sourceNamespace1).dbType(mapDbType(type)))
+                        .include(f -> f.ns(sourceNamespace2).ms(DBAAS_AUTO_TEST_3))
+                ).externalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE).build();
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+        assertEquals(1, backupResponse.getLogicalBackups().getFirst().getBackupDatabases().size());
+        assertEquals(2, backupResponse.getExternalDatabases().size());
+
+        String changedData = "changedData";
+        backupHelperV3.checkConnections(false, List.of(backupedInternalDb1), changedData, changedData, false);
+
+        var restoreRequest = new RestoreRequestBuilder()
+                .mapping(m -> m
+                        .ns(sourceNamespace1, targetNamespace)
+                        .ns(sourceNamespace2, targetNamespace)
+                        .tenant(sourceTenantId, targetTenantId)
+                ).externalDbStrategy(ExternalDatabaseStrategy.INCLUDE).build();
+        var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+        assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+        var restoredInternalDb = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(targetNamespace).tenantId(targetTenantId).tenant().build(), targetNamespace, type, 200
+        );
+
+        assertNotEquals(backupedInternalDb1.getName(), restoredInternalDb.getName());
+        assertNotEquals(backupedInternalDb1.getConnectionProperties(), restoredInternalDb.getConnectionProperties());
+
+        var restoredExternalDb1 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(targetNamespace).build(), type, 200);
+        var restoredExternalDb2 = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, new ClassifierBuilder().ms(DBAAS_AUTO_TEST_3).ns(targetNamespace).build(), type, 200);
+
+        assertNotEquals(backupedExternalDb1.getId(), restoredExternalDb1.getId());
+        assertNotEquals(backupedExternalDb2.getId(), restoredExternalDb2.getId());
+
+        assertEquals(backupedExternalDb1.getName(), restoredExternalDb1.getName());
+        assertEquals(backupedExternalDb2.getName(), restoredExternalDb2.getName());
+
+        assertEquals(List.of(), restoredExternalDb1.getConnectionProperties());
+        assertEquals(List.of(), restoredExternalDb2.getConnectionProperties());
+
+        backupHelperV3.checkConnections(false, List.of(backupedInternalDb1), null, changedData, false);
+        backupHelperV3.checkConnections(false, List.of(restoredInternalDb), null, BACKUPED_DATA, false);
+    }
+
+    private void testEnrichingBackupRestore(String type) throws IOException {
+        String targetNamespace = helperV3.generateTestNamespace();
+        String mappedNamespace1 = helperV3.generateTestNamespace();
+        String mappedNamespace2 = helperV3.generateTestNamespace();
+        var mappedNamespaces = List.of(mappedNamespace1, mappedNamespace2);
+
+        String activeNamespace = helperV3.generateTestNamespace();
+        String candidateNamespace = helperV3.generateTestNamespace();
+
+        try (Response initResponse = bgHelper.initDomain(activeNamespace, candidateNamespace)) {
+            Assertions.assertEquals(200, initResponse.code());
+        }
+
+        var payload = new DatabaseDeclaration.DeclarativeDBConfigBuilder()
+                .classifier(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2))
+                .versioning("new")
+                .build().asPayload(activeNamespace, DBAAS_AUTO_TEST_2);
+        declarativeHelper.applyDeclarativeConfig(payload);
+
+        bgHelper.doWarmup(activeNamespace, candidateNamespace);
+
+        var activeDatabaseTrans = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(activeNamespace).build(), type, 201);
+        var candidateDatabaseTrans = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(candidateNamespace).build(), type, 200);
+
+        var activeDatabaseConfig = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(activeNamespace).build(), type, 200);
+        var candidateDatabaseConfig = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(candidateNamespace).build(), type, 200);
+
+        var existDbInTargetEnv = helperV3.createDatabase(new ClassifierBuilder().ns(targetNamespace).ms(DBAAS_AUTO_TEST_1).build(), type, 201);
+        var immutableDbBefore = helperV3.createDatabase(new ClassifierBuilder().ns(targetNamespace).ms(DBAAS_AUTO_TEST_3).build(), type, 201);
+
+        for (int i = 0; i < 2; i++) {
+            String namespace = mappedNamespaces.get(i);
+            LinkDatabasesRequest requestBody = new LinkDatabasesRequest(List.of(DBAAS_AUTO_TEST_1), namespace);
+            Request request = helperV3.createRequest(String.format("api/v3/dbaas/namespaces/%s/databases/link", targetNamespace),
+                    helperV3.getDbaasDbEditorAuthorization(),
+                    requestBody,
+                    "POST");
+            var response = helperV3.executeRequest(request, List.class, 200);
+            assertEquals(1, response.size());
+        }
+
+        assertEquals(activeDatabaseTrans.getConnectionProperties(), candidateDatabaseTrans.getConnectionProperties());
+        backupHelperV3.checkConnections(false,
+                List.of(activeDatabaseTrans, activeDatabaseConfig, candidateDatabaseConfig, existDbInTargetEnv, immutableDbBefore),
+                BACKUPED_DATA, BACKUPED_DATA, false);
+
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc -> fc
+                        .include(f -> f.ns(activeNamespace))
+                        .include(f -> f.ns(candidateNamespace))
+                ).build();
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+
+        var restoreRequest = new RestoreRequestBuilder()
+                .filterCriteria(fc -> fc
+                        .include(f -> f.ns(activeNamespace).dbKind(DatabaseKind.TRANSACTIONAL))
+                        .include(f -> f.ns(candidateNamespace))
+                        .exclude(f -> f.dbKind(DatabaseKind.CONFIGURATION))
+                ).mapping(m -> m
+                        .ns(activeNamespace, targetNamespace)
+                        .ns(candidateNamespace, mappedNamespace1)
+                ).build();
+        var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+        assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+        var dbToRestore = restoreResponse.getLogicalRestores().getFirst().getRestoreDatabases().getFirst();
+        assertEquals(3, dbToRestore.getClassifiers().size());
+
+        var restoredDb1 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(targetNamespace).build(),
+                targetNamespace, type, 200);
+        var restoredDb2 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(mappedNamespace1).build(),
+                mappedNamespace1, type, 200);
+        var restoredDb3 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(mappedNamespace2).build(),
+                mappedNamespace2, type, 200);
+
+        assertNotEquals(activeDatabaseTrans.getName(), restoredDb1.getName());
+        assertNotEquals(candidateDatabaseTrans.getName(), restoredDb2.getName());
+
+        assertNotEquals(activeDatabaseTrans.getConnectionProperties(), restoredDb1.getConnectionProperties());
+        assertNotEquals(candidateDatabaseTrans.getConnectionProperties(), restoredDb2.getConnectionProperties());
+
+        assertEquals(restoredDb1.getConnectionProperties(), restoredDb2.getConnectionProperties());
+        assertEquals(restoredDb1.getConnectionProperties(), restoredDb3.getConnectionProperties());
+
+        var markedDb1 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(targetNamespace).markedForDrop().build(),
+                targetNamespace, type, 200);
+        var markedDb2 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(mappedNamespace1).markedForDrop().build(),
+                mappedNamespace1, type, 200);
+        var markedDb3 = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(mappedNamespace2).markedForDrop().build(),
+                mappedNamespace2, type, 200);
+
+        var immutableDbAfter = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_3).ns(targetNamespace).build(),
+                targetNamespace, type, 200);
+        assertEquals(immutableDbBefore.getName(), immutableDbAfter.getName());
+        assertEquals(immutableDbBefore.getConnectionProperties(), immutableDbAfter.getConnectionProperties());
+
+        backupHelperV3.checkConnections(false,
+                List.of(activeDatabaseTrans, candidateDatabaseTrans, activeDatabaseConfig, candidateDatabaseConfig, existDbInTargetEnv, immutableDbBefore),
+                null, BACKUPED_DATA, false);
+        backupHelperV3.checkConnections(false, List.of(restoredDb1), null, BACKUPED_DATA, false);
+        backupHelperV3.checkConnections(false, List.of(markedDb1), null, BACKUPED_DATA, false);
+    }
+
+    private void testParallelBackupRestore(String type) throws IOException {
+        var namespace = helperV3.generateTestNamespace();
+
+        var backupedDb = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(namespace).build(), type, 201);
+        backupHelperV3.checkConnections(false, List.of(backupedDb), BACKUPED_DATA, BACKUPED_DATA, false);
+
+        var backupRequest1 = new BackupRequestBuilder().filterCriteria(fc -> fc.include(f -> f.ns(namespace))).build();
+        var backupRequest2 = new BackupRequestBuilder().filterCriteria(fc -> fc.include(f -> f.ns(namespace))).build();
+
+        var backupResponse1 = backupHelperV1.startBackup(backupRequest1, false, 202);
+        var backupResponse2 = backupHelperV1.startBackup(backupRequest2, false, 202);
+
+        assertEquals(BackupStatus.IN_PROGRESS, backupResponse1.getStatus());
+        assertEquals(BackupStatus.IN_PROGRESS, backupResponse2.getStatus());
+
+        while (true) {
+            backupResponse1 = backupHelperV1.getBackup(backupRequest1.getBackupName(), 200);
+            if (backupResponse1.getStatus() == BackupStatus.COMPLETED) {
+                break;
+            }
+            if (backupResponse1.getStatus() == BackupStatus.FAILED) {
+                assertEquals(BackupStatus.COMPLETED, backupResponse1.getStatus());
+            }
+        }
+
+        backupHelperV1.startRestore(backupRequest1.getBackupName(), new RestoreRequestBuilder().build(), false, 202);
+        backupHelperV1.startRestore(backupRequest1.getBackupName(), new RestoreRequestBuilder().build(), false, 409);
+    }
+
+    private void testRestoreDeletedBackup(String type) throws IOException {
+        var sourceNamespace = helperV3.generateTestNamespace();
+        var targetNamespace = helperV3.generateTestNamespace();
+
+        var backupedLogicalDatabaseInSource1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), DBAAS_AUTO_TEST_1, 201, type, null, sourceNamespace, false);
+        var backupedLogicalDatabaseInSource2 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), DBAAS_AUTO_TEST_2, 201, type, null, sourceNamespace, false);
+        backupHelperV3.checkConnections(false, List.of(backupedLogicalDatabaseInSource1, backupedLogicalDatabaseInSource2), BACKUPED_DATA, BACKUPED_DATA, false);
+
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc -> fc
+                        .include(f -> f.ns(sourceNamespace))).build();
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+
+        var backupMetadataResponse = backupHelperV1.getBackupMetadata(backupResponse.getBackupName());
+        backupHelperV1.deleteBackup(backupResponse.getBackupName(), true);
+        backupHelperV1.uploadBackupMetadata((String) backupMetadataResponse.get(DIGEST), (BackupResponse) backupMetadataResponse.get(BACKUP_METADATA), 409);
+
+        var metadata = (BackupResponse) backupMetadataResponse.get(BACKUP_METADATA);
+        metadata.setBackupName(helperV3.generateTestNamespace());
+
+        var digest = calculateDigest(metadata);
+        backupHelperV1.uploadBackupMetadata(digest, metadata, 200);
+
+        assertNotEquals(backupResponse.getBackupName(), metadata.getBackupName());
+
+        var restoreRequest = new RestoreRequestBuilder().mapping(m -> m.ns(sourceNamespace, targetNamespace)).build();
+        var restoreResponse = backupHelperV1.runRestoreAndWait(metadata.getBackupName(), restoreRequest, false);
+        assertEquals(RestoreStatus.FAILED, restoreResponse.getStatus());
+    }
+
+    private void testBackupRestoreToSameNamespace(String type) throws IOException {
+        var sourceNamespace = helperV3.generateTestNamespace();
+
+        var backupedSourceDb1 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace).build(), type, 201);
+        var backupedSourceDb2 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(sourceNamespace).build(), type, 201);
+
+        backupHelperV3.checkConnections(false, List.of(backupedSourceDb1, backupedSourceDb2), BACKUPED_DATA, BACKUPED_DATA, false);
+
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc ->
+                        fc.include(f -> f.ns(sourceNamespace).dbType(mapDbType(type)))
+                ).build();
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+        assertEquals(1, backupResponse.getLogicalBackups().size());
+
+        var backupedDbCount = backupResponse.getLogicalBackups().getFirst().getBackupDatabases().size();
+        assertEquals(2, backupedDbCount);
+
+        String changedData = "changedData";
+        backupHelperV3.checkConnections(false, List.of(backupedSourceDb1, backupedSourceDb2), changedData, changedData, false);
+
+        var restoreRequest = new RestoreRequestBuilder().filterCriteria(fc -> fc.exclude(e -> e.ms(DBAAS_AUTO_TEST_2))).build();
+        var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+        assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+        var restoredLogicalDatabase = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace).build(),
+                sourceNamespace, type, 200);
+        assertNotEquals(backupedSourceDb1.getName(), restoredLogicalDatabase.getName());
+        assertNotEquals(backupedSourceDb1.getConnectionProperties(), restoredLogicalDatabase.getConnectionProperties());
+
+        var immutableDatabase = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(sourceNamespace).build(),
+                sourceNamespace, type, 200);
+        assertEquals(backupedSourceDb2.getName(), immutableDatabase.getName());
+        assertEquals(backupedSourceDb2.getConnectionProperties(), immutableDatabase.getConnectionProperties());
+
+        var markedLogicalDatabase = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace).markedForDrop().build(),
+                sourceNamespace, type, 200
+        );
+        assertEquals(backupedSourceDb1.getName(), markedLogicalDatabase.getName());
+        assertEquals(backupedSourceDb1.getConnectionProperties(), markedLogicalDatabase.getConnectionProperties());
+
+        helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2).ns(sourceNamespace).markedForDrop().build(),
+                sourceNamespace, type, 404
+        );
+
+        backupHelperV3.checkConnections(false, List.of(backupedSourceDb1, backupedSourceDb2), null, changedData, false);
+        backupHelperV3.checkConnections(false, List.of(restoredLogicalDatabase), null, BACKUPED_DATA, false);
     }
 }
