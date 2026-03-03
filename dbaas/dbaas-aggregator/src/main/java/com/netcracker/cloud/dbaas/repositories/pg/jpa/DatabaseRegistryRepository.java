@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.repositories.pg.jpa;
 
 import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseKind;
-import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseType;
 import com.netcracker.cloud.dbaas.dto.backupV2.Filter;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
@@ -65,7 +64,7 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
             if (filter.getDatabaseType() != null && !filter.getDatabaseType().isEmpty()) {
                 String typeValues = "typeValues" + index;
                 query.add("cl.type = ANY(:" + typeValues + ")");
-                params.put(typeValues, filter.getDatabaseType().stream().map(DatabaseType::getType).toList().toArray(new String[0]));
+                params.put(typeValues, filter.getDatabaseType().toArray(new String[0]));
             }
             if (filter.getDatabaseKind() != null && filter.getDatabaseKind().size() == 1) {
                 needDatabaseJoin = true;

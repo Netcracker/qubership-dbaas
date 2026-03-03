@@ -594,53 +594,6 @@
           }
         }
       },
-      "BgDomain": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "namespaces": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BgNamespace"
-            },
-            "description": "blue green namespaces in the same domain"
-          },
-          "controllerNamespace": {
-            "type": "string",
-            "description": "blue green controller namespaces"
-          },
-          "originNamespace": {
-            "type": "string",
-            "description": "blue green origin namespaces"
-          },
-          "peerNamespace": {
-            "type": "string",
-            "description": "blue green peer namespaces"
-          }
-        }
-      },
-      "BgNamespace": {
-        "type": "object",
-        "properties": {
-          "namespace": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "updateTime": {
-            "$ref": "#/components/schemas/Date"
-          },
-          "bgDomain": {
-            "$ref": "#/components/schemas/BgDomain"
-          }
-        }
-      },
       "BgNamespaceRequest": {
         "type": "object",
         "properties": {
@@ -1027,43 +980,6 @@
           "userRole": {
             "type": "string",
             "description": "Indicates connection properties with which user role should be returned to a client"
-          }
-        }
-      },
-      "DatabaseDeclarativeConfig": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "lazy": {
-            "type": "boolean"
-          },
-          "settings": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "instantiationApproach": {
-            "type": "string"
-          },
-          "versioningApproach": {
-            "type": "string"
-          },
-          "versioningType": {
-            "type": "string"
-          },
-          "classifier": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "type": {
-            "type": "string"
-          },
-          "namePrefix": {
-            "type": "string"
-          },
-          "namespace": {
-            "type": "string"
           }
         }
       },
@@ -1651,95 +1567,36 @@
           }
         }
       },
-      "DumpDefaultRuleV3": {
-        "type": "object",
-        "properties": {
-          "physicalDatabaseId": {
-            "type": "string"
-          },
-          "address": {
-            "type": "string"
-          }
-        }
-      },
       "DumpResponseV3": {
         "type": "object",
         "properties": {
           "rules": {
-            "$ref": "#/components/schemas/DumpRulesV3"
+            "type": "array",
+            "items": {}
           },
           "logicalDatabases": {
             "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Database"
-            }
+            "items": {}
           },
           "physicalDatabases": {
             "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PhysicalDatabase"
-            }
+            "items": {}
           },
           "declarativeConfigurations": {
             "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DatabaseDeclarativeConfig"
-            }
+            "items": {}
           },
           "blueGreenDomains": {
             "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BgDomain"
-            }
-          }
-        }
-      },
-      "DumpRulesV3": {
-        "type": "object",
-        "properties": {
-          "defaultRules": {
+            "items": {}
+          },
+          "backups": {
             "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DumpDefaultRuleV3"
-            }
+            "items": {}
           },
-          "namespaceRules": {
+          "restores": {
             "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PerNamespaceRule"
-            }
-          },
-          "microserviceRules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PerMicroserviceRule"
-            }
-          },
-          "permanentRules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PerNamespaceRule"
-            }
-          }
-        }
-      },
-      "ExternalAdapterRegistrationEntry": {
-        "type": "object",
-        "properties": {
-          "adapterId": {
-            "type": "string"
-          },
-          "address": {
-            "type": "string"
-          },
-          "httpBasicCredentials": {
-            "$ref": "#/components/schemas/HttpBasicCredentials"
-          },
-          "supportedVersion": {
-            "type": "string"
-          },
-          "apiVersions": {
-            "$ref": "#/components/schemas/ApiVersion"
+            "items": {}
           }
         }
       },
@@ -1832,14 +1689,7 @@
           "databaseType": {
             "type": "array",
             "items": {
-              "type": "string",
-              "enum": [
-                "POSTGRESQL",
-                "ARANGODB",
-                "CLICKHOUSE",
-                "MONGODB",
-                "CASSANDRA"
-              ]
+              "type": "string"
             },
             "description": "Filter by database types"
           },
@@ -2636,63 +2486,6 @@
           }
         }
       },
-      "PerMicroserviceRule": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "namespace": {
-            "type": "string"
-          },
-          "microservice": {
-            "type": "string"
-          },
-          "rules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuleOnMicroservice"
-            }
-          },
-          "type": {
-            "type": "string"
-          },
-          "createDate": {
-            "$ref": "#/components/schemas/Date"
-          },
-          "updateDate": {
-            "$ref": "#/components/schemas/Date"
-          },
-          "generation": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "PerNamespaceRule": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "order": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "databaseType": {
-            "type": "string"
-          },
-          "namespace": {
-            "type": "string"
-          },
-          "physicalDatabaseIdentifier": {
-            "type": "string"
-          },
-          "ruleType": {
-            "$ref": "#/components/schemas/RuleType1"
-          }
-        }
-      },
       "PermanentPerNamespaceRuleDTO": {
         "type": "object",
         "required": [
@@ -2737,53 +2530,6 @@
               "type": "string"
             },
             "description": "Namespaces for which rules should be deleted"
-          }
-        }
-      },
-      "PhysicalDatabase": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "physicalDatabaseIdentifier": {
-            "type": "string"
-          },
-          "global": {
-            "type": "boolean"
-          },
-          "labels": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "type": {
-            "type": "string"
-          },
-          "registrationDate": {
-            "$ref": "#/components/schemas/Date"
-          },
-          "roles": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "features": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "roHost": {
-            "type": "string"
-          },
-          "identified": {
-            "type": "boolean"
-          },
-          "adapter": {
-            "$ref": "#/components/schemas/ExternalAdapterRegistrationEntry"
           }
         }
       },
@@ -3764,13 +3510,6 @@
           "perNamespace"
         ],
         "description": "Rule type specified what configuration applies to which logic. \n - perNamespace rule would just use specified physical database for any new logical database in namespace, where rule works"
-      },
-      "RuleType1": {
-        "type": "string",
-        "enum": [
-          "NAMESPACE",
-          "PERMANENT"
-        ]
       },
       "ServiceRole": {
         "type": "object",
