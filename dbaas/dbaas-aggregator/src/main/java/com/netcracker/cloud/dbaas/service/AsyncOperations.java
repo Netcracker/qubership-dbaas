@@ -17,7 +17,7 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 public class AsyncOperations {
 
     private final ThreadPoolExecutor backupExecutor;
-    private final ExecutorService executorService;
+    private final ExecutorService debugExecutorService;
 
     @Inject
     public AsyncOperations(
@@ -31,7 +31,7 @@ public class AsyncOperations {
                 new LinkedBlockingQueue<>(),
                 new NamedThreadFactory("backups-")
         );
-        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
+        this.debugExecutorService = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     public ThreadPoolExecutor getBackupPool() {
@@ -39,7 +39,7 @@ public class AsyncOperations {
     }
 
     public ExecutorService getDebugExecutor() {
-        return executorService;
+        return debugExecutorService;
     }
 
     class NamedThreadFactory implements ThreadFactory {
