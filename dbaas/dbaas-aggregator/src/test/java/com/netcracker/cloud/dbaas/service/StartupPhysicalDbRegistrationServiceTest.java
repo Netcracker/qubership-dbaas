@@ -10,7 +10,6 @@ import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.ext.QueryParamStyle;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -84,76 +83,64 @@ class StartupPhysicalDbRegistrationServiceTest {
         assertTrue(mockedRestClients.isEmpty());
     }
 
-    @Nested
-    class NotifyAdapterV2 {
-        Map<String, DbaasAdapterRestClientV2> v2Clients = new HashMap<>();
-        Map<String, DbaasAdapterRestClient> v1Clients = new HashMap<>();
+    @Test
+    void testV2SuccessDoesNotFallBackToV1() {
+        try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
+            mocked.when(RestClientBuilder::newBuilder)
+                    .thenReturn(
+                            new StubRestClientBuilder(mockedRestClients, mockedRestClientsV2, Response.accepted().build(), false));
 
-        @AfterEach
-        void clearMocks() {
-            v2Clients.clear();
-            v1Clients.clear();
+            new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
+
+            assertNotNull(mockedRestClientsV2.get("adapter"));
+            verify(mockedRestClientsV2.get("adapter")).forceRegistration();
+            assertTrue(mockedRestClients.isEmpty());
         }
+    }
 
-        @Test
-        void testV2SuccessDoesNotFallBackToV1() {
-            try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
-                mocked.when(RestClientBuilder::newBuilder)
-                        .thenReturn(
-                                new StubRestClientBuilder(v1Clients, v2Clients, Response.accepted().build(), false));
+    @Test
+    void testV2NotFoundFallsBackToV1() {
+        try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
+            mocked.when(RestClientBuilder::newBuilder)
+                    .thenReturn(new StubRestClientBuilder(mockedRestClients, mockedRestClientsV2,
+                            Response.status(Response.Status.NOT_FOUND).build(), false));
 
-                new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
+            new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
 
-                assertNotNull(v2Clients.get("adapter"));
-                verify(v2Clients.get("adapter")).forceRegistration();
-                assertTrue(v1Clients.isEmpty());
-            }
+            assertNotNull(mockedRestClientsV2.get("adapter"));
+            verify(mockedRestClientsV2.get("adapter")).forceRegistration();
+            assertNotNull(mockedRestClients.get("adapter"));
+            verify(mockedRestClients.get("adapter")).forceRegistration();
         }
+    }
 
-        @Test
-        void testV2NotFoundFallsBackToV1() {
-            try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
-                mocked.when(RestClientBuilder::newBuilder)
-                        .thenReturn(new StubRestClientBuilder(v1Clients, v2Clients,
-                                Response.status(Response.Status.NOT_FOUND).build(), false));
+    @Test
+    void testV2ExceptionFallsBackToV1() {
+        try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
+            mocked.when(RestClientBuilder::newBuilder)
+                    .thenReturn(new StubRestClientBuilder(mockedRestClients, mockedRestClientsV2, null, true));
 
-                new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
+            new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
 
-                assertNotNull(v2Clients.get("adapter"));
-                verify(v2Clients.get("adapter")).forceRegistration();
-                assertNotNull(v1Clients.get("adapter"));
-                verify(v1Clients.get("adapter")).forceRegistration();
-            }
+            assertNotNull(mockedRestClientsV2.get("adapter"));
+            verify(mockedRestClientsV2.get("adapter")).forceRegistration();
+            assertNotNull(mockedRestClients.get("adapter"));
+            verify(mockedRestClients.get("adapter")).forceRegistration();
         }
+    }
 
-        @Test
-        void testV2ExceptionFallsBackToV1() {
-            try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
-                mocked.when(RestClientBuilder::newBuilder)
-                        .thenReturn(new StubRestClientBuilder(v1Clients, v2Clients, null, true));
+    @Test
+    void testV2UnexpectedStatusDoesNotFallBackToV1() {
+        try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
+            mocked.when(RestClientBuilder::newBuilder)
+                    .thenReturn(new StubRestClientBuilder(mockedRestClients, mockedRestClientsV2,
+                            Response.serverError().build(), false));
 
-                new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
+            new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
 
-                assertNotNull(v2Clients.get("adapter"));
-                verify(v2Clients.get("adapter")).forceRegistration();
-                assertNotNull(v1Clients.get("adapter"));
-                verify(v1Clients.get("adapter")).forceRegistration();
-            }
-        }
-
-        @Test
-        void testV2UnexpectedStatusDoesNotFallBackToV1() {
-            try (MockedStatic<RestClientBuilder> mocked = Mockito.mockStatic(RestClientBuilder.class)) {
-                mocked.when(RestClientBuilder::newBuilder)
-                        .thenReturn(new StubRestClientBuilder(v1Clients, v2Clients,
-                                Response.serverError().build(), false));
-
-                new StartupPhysicalDbRegistrationService(repository, "http://adapter:8080");
-
-                assertNotNull(v2Clients.get("adapter"));
-                verify(v2Clients.get("adapter")).forceRegistration();
-                assertTrue(v1Clients.isEmpty());
-            }
+            assertNotNull(mockedRestClientsV2.get("adapter"));
+            verify(mockedRestClientsV2.get("adapter")).forceRegistration();
+            assertTrue(mockedRestClients.isEmpty());
         }
     }
 
@@ -169,7 +156,6 @@ class StartupPhysicalDbRegistrationServiceTest {
             this(mockedRestClients, mockedRestClientsV2, null, false);
         }
 
-        // to be used by nested tests
         public StubRestClientBuilder(Map<String, DbaasAdapterRestClient> mockedRestClients,
                 Map<String, DbaasAdapterRestClientV2> mockedRestClientsV2,
                 Response v2Response,
