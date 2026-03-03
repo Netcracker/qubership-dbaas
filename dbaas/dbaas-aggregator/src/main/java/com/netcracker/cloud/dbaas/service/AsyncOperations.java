@@ -2,8 +2,10 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.*;
@@ -12,7 +14,7 @@ import java.util.function.Supplier;
 
 import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
-
+@Slf4j
 @ApplicationScoped
 public class AsyncOperations {
 
@@ -81,4 +83,33 @@ public class AsyncOperations {
         };
     }
 
+    @PreDestroy
+    void cleanUp() {
+        shutdown("backupExecutor", backupExecutor);
+        shutdown("debugExecutorService", debugExecutorService);
+    }
+
+    private void shutdown(String serviceName,ExecutorService executorService) {
+        log.info("Start shutting down '{}' service", serviceName);
+        executorService.shutdown();
+
+        try {
+            if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
+                log.info("'{}' service is still not terminated", serviceName);
+
+                executorService.shutdownNow();
+
+                if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
+                    log.error("'{}' service was not terminated even after await", serviceName);
+                }
+            }
+        } catch (InterruptedException ex) {
+            log.error("Error happened during shutting down '{}' service: ", serviceName, ex);
+
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        log.info("Finish shutting down '{}' service", serviceName);
+    }
 }

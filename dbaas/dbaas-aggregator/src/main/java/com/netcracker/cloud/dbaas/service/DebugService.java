@@ -19,7 +19,6 @@ import com.netcracker.cloud.dbaas.repositories.queries.NamespaceSqlQueries;
 import com.netcracker.cloud.dbaas.rsql.QueryPreparationRSQLProcessor;
 import com.netcracker.cloud.dbaas.rsql.QueryPreparationRSQLVisitor;
 import com.netcracker.cloud.dbaas.rsql.config.DebugGetLogicalDatabasesRSQLConfig;
-import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -30,7 +29,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
@@ -206,32 +204,6 @@ public class DebugService {
             .orElse(null);
 
         return new DumpDefaultRuleV3(physicalDatabase.getId(), address);
-    }
-
-    @PreDestroy
-    public void cleanUp() {
-        log.info("Start shutting down executor service");
-        var executorService = asyncOperations.getDebugExecutor();
-        executorService.shutdown();
-
-        try {
-            if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                log.info("Executor service is still not terminated");
-
-                executorService.shutdownNow();
-
-                if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                    log.error("Executor service was not terminated even after await");
-                }
-            }
-        } catch (InterruptedException ex) {
-            log.error("Error happened during shutting down executor service: ", ex);
-
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-
-        log.info("Finish shutting down executor service");
     }
 
     public List<LostDatabasesResponse> findLostDatabases() {
