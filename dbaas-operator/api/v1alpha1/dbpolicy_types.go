@@ -16,71 +16,103 @@ limitations under the License.
 
 package v1alpha1
 
-import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// ServiceRole defines the database roles granted to a specific microservice.
+// Mirrors the ServiceRole Java class in the dbaas-aggregator.
+type ServiceRole struct {
+	// name is the microservice name (must match the service's app.kubernetes.io/name label).
+	// The aggregator uses this to associate role grants with the correct service identity.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
 
-// DbPolicySpec defines the desired state of DbPolicy
-type DbPolicySpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
+	// roles is the list of database roles granted to this microservice.
+	// Role names are adapter-specific, e.g. "admin", "readonly", "readwrite".
+	// +kubebuilder:validation:Required
+	Roles []string `json:"roles"`
+}
 
-	// foo is an example field of DbPolicy. Edit dbpolicy_types.go to remove/update
+// PolicyRole defines default and additional database role rules for a specific database type.
+// Mirrors the PolicyRole Java class in the dbaas-aggregator.
+type PolicyRole struct {
+	// type is the database engine type this policy applies to, e.g. "postgresql", "mongodb".
+	// Must match a type known to dbaas-aggregator.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Type string `json:"type"`
+
+	// defaultRole is the database role assigned to any microservice that is not
+	// explicitly listed in the services section. Allows a baseline access level
+	// for all services without individual entries.
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	DefaultRole string `json:"defaultRole,omitempty"`
+
+	// additionalRole lists extra roles that may be granted beyond the defaultRole.
+	// Interpretation is adapter-specific.
+	// +optional
+	AdditionalRole []string `json:"additionalRole,omitempty"`
+}
+
+// DbPolicySpec defines the desired state of DbPolicy.
+//
+// This spec is serialized by the controller and sent as the "spec" field of the
+// DeclarativePayload body to dbaas-aggregator:
+//
+//	POST /api/declarations/v1/apply
+//	{ "subKind": "DbPolicy", "spec": <this struct>, ... }
+//
+// Field names and semantics match the RolesRegistration Java class in the aggregator.
+// All top-level fields are optional; at least one of services or policy should be provided.
+type DbPolicySpec struct {
+	// services defines per-microservice database role assignments. Each entry grants
+	// a named microservice a specific set of database roles in this namespace.
+	// +optional
+	Services []ServiceRole `json:"services,omitempty"`
+
+	// policy defines default and additional role rules per database type. Entries here
+	// act as a fallback for services not explicitly listed in the services field.
+	// +optional
+	Policy []PolicyRole `json:"policy,omitempty"`
+
+	// disableGlobalPermissions disables the default global permission grants that
+	// dbaas-aggregator would otherwise apply to all databases of the service.
+	// Set to true to opt out of global defaults and rely solely on explicit entries.
+	// +optional
+	DisableGlobalPermissions bool `json:"disableGlobalPermissions,omitempty"`
 }
 
 // DbPolicyStatus defines the observed state of DbPolicy.
 type DbPolicyStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the DbPolicy resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
-	// +listType=map
-	// +listMapKey=type
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	OperatorStatus `json:",inline"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// DbPolicy is the Schema for the dbpolicies API
+// DbPolicy is the Schema for the dbpolicies API.
+// It declares the database role assignments for microservices in a namespace,
+// applied by dbaas-aggregator when provisioning or connecting to databases.
 type DbPolicy struct {
 	metav1.TypeMeta `json:",inline"`
 
-	// metadata is a standard object metadata
+	// metadata is standard object metadata.
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of DbPolicy
-	// +required
+	// spec defines the desired state of DbPolicy.
 	Spec DbPolicySpec `json:"spec"`
 
-	// status defines the observed state of DbPolicy
+	// status defines the observed state of DbPolicy.
 	// +optional
 	Status DbPolicyStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
 
-// DbPolicyList contains a list of DbPolicy
+// DbPolicyList contains a list of DbPolicy.
 type DbPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`

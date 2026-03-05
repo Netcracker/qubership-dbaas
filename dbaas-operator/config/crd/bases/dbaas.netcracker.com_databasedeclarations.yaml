@@ -1,0 +1,234 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: databasedeclarations.dbaas.netcracker.com
+spec:
+  group: dbaas.netcracker.com
+  names:
+    kind: DatabaseDeclaration
+    listKind: DatabaseDeclarationList
+    plural: databasedeclarations
+    singular: databasedeclaration
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          DatabaseDeclaration is the Schema for the databasedeclarations API.
+          It declares a logical database that dbaas should provision and manage on behalf
+          of the owning microservice.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of DatabaseDeclaration.
+            properties:
+              classifierConfig:
+                description: |-
+                  classifierConfig contains the classifier that uniquely identifies this database
+                  in dbaas. The aggregator uses it to look up or create the physical database.
+                properties:
+                  classifier:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      classifier is a key-value map that uniquely identifies a database in dbaas.
+                      All values must be strings. Typical keys:
+                        - namespace       — Kubernetes namespace of the owning service (required)
+                        - microserviceName — name of the microservice that owns the database (required)
+                        - scope           — logical scope, e.g. "service" or "tenant" (optional)
+                        - tenantId        — tenant identifier for multi-tenant deployments (optional)
+                    type: object
+                required:
+                - classifier
+                type: object
+              initialInstantiation:
+                description: |-
+                  initialInstantiation defines how the database is created on the first deployment.
+                  Optional; the aggregator applies its own defaults if omitted.
+                properties:
+                  approach:
+                    description: |-
+                      approach defines the strategy for initial database creation.
+                      Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
+                    type: string
+                  sourceClassifier:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      sourceClassifier is the classifier of the database to clone from.
+                      Required when approach is "clone". Must reference an existing database in dbaas.
+                    type: object
+                type: object
+              lazy:
+                description: |-
+                  lazy indicates whether the database should be provisioned on first access rather
+                  than immediately during reconciliation. When true, the aggregator defers physical
+                  database creation until a service requests a connection. Defaults to false.
+                type: boolean
+              namePrefix:
+                description: |-
+                  namePrefix is a prefix applied to the physical database name created in the DBMS.
+                  Useful for disambiguation when multiple logical databases share the same DBMS instance.
+                type: string
+              settings:
+                additionalProperties:
+                  type: string
+                description: |-
+                  settings contains database-engine-specific configuration passed through to the
+                  dbaas adapter. The accepted keys and their semantics depend on the specific adapter.
+                  All values are strings; numeric and boolean settings should be passed as their
+                  string representation (e.g. maxConnections: "100", createOnly: "true").
+                type: object
+              type:
+                description: |-
+                  type is the database engine type. Must match a type known to dbaas-aggregator,
+                  e.g. "postgresql", "mongodb", "opensearch".
+                minLength: 1
+                type: string
+              versioningConfig:
+                description: |-
+                  versioningConfig defines the strategy for handling database versions during
+                  blue-green deployments. Optional; the aggregator applies its own defaults if omitted.
+                properties:
+                  approach:
+                    description: |-
+                      approach defines how a new database version is created during a blue-green update.
+                      Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
+                    type: string
+                type: object
+            required:
+            - classifierConfig
+            - type
+            type: object
+          status:
+            description: status defines the observed state of DatabaseDeclaration.
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the resource, translated from the
+                  dbaas-aggregator response. Standard condition types used by this operator:
+                    - "Validated"  — the payload passed aggregator-side validation
+                    - "DBCreated"  — the database provisioning operation result (DatabaseDeclaration only)
+                    - "RolesCreated" — the role registration result (DbPolicy only)
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  observedGeneration reflects the .metadata.generation that was last processed
+                  by the controller. When the current generation differs from this value, the
+                  controller clears all conditions and starts a fresh reconciliation cycle.
+                format: int64
+                type: integer
+              phase:
+                default: Unknown
+                description: phase represents the current processing phase of the
+                  resource.
+                enum:
+                - Unknown
+                - Updating
+                - WaitingForDependency
+                - Updated
+                - BackingOff
+                - InvalidConfiguration
+                type: string
+              trackingId:
+                description: |-
+                  trackingId is the identifier returned by dbaas-aggregator when a database
+                  provisioning operation is started asynchronously (HTTP 202). The controller
+                  stores it here and uses it to poll the operation status on subsequent reconciles.
+                  Cleared once the operation reaches a terminal state (Completed or Failed).
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
