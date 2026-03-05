@@ -1,7 +1,6 @@
 package com.netcracker.it.dbaas.helpers;
 
 import com.netcracker.it.dbaas.entity.backup.v1.DatabaseKind;
-import com.netcracker.it.dbaas.entity.backup.v1.DatabaseType;
 import com.netcracker.it.dbaas.entity.backup.v1.Filter;
 
 import java.util.List;
@@ -28,7 +27,7 @@ public class FilterBuilder {
         return this;
     }
 
-    public FilterBuilder dbType(DatabaseType type) {
+    public FilterBuilder dbType(String type) {
         this.filter.getDatabaseType().add(type);
         return this;
     }
@@ -48,7 +47,7 @@ public class FilterBuilder {
         return this;
     }
 
-    public FilterBuilder dbType(List<DatabaseType> types) {
+    public FilterBuilder dbType(List<String> types) {
         this.filter.setDatabaseType(types);
         return this;
     }
