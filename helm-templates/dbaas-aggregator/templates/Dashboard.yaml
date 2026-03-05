@@ -1,4 +1,4 @@
-{{ if false }}
+{{ if .Values.MONITORING_ENABLED }}
 ---
 apiVersion: integreatly.org/v1alpha1
 kind: GrafanaDashboard
@@ -10,5 +10,5 @@ metadata:
     deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
   name: dbaas-dashboard.json
-  json: {{ .Files.Get  "dashboards/dbaas-dashboard.json" | toJson }}
+  json: {{ .Files.Get  "dashboards/dbaas-dashboard.json" | toJson | replace "#namespace#" .Values.NAMESPACE }}
 {{ end }}
