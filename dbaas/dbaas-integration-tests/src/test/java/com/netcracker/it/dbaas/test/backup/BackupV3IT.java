@@ -21,7 +21,8 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.Map;
 
-import static com.netcracker.it.dbaas.helpers.BackupHelperV1.*;
+import static com.netcracker.it.dbaas.helpers.BackupHelperV1.BACKUP_METADATA;
+import static com.netcracker.it.dbaas.helpers.BackupHelperV1.DIGEST;
 import static com.netcracker.it.dbaas.helpers.BackupHelperV3.*;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.EXTERNALLY_MANAGEABLE_V3;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.calculateDigest;
@@ -426,7 +427,7 @@ class BackupV3IT extends AbstractIT {
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc -> fc.include(
-                        f -> f.dbType(DatabaseType.CLICKHOUSE)
+                        f -> f.dbType("clickhouse")
                 ))
                 .build();
         var backupResponse = backupHelperV1.startBackup(backupRequest, false, 200);
@@ -490,7 +491,7 @@ class BackupV3IT extends AbstractIT {
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc -> fc
-                        .include(f -> f.ns(sourceNamespace1).dbType(mapDbType(type)))
+                        .include(f -> f.ns(sourceNamespace1).dbType(type))
                         .include(f -> f.ns(sourceNamespace2).ms(DBAAS_AUTO_TEST_3))
                         .exclude(f -> f.ns(sourceNamespace1).ms(DBAAS_AUTO_TEST_1))
                 ).externalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE).build();
@@ -539,7 +540,7 @@ class BackupV3IT extends AbstractIT {
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc -> fc
-                        .include(f -> f.ns(sourceNamespace1).dbType(mapDbType(type)))
+                        .include(f -> f.ns(sourceNamespace1).dbType(type))
                         .include(f -> f.ns(sourceNamespace2).ms(DBAAS_AUTO_TEST_3))
                 ).externalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE).build();
         var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
@@ -596,6 +597,7 @@ class BackupV3IT extends AbstractIT {
         }
 
         var payload = new DatabaseDeclaration.DeclarativeDBConfigBuilder()
+                .type(type)
                 .classifier(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2))
                 .versioning("new")
                 .build().asPayload(activeNamespace, DBAAS_AUTO_TEST_2);
@@ -763,7 +765,7 @@ class BackupV3IT extends AbstractIT {
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc ->
-                        fc.include(f -> f.ns(sourceNamespace).dbType(mapDbType(type)))
+                        fc.include(f -> f.ns(sourceNamespace).dbType(type))
                 ).build();
         var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
         assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
