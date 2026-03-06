@@ -26,8 +26,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
@@ -190,9 +192,12 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 }
 
 // SetupWithManager sets up the controller with the Manager.
+// GenerationChangedPredicate ensures the controller reconciles only when the
+// spec changes (metadata.generation increments), not on its own status updates.
 func (r *ExternalDatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dbaasv1alpha1.ExternalDatabaseDeclaration{}).
+		For(&dbaasv1alpha1.ExternalDatabaseDeclaration{},
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("externaldatabasedeclaration").
 		Complete(r)
 }

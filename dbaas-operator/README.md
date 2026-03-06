@@ -6,6 +6,11 @@
 
 ## Getting Started
 
+### Local development (kind)
+
+To spin up a full local environment (kind + aggregator-mock + operator) see
+**[hack/README.md](hack/README.md)**.
+
 ### Prerequisites
 - go version v1.24.6+
 - docker version 17.03+.

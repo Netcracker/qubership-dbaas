@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -29,6 +30,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -36,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
+	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
@@ -61,6 +64,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var watchNamespaces string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -79,6 +83,8 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&watchNamespaces, "watch-namespaces", "",
+		"Comma-separated list of namespaces to watch. Empty string means all namespaces (cluster-scoped).")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -154,6 +160,35 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	// ── dbaas-aggregator client ───────────────────────────────────────────────
+	aggregatorURL := os.Getenv("DBAAS_AGGREGATOR_URL")
+	if aggregatorURL == "" {
+		setupLog.Error(nil, "DBAAS_AGGREGATOR_URL env var is required")
+		os.Exit(1)
+	}
+	aggregator := aggregatorclient.NewAggregatorClient(
+		aggregatorURL,
+		os.Getenv("DBAAS_AGGREGATOR_USERNAME"),
+		os.Getenv("DBAAS_AGGREGATOR_PASSWORD"),
+	)
+	setupLog.Info("dbaas-aggregator client configured", "url", aggregatorURL)
+
+	// Build the cache options: restrict to specific namespaces if requested.
+	var cacheOpts cache.Options
+	if watchNamespaces != "" {
+		nsMap := make(map[string]cache.Config)
+		for _, ns := range strings.Split(watchNamespaces, ",") {
+			ns = strings.TrimSpace(ns)
+			if ns != "" {
+				nsMap[ns] = cache.Config{}
+			}
+		}
+		cacheOpts.DefaultNamespaces = nsMap
+		setupLog.Info("watching specific namespaces", "namespaces", watchNamespaces)
+	} else {
+		setupLog.Info("watching all namespaces (cluster-scoped)")
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -161,6 +196,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
+		Cache:                  cacheOpts,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -190,6 +226,14 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DbPolicy")
+		os.Exit(1)
+	}
+	if err := (&controller.ExternalDatabaseDeclarationReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "ExternalDatabaseDeclaration")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
