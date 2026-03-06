@@ -1,0 +1,278 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: externaldatabasedeclarations.dbaas.netcracker.com
+spec:
+  group: dbaas.netcracker.com
+  names:
+    kind: ExternalDatabaseDeclaration
+    listKind: ExternalDatabaseDeclarationList
+    plural: externaldatabasedeclarations
+    singular: externaldatabasedeclaration
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .spec.dbName
+      name: DbName
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ExternalDatabaseDeclaration is the Schema for the externaldatabasedeclarations API.
+          It registers a pre-existing (externally managed) database in dbaas so that
+          microservices can discover its connection details through the standard dbaas API.
+          Unlike DatabaseDeclaration, the physical database is not created or destroyed by dbaas;
+          dbaas only stores and serves its connection properties.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of ExternalDatabaseDeclaration.
+            properties:
+              classifier:
+                additionalProperties:
+                  type: string
+                description: |-
+                  classifier is a key-value map that uniquely identifies the external database in dbaas.
+                  Typical keys: namespace, microserviceName, scope, tenantId.
+                  The aggregator requires at minimum: microserviceName, scope.
+                  If scope is "tenant", tenantId must also be present.
+                type: object
+              connectionProperties:
+                description: |-
+                  connectionProperties lists the connection details for each access role.
+                  At least one entry is required. Each entry must have a "role" field; the
+                  aggregator rejects requests where any entry is missing "role".
+                items:
+                  description: "ConnectionProperty describes how to connect to the
+                    external database for a specific role.\nThe controller assembles
+                    a flat map from the typed fields, credentialsSecretRef, and\nextraProperties
+                    before sending the request to dbaas-aggregator. The \"role\" key
+                    is\nrequired by the aggregator and validated server-side.\n\nAssembled
+                    flat map sent to dbaas-aggregator per entry:\n\n\t{ \"role\":
+                    role, \"url\": url, \"host\": host, \"port\": port, \"authDbName\":
+                    authDbName,\n\t  \"username\": <from Secret>, \"password\": <from
+                    Secret>, <extraProperties...> }"
+                  properties:
+                    authDbName:
+                      description: |-
+                        authDbName is the name of the authentication database (relevant for MongoDB and
+                        similar engines that separate the auth database from the data database).
+                      type: string
+                    credentialsSecretRef:
+                      description: |-
+                        credentialsSecretRef points to a Kubernetes Secret containing the username and
+                        password for this connection. The Secret must exist in the same namespace as the CR.
+                        If the Secret is missing at reconcile time, the controller transitions to BackingOff
+                        and retries until the Secret becomes available.
+                      properties:
+                        name:
+                          description: name is the name of the Kubernetes Secret containing
+                            the credentials.
+                          minLength: 1
+                          type: string
+                        passwordKey:
+                          description: |-
+                            passwordKey is the key inside the Secret whose value is the database password.
+                            Defaults to "password" if omitted.
+                          type: string
+                        usernameKey:
+                          description: |-
+                            usernameKey is the key inside the Secret whose value is the database username.
+                            Defaults to "username" if omitted.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    extraProperties:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        extraProperties holds additional adapter-specific connection parameters that are
+                        not covered by the typed fields above. All values must be strings.
+                        These are merged into the flat map sent to dbaas-aggregator alongside the typed fields.
+                        Example: sslMode: "require", connectTimeout: "10".
+                      type: object
+                    host:
+                      description: host is the hostname or IP address of the database
+                        server.
+                      type: string
+                    port:
+                      description: |-
+                        port is the TCP port of the database server. Stored as a string to keep the
+                        CRD schema simple; the aggregator accepts it as-is in the flat map.
+                      type: string
+                    role:
+                      description: |-
+                        role identifies the access level for this connection entry.
+                        The value is adapter-specific, e.g. "admin", "readonly", "readwrite".
+                        Required by dbaas-aggregator: every connectionProperties entry must contain a "role" key.
+                      minLength: 1
+                      type: string
+                    url:
+                      description: |-
+                        url is the full connection URL for this role, e.g.
+                        "jdbc:postgresql://pg-host:5432/mydb" or "mongodb://mongo-host:27017/mydb".
+                      type: string
+                  required:
+                  - role
+                  type: object
+                minItems: 1
+                type: array
+              dbName:
+                description: |-
+                  dbName is the name of the logical database as it exists in the external DBMS.
+                  Unlike DatabaseDeclaration (where the name is auto-generated), this field is
+                  required because the external database already exists with a known name.
+                minLength: 1
+                type: string
+              type:
+                description: |-
+                  type is the database engine type, e.g. "postgresql", "mongodb".
+                  Must match a type registered in dbaas-aggregator.
+                minLength: 1
+                type: string
+              updateConnectionProperties:
+                description: |-
+                  updateConnectionProperties controls what happens when dbaas-aggregator already
+                  has a record for this classifier+type combination:
+                    false (default) — return the existing record unchanged.
+                    true            — replace the stored connectionProperties with those in this spec.
+                  Has no effect when the external database is being registered for the first time.
+                type: boolean
+            required:
+            - classifier
+            - connectionProperties
+            - dbName
+            - type
+            type: object
+          status:
+            description: status defines the observed state of ExternalDatabaseDeclaration.
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the resource, translated from the
+                  dbaas-aggregator response. Standard condition types used by this operator:
+                    - "Validated"  — the payload passed aggregator-side validation
+                    - "DBCreated"  — the database provisioning operation result (DatabaseDeclaration only)
+                    - "RolesCreated" — the role registration result (DbPolicy only)
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  observedGeneration reflects the .metadata.generation that was last processed
+                  by the controller. When the current generation differs from this value, the
+                  controller clears all conditions and starts a fresh reconciliation cycle.
+                format: int64
+                type: integer
+              phase:
+                default: Unknown
+                description: phase represents the current processing phase of the
+                  resource.
+                enum:
+                - Unknown
+                - Updating
+                - WaitingForDependency
+                - Updated
+                - BackingOff
+                - InvalidConfiguration
+                type: string
+              trackingId:
+                description: |-
+                  trackingId is the identifier returned by dbaas-aggregator when a database
+                  provisioning operation is started asynchronously (HTTP 202). The controller
+                  stores it here and uses it to poll the operation status on subsequent reconciles.
+                  Cleared once the operation reaches a terminal state (Completed or Failed).
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
