@@ -701,7 +701,8 @@
         "type": "object",
         "required": [
           "id",
-          "namespaces"
+          "namespaces",
+          "modifyIndex"
         ],
         "properties": {
           "id": {
@@ -715,6 +716,11 @@
               "type": "string"
             },
             "description": "Namespaces that are included in composite structure (baseline and satellites)"
+          },
+          "modifyIndex": {
+            "type": "number",
+            "description": "Index of composite structure (changes on each composite struct modification)",
+            "minimum": 0
           }
         }
       },
