@@ -80,17 +80,6 @@ public class BackupHelperV1 {
         }
     }
 
-    public static DatabaseType mapDbType(String type) {
-        return switch (type) {
-            case "postgresql" -> DatabaseType.POSTGRESQL;
-            case "arangodb" -> DatabaseType.ARANGODB;
-            case "clickhouse" -> DatabaseType.CLICKHOUSE;
-            case "mongodb" -> DatabaseType.MONGODB;
-            case "cassandra" -> DatabaseType.CASSANDRA;
-            default -> throw new IllegalArgumentException("Unknown database type: " + type);
-        };
-    }
-
     public BackupResponse runBackupAndWait(BackupRequest backupRequest, boolean dryRun) {
         Request startBackupRequest = startBackupRequest(helper.getBackupDaemonAuthorization(), backupRequest, dryRun);
         try (Response response = okHttpClient.newCall(startBackupRequest).execute()) {

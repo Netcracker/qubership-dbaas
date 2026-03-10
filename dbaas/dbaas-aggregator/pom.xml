@@ -128,12 +128,12 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>3.2.6</version>
+            <version>3.4.1</version>
         </dependency>
         <dependency>
             <groupId>com.netcracker.core</groupId>
             <artifactId>process-engine</artifactId>
-            <version>1.2.6</version>
+            <version>1.4.1</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -148,7 +148,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.9</version>
+            <version>42.7.10</version>
         </dependency>
         <dependency>
             <groupId>commons-beanutils</groupId>

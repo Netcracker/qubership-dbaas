@@ -4,22 +4,21 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.RuleType;
 import com.netcracker.cloud.dbaas.dto.v3.*;
+import com.netcracker.cloud.dbaas.entity.dto.DebugLogicalDatabasePersistenceDto;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
 import com.netcracker.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
+import com.netcracker.cloud.dbaas.mapper.DebugLogicalDatabaseMapper;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.*;
-import com.netcracker.cloud.dbaas.mapper.DebugLogicalDatabaseMapper;
-import com.netcracker.cloud.dbaas.entity.dto.DebugLogicalDatabasePersistenceDto;
 import com.netcracker.cloud.dbaas.repositories.queries.DebugLogicalDatabaseQueries;
 import com.netcracker.cloud.dbaas.repositories.queries.NamespaceSqlQueries;
-import com.netcracker.cloud.dbaas.rsql.config.DebugGetLogicalDatabasesRSQLConfig;
 import com.netcracker.cloud.dbaas.rsql.QueryPreparationRSQLProcessor;
 import com.netcracker.cloud.dbaas.rsql.QueryPreparationRSQLVisitor;
-import jakarta.annotation.PreDestroy;
+import com.netcracker.cloud.dbaas.rsql.config.DebugGetLogicalDatabasesRSQLConfig;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -30,9 +29,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
@@ -46,13 +42,12 @@ public class DebugService {
     public static final String WHERE_CLAUSE = " WHERE ";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
     private final Predicate<? super PerNamespaceRule> permanentRulesFilter =
-        rule -> RuleType.PERMANENT.equals(rule.getRuleType());
+            rule -> RuleType.PERMANENT.equals(rule.getRuleType());
 
     private final QueryPreparationRSQLProcessor queryPreparationRSQLProcessor =
-        new QueryPreparationRSQLProcessor(new QueryPreparationRSQLVisitor());
+            new QueryPreparationRSQLProcessor(new QueryPreparationRSQLVisitor());
 
     private final BalancingRulesRepository namespaceRulesRepository;
     private final BalanceRulesRepositoryPerMicroservice microserviceRulesRepository;
@@ -65,6 +60,9 @@ public class DebugService {
     private final ResponseHelper responseHelper;
     private final HealthService healthService;
     private final DebugLogicalDatabaseMapper debugLogicalDatabaseMapper;
+    private final BackupRepository backupRepository;
+    private final RestoreRepository restoreRepository;
+    private final AsyncOperations asyncOperations;
 
     @Inject
     DebugService(BalancingRulesRepository namespaceRulesRepository,
@@ -77,7 +75,10 @@ public class DebugService {
                  LogicalDbDbaasRepository logicalDbDbaasRepository,
                  ResponseHelper responseHelper,
                  HealthService healthService,
-                 DebugLogicalDatabaseMapper debugLogicalDatabaseMapper) {
+                 DebugLogicalDatabaseMapper debugLogicalDatabaseMapper,
+                 BackupRepository backupRepository,
+                 RestoreRepository restoreRepository,
+                 AsyncOperations asyncOperations) {
         this.namespaceRulesRepository = namespaceRulesRepository;
         this.microserviceRulesRepository = microserviceRulesRepository;
         this.physicalDatabasesRepository = physicalDatabasesRepository;
@@ -89,6 +90,9 @@ public class DebugService {
         this.responseHelper = responseHelper;
         this.healthService = healthService;
         this.debugLogicalDatabaseMapper = debugLogicalDatabaseMapper;
+        this.backupRepository = backupRepository;
+        this.restoreRepository = restoreRepository;
+        this.asyncOperations = asyncOperations;
 
         // to make Jackson to not close OutputStream passed to ObjectMapper#writeValue method
         objectMapper.configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false);
@@ -98,13 +102,15 @@ public class DebugService {
     public DumpResponseV3 loadDumpV3() {
         try {
             log.info("Start loading dump from DBaaS database");
-
+            var executorService = asyncOperations.getDebugExecutor();
             var physicalDatabasesTask = executorService.submit(() -> physicalDatabasesRepository.listAll());
             var logicalDatabasesTask = executorService.submit(() -> databasesRepository.listAll());
             var declarativeConfigsTask = executorService.submit(() -> databaseDeclarativeConfigRepository.listAll());
             var blueGreenDomainsTask = executorService.submit(() -> bgDomainRepository.listAll());
             var namespaceAndPermanentRulesTask = executorService.submit(() -> namespaceRulesRepository.listAll());
             var microserviceRulesTask = executorService.submit(() -> microserviceRulesRepository.listAll());
+            var backupsTask = executorService.submit(() -> backupRepository.listAll());
+            var restoresTask = executorService.submit(() -> restoreRepository.listAll());
 
             log.info("Parallel loading dump from DBaaS database is started");
 
@@ -114,6 +120,8 @@ public class DebugService {
             var blueGreenDomains = blueGreenDomainsTask.get();
             var namespaceAndPermanentRules = namespaceAndPermanentRulesTask.get();
             var microserviceRules = microserviceRulesTask.get();
+            var backups = backupsTask.get();
+            var restores = restoresTask.get();
 
             log.info("Parallel loading dump from DBaaS database is finished");
 
@@ -121,7 +129,7 @@ public class DebugService {
 
             log.info("Finish loading dump from DBaaS database");
             return new DumpResponseV3(
-                dumpRules, logicalDatabases, physicalDatabases, declarativeConfigs, blueGreenDomains
+                    dumpRules, logicalDatabases, physicalDatabases, declarativeConfigs, blueGreenDomains, backups, restores
             );
         } catch (InterruptedException | ExecutionException ex) {
             Thread.currentThread().interrupt();
@@ -196,32 +204,6 @@ public class DebugService {
             .orElse(null);
 
         return new DumpDefaultRuleV3(physicalDatabase.getId(), address);
-    }
-
-    @PreDestroy
-    public void cleanUp() {
-        log.info("Start shutting down executor service");
-
-        executorService.shutdown();
-
-        try {
-            if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                log.info("Executor service is still not terminated");
-
-                executorService.shutdownNow();
-
-                if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                    log.error("Executor service was not terminated even after await");
-                }
-            }
-        } catch (InterruptedException ex) {
-            log.error("Error happened during shutting down executor service: ", ex);
-
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-
-        log.info("Finish shutting down executor service");
     }
 
     public List<LostDatabasesResponse> findLostDatabases() {

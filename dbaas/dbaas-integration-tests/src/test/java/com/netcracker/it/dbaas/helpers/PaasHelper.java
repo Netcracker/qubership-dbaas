@@ -61,11 +61,11 @@ public class PaasHelper {
         };
 
         Boolean configUpdated;
-        Long observedGeneration;
+        Long oldGeneration;
         int requiredPodsCount;
         Deployment deployment = getDeployment(kubernetesClient);
         log.info(deployment.getStatus().toString());
-        observedGeneration = deployment.getStatus().getObservedGeneration();
+        oldGeneration = deployment.getStatus().getObservedGeneration();
         requiredPodsCount = deployment.getStatus().getReplicas();
         Container container = deployment.getSpec().getTemplate().getSpec().getContainers().getFirst();
         configUpdated = envUpdater.apply(container);
@@ -77,18 +77,7 @@ public class PaasHelper {
             return;
         }
 
-        Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(SCALE_WAIT_TIME_MINUTES)).run(() -> {
-            DeploymentStatus status = getDeployment(kubernetesClient).getStatus();
-            log.info(status.toString());
-            assertTrue(observedGeneration < status.getObservedGeneration());
-            assertEquals(requiredPodsCount, (int) Optional.ofNullable(status.getReplicas()).orElse(0));
-            assertEquals(requiredPodsCount, (int) Optional.ofNullable(status.getReadyReplicas()).orElse(0));
-            assertEquals(requiredPodsCount, (int) Optional.ofNullable(status.getUpdatedReplicas()).orElse(0));
-            List<Pod> pods = kubernetesClient.pods()
-                    .withLabel("name", DBAAS_SERVICE_NAME).list().getItems();
-            log.info("Pods count: {}", pods.size());
-            assertEquals(requiredPodsCount, pods.size());
-        });
+        waitForState(oldGeneration, requiredPodsCount);
 
         log.info("Pod env successfully updated");
     }
@@ -97,10 +86,21 @@ public class PaasHelper {
         Deployment deployment = getDeployment(kubernetesClient);
         deployment.getSpec().setReplicas(replicas);
         kubernetesClient.apps().deployments().resource(deployment).createOrReplace();
-        Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(SCALE_WAIT_TIME_MINUTES)).run(() ->
-                assertEquals(replicas, (int) Optional.ofNullable(getDeployment(kubernetesClient)
-                        .getStatus()
-                        .getAvailableReplicas()).orElse(0)));
+        waitForState(0L, replicas);
+    }
+
+    private void waitForState(Long observedGeneration, int requiredPodsCount) {
+        Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(SCALE_WAIT_TIME_MINUTES)).run(() -> {
+            DeploymentStatus status = getDeployment(kubernetesClient).getStatus();
+            log.info(status.toString());
+            assertTrue(observedGeneration < status.getObservedGeneration());
+            assertEquals(requiredPodsCount, (int) Optional.ofNullable(status.getReplicas()).orElse(0));
+            assertEquals(requiredPodsCount, (int) Optional.ofNullable(status.getReadyReplicas()).orElse(0));
+            assertEquals(requiredPodsCount, (int) Optional.ofNullable(status.getUpdatedReplicas()).orElse(0));
+            List<Pod> pods = kubernetesClient.pods().withLabel("name", DBAAS_SERVICE_NAME).list().getItems();
+            log.info("Pods count: {}", pods.size());
+            assertEquals(requiredPodsCount, pods.size());
+        });
     }
 
     private Deployment getDeployment(KubernetesClient kubernetesClient) {

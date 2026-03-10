@@ -1,5 +1,7 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -26,6 +28,7 @@ public class LogicalRestore {
     private String logicalRestoreName;
 
     @ManyToOne
+    @JsonBackReference
     @JoinColumn(name = "restore_name")
     private Restore restore;
 
@@ -35,6 +38,7 @@ public class LogicalRestore {
     private String type;
 
     @ToString.Exclude
+    @JsonManagedReference
     @OneToMany(mappedBy = "logicalRestore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<RestoreDatabase> restoreDatabases;
 

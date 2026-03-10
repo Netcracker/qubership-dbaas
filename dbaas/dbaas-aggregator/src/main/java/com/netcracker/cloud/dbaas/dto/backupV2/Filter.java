@@ -10,6 +10,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Data
 @NotEmptyFilter(groups = {BackupGroup.class, RestoreGroup.class})
@@ -22,14 +23,24 @@ public class Filter {
     private List<String> microserviceName = new ArrayList<>();
     @Schema(
             description = "Filter by database types",
-            implementation = DatabaseType.class,
+            implementation = String.class,
             type = SchemaType.ARRAY
     )
-    private List<DatabaseType> databaseType = new ArrayList<>();
+
+    private List<String> databaseType = new ArrayList<>();
     @Schema(
             description = "Filter by database kinds",
             implementation = DatabaseKind.class,
             type = SchemaType.ARRAY
     )
     private List<DatabaseKind> databaseKind = new ArrayList<>();
+
+    public void setDatabaseType(List<String> databaseType) {
+        this.databaseType = databaseType == null
+                ? List.of()
+                : databaseType.stream()
+                .filter(Objects::nonNull)
+                .map(String::toLowerCase)
+                .toList();
+    }
 }
