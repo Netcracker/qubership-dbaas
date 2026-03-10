@@ -3,6 +3,27 @@ kind: Namespace
 metadata:
   name: dbaas-system
 ---
+# Per-dbName response code rules for aggregator-mock.
+# Format: { "<dbName>": <httpStatusCode>, ... }
+# The mock looks up the dbName from the request body and returns the mapped code.
+# Falls back to MOCK_RESPONSE_CODE (default: 200) when no rule matches.
+# Edit this ConfigMap with kubectl and restart the deployment to apply changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aggregator-mock-rules
+  namespace: dbaas-system
+data:
+  rules.json: |
+    {
+      "db-201": 201,
+      "db-400": 400,
+      "db-401": 401,
+      "db-403": 403,
+      "db-409": 409,
+      "db-500": 500
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,9 +50,16 @@ spec:
           env:
             - name: PORT
               value: "8080"
-            # Set MOCK_RESPONSE_CODE=400 or 500 to simulate error paths.
+            # Global fallback code when no per-dbName rule matches.
+            # Override with: kubectl set env deployment/aggregator-mock -n dbaas-system MOCK_RESPONSE_CODE=500
             - name: MOCK_RESPONSE_CODE
               value: "200"
+            - name: MOCK_RULES_FILE
+              value: /config/rules.json
+          volumeMounts:
+            - name: rules
+              mountPath: /config
+              readOnly: true
           resources:
             requests:
               cpu: 10m
@@ -39,6 +67,10 @@ spec:
             limits:
               cpu: 100m
               memory: 64Mi
+      volumes:
+        - name: rules
+          configMap:
+            name: aggregator-mock-rules
 ---
 apiVersion: v1
 kind: Service

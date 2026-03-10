@@ -20,9 +20,16 @@ limitations under the License.
 // Environment variables:
 //
 //	PORT               – listen port (default: 8080)
-//	MOCK_RESPONSE_CODE – HTTP status code returned for the PUT registration
-//	                     endpoint (default: 200). Set to 400 to test
-//	                     InvalidConfiguration; set to 500 to test BackingOff.
+//	MOCK_RESPONSE_CODE – default HTTP status code for the PUT registration endpoint
+//	                     when no per-dbName rule matches (default: 200).
+//	MOCK_RULES_FILE    – path to a JSON file that maps dbName → HTTP status code
+//	                     (default: /config/rules.json). Missing file is not an error.
+//
+// Rules file format:
+//
+//	{ "my-db": 400, "other-db": 500 }
+//
+// Resolution order: rules[dbName] → MOCK_RESPONSE_CODE → 200.
 package main
 
 import (
@@ -51,26 +58,48 @@ var (
 
 func main() {
 	port := envOr("PORT", "8080")
-	responseCode := envInt("MOCK_RESPONSE_CODE", http.StatusOK)
+	defaultCode := envInt("MOCK_RESPONSE_CODE", http.StatusOK)
+	rulesFile := envOr("MOCK_RULES_FILE", "/config/rules.json")
+	rules := loadRules(rulesFile)
 
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
-	log.Printf("  PUT  .../externally_manageable → %d", responseCode)
+	log.Printf("  PUT  .../externally_manageable → default %d  (%d per-dbName rules loaded)",
+		defaultCode, len(rules))
 	log.Printf("  POST .../apply                 → 200 (sync)")
 	log.Printf("  GET  .../operation/.../status  → 200 COMPLETED")
 
-	if err := http.ListenAndServe(":"+port, handler(responseCode)); err != nil {
+	if err := http.ListenAndServe(":"+port, handler(defaultCode, rules)); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
 
-func handler(registrationCode int) http.Handler {
+// loadRules reads a JSON file that maps dbName → HTTP status code.
+// A missing file is not an error — the mock falls back to the global default code.
+func loadRules(path string) map[string]int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("rules file %q not found or unreadable, using MOCK_RESPONSE_CODE only: %v", path, err)
+		return nil
+	}
+	var rules map[string]int
+	if err := json.Unmarshal(data, &rules); err != nil {
+		log.Fatalf("parse rules file %q: %v", path, err)
+	}
+	log.Printf("loaded %d dbName rules from %q", len(rules), path)
+	for db, code := range rules {
+		log.Printf("  rule: dbName=%q → %d", db, code)
+	}
+	return rules
+}
+
+func handler(defaultCode int, rules map[string]int) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		logRequest(r)
 
 		switch {
 		case reExternalDB.MatchString(r.URL.Path) && r.Method == http.MethodPut:
-			handleExternalDB(w, r, registrationCode)
+			handleExternalDB(w, r, defaultCode, rules)
 
 		case reApply.MatchString(r.URL.Path) && r.Method == http.MethodPost:
 			handleApply(w, r)
@@ -87,10 +116,31 @@ func handler(registrationCode int) http.Handler {
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
-func handleExternalDB(w http.ResponseWriter, r *http.Request, code int) {
+// The response code is resolved from the per-dbName rules map, falling back to defaultCode.
+func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultCode int, rules map[string]int) {
 	m := reExternalDB.FindStringSubmatch(r.URL.Path)
 	namespace := m[1]
-	log.Printf("  → register external DB  namespace=%q  code=%d", namespace, code)
+
+	// Parse dbName from the request body (body was already read + restored by logRequest).
+	var req struct {
+		DbName string `json:"dbName"`
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(strings.NewReader(string(body)))
+	_ = json.Unmarshal(body, &req)
+
+	code := defaultCode
+	if req.DbName != "" {
+		if c, ok := rules[req.DbName]; ok {
+			log.Printf("  → rule match dbName=%q → %d  namespace=%q", req.DbName, c, namespace)
+			code = c
+		} else {
+			log.Printf("  → no rule for dbName=%q, using default %d  namespace=%q",
+				req.DbName, defaultCode, namespace)
+		}
+	} else {
+		log.Printf("  → register external DB  namespace=%q  code=%d (no dbName in body)", namespace, code)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

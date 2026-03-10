@@ -1,0 +1,17 @@
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: ExternalDatabaseDeclaration
+metadata:
+  name: edb-403
+  namespace: test-ns
+spec:
+  classifier:
+    microserviceName: test-service
+    namespace: test-ns
+    scope: service
+  type: postgresql
+  # dbName "db-403" is mapped to HTTP 403 in aggregator-mock-rules ConfigMap.
+  # Expected phase: InvalidConfiguration (namespace mismatch between classifier and URL — no retry)
+  dbName: db-403
+  connectionProperties:
+    - role: admin
+      url: jdbc:postgresql://pg.example.com:5432/db-403

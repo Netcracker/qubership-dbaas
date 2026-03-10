@@ -1,0 +1,17 @@
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: ExternalDatabaseDeclaration
+metadata:
+  name: edb-400
+  namespace: test-ns
+spec:
+  classifier:
+    microserviceName: test-service
+    namespace: test-ns
+    scope: service
+  type: postgresql
+  # dbName "db-400" is mapped to HTTP 400 in aggregator-mock-rules ConfigMap.
+  # Expected phase: InvalidConfiguration (invalid classifier / bad request — no retry)
+  dbName: db-400
+  connectionProperties:
+    - role: admin
+      url: jdbc:postgresql://pg.example.com:5432/db-400
