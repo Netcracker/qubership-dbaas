@@ -19,6 +19,7 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,6 +28,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
+	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
@@ -379,5 +384,61 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
 			expectNoEvent()
 		})
+	})
+})
+
+// ── Rate limiter / SetupWithManager ───────────────────────────────────────────
+
+var _ = Describe("ExternalDatabaseDeclaration Controller — rate limiter", func() {
+	// SetupWithManager is not exercised in the reconcile-focused tests above
+	// (those call Reconcile directly, bypassing the controller machinery).
+	// This suite verifies two things:
+	//
+	//  1. SetupWithManager accepts a custom controller.Options without error,
+	//     which confirms that our WithOptions wiring compiles and the manager
+	//     accepts the registration.
+	//
+	//  2. A rate limiter created with the parameters used by --backoff-base-delay
+	//     and --backoff-max-delay exhibits true exponential doubling.  This serves
+	//     as a living spec for the BackingOff retry behaviour visible to operators.
+
+	It("registers the controller with a custom exponential rate limiter", func() {
+		// Create a throw-away manager backed by the same envtest API server.
+		// Metrics and health probes are disabled to avoid port conflicts.
+		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+			Scheme:                 k8sClient.Scheme(),
+			Metrics:                metricsserver.Options{BindAddress: "0"},
+			HealthProbeBindAddress: "0",
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		const base = 100 * time.Millisecond
+		const max = 10 * time.Second
+
+		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
+
+		err = (&ExternalDatabaseDeclarationReconciler{
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"),
+			Aggregator: aggregatorclient.NewAggregatorClient("http://localhost:9999", "u", "p"),
+		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Verify the exponential doubling behaviour of the rate limiter we
+		// injected.  This is the contract that BackingOff retries rely on:
+		// each consecutive failure doubles the wait time up to --backoff-max-delay.
+		//
+		// workqueue.TypedRateLimiter.When increments the internal failure counter
+		// on every call, so successive calls for the same item double the delay.
+		req := reconcile.Request{NamespacedName: types.NamespacedName{Name: "edb", Namespace: "ns"}}
+
+		Expect(rateLimiter.When(req)).To(Equal(base))     // 1st failure: base
+		Expect(rateLimiter.When(req)).To(Equal(2 * base)) // 2nd failure: 2× base
+		Expect(rateLimiter.When(req)).To(Equal(4 * base)) // 3rd failure: 4× base
+
+		// After Forget the counter is reset; the next failure starts from base again.
+		rateLimiter.Forget(req)
+		Expect(rateLimiter.When(req)).To(Equal(base))
 	})
 })

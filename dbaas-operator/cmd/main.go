@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -34,13 +35,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
@@ -71,6 +75,8 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var watchNamespaces string
+	var backoffBaseDelay time.Duration
+	var backoffMaxDelay time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -91,6 +97,11 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&watchNamespaces, "watch-namespaces", "",
 		"Comma-separated list of namespaces to watch. Empty string means all namespaces (cluster-scoped).")
+	flag.DurationVar(&backoffBaseDelay, "backoff-base-delay", 1*time.Second,
+		"Initial delay for exponential backoff when a reconcile error occurs. "+
+			"Doubles on each consecutive failure up to --backoff-max-delay.")
+	flag.DurationVar(&backoffMaxDelay, "backoff-max-delay", 5*time.Minute,
+		"Maximum delay cap for exponential backoff on reconcile errors.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -239,12 +250,19 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "DbPolicy")
 		os.Exit(1)
 	}
+	edbCtrlOpts := ctrlcontroller.Options{
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](
+			backoffBaseDelay, backoffMaxDelay,
+		),
+	}
+	setupLog.Info("backoff configured",
+		"base", backoffBaseDelay, "max", backoffMaxDelay)
 	if err := (&controller.ExternalDatabaseDeclarationReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
 		Recorder:   mgr.GetEventRecorderFor("externaldatabasedeclaration"),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, edbCtrlOpts); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ExternalDatabaseDeclaration")
 		os.Exit(1)
 	}

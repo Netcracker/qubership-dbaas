@@ -29,6 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -243,10 +244,16 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 // SetupWithManager sets up the controller with the Manager.
 // GenerationChangedPredicate ensures the controller reconciles only when the
 // spec changes (metadata.generation increments), not on its own status updates.
-func (r *ExternalDatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+//
+// opts allows callers to customise the controller's behaviour — most notably
+// the RateLimiter, which controls the exponential backoff applied when
+// Reconcile returns an error (BackingOff phase).  Pass
+// ctrlcontroller.Options{} to keep the controller-runtime defaults.
+func (r *ExternalDatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1alpha1.ExternalDatabaseDeclaration{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		WithOptions(opts).
 		Named("externaldatabasedeclaration").
 		Complete(r)
 }
