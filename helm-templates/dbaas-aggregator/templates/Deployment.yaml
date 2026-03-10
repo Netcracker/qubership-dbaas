@@ -30,10 +30,14 @@ spec:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS }}'
             serviceAccountName: '{{ .Values.SERVICE_NAME }}'
             volumes:
-            -   name: dbaas-security-configuration-volume
-                secret:
-                    secretName: 'dbaas-security-configuration-secret'
-            -   name: dbaas-global-permissions-configuration-volume
+              - name: dbaas-security-volume
+                projected:
+                  sources:
+                    - secret:
+                        name: dbaas-security-configuration-secret
+                    - secret:
+                        name: dbaas-security-service-account-roles-secret
+              -   name: dbaas-global-permissions-configuration-volume
                 secret:
                     secretName: 'dbaas-global-permissions-configuration-secret'
             -   name: dbaas-security-service-account-roles-volume
@@ -59,7 +63,7 @@ spec:
             -   name: '{{ .Values.SERVICE_NAME }}'
                 image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
                 volumeMounts:
-                -   name: dbaas-security-configuration-volume
+                -   name: dbaas-security-volume
                     mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
                     readOnly: true
                 -   name: dbaas-security-service-account-roles-volume
