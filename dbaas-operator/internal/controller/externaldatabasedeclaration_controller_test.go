@@ -165,10 +165,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseUpdated))
+			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Reason).To(Equal("Registered"))
+			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
 			expectEvent(corev1.EventTypeNormal, EventReasonRegistered)
 			expectNoEvent()
 		})
@@ -188,10 +190,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseUpdated))
+			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Reason).To(Equal("Registered"))
+			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
 			expectEvent(corev1.EventTypeNormal, EventReasonRegistered)
 			expectNoEvent()
 		})
@@ -214,6 +218,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			// Transient error: observedGeneration must NOT be stamped so that
+			// consumers can tell the controller has not finished this generation.
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
@@ -239,10 +246,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("AggregatorRejected"))
+			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
 			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorRejected)
 			expectNoEvent()
 		})
@@ -260,6 +269,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			// Transient error: observedGeneration must NOT be stamped.
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
@@ -283,10 +294,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("AggregatorRejected"))
+			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
 			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorRejected)
 			expectNoEvent()
 		})
@@ -306,10 +319,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("AggregatorRejected"))
+			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
 			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorRejected)
 			expectNoEvent()
 		})
@@ -329,6 +344,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			// Transient error: observedGeneration must NOT be stamped.
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
@@ -353,6 +370,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			// Transient error: observedGeneration must NOT be stamped.
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
 			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
