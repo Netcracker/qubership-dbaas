@@ -83,6 +83,7 @@ spec:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=0
             - --watch-namespaces=test-ns
+            - --leader-elect
           env:
             - name: DBAAS_AGGREGATOR_URL
               value: http://aggregator-mock.dbaas-system:8080
