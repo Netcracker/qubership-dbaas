@@ -243,6 +243,7 @@ func main() {
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
+		Recorder:   mgr.GetEventRecorderFor("externaldatabasedeclaration"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ExternalDatabaseDeclaration")
 		os.Exit(1)
