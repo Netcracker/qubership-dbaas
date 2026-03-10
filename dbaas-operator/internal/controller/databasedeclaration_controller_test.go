@@ -38,7 +38,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
 		databasedeclaration := &dbaasv1alpha1.DatabaseDeclaration{}
 
@@ -51,7 +51,15 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: dbaasv1alpha1.DatabaseDeclarationSpec{
+						Type: "postgresql",
+						ClassifierConfig: dbaasv1alpha1.ClassifierConfig{
+							Classifier: map[string]string{
+								"microserviceName": "test-service",
+								"namespace":        "default",
+							},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

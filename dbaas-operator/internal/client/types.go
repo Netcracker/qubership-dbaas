@@ -23,11 +23,11 @@ import "fmt"
 // DeclarativePayload is the request body for POST /api/declarations/v1/apply.
 // Field names mirror the DeclarativePayload Java class in dbaas-aggregator.
 type DeclarativePayload struct {
-	APIVersion string         `json:"apiVersion"`
-	Kind       string         `json:"kind"`
-	SubKind    string         `json:"subKind"`
+	APIVersion string          `json:"apiVersion"`
+	Kind       string          `json:"kind"`
+	SubKind    string          `json:"subKind"`
 	Metadata   DeclarativeMeta `json:"metadata"`
-	Spec       any            `json:"spec"`
+	Spec       any             `json:"spec"`
 }
 
 // DeclarativeMeta is the metadata section of a DeclarativePayload.
@@ -96,9 +96,18 @@ func (e *AggregatorError) Error() string {
 	return fmt.Sprintf("dbaas-aggregator returned HTTP %d: %s", e.StatusCode, e.Body)
 }
 
+// IsAuthError returns true for HTTP 401 responses.
+// A 401 indicates the operator's credentials or role binding are misconfigured;
+// it is NOT a spec error, so the controller retries (BackingOff) rather than
+// setting InvalidConfiguration.
+func (e *AggregatorError) IsAuthError() bool {
+	return e.StatusCode == 401
+}
+
 // IsClientError returns true for 4xx responses.
-// The controller uses this to distinguish a permanent configuration error
+// The controller uses this to distinguish a permanent spec error
 // (phase → InvalidConfiguration) from a transient server error (phase → BackingOff).
+// Note: 401 is handled separately by IsAuthError and maps to BackingOff.
 func (e *AggregatorError) IsClientError() bool {
 	return e.StatusCode >= 400 && e.StatusCode < 500
 }

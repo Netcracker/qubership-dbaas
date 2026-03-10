@@ -75,6 +75,20 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	edb.Status.Phase = dbaasv1alpha1.PhaseUpdating
 	edb.Status.Conditions = nil
 
+	// Pre-flight validation: every connectionProperty must have a non-empty role.
+	// The CRD already enforces this via MinLength=1, but we check defensively so
+	// the controller never sends an invalid request to the aggregator.
+	for i, cp := range edb.Spec.ConnectionProperties {
+		if cp.Role == "" {
+			msg := fmt.Sprintf("connectionProperties[%d]: missing required field 'role'", i)
+			log.Info("invalid spec", "reason", msg)
+			edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
+			setCondition(&edb.Status.Conditions, edb.Generation,
+				conditionTypeRegistered, metav1.ConditionFalse, "InvalidSpec", msg)
+			return ctrl.Result{}, nil
+		}
+	}
+
 	// Build the flat-map request, resolving any Secret references.
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {
@@ -97,12 +111,23 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		log.Error(err, "failed to register external database in dbaas-aggregator")
 
 		var aggErr *aggregatorclient.AggregatorError
-		if errors.As(err, &aggErr) && aggErr.IsClientError() {
-			// 4xx — bad request; retrying won't help until the spec changes.
-			edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
-			setCondition(&edb.Status.Conditions, edb.Generation,
-				conditionTypeRegistered, metav1.ConditionFalse, "AggregatorRejected", aggErr.Error())
-			return ctrl.Result{}, nil // do not requeue
+		if errors.As(err, &aggErr) {
+			switch {
+			case aggErr.IsAuthError():
+				// 401 — operator credentials or role binding misconfigured.
+				// This is NOT a spec error: the user should not edit the CR.
+				// Retry so the operator recovers once the admin fixes the credentials.
+				edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
+				setCondition(&edb.Status.Conditions, edb.Generation,
+					conditionTypeRegistered, metav1.ConditionFalse, "Unauthorized", aggErr.Error())
+				return ctrl.Result{}, err // requeue with backoff
+			case aggErr.IsClientError():
+				// 400, 403, 409 — spec error; retrying won't help until the spec changes.
+				edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
+				setCondition(&edb.Status.Conditions, edb.Generation,
+					conditionTypeRegistered, metav1.ConditionFalse, "AggregatorRejected", aggErr.Error())
+				return ctrl.Result{}, nil // do not requeue
+			}
 		}
 
 		// 5xx / network error — transient; requeue with backoff.
