@@ -24,18 +24,24 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
 const defaultTimeout = 30 * time.Second
 
+// credentials holds the Basic Auth pair as an immutable value.
+// The pair is always replaced atomically — never partially updated.
+type credentials struct {
+	username, password string
+}
+
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
-// It is safe for concurrent use.
+// It is safe for concurrent use, including concurrent credential updates.
 type AggregatorClient struct {
 	baseURL    string
 	httpClient *http.Client
-	username   string
-	password   string
+	creds      atomic.Pointer[credentials]
 }
 
 // NewAggregatorClient creates a new AggregatorClient.
@@ -45,14 +51,20 @@ type AggregatorClient struct {
 //   - username / password — credentials for HTTP Basic authentication.
 //     The account must have the DB_CLIENT role in dbaas-aggregator.
 func NewAggregatorClient(baseURL, username, password string) *AggregatorClient {
-	return &AggregatorClient{
-		baseURL:  baseURL,
-		username: username,
-		password: password,
+	c := &AggregatorClient{
+		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
 	}
+	c.creds.Store(&credentials{username: username, password: password})
+	return c
+}
+
+// SetCredentials atomically replaces the Basic Auth credentials used for all
+// subsequent requests. Safe to call concurrently with in-flight requests.
+func (c *AggregatorClient) SetCredentials(username, password string) {
+	c.creds.Store(&credentials{username: username, password: password})
 }
 
 // ApplyConfig posts a declarative payload to POST /api/declarations/v1/apply.
@@ -177,7 +189,8 @@ func (c *AggregatorClient) do(ctx context.Context, method, url string, body []by
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.SetBasicAuth(c.username, c.password)
+	cr := c.creds.Load()
+	req.SetBasicAuth(cr.username, cr.password)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
