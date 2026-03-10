@@ -87,10 +87,18 @@ spec:
           env:
             - name: DBAAS_AGGREGATOR_URL
               value: http://aggregator-mock.dbaas-system:8080
+            # Directory containing users.json — mirrors DBAAS_SECURITY_CONFIGURATION_LOCATION
+            # used by the real dbaas-aggregator. The pod will not start until the Secret exists.
+            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
+              value: /etc/dbaas/security
+            # Which user from users.json the operator authenticates as.
+            # Must have DB_CLIENT role in dbaas-aggregator.
             - name: DBAAS_AGGREGATOR_USERNAME
-              value: user
-            - name: DBAAS_AGGREGATOR_PASSWORD
-              value: pass
+              value: cluster-dba
+          volumeMounts:
+            - name: security
+              mountPath: /etc/dbaas/security
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /healthz
@@ -115,3 +123,7 @@ spec:
             limits:
               cpu: 500m
               memory: 128Mi
+      volumes:
+        - name: security
+          secret:
+            secretName: dbaas-security-configuration-secret

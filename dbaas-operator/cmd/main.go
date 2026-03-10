@@ -18,8 +18,10 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"os"
+	"path/filepath"
 	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -166,12 +168,13 @@ func main() {
 		setupLog.Error(nil, "DBAAS_AGGREGATOR_URL env var is required")
 		os.Exit(1)
 	}
+	aggregatorUsername, aggregatorPassword := loadAggregatorCredentials()
 	aggregator := aggregatorclient.NewAggregatorClient(
 		aggregatorURL,
-		os.Getenv("DBAAS_AGGREGATOR_USERNAME"),
-		os.Getenv("DBAAS_AGGREGATOR_PASSWORD"),
+		aggregatorUsername,
+		aggregatorPassword,
 	)
-	setupLog.Info("dbaas-aggregator client configured", "url", aggregatorURL)
+	setupLog.Info("dbaas-aggregator client configured", "url", aggregatorURL, "username", aggregatorUsername)
 
 	// Build the cache options: restrict to specific namespaces if requested.
 	var cacheOpts cache.Options
@@ -252,4 +255,58 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+// loadAggregatorCredentials loads Basic Auth credentials for the dbaas-aggregator client.
+//
+// Resolution order:
+//  1. users.json at DBAAS_SECURITY_CONFIGURATION_LOCATION (default: /etc/dbaas/security) —
+//     the same Secret that dbaas-aggregator itself uses (dbaas-security-configuration-secret).
+//     DBAAS_AGGREGATOR_USERNAME selects which user entry to read (default: cluster-dba).
+//     Kubernetes will not start the pod until the Secret volume is available.
+//  2. DBAAS_AGGREGATOR_USERNAME / DBAAS_AGGREGATOR_PASSWORD env vars — local development
+//     fallback when running outside Kubernetes without a mounted Secret.
+func loadAggregatorCredentials() (username, password string) {
+	username = os.Getenv("DBAAS_AGGREGATOR_USERNAME")
+	if username == "" {
+		username = "cluster-dba"
+	}
+
+	securityDir := os.Getenv("DBAAS_SECURITY_CONFIGURATION_LOCATION")
+	if securityDir == "" {
+		securityDir = "/etc/dbaas/security"
+	}
+
+	usersFile := filepath.Join(securityDir, "users.json")
+	if data, err := os.ReadFile(usersFile); err == nil {
+		var users map[string]struct {
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(data, &users); err == nil {
+			if cfg, ok := users[username]; ok {
+				setupLog.Info("loaded aggregator credentials from users.json",
+					"file", usersFile, "username", username)
+				return username, cfg.Password
+			}
+			setupLog.Error(nil, "user not found in users.json",
+				"file", usersFile, "username", username)
+			os.Exit(1)
+		} else {
+			setupLog.Error(err, "failed to parse users.json", "file", usersFile)
+			os.Exit(1)
+		}
+	}
+
+	// Fall back to env vars (local development without a Secret mount).
+	password = os.Getenv("DBAAS_AGGREGATOR_PASSWORD")
+	if password != "" {
+		setupLog.Info("loaded aggregator credentials from env vars", "username", username)
+		return username, password
+	}
+
+	setupLog.Error(nil,
+		"aggregator credentials not found: mount dbaas-security-configuration-secret at "+
+			"DBAAS_SECURITY_CONFIGURATION_LOCATION or set DBAAS_AGGREGATOR_PASSWORD env var")
+	os.Exit(1)
+	return
 }

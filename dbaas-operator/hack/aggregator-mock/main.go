@@ -17,19 +17,24 @@ limitations under the License.
 // aggregator-mock is a minimal HTTP server that emulates the dbaas-aggregator
 // endpoints used by dbaas-operator, for local development and kind-based testing.
 //
+// Authentication behaviour mirrors the real dbaas-aggregator:
+//   - Credentials are loaded from users.json at DBAAS_SECURITY_CONFIGURATION_LOCATION
+//     (default: /etc/dbaas/security), which is the same path used by dbaas-aggregator.
+//   - Every request is validated with HTTP Basic Auth.
+//   - Wrong credentials → 401 Unauthorized.
+//   - Valid credentials but insufficient role → 403 Forbidden.
+//
 // Environment variables:
 //
-//	PORT               – listen port (default: 8080)
-//	MOCK_RESPONSE_CODE – default HTTP status code for the PUT registration endpoint
-//	                     when no per-dbName rule matches (default: 200).
-//	MOCK_RULES_FILE    – path to a JSON file that maps dbName → HTTP status code
-//	                     (default: /config/rules.json). Missing file is not an error.
-//
-// Rules file format:
-//
-//	{ "my-db": 400, "other-db": 500 }
-//
-// Resolution order: rules[dbName] → MOCK_RESPONSE_CODE → 200.
+//	PORT                              – listen port (default: 8080)
+//	DBAAS_SECURITY_CONFIGURATION_LOCATION – directory containing users.json
+//	                                    (default: /etc/dbaas/security).
+//	                                    Falls back to DBAAS_USERNAME / DBAAS_PASSWORD
+//	                                    env vars for local development without a Secret.
+//	MOCK_RESPONSE_CODE                – default HTTP status code for PUT registration
+//	                                    when no per-dbName rule matches (default: 200).
+//	MOCK_RULES_FILE                   – path to a JSON file mapping dbName → HTTP code
+//	                                    (default: /config/rules.json). Missing = not an error.
 package main
 
 import (
@@ -39,9 +44,22 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+)
+
+// UserConfig mirrors the per-user entry in dbaas-aggregator's users.json.
+type UserConfig struct {
+	Password string   `json:"password"`
+	Roles    []string `json:"roles"`
+}
+
+// Role constants mirror dbaas-aggregator's Constants.java.
+const (
+	roleDBClient         = "DB_CLIENT"
+	roleNamespaceCleaner = "NAMESPACE_CLEANER"
 )
 
 var (
@@ -62,15 +80,49 @@ func main() {
 	rulesFile := envOr("MOCK_RULES_FILE", "/config/rules.json")
 	rules := loadRules(rulesFile)
 
+	// Load users from users.json — same path as the real dbaas-aggregator.
+	securityDir := envOr("DBAAS_SECURITY_CONFIGURATION_LOCATION", "/etc/dbaas/security")
+	users := loadUsers(securityDir)
+
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default %d  (%d per-dbName rules loaded)",
 		defaultCode, len(rules))
 	log.Printf("  POST .../apply                 → 200 (sync)")
 	log.Printf("  GET  .../operation/.../status  → 200 COMPLETED")
 
-	if err := http.ListenAndServe(":"+port, handler(defaultCode, rules)); err != nil {
+	if err := http.ListenAndServe(":"+port, handler(defaultCode, rules, users)); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
+}
+
+// loadUsers reads users.json from the given directory.
+// Format matches dbaas-aggregator: { "username": { "password": "...", "roles": [...] } }.
+// Falls back to DBAAS_USERNAME / DBAAS_PASSWORD env vars for local development.
+func loadUsers(dir string) map[string]UserConfig {
+	path := filepath.Join(dir, "users.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// Local development fallback: build a single-user map from env vars.
+		u := os.Getenv("DBAAS_USERNAME")
+		p := os.Getenv("DBAAS_PASSWORD")
+		if u != "" {
+			log.Printf("users.json not found at %q, using env vars DBAAS_USERNAME/DBAAS_PASSWORD", path)
+			return map[string]UserConfig{
+				u: {Password: p, Roles: []string{roleDBClient, roleNamespaceCleaner}},
+			}
+		}
+		log.Fatalf("cannot read users.json at %q and DBAAS_USERNAME env var is not set: %v", path, err)
+	}
+
+	var users map[string]UserConfig
+	if err := json.Unmarshal(data, &users); err != nil {
+		log.Fatalf("parse users.json at %q: %v", path, err)
+	}
+	log.Printf("loaded %d users from %q", len(users), path)
+	for u, cfg := range users {
+		log.Printf("  user: %q  roles: %v", u, cfg.Roles)
+	}
+	return users
 }
 
 // loadRules reads a JSON file that maps dbName → HTTP status code.
@@ -92,19 +144,29 @@ func loadRules(path string) map[string]int {
 	return rules
 }
 
-func handler(defaultCode int, rules map[string]int) http.Handler {
+func handler(defaultCode int, rules map[string]int, users map[string]UserConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		logRequest(r)
 
 		switch {
 		case reExternalDB.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			// Mirrors @RolesAllowed(DB_CLIENT) on addExternalDatabase.
+			if !checkAuth(w, r, users, roleDBClient) {
+				return
+			}
 			handleExternalDB(w, r, defaultCode, rules)
 
 		case reApply.MatchString(r.URL.Path) && r.Method == http.MethodPost:
+			if !checkAuth(w, r, users, roleDBClient) {
+				return
+			}
 			handleApply(w, r)
 
 		case reOpStatus.MatchString(r.URL.Path) && r.Method == http.MethodGet:
+			if !checkAuth(w, r, users, roleDBClient) {
+				return
+			}
 			handleOpStatus(w, r)
 
 		default:
@@ -113,6 +175,42 @@ func handler(defaultCode int, rules map[string]int) http.Handler {
 		}
 	})
 	return mux
+}
+
+// checkAuth validates HTTP Basic Auth and role, mirroring dbaas-aggregator behaviour:
+//   - missing / wrong credentials → 401 Unauthorized
+//   - valid credentials but missing required role → 403 Forbidden
+func checkAuth(w http.ResponseWriter, r *http.Request, users map[string]UserConfig, requiredRole string) bool {
+	u, p, ok := r.BasicAuth()
+	if !ok {
+		log.Printf("  → 401 no Basic Auth header")
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return false
+	}
+
+	cfg, exists := users[u]
+	if !exists || cfg.Password != p {
+		log.Printf("  → 401 invalid credentials (user=%q)", u)
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return false
+	}
+
+	if requiredRole != "" && !hasRole(cfg.Roles, requiredRole) {
+		log.Printf("  → 403 user=%q does not have role %q (has: %v)", u, requiredRole, cfg.Roles)
+		writeError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+
+	return true
+}
+
+func hasRole(roles []string, role string) bool {
+	for _, r := range roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
@@ -200,6 +298,15 @@ func logRequest(r *http.Request) {
 			log.Printf("  body: %s", body)
 		}
 	}
+}
+
+func writeError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	if code == http.StatusUnauthorized {
+		w.Header().Set("WWW-Authenticate", `Basic realm="dbaas-aggregator"`)
+	}
+	w.WriteHeader(code)
+	writeJSON(w, map[string]string{"error": msg, "status": strconv.Itoa(code)})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
