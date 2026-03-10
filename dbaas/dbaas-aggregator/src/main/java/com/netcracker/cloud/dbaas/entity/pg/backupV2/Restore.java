@@ -27,7 +27,7 @@ public class Restore {
     @NotNull
     private String name;
 
-    @OneToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @ManyToOne
     @JoinColumn(name = "backup_name")
     private Backup backup;
 
@@ -47,6 +47,7 @@ public class Restore {
     private MappingEntity mapping;
 
     @ToString.Exclude
+    @JsonManagedReference
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalRestore> logicalRestores;
     @NotNull

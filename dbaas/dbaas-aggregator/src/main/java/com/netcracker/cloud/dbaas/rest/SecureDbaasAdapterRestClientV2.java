@@ -76,6 +76,11 @@ public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 
     }
 
     @Override
+    public Response forceRegistration() {
+        return executeRequest(restClient::forceRegistration);
+    }
+
+    @Override
     public Map<String, Boolean> supports(String type) {
         return executeRequest(() -> restClient.supports(type));
     }

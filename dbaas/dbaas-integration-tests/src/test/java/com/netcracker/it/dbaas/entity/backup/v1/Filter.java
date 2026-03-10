@@ -11,6 +11,6 @@ import java.util.List;
 public class Filter {
     private List<String> namespace = new ArrayList<>();
     private List<String> microserviceName = new ArrayList<>();
-    private List<DatabaseType> databaseType = new ArrayList<>();
+    private List<String> databaseType = new ArrayList<>();
     private List<DatabaseKind> databaseKind = new ArrayList<>();
 }

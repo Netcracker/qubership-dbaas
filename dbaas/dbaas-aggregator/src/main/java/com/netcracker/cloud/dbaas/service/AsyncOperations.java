@@ -2,9 +2,10 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
-import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
-
+import jakarta.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.*;
@@ -13,26 +14,34 @@ import java.util.function.Supplier;
 
 import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
-
+@Slf4j
 @ApplicationScoped
 public class AsyncOperations {
 
-    @ConfigProperty(name = "backup.aggregator.async.thread.pool.size", defaultValue = "10")
-    int asyncBackupThreadPoolSize;
+    private final ThreadPoolExecutor backupExecutor;
+    private final ExecutorService debugExecutorService;
 
-    private ThreadPoolExecutor backupExecutor;
-
-    @PostConstruct
-    void initPools() {
-        backupExecutor = new ThreadPoolExecutor(
-                asyncBackupThreadPoolSize,
-                asyncBackupThreadPoolSize,
-                0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>(), new NamedThreadFactory("backups-"));
+    @Inject
+    public AsyncOperations(
+            @ConfigProperty(
+                    name = "backup.aggregator.async.thread.pool.size",
+                    defaultValue = "10"
+            ) int poolSize
+    ) {
+        this.backupExecutor = new ThreadPoolExecutor(
+                poolSize, poolSize, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(),
+                new NamedThreadFactory("backups-")
+        );
+        this.debugExecutorService = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     public ThreadPoolExecutor getBackupPool() {
         return backupExecutor;
+    }
+
+    public ExecutorService getDebugExecutor() {
+        return debugExecutorService;
     }
 
     class NamedThreadFactory implements ThreadFactory {
@@ -74,4 +83,33 @@ public class AsyncOperations {
         };
     }
 
+    @PreDestroy
+    void cleanUp() {
+        shutdown("backupExecutor", backupExecutor);
+        shutdown("debugExecutorService", debugExecutorService);
+    }
+
+    private void shutdown(String serviceName,ExecutorService executorService) {
+        log.info("Start shutting down '{}' service", serviceName);
+        executorService.shutdown();
+
+        try {
+            if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
+                log.info("'{}' service is still not terminated", serviceName);
+
+                executorService.shutdownNow();
+
+                if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
+                    log.error("'{}' service was not terminated even after await", serviceName);
+                }
+            }
+        } catch (InterruptedException ex) {
+            log.error("Error happened during shutting down '{}' service: ", serviceName, ex);
+
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        log.info("Finish shutting down '{}' service", serviceName);
+    }
 }

@@ -720,6 +720,50 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void backup_requestDbByUppercaseType() {
+        String backupName = "backupName";
+        String namespace = "test-namespace";
+        String tenantId = "test-tenant";
+        String adapterId = "pg_adapter_1";
+        String microserviceName = "microservice_1";
+        String dbName = "pg_db_1";
+        String lowercasePostgres = "postgresql";
+        String uppercasePostgres = lowercasePostgres.toUpperCase();
+
+        Database database = getDatabase(adapterId, dbName, false, false, null);
+        DatabaseRegistry registry1 = getDatabaseRegistry(database, namespace, microserviceName, tenantId, lowercasePostgres);
+
+        Stream.of(registry1)
+                .forEach(databaseRegistryDbaasRepository::saveAnyTypeLogDb);
+
+        Filter filter = new Filter();
+        filter.setDatabaseType(List.of(uppercasePostgres));
+
+        FilterCriteria filterCriteria = new FilterCriteria();
+        filterCriteria.setInclude(List.of(filter));
+
+        BackupRequest backupRequest = new BackupRequest();
+        backupRequest.setBackupName(backupName);
+        backupRequest.setBlobPath("blobPath");
+        backupRequest.setStorageName("storageName");
+        backupRequest.setFilterCriteria(filterCriteria);
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+
+        when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(adapter);
+        when(adapter.type()).thenReturn(lowercasePostgres);
+        when(adapter.isBackupRestoreSupported()).thenReturn(true);
+
+        BackupResponse backup = dbBackupV2Service.backup(backupRequest, true);
+
+        String dbTypeResponse = backup.getFilterCriteria().getInclude().getFirst().getDatabaseType().getFirst();
+        assertEquals(dbTypeResponse, lowercasePostgres);
+
+        String actualDbType = backup.getLogicalBackups().getFirst().getType();
+        assertEquals(actualDbType, lowercasePostgres);
+    }
+
+    @Test
     void restore_withoutMapping_finishedWithStatusCompleted() {
         String restoreName = "restoreName";
         String backupName = "backupName";
@@ -1715,6 +1759,21 @@ class DbBackupV2ServiceTest {
     }
 
     @Test
+    void restore_parallelRestoreProcessing() {
+        Restore restore = getRestore("oldRestore", "namespace");
+        restore.setStatus(RestoreStatus.NOT_STARTED);
+        restoreRepository.save(restore);
+
+        Backup backup = getBackup("backupName", "namespace");
+        backup.setStatus(BackupStatus.COMPLETED);
+        backupRepository.save(backup);
+        RestoreRequest restoreRequest = getRestoreRequest("newRestore", List.of("namespace"), ExternalDatabaseStrategy.INCLUDE, null, null);
+
+        assertThrows(OperationAlreadyRunningException.class,
+                () -> dbBackupV2Service.restore(backup.getName(), restoreRequest, false, false));
+    }
+
+    @Test
     void retryRestore() {
         // 1 ExternalDatabase 2 RestoreDatabase (1 FAILED, 1 COMPLETED), 1 logicalRestore (FAILED), 1 restore (FAILED)
         // 1 mapping { namespace : mappedNamespace }
@@ -2045,7 +2104,7 @@ class DbBackupV2ServiceTest {
         Filter filter = new Filter();
         filter.setNamespace(List.of(namespace1, namespace2));
         filter.setMicroserviceName(List.of(microserviceName1, microserviceName4));
-        filter.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter.setDatabaseType(List.of("postgresql", "cassandra"));
         filter.setDatabaseKind(List.of(DatabaseKind.TRANSACTIONAL));
 
         Filter exclude = new Filter();
@@ -2110,11 +2169,11 @@ class DbBackupV2ServiceTest {
 
         Filter filter1 = new Filter();
         filter1.setNamespace(List.of(namespace1));
-        filter1.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter1.setDatabaseType(List.of("postgresql", "cassandra"));
 
         Filter filter2 = new Filter();
         filter2.setNamespace(List.of(namespace2));
-        filter2.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter2.setDatabaseType(List.of("postgresql", "cassandra"));
 
         Filter exclude = new Filter();
         exclude.setMicroserviceName(List.of(microserviceName1));
@@ -2314,7 +2373,7 @@ class DbBackupV2ServiceTest {
         Filter filter = new Filter();
         filter.setNamespace(List.of(namespace1, namespace2));
         filter.setMicroserviceName(List.of(microserviceName1, microserviceName4));
-        filter.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter.setDatabaseType(List.of("postgresql", "cassandra"));
         filter.setDatabaseKind(List.of(DatabaseKind.TRANSACTIONAL));
 
         Filter exclude = new Filter();
@@ -2381,16 +2440,16 @@ class DbBackupV2ServiceTest {
 
         Filter filter1 = new Filter();
         filter1.setNamespace(List.of(namespace1));
-        filter1.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter1.setDatabaseType(List.of("postgresql", "cassandra"));
         filter1.setDatabaseKind(List.of(DatabaseKind.TRANSACTIONAL));
 
         Filter filter2 = new Filter();
         filter2.setNamespace(List.of(namespace2));
         filter2.setMicroserviceName(List.of(microserviceName3));
-        filter2.setDatabaseType(List.of(DatabaseType.POSTGRESQL, DatabaseType.CASSANDRA));
+        filter2.setDatabaseType(List.of("postgresql", "cassandra"));
 
         Filter exclude = new Filter();
-        exclude.setDatabaseType(List.of(DatabaseType.POSTGRESQL));
+        exclude.setDatabaseType(List.of("postgresql"));
 
         FilterCriteria filterCriteria = new FilterCriteria();
         filterCriteria.setInclude(List.of(filter1, filter2));

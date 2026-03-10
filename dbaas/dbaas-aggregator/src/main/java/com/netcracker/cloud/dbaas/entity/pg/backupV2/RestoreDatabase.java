@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.netcracker.cloud.dbaas.enums.RestoreTaskStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
@@ -26,6 +27,7 @@ public class RestoreDatabase {
 
     @ManyToOne
     @JoinColumn(name = "logical_restore_id")
+    @JsonBackReference
     private LogicalRestore logicalRestore;
 
     @OneToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
