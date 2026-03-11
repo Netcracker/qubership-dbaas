@@ -21,7 +21,6 @@ public class TestJwtUtils {
         this.issuer = issuer;
         this.audience = audience;
 
-        Files.createDirectories(Path.of(tokenDir));
         Files.writeString(
                 Path.of(tokenDir).resolve("token"),
                 getJwt("default", "test-namespace"),

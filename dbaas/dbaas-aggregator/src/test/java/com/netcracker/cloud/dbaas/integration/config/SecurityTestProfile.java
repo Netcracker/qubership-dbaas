@@ -9,7 +9,7 @@ public class SecurityTestProfile implements QuarkusTestProfile {
     public Map<String, String> getConfigOverrides() {
         return Map.of(
                 "dbaas.security.k8s.jwt.enabled", "true",
-                "com.netcracker.cloud.security.kubernetes.service.account.token.dir", JwtUtilsTestResource.tokenDir
+                "com.netcracker.cloud.security.kubernetes.service.account.token.dir", JwtUtilsTestResource.getTokenDir()
         );
     }
 }
