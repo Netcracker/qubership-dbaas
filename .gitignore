@@ -6,4 +6,3 @@
 .idea/
 *.iml
 .DS_Store
-dbaas/dbaas-aggregator/src/test/resources/mock-oidc-token/
