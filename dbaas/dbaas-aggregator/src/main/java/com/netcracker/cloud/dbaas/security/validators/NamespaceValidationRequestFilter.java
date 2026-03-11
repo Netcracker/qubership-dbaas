@@ -1,16 +1,12 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
-import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
-import com.netcracker.cloud.dbaas.controller.error.Utils;
-import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
 import com.netcracker.cloud.dbaas.exceptions.FailedNamespaceIsolationCheckException;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
 import io.smallrye.jwt.auth.principal.JWTCallerPrincipal;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
-import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,7 +26,7 @@ public class NamespaceValidationRequestFilter implements ContainerRequestFilter 
             return;
         }
         String namespaceFromToken = JwtUtils.getNamespace(requestContext.getSecurityContext());
-        if (!namespaceValidator.checkNamespaceIsolation(namespaceFromPath, namespaceFromToken)) {
+        if (!namespaceValidator.isNamespaceFromPathValid(namespaceFromPath, namespaceFromToken)) {
             throw new FailedNamespaceIsolationCheckException(namespaceFromPath, namespaceFromToken);
         }
     }

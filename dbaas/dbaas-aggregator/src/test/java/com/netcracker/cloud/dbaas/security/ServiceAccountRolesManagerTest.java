@@ -13,7 +13,7 @@ class ServiceAccountRolesManagerTest {
     @BeforeEach
     void setUp() {
         serviceAccountRolesManager = new ServiceAccountRolesManager();
-        serviceAccountRolesManager.onStart(null, "./src/test/resources/service-account-roles-secret.yaml");
+        serviceAccountRolesManager.onStart(null, "/service-account-roles-secret.yaml");
     }
 
     @Test

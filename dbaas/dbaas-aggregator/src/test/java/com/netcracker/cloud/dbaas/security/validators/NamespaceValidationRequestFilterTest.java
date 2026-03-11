@@ -47,7 +47,7 @@ class NamespaceValidationRequestFilterTest {
 
         filter.filter(requestContext);
 
-        verify(namespaceValidator, never()).checkNamespaceIsolation(any(), any());
+        verify(namespaceValidator, never()).isNamespaceFromPathValid(any(), any());
         verify(requestContext, never()).abortWith(any());
     }
 
@@ -58,7 +58,7 @@ class NamespaceValidationRequestFilterTest {
 
         filter.filter(requestContext);
 
-        verify(namespaceValidator, never()).checkNamespaceIsolation(any(), any());
+        verify(namespaceValidator, never()).isNamespaceFromPathValid(any(), any());
         verify(requestContext, never()).abortWith(any());
     }
 
@@ -73,11 +73,11 @@ class NamespaceValidationRequestFilterTest {
         try (var mocked = mockStatic(JwtUtils.class)) {
             mocked.when(() -> JwtUtils.getNamespace(securityContext)).thenReturn("ns1");
 
-            when(namespaceValidator.checkNamespaceIsolation("ns1", "ns1")).thenReturn(true);
+            when(namespaceValidator.isNamespaceFromPathValid("ns1", "ns1")).thenReturn(true);
 
             filter.filter(requestContext);
 
-            verify(namespaceValidator, times(1)).checkNamespaceIsolation("ns1", "ns1");
+            verify(namespaceValidator, times(1)).isNamespaceFromPathValid("ns1", "ns1");
             verify(requestContext, never()).abortWith(any());
         }
     }
@@ -93,13 +93,13 @@ class NamespaceValidationRequestFilterTest {
         try (var mocked = mockStatic(JwtUtils.class)) {
             mocked.when(() -> JwtUtils.getNamespace(securityContext)).thenReturn("other-ns");
 
-            when(namespaceValidator.checkNamespaceIsolation("ns1", "other-ns")).thenReturn(false);
+            when(namespaceValidator.isNamespaceFromPathValid("ns1", "other-ns")).thenReturn(false);
 
             Assert.assertThrows(FailedNamespaceIsolationCheckException.class, () -> {
                 filter.filter(requestContext);
             });
 
-            verify(namespaceValidator, times(1)).checkNamespaceIsolation("ns1", "other-ns");
+            verify(namespaceValidator, times(1)).isNamespaceFromPathValid("ns1", "other-ns");
         }
     }
 }

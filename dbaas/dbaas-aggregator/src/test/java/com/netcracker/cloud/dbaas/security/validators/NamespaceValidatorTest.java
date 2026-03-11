@@ -51,7 +51,7 @@ class NamespaceValidatorTest {
     }
 
     @Test
-    void checkNamespaceIsolation() {
+    void isNamespaceFromPathValid() {
         Set<String> namespaces = Set.of(defaultNamespace, otherNamespaceInComposite);
         CompositeStructure defaultCompositeStructure = new CompositeStructure(defaultBaseLine, namespaces);
 
@@ -61,25 +61,25 @@ class NamespaceValidatorTest {
         when(compositeNamespaceService.getBaselineByNamespace(otherNamespaceInComposite)).thenReturn(Optional.of(defaultBaseLine));
         when(compositeNamespaceService.getBaselineByNamespace(someOtherNamespace)).thenReturn(Optional.empty());
 
-        assertTrue(namespaceValidator.checkNamespaceIsolation(defaultNamespace, defaultNamespace));
-        assertTrue(namespaceValidator.checkNamespaceIsolation(someOtherNamespace, someOtherNamespace));
-        assertFalse(namespaceValidator.checkNamespaceIsolation(someOtherNamespace, "notEqualSomeOtherNamespace"));
-        assertFalse(namespaceValidator.checkNamespaceIsolation(defaultNamespace, someOtherNamespace));
-        assertFalse(namespaceValidator.checkNamespaceIsolation(otherNamespaceInComposite, someOtherNamespace));
-        assertTrue(namespaceValidator.checkNamespaceIsolation(otherNamespaceInComposite, defaultNamespace));
+        assertTrue(namespaceValidator.isNamespaceFromPathValid(defaultNamespace, defaultNamespace));
+        assertTrue(namespaceValidator.isNamespaceFromPathValid(someOtherNamespace, someOtherNamespace));
+        assertFalse(namespaceValidator.isNamespaceFromPathValid(someOtherNamespace, "notEqualSomeOtherNamespace"));
+        assertFalse(namespaceValidator.isNamespaceFromPathValid(defaultNamespace, someOtherNamespace));
+        assertFalse(namespaceValidator.isNamespaceFromPathValid(otherNamespaceInComposite, someOtherNamespace));
+        assertTrue(namespaceValidator.isNamespaceFromPathValid(otherNamespaceInComposite, defaultNamespace));
     }
 
     @Test
-    void checkNamespaceFromClassifier() {
+    void isNamespaceFromClassifierValid() {
         when(securityContext.getUserPrincipal()).thenReturn(principal);
         when(compositeNamespaceService.getBaselineByNamespace(otherNamespaceInComposite)).thenReturn(Optional.of(defaultBaseLine));
         when(compositeNamespaceService.getBaselineByNamespace(someOtherNamespace)).thenReturn(Optional.empty());
 
         try (var jwtMock = mockStatic(JwtUtils.class)) {
             jwtMock.when(() -> JwtUtils.getNamespace(securityContext)).thenReturn(defaultNamespace);
-            assertTrue(namespaceValidator.checkNamespaceFromClassifier(securityContext, Collections.singletonMap("namespace", defaultNamespace)));
-            assertTrue(namespaceValidator.checkNamespaceFromClassifier(securityContext, Collections.singletonMap("namespace", otherNamespaceInComposite)));
-            assertFalse(namespaceValidator.checkNamespaceFromClassifier(securityContext, Collections.singletonMap("namespace", someOtherNamespace)));
+            assertTrue(namespaceValidator.isNamespaceFromClassifierValid(securityContext, Collections.singletonMap("namespace", defaultNamespace)));
+            assertTrue(namespaceValidator.isNamespaceFromClassifierValid(securityContext, Collections.singletonMap("namespace", otherNamespaceInComposite)));
+            assertFalse(namespaceValidator.isNamespaceFromClassifierValid(securityContext, Collections.singletonMap("namespace", someOtherNamespace)));
         }
     }
 }

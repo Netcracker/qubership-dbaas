@@ -22,14 +22,14 @@ public class NamespaceValidator {
     @Inject
     CompositeNamespaceService compositeNamespaceService;
 
-    public boolean checkNamespaceIsolation(String namespaceFromPath, String namespaceFromJwt) {
+    public boolean isNamespaceFromPathValid(String namespaceFromJwt, String namespaceFromPath) {
         if (!namespaceIsolationEnabled) {
             return true;
         }
-        return checkNamespacesEqual(namespaceFromPath, namespaceFromJwt);
+        return isNamespacesEqual(namespaceFromJwt, namespaceFromPath);
     }
 
-    public boolean checkNamespaceFromClassifier(SecurityContext securityContext, Map<String, Object> classifier) {
+    public boolean isNamespaceFromClassifierValid(SecurityContext securityContext, Map<String, Object> classifier) {
         if (!(securityContext.getUserPrincipal() instanceof JWTCallerPrincipal)) {
             return true;
         }
@@ -37,18 +37,18 @@ public class NamespaceValidator {
         if (namespaceFromClassifier == null) {
             return false;
         }
-        return checkNamespacesEqual(namespaceFromClassifier, JwtUtils.getNamespace(securityContext));
+        return isNamespacesEqual(namespaceFromClassifier, JwtUtils.getNamespace(securityContext));
     }
 
-    private boolean checkNamespacesEqual(String namespace0, String namespace1) {
+    private boolean isNamespacesEqual(String namespace0, String namespace1) {
         if (namespace0.equals(namespace1)) {
             return true;
         } else {
-            return inSameCompositeStructure(namespace0, namespace1);
+            return isInSameCompositeStructure(namespace0, namespace1);
         }
     }
 
-    private boolean inSameCompositeStructure(String namespace0, String namespace1) {
+    private boolean isInSameCompositeStructure(String namespace0, String namespace1) {
         Optional<String> baseLine = compositeNamespaceService.getBaselineByNamespace(namespace0);
 
         if (baseLine.isEmpty()) {

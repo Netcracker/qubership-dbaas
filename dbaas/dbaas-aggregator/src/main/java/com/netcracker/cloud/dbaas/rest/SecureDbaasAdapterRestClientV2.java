@@ -29,6 +29,7 @@ import java.util.function.Supplier;
 
 @Slf4j
 public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 {
+    private static final long K8S_AUTH_RETRY_INTERVAL_MINUTES = 60;
     private final boolean isJwtEnabled;
 
     private final BasicAuthFilter basicAuthFilter;
@@ -50,7 +51,7 @@ public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 
 
     private <R> R executeRequest(final Supplier<R> supplier) {
         try {
-            if (isJwtEnabled && authFilterSetter.getAuthFilter() instanceof BasicAuthFilter && Duration.between(lastTokenAuthSetTime.get(), Instant.now()).toMinutes() >= 60) {
+            if (isJwtEnabled && authFilterSetter.getAuthFilter() instanceof BasicAuthFilter && Duration.between(lastTokenAuthSetTime.get(), Instant.now()).toMinutes() >= K8S_AUTH_RETRY_INTERVAL_MINUTES) {
                 authFilterSetter.setAuthFilter(kubernetesTokenAuthFilter);
                 lastTokenAuthSetTime.set(Instant.now());
             }
