@@ -18,6 +18,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -112,6 +113,111 @@ func TestSetCredentials_Concurrent(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+// TestRegisterExternalDatabase_ParsesTmfMessage verifies that when dbaas-aggregator
+// returns a TmfErrorResponse JSON body, the client populates AggregatorError.TmfMessage
+// and UserMessage() returns the TMF message rather than the raw body.
+func TestRegisterExternalDatabase_ParsesTmfMessage(t *testing.T) {
+	t.Parallel()
+
+	const tmfMessage = "Invalid classifier. Field 'type' has invalid value."
+	tmfBody := `{"code":"CORE-DBAAS-4010","reason":"Invalid classifier","message":"` + tmfMessage + `","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(tmfBody))
+	}))
+	defer srv.Close()
+
+	c := NewAggregatorClient(srv.URL, "user", "pass")
+	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var aggErr *AggregatorError
+	if !errors.As(err, &aggErr) {
+		t.Fatalf("expected *AggregatorError, got %T", err)
+	}
+	if aggErr.StatusCode != http.StatusBadRequest {
+		t.Errorf("StatusCode: got %d, want 400", aggErr.StatusCode)
+	}
+	if aggErr.TmfMessage != tmfMessage {
+		t.Errorf("TmfMessage: got %q, want %q", aggErr.TmfMessage, tmfMessage)
+	}
+	if aggErr.UserMessage() != tmfMessage {
+		t.Errorf("UserMessage(): got %q, want %q", aggErr.UserMessage(), tmfMessage)
+	}
+	if !aggErr.IsClientError() {
+		t.Error("IsClientError() should be true for HTTP 400")
+	}
+}
+
+// TestRegisterExternalDatabase_NonTmfBodyFallback verifies that when the response
+// body is not valid TMF JSON, UserMessage() falls back to the raw body.
+func TestRegisterExternalDatabase_NonTmfBodyFallback(t *testing.T) {
+	t.Parallel()
+
+	const rawBody = "internal server error"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(rawBody))
+	}))
+	defer srv.Close()
+
+	c := NewAggregatorClient(srv.URL, "user", "pass")
+	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var aggErr *AggregatorError
+	if !errors.As(err, &aggErr) {
+		t.Fatalf("expected *AggregatorError, got %T", err)
+	}
+	if aggErr.TmfMessage != "" {
+		t.Errorf("TmfMessage: got %q, want empty string", aggErr.TmfMessage)
+	}
+	if aggErr.UserMessage() != rawBody {
+		t.Errorf("UserMessage(): got %q, want %q", aggErr.UserMessage(), rawBody)
+	}
+}
+
+// TestRegisterExternalDatabase_TmfEmptyMessageFallback verifies that a valid TMF JSON
+// body with an empty "message" field falls back to the raw body in UserMessage().
+func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
+	t.Parallel()
+
+	// Valid TMF JSON but message field is absent/empty.
+	const tmfBody = `{"code":"CORE-DBAAS-4002","reason":"Conflict database request","status":"409","@type":"NC.TMFErrorResponse.v1.0"}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(tmfBody))
+	}))
+	defer srv.Close()
+
+	c := NewAggregatorClient(srv.URL, "user", "pass")
+	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var aggErr *AggregatorError
+	if !errors.As(err, &aggErr) {
+		t.Fatalf("expected *AggregatorError, got %T", err)
+	}
+	if aggErr.TmfMessage != "" {
+		t.Errorf("TmfMessage: got %q, want empty (no message field in TMF body)", aggErr.TmfMessage)
+	}
+	// UserMessage() must fall back to the raw body.
+	if aggErr.UserMessage() != tmfBody {
+		t.Errorf("UserMessage(): got %q, want raw TMF body", aggErr.UserMessage())
+	}
 }
 
 // minimalExtDBRequest returns the smallest valid ExternalDatabaseRequest.

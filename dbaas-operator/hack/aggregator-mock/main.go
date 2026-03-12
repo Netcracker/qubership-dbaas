@@ -24,6 +24,9 @@ limitations under the License.
 //   - Wrong credentials → 401 Unauthorized.
 //   - Valid credentials but insufficient role → 403 Forbidden.
 //
+// Error responses are returned in full TmfErrorResponse format (NC.TMFErrorResponse.v1.0),
+// matching what the real dbaas-aggregator returns for each HTTP error code.
+//
 // Environment variables:
 //
 //	PORT                              – listen port (default: 8080)
@@ -33,13 +36,12 @@ limitations under the License.
 //	                                    env vars for local development without a Secret.
 //	MOCK_RESPONSE_CODE                – default HTTP status code for PUT registration
 //	                                    when no per-dbName rule matches (default: 200).
-//	MOCK_RULES_FILE                   – path to a JSON file mapping dbName → HTTP code
+//	MOCK_RULES_FILE                   – path to a JSON file mapping dbName → MockRule
 //	                                    (default: /config/rules.json). Missing = not an error.
 package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -48,12 +50,57 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // UserConfig mirrors the per-user entry in dbaas-aggregator's users.json.
 type UserConfig struct {
 	Password string   `json:"password"`
 	Roles    []string `json:"roles"`
+}
+
+// MockRule fully describes the response for a specific dbName.
+// All TmfErrorResponse fields are specified here — the mock contains no hardcoded
+// templates; the ConfigMap is the single source of truth for every response.
+//
+// For 2xx codes TmfCode/Reason/Message are ignored (no error body is returned).
+// For 4xx/5xx codes omitted fields produce empty strings in the JSON output,
+// which faithfully reproduces aggregator behaviour for codes without an ErrorCode.
+type MockRule struct {
+	HTTPCode int    `json:"httpCode"`
+	TmfCode  string `json:"tmfCode,omitempty"` // e.g. "CORE-DBAAS-4010"
+	Reason   string `json:"reason,omitempty"`
+	Message  string `json:"message,omitempty"`
+}
+
+// TmfErrorResponse mirrors the NC.TMFErrorResponse.v1.0 format returned by
+// the real dbaas-aggregator. The Java field "detail" is serialised as "message"
+// via @JsonProperty("message").
+type TmfErrorResponse struct {
+	ID      string `json:"id"`
+	Code    string `json:"code,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
+	Status  string `json:"status"`
+	Type    string `json:"@type"`
+}
+
+const tmfType = "NC.TMFErrorResponse.v1.0"
+
+// authRuleUnauthorized is the fixed response for missing/wrong credentials (401).
+// The security framework in the real dbaas-aggregator does not assign a CORE-DBAAS-*
+// error code for 401 responses.
+var authRuleUnauthorized = MockRule{
+	HTTPCode: http.StatusUnauthorized,
+	Message:  "Requested role is not allowed",
+}
+
+// authRuleForbidden is the fixed response when the authenticated user lacks the
+// required role (403 at the auth layer, before any dbName is resolved).
+var authRuleForbidden = MockRule{
+	HTTPCode: http.StatusForbidden,
+	Message:  "Access forbidden",
 }
 
 // Role constants mirror dbaas-aggregator's Constants.java.
@@ -77,6 +124,7 @@ var (
 func main() {
 	port := envOr("PORT", "8080")
 	defaultCode := envInt("MOCK_RESPONSE_CODE", http.StatusOK)
+	defaultRule := MockRule{HTTPCode: defaultCode}
 	rulesFile := envOr("MOCK_RULES_FILE", "/config/rules.json")
 	rules := loadRules(rulesFile)
 
@@ -85,12 +133,12 @@ func main() {
 	users := loadUsers(securityDir)
 
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
-	log.Printf("  PUT  .../externally_manageable → default %d  (%d per-dbName rules loaded)",
-		defaultCode, len(rules))
+	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
+		defaultRule.HTTPCode, len(rules))
 	log.Printf("  POST .../apply                 → 200 (sync)")
 	log.Printf("  GET  .../operation/.../status  → 200 COMPLETED")
 
-	if err := http.ListenAndServe(":"+port, handler(defaultCode, rules, users)); err != nil {
+	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, users)); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
@@ -125,26 +173,27 @@ func loadUsers(dir string) map[string]UserConfig {
 	return users
 }
 
-// loadRules reads a JSON file that maps dbName → HTTP status code.
+// loadRules reads a JSON file that maps dbName → MockRule.
 // A missing file is not an error — the mock falls back to the global default code.
-func loadRules(path string) map[string]int {
+func loadRules(path string) map[string]MockRule {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Printf("rules file %q not found or unreadable, using MOCK_RESPONSE_CODE only: %v", path, err)
 		return nil
 	}
-	var rules map[string]int
+	var rules map[string]MockRule
 	if err := json.Unmarshal(data, &rules); err != nil {
 		log.Fatalf("parse rules file %q: %v", path, err)
 	}
 	log.Printf("loaded %d dbName rules from %q", len(rules), path)
-	for db, code := range rules {
-		log.Printf("  rule: dbName=%q → %d", db, code)
+	for db, rule := range rules {
+		log.Printf("  rule: dbName=%q → httpCode=%d tmfCode=%q reason=%q message=%q",
+			db, rule.HTTPCode, rule.TmfCode, rule.Reason, rule.Message)
 	}
 	return rules
 }
 
-func handler(defaultCode int, rules map[string]int, users map[string]UserConfig) http.Handler {
+func handler(defaultRule MockRule, rules map[string]MockRule, users map[string]UserConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		logRequest(r)
@@ -155,7 +204,7 @@ func handler(defaultCode int, rules map[string]int, users map[string]UserConfig)
 			if !checkAuth(w, r, users, roleDBClient) {
 				return
 			}
-			handleExternalDB(w, r, defaultCode, rules)
+			handleExternalDB(w, r, defaultRule, rules)
 
 		case reApply.MatchString(r.URL.Path) && r.Method == http.MethodPost:
 			if !checkAuth(w, r, users, roleDBClient) {
@@ -184,20 +233,20 @@ func checkAuth(w http.ResponseWriter, r *http.Request, users map[string]UserConf
 	u, p, ok := r.BasicAuth()
 	if !ok {
 		log.Printf("  → 401 no Basic Auth header")
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeTmfError(w, authRuleUnauthorized)
 		return false
 	}
 
 	cfg, exists := users[u]
 	if !exists || cfg.Password != p {
 		log.Printf("  → 401 invalid credentials (user=%q)", u)
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeTmfError(w, authRuleUnauthorized)
 		return false
 	}
 
 	if requiredRole != "" && !hasRole(cfg.Roles, requiredRole) {
 		log.Printf("  → 403 user=%q does not have role %q (has: %v)", u, requiredRole, cfg.Roles)
-		writeError(w, http.StatusForbidden, "forbidden")
+		writeTmfError(w, authRuleForbidden)
 		return false
 	}
 
@@ -214,12 +263,14 @@ func hasRole(roles []string, role string) bool {
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
-// The response code is resolved from the per-dbName rules map, falling back to defaultCode.
-func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultCode int, rules map[string]int) {
+// The response rule is resolved from the per-dbName rules map, falling back to defaultRule.
+// For error responses (4xx/5xx) a full TmfErrorResponse body is returned using the
+// fields specified in the rule — no hardcoded templates.
+func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultRule MockRule, rules map[string]MockRule) {
 	m := reExternalDB.FindStringSubmatch(r.URL.Path)
 	namespace := m[1]
 
-	// Parse dbName from the request body (body was already read + restored by logRequest).
+	// Parse dbName from the request body.
 	var req struct {
 		DbName string `json:"dbName"`
 	}
@@ -227,26 +278,25 @@ func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultCode int, r
 	r.Body = io.NopCloser(strings.NewReader(string(body)))
 	_ = json.Unmarshal(body, &req)
 
-	code := defaultCode
+	rule := defaultRule
 	if req.DbName != "" {
-		if c, ok := rules[req.DbName]; ok {
-			log.Printf("  → rule match dbName=%q → %d  namespace=%q", req.DbName, c, namespace)
-			code = c
+		if matched, ok := rules[req.DbName]; ok {
+			log.Printf("  → rule match dbName=%q → httpCode=%d  namespace=%q",
+				req.DbName, matched.HTTPCode, namespace)
+			rule = matched
 		} else {
-			log.Printf("  → no rule for dbName=%q, using default %d  namespace=%q",
-				req.DbName, defaultCode, namespace)
+			log.Printf("  → no rule for dbName=%q, using default httpCode=%d  namespace=%q",
+				req.DbName, defaultRule.HTTPCode, namespace)
 		}
 	} else {
-		log.Printf("  → register external DB  namespace=%q  code=%d (no dbName in body)", namespace, code)
+		log.Printf("  → register external DB  namespace=%q  httpCode=%d (no dbName in body)", namespace, rule.HTTPCode)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	if code >= 400 {
-		writeJSON(w, map[string]string{
-			"error":  fmt.Sprintf("mock error (code %d)", code),
-			"status": strconv.Itoa(code),
-		})
+	if rule.HTTPCode >= 400 {
+		writeTmfError(w, rule)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(rule.HTTPCode)
 	}
 }
 
@@ -300,13 +350,26 @@ func logRequest(r *http.Request) {
 	}
 }
 
-func writeError(w http.ResponseWriter, code int, msg string) {
+// writeTmfError writes a complete error response using the fields from rule:
+// sets Content-Type, optional WWW-Authenticate header (for 401), writes the HTTP
+// status code, then a TmfErrorResponse JSON body. The id and @type fields are
+// always generated; all other fields come directly from the rule.
+func writeTmfError(w http.ResponseWriter, rule MockRule) {
 	w.Header().Set("Content-Type", "application/json")
-	if code == http.StatusUnauthorized {
+	if rule.HTTPCode == http.StatusUnauthorized {
 		w.Header().Set("WWW-Authenticate", `Basic realm="dbaas-aggregator"`)
 	}
-	w.WriteHeader(code)
-	writeJSON(w, map[string]string{"error": msg, "status": strconv.Itoa(code)})
+	w.WriteHeader(rule.HTTPCode)
+	tmf := TmfErrorResponse{
+		ID:      uuid.NewString(),
+		Code:    rule.TmfCode,
+		Reason:  rule.Reason,
+		Message: rule.Message,
+		Status:  strconv.Itoa(rule.HTTPCode),
+		Type:    tmfType,
+	}
+	log.Printf("  → %d  TMF code=%q reason=%q message=%q", rule.HTTPCode, tmf.Code, tmf.Reason, tmf.Message)
+	writeJSON(w, tmf)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

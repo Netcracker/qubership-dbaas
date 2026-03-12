@@ -58,6 +58,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	var (
 		mockServer     *httptest.Server
 		mockStatusCode int
+		mockBody       string // optional TMF JSON body; written after the status code
 		reconciler     *ExternalDatabaseDeclarationReconciler
 		fakeRecorder   *record.FakeRecorder
 		namespacedName types.NamespacedName
@@ -82,9 +83,13 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 	BeforeEach(func() {
 		mockStatusCode = http.StatusOK
+		mockBody = ""
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(mockStatusCode)
+			if mockBody != "" {
+				_, _ = w.Write([]byte(mockBody))
+			}
 		}))
 
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
@@ -152,6 +157,17 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	expectNoEvent := func() {
 		GinkgoHelper()
 		Expect(fakeRecorder.Events).NotTo(Receive())
+	}
+
+	// expectEventContaining asserts that the next event starts with
+	// "<eventtype> <reason>" AND contains substr somewhere in its text.
+	// Use this when a TMF message should appear verbatim in the event body.
+	expectEventContaining := func(eventtype, reason, substr string) {
+		GinkgoHelper()
+		Expect(fakeRecorder.Events).To(Receive(And(
+			HavePrefix(eventtype+" "+reason),
+			ContainSubstring(substr),
+		)))
 	}
 
 	// ── Success cases ─────────────────────────────────────────────────────────
@@ -238,8 +254,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// ── Aggregator 4xx errors ─────────────────────────────────────────────────
 
 	Context("HTTP 400 — invalid request (e.g. invalid classifier)", func() {
-		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event, does not requeue", func() {
+		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event with TMF message, does not requeue", func() {
 			mockStatusCode = http.StatusBadRequest
+			mockBody = `{"code":"CORE-DBAAS-4010","reason":"Invalid classifier","message":"Invalid classifier. Classifier does not meet required conditions.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -256,15 +273,18 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("AggregatorRejected"))
+			Expect(cond.Message).To(ContainSubstring("Invalid classifier. Classifier does not meet required conditions."))
 			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorRejected)
+			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+				"Invalid classifier. Classifier does not meet required conditions.")
 			expectNoEvent()
 		})
 	})
 
 	Context("HTTP 401 — operator credentials or role binding misconfigured", func() {
-		It("sets Phase=BackingOff and Unauthorized condition, emits Warning/Unauthorized event, requeues", func() {
+		It("sets Phase=BackingOff and Unauthorized condition, emits Warning/Unauthorized event with TMF message, requeues", func() {
 			mockStatusCode = http.StatusUnauthorized
+			mockBody = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -280,14 +300,17 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("Unauthorized"))
-			expectEvent(corev1.EventTypeWarning, EventReasonUnauthorized)
+			Expect(cond.Message).To(ContainSubstring("Requested role is not allowed"))
+			expectEventContaining(corev1.EventTypeWarning, EventReasonUnauthorized,
+				"Requested role is not allowed")
 			expectNoEvent()
 		})
 	})
 
 	Context("HTTP 403 — namespace mismatch between path and classifier", func() {
-		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event, does not requeue", func() {
+		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event with TMF message, does not requeue", func() {
 			mockStatusCode = http.StatusForbidden
+			mockBody = `{"code":"CORE-DBAAS-4004","reason":"Namespace from request is not equal to one from database classifier","message":"Namespace from request is not equal to one from database classifier.","status":"403","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -304,15 +327,18 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("AggregatorRejected"))
+			Expect(cond.Message).To(ContainSubstring("Namespace from request is not equal to one from database classifier."))
 			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorRejected)
+			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+				"Namespace from request is not equal to one from database classifier.")
 			expectNoEvent()
 		})
 	})
 
 	Context("HTTP 409 — database exists as internal (not externally manageable)", func() {
-		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event, does not requeue", func() {
+		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event with TMF message, does not requeue", func() {
 			mockStatusCode = http.StatusConflict
+			mockBody = `{"code":"CORE-DBAAS-4002","reason":"Conflict database request","message":"Conflict database request. Logical database already exists and is not externally manageable.","status":"409","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -329,8 +355,10 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("AggregatorRejected"))
+			Expect(cond.Message).To(ContainSubstring("Conflict database request. Logical database already exists and is not externally manageable."))
 			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorRejected)
+			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+				"Conflict database request. Logical database already exists and is not externally manageable.")
 			expectNoEvent()
 		})
 	})
@@ -338,8 +366,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// ── Aggregator 5xx / network errors ──────────────────────────────────────
 
 	Context("HTTP 500 — unexpected aggregator server error", func() {
-		It("sets Phase=BackingOff and AggregatorError condition, emits Warning/AggregatorError event, requeues", func() {
+		It("sets Phase=BackingOff and AggregatorError condition, emits Warning/AggregatorError event with TMF message, requeues", func() {
 			mockStatusCode = http.StatusInternalServerError
+			mockBody = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -355,7 +384,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal("AggregatorError"))
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
+			Expect(cond.Message).To(ContainSubstring("Unexpected exception"))
+			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
 			expectNoEvent()
 		})
 	})

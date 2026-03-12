@@ -136,27 +136,32 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 				// Retry so the operator recovers once the admin fixes the credentials.
 				edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
 				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeRegistered, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.Error())
+					conditionTypeRegistered, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.UserMessage())
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonUnauthorized,
-					"dbaas-aggregator rejected operator credentials (HTTP 401) — check Secret and DB_CLIENT role")
+					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
 				return ctrl.Result{}, err // requeue with backoff
 			case aggErr.IsClientError():
 				// 400, 403, 409 — spec error; retrying won't help until the spec changes.
 				edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
 				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeRegistered, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.Error())
+					conditionTypeRegistered, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-					"dbaas-aggregator rejected request: %s", aggErr)
+					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
 				return ctrl.Result{}, nil // do not requeue
 			}
 		}
 
 		// 5xx / network error — transient; requeue with backoff.
+		// aggErr may be nil for pure network failures (no HTTP response at all).
+		errMsg := err.Error()
+		if aggErr != nil {
+			errMsg = aggErr.UserMessage()
+		}
 		edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
 		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeRegistered, metav1.ConditionFalse, EventReasonAggregatorError, err.Error())
+			conditionTypeRegistered, metav1.ConditionFalse, EventReasonAggregatorError, errMsg)
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorError,
-			"dbaas-aggregator error: %s", err)
+			"dbaas-aggregator error: %s", errMsg)
 		return ctrl.Result{}, err
 	}
 

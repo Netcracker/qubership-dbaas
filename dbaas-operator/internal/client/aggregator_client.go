@@ -168,7 +168,12 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return &AggregatorError{StatusCode: resp.StatusCode, Body: string(rawBody)}
+		aggErr := &AggregatorError{StatusCode: resp.StatusCode, Body: string(rawBody)}
+		var tmf TmfErrorResponse
+		if json.Unmarshal(rawBody, &tmf) == nil && tmf.Message != "" {
+			aggErr.TmfMessage = tmf.Message
+		}
+		return aggErr
 	}
 	return nil
 }

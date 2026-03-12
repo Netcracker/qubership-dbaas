@@ -28,9 +28,12 @@ stringData:
       }
     }
 ---
-# Per-dbName response code rules for aggregator-mock.
-# Format: { "<dbName>": <httpStatusCode>, ... }
-# The mock looks up the dbName from the request body and returns the mapped code.
+# Per-dbName response rules for aggregator-mock.
+# Format: { "<dbName>": { "httpCode": <int>, "tmfCode": "<CORE-DBAAS-XXXX>", "reason": "...", "message": "..." } }
+# The mock looks up the dbName from the request body and returns the mapped httpCode
+# with a TmfErrorResponse body built entirely from the fields in this file.
+# There are no hardcoded templates in the mock binary — this ConfigMap is the single
+# source of truth for every response.
 # Falls back to MOCK_RESPONSE_CODE (default: 200) when no rule matches.
 # Edit this ConfigMap with kubectl and restart the deployment to apply changes.
 apiVersion: v1
@@ -41,12 +44,35 @@ metadata:
 data:
   rules.json: |
     {
-      "db-201": 201,
-      "db-400": 400,
-      "db-401": 401,
-      "db-403": 403,
-      "db-409": 409,
-      "db-500": 500
+      "db-201": {"httpCode": 201},
+      "db-400": {
+        "httpCode": 400,
+        "tmfCode": "CORE-DBAAS-4010",
+        "reason": "Invalid classifier",
+        "message": "Invalid classifier. Field 'type' has invalid value."
+      },
+      "db-401": {
+        "httpCode": 401,
+        "message": "Requested role is not allowed"
+      },
+      "db-403": {
+        "httpCode": 403,
+        "tmfCode": "CORE-DBAAS-4004",
+        "reason": "Namespace from request is not equal to one from database classifier",
+        "message": "Namespace from request is not equal to one from database classifier."
+      },
+      "db-409": {
+        "httpCode": 409,
+        "tmfCode": "CORE-DBAAS-4002",
+        "reason": "Conflict database request",
+        "message": "Conflict database request. Logical database with such classifier already exists and is not externally manageable."
+      },
+      "db-500": {
+        "httpCode": 500,
+        "tmfCode": "CORE-DBAAS-2000",
+        "reason": "Unexpected exception",
+        "message": "Unexpected exception"
+      }
     }
 ---
 apiVersion: apps/v1

@@ -86,14 +86,39 @@ type ExternalDatabaseRequest struct {
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
+// TmfErrorResponse is the error response format used by dbaas-aggregator.
+// It follows the TM Forum standard error format (NC.TMFErrorResponse.v1.0).
+//
+// The Java field "detail" is serialised as "message" via @JsonProperty("message").
+// Field "@type" carries the constant "NC.TMFErrorResponse.v1.0".
+type TmfErrorResponse struct {
+	ID      string `json:"id,omitempty"`
+	Code    string `json:"code,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
+	Status  string `json:"status,omitempty"`
+	Type    string `json:"@type,omitempty"`
+}
+
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.
 type AggregatorError struct {
 	StatusCode int
-	Body       string
+	Body       string // raw response body (fallback when TMF parse fails)
+	TmfMessage string // parsed from TmfErrorResponse.message, if available
 }
 
 func (e *AggregatorError) Error() string {
 	return fmt.Sprintf("dbaas-aggregator returned HTTP %d: %s", e.StatusCode, e.Body)
+}
+
+// UserMessage returns the human-readable error message suitable for Kubernetes
+// Events and Condition messages. It returns the parsed TmfErrorResponse.message
+// when available, falling back to the raw response body.
+func (e *AggregatorError) UserMessage() string {
+	if e.TmfMessage != "" {
+		return e.TmfMessage
+	}
+	return e.Body
 }
 
 // IsAuthError returns true for HTTP 401 responses.
