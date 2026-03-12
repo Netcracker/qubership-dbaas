@@ -279,7 +279,7 @@ If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator w
 
 | Default | Recommended                                              |
 |---------|----------------------------------------------------------|
-| true    | Set to true if need to enable enable namespace isolation |
+| true    | Set to true if need to enable namespace isolation |
 
 #### KUBERNETES_JWT_ENABLED
 
@@ -287,7 +287,7 @@ If KUBERNETES_JWT_ENABLED is set to true, dbaas-aggregator will accept requests 
 
 | Default | Recommended                                              |
 |---------|----------------------------------------------------------|
-| true    | Set to true if need to enable enable kubernetes M2M      |
+| true    | Set to true if need to enable kubernetes M2M      |
 
 #### KUBERNETES_JWT_AUDIENCE
 
