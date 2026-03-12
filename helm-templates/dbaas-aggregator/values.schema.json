@@ -533,6 +533,39 @@
       "examples": [
         3
       ]
+    },
+    "DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED": {
+      "$id": "#/properties/DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED",
+      "type": "boolean",
+      "title": "The DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED schema",
+      "description": "Parameter specifies if namespace isolation is enabled. Requests from not valid namespaces will be discarded",
+      "default": true,
+      "examples": [
+        true,
+        false
+      ]
+    },
+    "KUBERNETES_JWT_ENABLED": {
+      "$id": "#/properties/KUBERNETES_JWT_ENABLED",
+      "type": "boolean",
+      "title": "The KUBERNETES_JWT_ENABLED schema",
+      "description": "Parameter specifies if M2M authentication with Kubernetes service account tokens is enabled",
+      "default": true,
+      "examples": [
+        true,
+        false
+      ]
+    },
+    "KUBERNETES_JWT_AUDIENCE": {
+      "$id": "#/properties/KUBERNETES_JWT_AUDIENCE",
+      "type": "string",
+      "title": "The KUBERNETES_JWT_AUDIENCE schema",
+      "description": "Parameter specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected",
+      "default": "dbaas",
+      "examples": [
+        "dbaas",
+        "netcracker"
+      ]
     }
   },
   "additionalProperties": true

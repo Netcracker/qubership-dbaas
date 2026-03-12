@@ -18,6 +18,9 @@
         + [PRODUCTION_MODE](#production_mode)
         + [INTERNAL_TLS_ENABLED](#internal_tls_enabled)
         + [READONLY_CONTAINER_FILE_SYSTEM_ENABLED](#readonly_container_file_system_enabled)
+        + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
+        + [KUBERNETES_JWT_ENABLED](#kubernetes_jwt_enabled)
+        + [KUBERNETES_JWT_AUDIENCE](#kubernetes_jwt_audience)
         + [priorityClassName](#priorityClassName)
     * [CREDENTIALS](#credentials)
         + [DBAAS_DB_EDITOR_CREDENTIALS_USERNAME / DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD](#dbaas_db_editor_credentials_username--dbaas_db_editor_credentials_password)
@@ -269,6 +272,30 @@ Note: Only valid for deployments in Kubernetes.
 | Default | Recommended                                         |
 |---------|-----------------------------------------------------|
 | false   | Set to true if need to enable read-only file system |
+
+#### DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
+
+If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator will reject requests with invalid namespace.
+
+| Default | Recommended                                              |
+|---------|----------------------------------------------------------|
+| true    | Set to true if need to enable enable namespace isolation |
+
+#### KUBERNETES_JWT_ENABLED
+
+If KUBERNETES_JWT_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens M2M.
+
+| Default | Recommended                                              |
+|---------|----------------------------------------------------------|
+| true    | Set to true if need to enable enable kubernetes M2M      |
+
+#### KUBERNETES_JWT_AUDIENCE
+
+KUBERNETES_JWT_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected.
+
+| Default | Recommended                                                               |
+|---------|---------------------------------------------------------------------------|
+| "dbaas" | Only change for test purposes because other services expect value 'dbaas' |
 
 #### priorityClassName
 
