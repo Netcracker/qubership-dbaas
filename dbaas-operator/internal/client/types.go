@@ -23,11 +23,12 @@ import "fmt"
 // DeclarativePayload is the request body for POST /api/declarations/v1/apply.
 // Field names mirror the DeclarativePayload Java class in dbaas-aggregator.
 type DeclarativePayload struct {
-	APIVersion string          `json:"apiVersion"`
-	Kind       string          `json:"kind"`
-	SubKind    string          `json:"subKind"`
-	Metadata   DeclarativeMeta `json:"metadata"`
-	Spec       any             `json:"spec"`
+	APIVersion         string          `json:"apiVersion"`
+	Kind               string          `json:"kind"`
+	SubKind            string          `json:"subKind"`
+	DeclarationVersion string          `json:"declarationVersion,omitempty"`
+	Metadata           DeclarativeMeta `json:"metadata"`
+	Spec               any             `json:"spec"`
 }
 
 // DeclarativeMeta is the metadata section of a DeclarativePayload.
@@ -38,12 +39,15 @@ type DeclarativeMeta struct {
 }
 
 // TaskState mirrors the TaskState Java enum in dbaas-aggregator.
+// Values are the normalised strings produced by DeclarativeResponse.normalizeStateName().
 type TaskState string
 
 const (
+	TaskStateNotStarted TaskState = "NOT_STARTED"
 	TaskStateInProgress TaskState = "IN_PROGRESS"
 	TaskStateCompleted  TaskState = "COMPLETED"
 	TaskStateFailed     TaskState = "FAILED"
+	TaskStateTerminated TaskState = "TERMINATED"
 )
 
 // AggregatorCondition is a single condition entry returned inside DeclarativeResponse.
