@@ -229,6 +229,15 @@ public class BlueGreenService {
             throw new BgRequestValidationException(String.format("Namespace name cannot be empty, but: origin='%s', peer='%s', controller='%s'",
                     bgNamespace1.getName(), bgNamespace2.getName(), controllerNamespace));
         }
+
+        bgDomainRepository.findByControllerNamespace(controllerNamespace)
+                .ifPresent(bgDomain -> {
+                            if (!(bgNamespace1.getName().equals(bgDomain.getOriginNamespace()) && bgNamespace2.getName().equals(bgDomain.getPeerNamespace()))) {
+                                throw new BgRequestValidationException(String.format("Controller namespace '%s' already exists and must be unique", controllerNamespace));
+                            }
+                        }
+                );
+
         if (!(bgNamespace1.getState().equals(ACTIVE_STATE) && bgNamespace2.getState().equals(IDLE_STATE) ||
                 bgNamespace1.getState().equals(IDLE_STATE) && bgNamespace2.getState().equals(ACTIVE_STATE))) {
             throw new BgRequestValidationException(String.format("States of bgRequest must be active and idle, but were %s and %s",
