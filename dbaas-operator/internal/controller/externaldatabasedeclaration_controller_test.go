@@ -17,6 +17,8 @@ limitations under the License.
 package controller
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -56,12 +58,13 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	)
 
 	var (
-		mockServer     *httptest.Server
-		mockStatusCode int
-		mockBody       string // optional TMF JSON body; written after the status code
-		reconciler     *ExternalDatabaseDeclarationReconciler
-		fakeRecorder   *record.FakeRecorder
-		namespacedName types.NamespacedName
+		mockServer           *httptest.Server
+		mockStatusCode       int
+		mockBody             string // optional TMF JSON body; written after the status code
+		capturedRequestBody  []byte // body of the last request received by the mock server
+		reconciler           *ExternalDatabaseDeclarationReconciler
+		fakeRecorder         *record.FakeRecorder
+		namespacedName       types.NamespacedName
 	)
 
 	// baseSpec builds a minimal valid spec without any credentialsSecretRef.
@@ -84,7 +87,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	BeforeEach(func() {
 		mockStatusCode = http.StatusOK
 		mockBody = ""
+		capturedRequestBody = nil
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedRequestBody, _ = io.ReadAll(r.Body)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(mockStatusCode)
 			if mockBody != "" {
@@ -169,6 +174,46 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			ContainSubstring(substr),
 		)))
 	}
+
+	// ── Request assembly ──────────────────────────────────────────────────────
+
+	Context("buildRequest — ExtraProperties vs typed fields priority", func() {
+		It("typed fields take precedence over ExtraProperties with the same key", func() {
+			spec := baseSpec()
+			spec.ConnectionProperties = []dbaasv1alpha1.ConnectionProperty{
+				{
+					Role: "primary",
+					URL:  "jdbc:postgresql://pg:5432/testdb",
+					// "role" and "url" in ExtraProperties must NOT win over the typed fields.
+					ExtraProperties: map[string]string{
+						"role": "admin",
+						"url":  "jdbc:postgresql://attacker:5432/evil",
+					},
+				},
+			}
+			mockStatusCode = http.StatusOK
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(capturedRequestBody).NotTo(BeEmpty())
+
+			var sent struct {
+				ConnectionProperties []map[string]string `json:"connectionProperties"`
+			}
+			Expect(json.Unmarshal(capturedRequestBody, &sent)).To(Succeed())
+			Expect(sent.ConnectionProperties).To(HaveLen(1))
+
+			props := sent.ConnectionProperties[0]
+			Expect(props["role"]).To(Equal("primary"),
+				"typed Role must override ExtraProperties role")
+			Expect(props["url"]).To(Equal("jdbc:postgresql://pg:5432/testdb"),
+				"typed URL must override ExtraProperties url")
+		})
+	})
 
 	// ── Success cases ─────────────────────────────────────────────────────────
 
