@@ -1169,6 +1169,30 @@ class BlueGreenServiceTest {
 
     }
 
+    @Test
+    void testRestrictCreationBgDomainWithNotUniqueControllerNamespaceRegardlessOfOrder() {
+        String activeNamespace1 = "test-namespace-active-1";
+        String activeNamespace2 = "test-namespace-active-2";
+        String candidateNamespace1 = "test-namespace-candidate-1";
+        String candidateNamespace2 = "test-namespace-candidate-2";
+
+        BgStateRequest bgStateRequest1 = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, activeNamespace1), createBgStateNamespace(IDLE_STATE, candidateNamespace1));
+        BgStateRequest bgStateRequest2 = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, candidateNamespace2), createBgStateNamespace(IDLE_STATE, activeNamespace2));
+
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(activeNamespace1)).thenReturn(Optional.empty());
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(candidateNamespace1)).thenReturn(Optional.empty());
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+
+        when(bgDomainRepository.findByControllerNamespace(NS_C))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(new BgDomain()));
+
+        blueGreenService.initBgDomain(bgStateRequest1);
+
+        assertThrows(BgRequestValidationException.class,
+                () -> blueGreenService.initBgDomain(bgStateRequest2));
+    }
+
     BgNamespace createBgNamespace(String namespace, String state) {
         return createBgNamespace(namespace, state, null);
     }
