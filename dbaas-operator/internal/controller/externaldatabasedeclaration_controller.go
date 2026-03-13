@@ -187,7 +187,14 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 	for i, cp := range edb.Spec.ConnectionProperties {
 		flat := make(map[string]string)
 
-		// Typed fields.
+		// Adapter-specific extra properties are merged first so that typed
+		// fields below always take precedence over them.
+		for k, v := range cp.ExtraProperties {
+			flat[k] = v
+		}
+
+		// Typed fields — written after ExtraProperties so they cannot be
+		// overridden by user-supplied extra keys.
 		flat["role"] = cp.Role
 		if cp.URL != "" {
 			flat["url"] = cp.URL
@@ -200,12 +207,6 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 		}
 		if cp.AuthDbName != "" {
 			flat["authDbName"] = cp.AuthDbName
-		}
-
-		// Adapter-specific extra properties (merged last so they cannot
-		// accidentally shadow the typed fields above).
-		for k, v := range cp.ExtraProperties {
-			flat[k] = v
 		}
 
 		// Credentials from a Kubernetes Secret.
