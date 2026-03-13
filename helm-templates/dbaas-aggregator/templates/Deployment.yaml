@@ -66,9 +66,6 @@ spec:
                 -   name: dbaas-security-volume
                     mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
                     readOnly: true
-                -   name: dbaas-security-service-account-roles-volume
-                    mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-                    readOnly: true
                 -   name: dbaas-global-permissions-configuration-volume
                     mountPath: '{{ .Values.DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION }}'
                     readOnly: true
