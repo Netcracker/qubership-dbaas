@@ -296,6 +296,40 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		})
 	})
 
+	Context("Secret exists but is missing the required key", func() {
+		It("sets Phase=BackingOff and SecretError condition, emits Warning/SecretError event, requeues", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				Data: map[string][]byte{
+					// Secret exists but does not contain "username" or "password".
+					"irrelevant-key": []byte("irrelevant-value"),
+				},
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred()) // requeue with backoff
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
+			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal("SecretError"))
+			Expect(cond.Message).To(ContainSubstring(`missing key "username"`))
+			expectEvent(corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoEvent()
+		})
+	})
+
 	// ── Aggregator 4xx errors ─────────────────────────────────────────────────
 
 	Context("HTTP 400 — invalid request (e.g. invalid classifier)", func() {

@@ -231,6 +231,16 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 				passwordKey = "password"
 			}
 
+			if _, ok := secret.Data[usernameKey]; !ok {
+				return nil, fmt.Errorf(
+					"connectionProperties[%d]: Secret %q missing key %q",
+					i, cp.CredentialsSecretRef.Name, usernameKey)
+			}
+			if _, ok := secret.Data[passwordKey]; !ok {
+				return nil, fmt.Errorf(
+					"connectionProperties[%d]: Secret %q missing key %q",
+					i, cp.CredentialsSecretRef.Name, passwordKey)
+			}
 			flat["username"] = string(secret.Data[usernameKey])
 			flat["password"] = string(secret.Data[passwordKey])
 		}

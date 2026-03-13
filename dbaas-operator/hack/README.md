@@ -67,7 +67,8 @@ edb-401               BackingOff             postgresql   db-401
 edb-403               InvalidConfiguration   postgresql   db-403
 edb-409               InvalidConfiguration   postgresql   db-409
 edb-500               BackingOff             postgresql   db-500
-missing-secret-test   BackingOff             postgresql   ghostdb
+missing-secret-test      BackingOff             postgresql   ghostdb
+secret-missing-key-test  BackingOff             postgresql   mydb
 ```
 
 ### CR reference table
@@ -82,6 +83,7 @@ missing-secret-test   BackingOff             postgresql   ghostdb
 | `edb-409-conflict.yaml` | `db-409` | 409 | `InvalidConfiguration` | `AggregatorRejected` |
 | `edb-500-server-error.yaml` | `db-500` | 500 | `BackingOff` | `AggregatorError` |
 | `edb-missing-secret.yaml` | `ghostdb` | — (no HTTP call) | `BackingOff` | `SecretError` |
+| `edb-secret-missing-key.yaml` | `mydb` | — (no HTTP call) | `BackingOff` | `SecretError` |
 
 ### Changing rules without rebuilding
 
@@ -149,5 +151,6 @@ hack/
     ├── edb-403-forbidden.yaml       # ExternalDatabaseDeclaration — 403 InvalidConfiguration
     ├── edb-409-conflict.yaml        # ExternalDatabaseDeclaration — 409 InvalidConfiguration
     ├── edb-500-server-error.yaml    # ExternalDatabaseDeclaration — 500 BackingOff
-    └── edb-missing-secret.yaml      # ExternalDatabaseDeclaration — BackingOff (Secret missing)
+    ├── edb-missing-secret.yaml      # ExternalDatabaseDeclaration — BackingOff (Secret does not exist)
+    └── edb-secret-missing-key.yaml  # ExternalDatabaseDeclaration — BackingOff (Secret exists, key missing)
 ```
