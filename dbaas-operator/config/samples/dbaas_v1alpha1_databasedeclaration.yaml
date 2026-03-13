@@ -1,0 +1,9 @@
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: DatabaseDeclaration
+metadata:
+  labels:
+    app.kubernetes.io/name: dbaas-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: databasedeclaration-sample
+spec:
+  # TODO(user): Add fields here
