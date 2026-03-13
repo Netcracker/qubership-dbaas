@@ -52,6 +52,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 )
 
 // UserConfig mirrors the per-user entry in dbaas-aggregator's users.json.
@@ -73,20 +74,6 @@ type MockRule struct {
 	Reason   string `json:"reason,omitempty"`
 	Message  string `json:"message,omitempty"`
 }
-
-// TmfErrorResponse mirrors the NC.TMFErrorResponse.v1.0 format returned by
-// the real dbaas-aggregator. The Java field "detail" is serialised as "message"
-// via @JsonProperty("message").
-type TmfErrorResponse struct {
-	ID      string `json:"id"`
-	Code    string `json:"code,omitempty"`
-	Reason  string `json:"reason,omitempty"`
-	Message string `json:"message,omitempty"`
-	Status  string `json:"status"`
-	Type    string `json:"@type"`
-}
-
-const tmfType = "NC.TMFErrorResponse.v1.0"
 
 // authRuleUnauthorized is the fixed response for missing/wrong credentials (401).
 // The security framework in the real dbaas-aggregator does not assign a CORE-DBAAS-*
@@ -352,7 +339,7 @@ func logRequest(r *http.Request) {
 
 // writeTmfError writes a complete error response using the fields from rule:
 // sets Content-Type, optional WWW-Authenticate header (for 401), writes the HTTP
-// status code, then a TmfErrorResponse JSON body. The id and @type fields are
+// status code, then a tmf.Response JSON body. The id and @type fields are
 // always generated; all other fields come directly from the rule.
 func writeTmfError(w http.ResponseWriter, rule MockRule) {
 	w.Header().Set("Content-Type", "application/json")
@@ -360,16 +347,17 @@ func writeTmfError(w http.ResponseWriter, rule MockRule) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="dbaas-aggregator"`)
 	}
 	w.WriteHeader(rule.HTTPCode)
-	tmf := TmfErrorResponse{
-		ID:      uuid.NewString(),
+	status := strconv.Itoa(rule.HTTPCode)
+	resp := tmf.Response{
+		Id:      uuid.NewString(),
 		Code:    rule.TmfCode,
 		Reason:  rule.Reason,
 		Message: rule.Message,
-		Status:  strconv.Itoa(rule.HTTPCode),
-		Type:    tmfType,
+		Status:  &status,
+		Type:    tmf.TypeV1_0,
 	}
-	log.Printf("  → %d  TMF code=%q reason=%q message=%q", rule.HTTPCode, tmf.Code, tmf.Reason, tmf.Message)
-	writeJSON(w, tmf)
+	log.Printf("  → %d  TMF code=%q reason=%q message=%q", rule.HTTPCode, resp.Code, resp.Reason, resp.Message)
+	writeJSON(w, resp)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
