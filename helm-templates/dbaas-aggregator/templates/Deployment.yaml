@@ -40,9 +40,6 @@ spec:
               -   name: dbaas-global-permissions-configuration-volume
                 secret:
                     secretName: 'dbaas-global-permissions-configuration-secret'
-            -   name: dbaas-security-service-account-roles-volume
-                secret:
-                    secretName: 'dbaas-security-service-account-roles-secret'
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
