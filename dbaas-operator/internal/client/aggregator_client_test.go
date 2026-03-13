@@ -116,10 +116,8 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 
 	var body []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var err error
 		body = make([]byte, r.ContentLength)
-		_, err = r.Body.Read(body)
-		_ = err
+		_, _ = r.Body.Read(body)
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer srv.Close()
@@ -183,7 +181,6 @@ func TestRegisterExternalDatabase_NonSuccessReturnsAggregatorError(t *testing.T)
 	}
 
 	for _, code := range cases {
-		code := code
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			t.Parallel()
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +313,6 @@ func TestApplyConfig_NonSuccessReturnsAggregatorError(t *testing.T) {
 	}
 
 	for _, code := range cases {
-		code := code
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			t.Parallel()
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -445,7 +441,6 @@ func TestGetOperationStatus_AllTerminalStates(t *testing.T) {
 	}
 
 	for _, state := range cases {
-		state := state
 		t.Run(string(state), func(t *testing.T) {
 			t.Parallel()
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -475,7 +470,6 @@ func TestGetOperationStatus_NonSuccessReturnsAggregatorError(t *testing.T) {
 	}
 
 	for _, code := range cases {
-		code := code
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			t.Parallel()
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -516,7 +510,6 @@ func TestAggregatorError_IsAuthError(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(http.StatusText(tc.code), func(t *testing.T) {
 			t.Parallel()
 			e := &AggregatorError{StatusCode: tc.code}
@@ -543,7 +536,6 @@ func TestAggregatorError_IsClientError(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(http.StatusText(tc.code), func(t *testing.T) {
 			t.Parallel()
 			e := &AggregatorError{StatusCode: tc.code}
