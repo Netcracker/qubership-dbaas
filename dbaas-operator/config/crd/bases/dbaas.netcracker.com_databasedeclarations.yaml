@@ -203,6 +203,9 @@ spec:
                   observedGeneration reflects the .metadata.generation that was last processed
                   by the controller. When the current generation differs from this value, the
                   controller clears all conditions and starts a fresh reconciliation cycle.
+                  Zero (or less than metadata.generation) means the current generation has not
+                  yet been fully reconciled — for example, the controller is in BackingOff
+                  waiting for a transient error to clear.
                 format: int64
                 type: integer
               phase:
