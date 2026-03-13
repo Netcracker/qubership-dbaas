@@ -232,15 +232,8 @@ public class BlueGreenService {
 
         bgDomainRepository.findByControllerNamespace(controllerNamespace)
                 .ifPresent(bgDomain -> {
-                            boolean matchesOriginPeer  =
-                                    bgNamespace1.getName().equals(bgDomain.getOriginNamespace()) &&
-                                            bgNamespace2.getName().equals(bgDomain.getPeerNamespace());
-
-                            boolean matchesPeerOrigin  =
-                                    bgNamespace1.getName().equals(bgDomain.getPeerNamespace()) &&
-                                            bgNamespace2.getName().equals(bgDomain.getOriginNamespace());
-
-                            if (!(matchesOriginPeer || matchesPeerOrigin)) {
+                            if (!((Objects.equals(bgNamespace1.getName(), bgDomain.getOriginNamespace()) && Objects.equals(bgNamespace2.getName(), bgDomain.getPeerNamespace())) ||
+                                    (Objects.equals(bgNamespace1.getName(), bgDomain.getPeerNamespace()) && Objects.equals(bgNamespace2.getName(), bgDomain.getOriginNamespace())))) {
                                 throw new BgRequestValidationException(
                                         "Controller namespace already used in another bgDomain"
                                 );
