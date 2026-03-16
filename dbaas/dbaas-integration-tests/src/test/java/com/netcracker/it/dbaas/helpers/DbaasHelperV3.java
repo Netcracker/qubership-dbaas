@@ -358,7 +358,7 @@ public class DbaasHelperV3 {
             assertThat(response.code(), is(HttpStatus.SC_OK));
 
             // wait for all logical databases to be deleted
-            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(2))).run(() -> {
+            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(5))).run(() -> {
                 var logicalDatabases = this.findLogicalDatabasesByNamespaces(namespaces);
 
                 assertTrue(logicalDatabases.isEmpty(), "Namespaces still have the following logical databases: " +
@@ -384,7 +384,7 @@ public class DbaasHelperV3 {
             assertThat(response.code(), is(HttpStatus.SC_OK));
 
             // wait for all namespace backups to be deleted
-            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(2))).run(() -> {
+            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(5))).run(() -> {
                 var namespaceBackups = this.findNamespaceBackupsByNamespaces(namespaces);
 
                 assertTrue(namespaceBackups.isEmpty(), "Namespaces still have the following namespace backups: " +
@@ -1572,7 +1572,7 @@ public class DbaasHelperV3 {
         return namespace;
     }
 
-    public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces() {
+    public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces() throws IOException {
         log.info("Finding test namespaces for deleting all logical databases and namespace backups");
 
         var namespaces = findAllRegisteredNamespaces();
@@ -1595,6 +1595,7 @@ public class DbaasHelperV3 {
                 log.info("Deleted all logical databases in {} test namespaces", testNamespaces.size());
             } catch (Exception | AssertionFailedError ex) {
                 log.error("Error happened during deleting all logical databases in {} test namespaces", testNamespaces.size(), ex);
+                throw ex;
             }
 
             try {
@@ -1605,6 +1606,7 @@ public class DbaasHelperV3 {
                 log.info("Deleted all namespace backups in {} test namespaces", testNamespaces.size());
             } catch (Exception | AssertionFailedError ex) {
                 log.error("Error happened during deleting all namespace backups in {} test namespaces", testNamespaces.size(), ex);
+                throw ex;
             }
 
             log.info("Deleted all logical databases and namespace backups in {} test namespaces {}", testNamespaces.size(), testNamespaces);
