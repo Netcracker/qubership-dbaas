@@ -19,10 +19,13 @@ import java.time.Duration;
 import java.util.List;
 
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_NAMESPACE_PATTERN;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @Slf4j
 public class BGHelper {
+    public static final String TEST_NAMESPACE_ACTIVE = "active-test-namespace";
+    public static final String TEST_NAMESPACE_CANDIDATE = "candidate-test-namespace";
     public static final String TEST_NAMESPACE_CONTROLLER = "controller-test-namespace";
     public static final String DBAAS_BLUE_GREEN_PATH_V1 = "/api/bluegreen/v1/operation";
 
@@ -40,9 +43,9 @@ public class BGHelper {
         this.dhv3 = dhv3;
     }
 
-    public String doWarmup(String activeNamespace, String candidateNamespace) throws IOException {
+    public String doWarmup(String activeNamespace, String candidateNamespace, String controllerNamespace) throws IOException {
         String trackingId;
-        try (Response warmupResponse = warmupDomain(activeNamespace, candidateNamespace)) {
+        try (Response warmupResponse = warmupDomain(activeNamespace, candidateNamespace, controllerNamespace)) {
             Assertions.assertEquals(202, warmupResponse.code());
             JsonNode node = objectMapper.readTree(warmupResponse.body().string());
             trackingId = node.get("trackingId").asText();
@@ -56,7 +59,7 @@ public class BGHelper {
         return trackingId;
     }
 
-    public void destroyDomains() throws IOException {
+    public void destroyAllDomains() throws IOException {
         try (Response response = listDomains()) {
             Assertions.assertEquals(200, response.code());
             String responseBody = response.body().string();
@@ -68,43 +71,48 @@ public class BGHelper {
             ).toList();
 
             for (BgDomainForList bgDomainForList : domains) {
-                destroyDomain(new BgNamespaceRequest(bgDomainForList.getOriginNamespace(), bgDomainForList.getPeerNamespace())).close();
+                try (Response destroyResponse = destroyDomain(new BgNamespaceRequest(bgDomainForList.getOriginNamespace(), bgDomainForList.getPeerNamespace())) ) {
+                    assertEquals(200, destroyResponse.code(),
+                            String.format("Couldn't destroy domain: originNamespace=%s,  peerNamespace=%s", bgDomainForList.getOriginNamespace(), bgDomainForList.getPeerNamespace()));
+                }
             }
         }
     }
 
-    public Response initDomain(String activeNamespace, String idleNamespace) throws IOException {
-        BgStateRequest bgStateRequest = createActiveAndIdleBgStateRequestBody(activeNamespace, idleNamespace);
+
+
+    public Response initDomain(String activeNamespace, String idleNamespace, String controllerNamespace) throws IOException {
+        BgStateRequest bgStateRequest = createActiveAndIdleBgStateRequestBody(activeNamespace, idleNamespace, controllerNamespace);
 
         return initDomain(bgStateRequest);
     }
 
-    public Response warmupDomain(String activeNamespace, String candidateNamespace) throws IOException {
-        BgStateRequest bgStateRequest = createWarmupBgStateRequestBody(activeNamespace, candidateNamespace);
+    public Response warmupDomain(String activeNamespace, String candidateNamespace, String controllerNamespace) throws IOException {
+        BgStateRequest bgStateRequest = createWarmupBgStateRequestBody(activeNamespace, candidateNamespace, controllerNamespace);
         return warmupDomain(bgStateRequest);
     }
 
-    public Response promoteDomain(String legacyNamespace, String activeNamespace) throws IOException {
-        BgStateRequest bgStateRequest = createPromoteBgStateRequestBody(legacyNamespace, activeNamespace);
+    public Response promoteDomain(String legacyNamespace, String activeNamespace, String controllerNamespace) throws IOException {
+        BgStateRequest bgStateRequest = createPromoteBgStateRequestBody(legacyNamespace, activeNamespace, controllerNamespace);
         return promoteDomain(bgStateRequest);
     }
 
-    public Response rollbackDomain(String activeNamespace, String candidateNamespace) throws IOException {
-        BgStateRequest bgStateRequest = createRollbackBgStateRequestBody(activeNamespace, candidateNamespace);
+    public Response rollbackDomain(String activeNamespace, String candidateNamespace, String controllerNamespace) throws IOException {
+        BgStateRequest bgStateRequest = createRollbackBgStateRequestBody(activeNamespace, candidateNamespace, controllerNamespace);
         return rollbackDomain(bgStateRequest);
     }
 
-    public Response commitDomain(String activeNamespace, String idleNamespace) throws IOException {
-        BgStateRequest bgStateRequest = createActiveAndIdleBgStateRequestBody(activeNamespace, idleNamespace);
+    public Response commitDomain(String activeNamespace, String idleNamespace, String controllerNamespace) throws IOException {
+        BgStateRequest bgStateRequest = createActiveAndIdleBgStateRequestBody(activeNamespace, idleNamespace, controllerNamespace);
 
         return commitDomain(bgStateRequest);
     }
 
-    public BgStateRequest createActiveAndIdleBgStateRequestBody(String activeNamespace, String idleNamespace) {
+    public BgStateRequest createActiveAndIdleBgStateRequestBody(String activeNamespace, String idleNamespace, String controllerNamespace) {
         BgStateRequest.BGStateNamespace bgNamespaceActive = createBgStateNamespace(ACTIVE_STATE, activeNamespace, "v1");
         BgStateRequest.BGStateNamespace bgNamespaceIdle = createBgStateNamespace(IDLE_STATE, idleNamespace, null);
 
-        return getBgStateRequest(bgNamespaceActive, bgNamespaceIdle);
+        return getBgStateRequest(bgNamespaceActive, bgNamespaceIdle, controllerNamespace);
     }
 
     public Response cleanupOrphans(List<String> namespaces, boolean delete) throws IOException {
@@ -113,25 +121,25 @@ public class BGHelper {
         return cleanupOrphans(deleteOrphansRequest);
     }
 
-    private BgStateRequest createWarmupBgStateRequestBody(String activeNamespace, String candidateNamespace) {
+    private BgStateRequest createWarmupBgStateRequestBody(String activeNamespace, String candidateNamespace, String controllerNamespace) {
         BgStateRequest.BGStateNamespace bgNamespaceActive = createBgStateNamespace(ACTIVE_STATE, activeNamespace, "v1");
         BgStateRequest.BGStateNamespace bgNamespaceCandidate = createBgStateNamespace(CANDIDATE_STATE, candidateNamespace, "v2");
 
-        return getBgStateRequest(bgNamespaceActive, bgNamespaceCandidate);
+        return getBgStateRequest(bgNamespaceActive, bgNamespaceCandidate, controllerNamespace);
     }
 
-    private BgStateRequest createPromoteBgStateRequestBody(String legacyNamespace, String activeNamespace) {
+    private BgStateRequest createPromoteBgStateRequestBody(String legacyNamespace, String activeNamespace, String controllerNamespace) {
         BgStateRequest.BGStateNamespace bgNamespaceActive = createBgStateNamespace(LEGACY_STATE, legacyNamespace, "v1");
         BgStateRequest.BGStateNamespace bgNamespaceCandidate = createBgStateNamespace(ACTIVE_STATE, activeNamespace, "v2");
 
-        return getBgStateRequest(bgNamespaceActive, bgNamespaceCandidate);
+        return getBgStateRequest(bgNamespaceActive, bgNamespaceCandidate, controllerNamespace);
     }
 
-    private BgStateRequest createRollbackBgStateRequestBody(String activeNamespace, String candidateNamespace) {
+    private BgStateRequest createRollbackBgStateRequestBody(String activeNamespace, String candidateNamespace, String controllerNamespace) {
         BgStateRequest.BGStateNamespace bgNamespaceActive = createBgStateNamespace(ACTIVE_STATE, activeNamespace, "v1");
         BgStateRequest.BGStateNamespace bgNamespaceCandidate = createBgStateNamespace(CANDIDATE_STATE, candidateNamespace, "v2");
 
-        return getBgStateRequest(bgNamespaceActive, bgNamespaceCandidate);
+        return getBgStateRequest(bgNamespaceActive, bgNamespaceCandidate, controllerNamespace);
     }
 
     private DeleteOrphansRequest createCleanupOrphansRequestBody(List<String> namespaces, boolean delete) {
@@ -142,12 +150,12 @@ public class BGHelper {
     }
 
     @NotNull
-    private BgStateRequest getBgStateRequest(BgStateRequest.BGStateNamespace bgNamespaceActive, BgStateRequest.BGStateNamespace bgNamespaceIdle) {
+    private BgStateRequest getBgStateRequest(BgStateRequest.BGStateNamespace bgNamespaceActive, BgStateRequest.BGStateNamespace bgNamespaceIdle, String controllerNamespace) {
         BgStateRequest bgStateRequest = new BgStateRequest();
         BgStateRequest.BGState bgState = new BgStateRequest.BGState();
         bgState.setOriginNamespace(bgNamespaceActive);
         bgState.setPeerNamespace(bgNamespaceIdle);
-        bgState.setControllerNamespace(TEST_NAMESPACE_CONTROLLER);
+        bgState.setControllerNamespace(controllerNamespace);
 
         bgStateRequest.setBGState(bgState);
         return bgStateRequest;
