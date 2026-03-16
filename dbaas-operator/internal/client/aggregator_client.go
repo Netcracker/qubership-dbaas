@@ -26,6 +26,8 @@ import (
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 )
 
 const defaultTimeout = 30 * time.Second
@@ -169,9 +171,9 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		aggErr := &AggregatorError{StatusCode: resp.StatusCode, Body: string(rawBody)}
-		var tmf TmfErrorResponse
-		if json.Unmarshal(rawBody, &tmf) == nil && tmf.Message != "" {
-			aggErr.TmfMessage = tmf.Message
+		var tmfResp tmf.Response
+		if json.Unmarshal(rawBody, &tmfResp) == nil && tmfResp.Message != "" {
+			aggErr.TmfMessage = tmfResp.Message
 		}
 		return aggErr
 	}

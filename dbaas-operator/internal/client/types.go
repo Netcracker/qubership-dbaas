@@ -90,20 +90,6 @@ type ExternalDatabaseRequest struct {
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
-// TmfErrorResponse is the error response format used by dbaas-aggregator.
-// It follows the TM Forum standard error format (NC.TMFErrorResponse.v1.0).
-//
-// The Java field "detail" is serialised as "message" via @JsonProperty("message").
-// Field "@type" carries the constant "NC.TMFErrorResponse.v1.0".
-type TmfErrorResponse struct {
-	ID      string `json:"id,omitempty"`
-	Code    string `json:"code,omitempty"`
-	Reason  string `json:"reason,omitempty"`
-	Message string `json:"message,omitempty"`
-	Status  string `json:"status,omitempty"`
-	Type    string `json:"@type,omitempty"`
-}
-
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.
 type AggregatorError struct {
 	StatusCode int
