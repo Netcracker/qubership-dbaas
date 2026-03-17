@@ -124,5 +124,9 @@ func (e *AggregatorError) IsAuthError() bool {
 // (phase → InvalidConfiguration) from a transient server error (phase → BackingOff).
 // Note: 401 is handled separately by IsAuthError and maps to BackingOff.
 func (e *AggregatorError) IsClientError() bool {
+	if e.StatusCode == 401 {
+		return false
+	}
+
 	return e.StatusCode >= 400 && e.StatusCode < 500
 }
