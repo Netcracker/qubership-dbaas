@@ -1,0 +1,17 @@
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: ExternalDatabaseDeclaration
+metadata:
+  name: externaldatabasedeclaration-sample
+spec:
+  classifier:
+    namespace: dbaas-system
+    microserviceName: sample-service
+    scope: service
+  type: postgresql
+  dbName: sample-db
+  connectionProperties:
+    - role: admin
+      host: postgres-host
+      port: "5432"
+      url: "jdbc:postgresql://postgres-host:5432/sample-db"
+  updateConnectionProperties: false
