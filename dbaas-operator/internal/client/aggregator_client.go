@@ -18,15 +18,14 @@ limitations under the License.
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sync/atomic"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 )
 
@@ -41,9 +40,8 @@ type credentials struct {
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
 // It is safe for concurrent use, including concurrent credential updates.
 type AggregatorClient struct {
-	baseURL    string
-	httpClient *http.Client
-	creds      atomic.Pointer[credentials]
+	rc    *resty.Client
+	creds atomic.Pointer[credentials]
 }
 
 // NewAggregatorClient creates a new AggregatorClient.
@@ -53,13 +51,19 @@ type AggregatorClient struct {
 //   - username / password — credentials for HTTP Basic authentication.
 //     The account must have the DB_CLIENT role in dbaas-aggregator.
 func NewAggregatorClient(baseURL, username, password string) *AggregatorClient {
-	c := &AggregatorClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: defaultTimeout,
-		},
-	}
+	c := &AggregatorClient{}
 	c.creds.Store(&credentials{username: username, password: password})
+
+	c.rc = resty.New().
+		SetBaseURL(baseURL).
+		SetTimeout(defaultTimeout).
+		SetHeader("Accept", "application/json").
+		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
+			cr := c.creds.Load()
+			r.SetBasicAuth(cr.username, cr.password)
+			return nil
+		})
+
 	return c
 }
 
@@ -82,31 +86,21 @@ func (c *AggregatorClient) SetCredentials(username, password string) {
 //   - error (*AggregatorError) → non-2xx response; IsClientError() distinguishes
 //     a permanent config error from a transient failure.
 func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *DeclarativePayload) (*DeclarativeResponse, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal DeclarativePayload: %w", err)
-	}
+	var result DeclarativeResponse
 
-	url := c.baseURL + "/api/declarations/v1/apply"
-	resp, err := c.do(ctx, http.MethodPost, url, body)
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetBody(payload).
+		SetResult(&result).
+		Post("/api/declarations/v1/apply")
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	rawBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read ApplyConfig response body: %w", err)
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusAccepted {
+		return nil, &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
 	}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return nil, &AggregatorError{StatusCode: resp.StatusCode, Body: string(rawBody)}
-	}
-
-	var result DeclarativeResponse
-	if err := json.Unmarshal(rawBody, &result); err != nil {
-		return nil, fmt.Errorf("decode ApplyConfig response: %w", err)
-	}
 	return &result, nil
 }
 
@@ -117,26 +111,20 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 //
 // Returns *AggregatorError on non-2xx.
 func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID string) (*DeclarativeResponse, error) {
-	url := fmt.Sprintf("%s/api/declarations/v1/operation/%s/status", c.baseURL, trackingID)
-	resp, err := c.do(ctx, http.MethodGet, url, nil)
+	var result DeclarativeResponse
+
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetResult(&result).
+		Get(fmt.Sprintf("/api/declarations/v1/operation/%s/status", trackingID))
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	rawBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read GetOperationStatus response body: %w", err)
+	if resp.StatusCode() != http.StatusOK {
+		return nil, &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, &AggregatorError{StatusCode: resp.StatusCode, Body: string(rawBody)}
-	}
-
-	var result DeclarativeResponse
-	if err := json.Unmarshal(rawBody, &result); err != nil {
-		return nil, fmt.Errorf("decode GetOperationStatus response: %w", err)
-	}
 	return &result, nil
 }
 
@@ -149,59 +137,22 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 // The call is synchronous; no polling is needed.
 // Returns *AggregatorError on non-2xx.
 func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespace string, req *ExternalDatabaseRequest) error {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("marshal ExternalDatabaseRequest: %w", err)
-	}
-
-	url := fmt.Sprintf(
-		"%s/api/v3/dbaas/%s/databases/registration/externally_manageable",
-		c.baseURL, namespace,
-	)
-	resp, err := c.do(ctx, http.MethodPut, url, body)
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetBody(req).
+		Put(fmt.Sprintf("/api/v3/dbaas/%s/databases/registration/externally_manageable", namespace))
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
-	rawBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read RegisterExternalDatabase response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		aggErr := &AggregatorError{StatusCode: resp.StatusCode, Body: string(rawBody)}
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated {
+		aggErr := &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
 		var tmfResp tmf.Response
-		if json.Unmarshal(rawBody, &tmfResp) == nil && tmfResp.Message != "" {
+		if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
 			aggErr.TmfMessage = tmfResp.Message
 		}
 		return aggErr
 	}
+
 	return nil
-}
-
-// do executes an HTTP request with Basic auth and JSON content/accept headers.
-func (c *AggregatorClient) do(ctx context.Context, method, url string, body []byte) (*http.Response, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		bodyReader = bytes.NewReader(body)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("create HTTP request %s %s: %w", method, url, err)
-	}
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("Accept", "application/json")
-	cr := c.creds.Load()
-	req.SetBasicAuth(cr.username, cr.password)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("execute %s %s: %w", method, url, err)
-	}
-	return resp, nil
 }
