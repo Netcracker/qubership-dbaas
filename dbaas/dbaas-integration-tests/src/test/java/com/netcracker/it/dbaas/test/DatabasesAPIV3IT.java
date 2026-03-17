@@ -8,6 +8,10 @@ import com.netcracker.it.dbaas.entity.response.SuccessfulRestoreUsersResponse;
 import com.netcracker.it.dbaas.exceptions.CannotConnect;
 import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
+import io.fabric8.kubernetes.api.model.ServiceAccount;
+import io.fabric8.kubernetes.api.model.ServiceAccountBuilder;
+import io.fabric8.kubernetes.api.model.authentication.TokenRequest;
+import io.fabric8.kubernetes.api.model.authentication.TokenRequestBuilder;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import okhttp3.Request;
@@ -32,6 +36,19 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
 public class DatabasesAPIV3IT extends AbstractIT {
+    private String kubernetesServiceAccountToken;
+
+    @BeforeAll
+    public void setupAll() {
+        kubernetesServiceAccountToken = getKubernetesServiceAccountToken();
+    }
+
+    @AfterAll
+    public void tearDownAll() {
+        kubernetesClient.serviceAccounts()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .delete();
+    }
 
     @BeforeEach
     public void initAndCleanDbs() throws IOException {
@@ -72,6 +89,21 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertFalse(created_1.isExternallyManageable());
         log.info("Check connection to created database");
         helperV3.checkConnectionMongo(created_1);
+    }
+
+    @Test
+    public void mongoTestDatabaseCreatedAndConnectingWithK8sToken() throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
+        log.info("Create database with k8s token");
+        var req = getSimpleMongoCreateRequest("dbaas_auto_test_1");
+        DatabaseResponse created_1 = helperV3.createDatabaseWithK8sToken(kubernetesServiceAccountToken, String.format(DATABASES_V3, kubernetesClient.getNamespace()), req, 201);
+
+        assertThat(created_1, inNamespace(kubernetesClient.getNamespace()));
+        assertFalse(created_1.isExternallyManageable());
+        log.info("Check connection to created with k8s token database");
+        helperV3.checkConnectionMongo(created_1);
+
+        helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), MONGODB_TYPE, req.getClassifier(), 200);
     }
 
     @Test
@@ -130,6 +162,19 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertThat(created_1, inNamespace(TEST_NAMESPACE));
         log.info("Check connection to created database");
         helperV3.checkConnectionPostgres(created_1);
+    }
+
+    @Test
+    public void postgresTestDatabaseCreatedAndConnectingWithK8sToken() throws IOException, SQLException {
+        log.info("Create database with k8s token");
+        var req = getSimplePostgresCreateRequest("dbaas_auto_test_1");
+        DatabaseResponse created_1 = helperV3.createDatabaseWithK8sToken(kubernetesServiceAccountToken, String.format(DATABASES_V3, kubernetesClient.getNamespace()), req, 201);
+
+        assertThat(created_1, inNamespace(kubernetesClient.getNamespace()));
+        log.info("Check connection to created with k8s token database");
+        helperV3.checkConnectionPostgres(created_1);
+
+        helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), POSTGRES_TYPE, req.getClassifier(), 200);
     }
 
     @Test
@@ -679,4 +724,26 @@ public class DatabasesAPIV3IT extends AbstractIT {
         return helperV3.executeRequest(restoreUsers, SuccessfulRestoreUsersResponse.class, expected);
     }
 
+    private String getKubernetesServiceAccountToken() {
+        ServiceAccount sa = new ServiceAccountBuilder()
+                .withNewMetadata()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .endMetadata()
+                .build();
+        kubernetesClient.serviceAccounts().resource(sa).serverSideApply();
+        kubernetesClient.serviceAccounts()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .waitUntilCondition(Objects::nonNull, 30, TimeUnit.SECONDS);
+
+        TokenRequest tokenRequest = new TokenRequestBuilder()
+                .withNewSpec()
+                .withAudiences("dbaas")
+                .withExpirationSeconds(3600L)
+                .endSpec()
+                .build();
+        TokenRequest result = kubernetesClient.serviceAccounts()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .tokenRequest(tokenRequest);
+        return result.getStatus().getToken();
+    }
 }
