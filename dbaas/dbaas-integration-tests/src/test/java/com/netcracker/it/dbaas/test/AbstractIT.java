@@ -182,12 +182,7 @@ public abstract class AbstractIT {
     }
 
     protected static DbaasUsersData readDbaasUsersFromSecret() {
-        Optional<Volume> optional = pod.getSpec().getVolumes().stream()
-                .filter(volume -> volume.getName().equals("dbaas-security-configuration-volume"))
-                .findAny();
-        assertTrue(optional.isPresent());
-        String secretName = optional.get().getSecret().getSecretName();
-        Secret secret = kubernetesClient.secrets().withName(secretName).get();
+        Secret secret = kubernetesClient.secrets().withName("dbaas-security-configuration-secret").get();
 
 
         String usersJson;
