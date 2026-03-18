@@ -11,7 +11,8 @@ spec:
   dbName: sample-db
   connectionProperties:
     - role: admin
-      host: postgres-host
-      port: "5432"
-      url: "jdbc:postgresql://postgres-host:5432/sample-db"
+      extraProperties:
+        host: postgres-host
+        port: "5432"
+        url: "jdbc:postgresql://postgres-host:5432/sample-db"
   updateConnectionProperties: false
