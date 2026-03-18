@@ -85,8 +85,6 @@ spec:
             - --watch-namespaces=test-ns
             - --leader-elect
           env:
-            - name: DBAAS_AGGREGATOR_URL
-              value: http://aggregator-mock.dbaas-system:8080
             # Directory containing users.json — mirrors DBAAS_SECURITY_CONFIGURATION_LOCATION
             # used by the real dbaas-aggregator. The pod will not start until the Secret exists.
             - name: DBAAS_SECURITY_CONFIGURATION_LOCATION

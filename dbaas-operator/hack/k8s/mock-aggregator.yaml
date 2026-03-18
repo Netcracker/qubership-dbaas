@@ -78,22 +78,22 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: aggregator-mock
+  name: dbaas-aggregator
   namespace: dbaas-system
   labels:
-    app: aggregator-mock
+    app: dbaas-aggregator
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: aggregator-mock
+      app: dbaas-aggregator
   template:
     metadata:
       labels:
-        app: aggregator-mock
+        app: dbaas-aggregator
     spec:
       containers:
-        - name: aggregator-mock
+        - name: dbaas-aggregator
           image: aggregator-mock:dev
           imagePullPolicy: Never   # image is loaded into kind locally
           ports:
@@ -135,11 +135,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: aggregator-mock
+  name: dbaas-aggregator
   namespace: dbaas-system
 spec:
   selector:
-    app: aggregator-mock
+    app: dbaas-aggregator
   ports:
     - port: 8080
       targetPort: 8080
