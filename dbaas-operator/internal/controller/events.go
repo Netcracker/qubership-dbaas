@@ -53,4 +53,9 @@ const (
 	// dbaas-aggregator. Indicates a transient failure; the controller will
 	// retry with exponential backoff. Type: Warning.
 	EventReasonAggregatorError = "AggregatorError"
+
+	// ReasonSucceeded is used as the Stalled condition reason on successful
+	// reconcile. It signals that the controller is not stalled because the
+	// last operation completed successfully.
+	ReasonSucceeded = "Succeeded"
 )

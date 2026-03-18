@@ -37,7 +37,24 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-const conditionTypeRegistered = "Registered"
+const (
+	// conditionTypeReady is the canonical condition describing whether the
+	// database is successfully registered with dbaas-aggregator.
+	// Ready=True means the current generation is registered and healthy.
+	// Ready=False means registration failed; see Reason for details.
+	conditionTypeReady = "Ready"
+
+	// conditionTypeStalled is set to True when the error is permanent and
+	// retrying will not help until the spec is changed.
+	// Stalled=False means the error is transient and the controller is retrying.
+	conditionTypeStalled = "Stalled"
+)
+
+// stalledMsg* are fixed human-readable messages for the Stalled condition.
+const (
+	stalledMsgPermanent  = "Permanent error — spec must be corrected before the controller will retry."
+	stalledMsgTransient  = "Transient error — the controller will retry automatically."
+)
 
 // ExternalDatabaseDeclarationReconciler reconciles ExternalDatabaseDeclaration objects.
 //
@@ -85,9 +102,11 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		}
 	}()
 
-	// Mark as Updating while we work; clear stale conditions.
+	// Mark as Updating while we work.
+	// Conditions are NOT cleared here — setCondition upserts each type in place,
+	// preserving LastTransitionTime when Status and Reason have not changed.
+	// This makes conditions durable API state across reconcile cycles.
 	edb.Status.Phase = dbaasv1alpha1.PhaseUpdating
-	edb.Status.Conditions = nil
 
 	// Pre-flight validation: every connectionProperty must have a non-empty role.
 	// The CRD already enforces this via MinLength=1, but we check defensively so
@@ -98,7 +117,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 			log.Info("invalid spec", "reason", msg)
 			edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
 			setCondition(&edb.Status.Conditions, edb.Generation,
-				conditionTypeRegistered, metav1.ConditionFalse, EventReasonInvalidSpec, msg)
+				conditionTypeReady, metav1.ConditionFalse, EventReasonInvalidSpec, msg)
+			setCondition(&edb.Status.Conditions, edb.Generation,
+				conditionTypeStalled, metav1.ConditionTrue, EventReasonInvalidSpec, stalledMsgPermanent)
 			r.Recorder.Event(edb, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
 			return ctrl.Result{}, nil
 		}
@@ -110,7 +131,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		log.Error(err, "failed to build registration request")
 		edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
 		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeRegistered, metav1.ConditionFalse, EventReasonSecretError, err.Error())
+			conditionTypeReady, metav1.ConditionFalse, EventReasonSecretError, err.Error())
+		setCondition(&edb.Status.Conditions, edb.Generation,
+			conditionTypeStalled, metav1.ConditionFalse, EventReasonSecretError, stalledMsgTransient)
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonSecretError,
 			"failed to read credentials Secret: %s", err)
 		return ctrl.Result{}, err // requeue with backoff
@@ -136,7 +159,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 				// Retry so the operator recovers once the admin fixes the credentials.
 				edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
 				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeRegistered, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.UserMessage())
+					conditionTypeReady, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.UserMessage())
+				setCondition(&edb.Status.Conditions, edb.Generation,
+					conditionTypeStalled, metav1.ConditionFalse, EventReasonUnauthorized, stalledMsgTransient)
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonUnauthorized,
 					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
 				return ctrl.Result{}, err // requeue with backoff
@@ -144,7 +169,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 				// 400, 403, 409 — spec error; retrying won't help until the spec changes.
 				edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
 				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeRegistered, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())
+					conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())
+				setCondition(&edb.Status.Conditions, edb.Generation,
+					conditionTypeStalled, metav1.ConditionTrue, EventReasonAggregatorRejected, stalledMsgPermanent)
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
 				return ctrl.Result{}, nil // do not requeue
@@ -159,7 +186,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		}
 		edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
 		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeRegistered, metav1.ConditionFalse, EventReasonAggregatorError, errMsg)
+			conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorError, errMsg)
+		setCondition(&edb.Status.Conditions, edb.Generation,
+			conditionTypeStalled, metav1.ConditionFalse, EventReasonAggregatorError, stalledMsgTransient)
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorError,
 			"dbaas-aggregator error: %s", errMsg)
 		return ctrl.Result{}, err
@@ -169,7 +198,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		"type", edb.Spec.Type, "dbName", edb.Spec.DbName)
 	edb.Status.Phase = dbaasv1alpha1.PhaseUpdated
 	setCondition(&edb.Status.Conditions, edb.Generation,
-		conditionTypeRegistered, metav1.ConditionTrue, EventReasonRegistered, "")
+		conditionTypeReady, metav1.ConditionTrue, EventReasonRegistered, "")
+	setCondition(&edb.Status.Conditions, edb.Generation,
+		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
 	return ctrl.Result{}, nil

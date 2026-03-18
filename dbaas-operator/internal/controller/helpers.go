@@ -21,8 +21,10 @@ import (
 )
 
 // setCondition upserts a metav1.Condition in the given slice.
-// If a condition with the same Type already exists and its Status has not
-// changed, LastTransitionTime is preserved. Otherwise it is set to now.
+// LastTransitionTime is preserved only when both Status and Reason are
+// unchanged. A change in either field is considered a transition so that
+// diagnostics tools can tell exactly when the error category shifted
+// (e.g. SecretError → Unauthorized at the same Status=False).
 func setCondition(
 	conditions *[]metav1.Condition,
 	generation int64,
@@ -42,8 +44,8 @@ func setCondition(
 
 	for i, existing := range *conditions {
 		if existing.Type == condType {
-			if existing.Status == status {
-				// Status unchanged: keep the original transition time.
+			if existing.Status == status && existing.Reason == reason {
+				// Neither Status nor Reason changed: preserve the transition time.
 				cond.LastTransitionTime = existing.LastTransitionTime
 			}
 			(*conditions)[i] = cond

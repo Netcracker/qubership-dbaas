@@ -219,7 +219,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// ── Success cases ─────────────────────────────────────────────────────────
 
 	Context("HTTP 200 — database already registered (no update)", func() {
-		It("sets Phase=Updated and Registered=True, emits Normal/Registered event, does not requeue", func() {
+		It("sets Phase=Updated, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
 			mockStatusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -233,18 +233,25 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseUpdated))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal("Registered"))
-			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			Expect(ready.Reason).To(Equal(EventReasonRegistered))
+			Expect(ready.ObservedGeneration).To(Equal(edb.Generation))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
+
 			expectEvent(corev1.EventTypeNormal, EventReasonRegistered)
 			expectNoEvent()
 		})
 	})
 
 	Context("HTTP 201 — database successfully created or updated", func() {
-		It("sets Phase=Updated and Registered=True, emits Normal/Registered event, does not requeue", func() {
+		It("sets Phase=Updated, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
 			mockStatusCode = http.StatusCreated
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -258,11 +265,18 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseUpdated))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal("Registered"))
-			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			Expect(ready.Reason).To(Equal(EventReasonRegistered))
+			Expect(ready.ObservedGeneration).To(Equal(edb.Generation))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
+
 			expectEvent(corev1.EventTypeNormal, EventReasonRegistered)
 			expectNoEvent()
 		})
@@ -271,7 +285,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// ── Secret resolution error ───────────────────────────────────────────────
 
 	Context("Secret referenced in credentialsSecretRef does not exist", func() {
-		It("sets Phase=BackingOff and SecretError condition, emits Warning/SecretError event, requeues", func() {
+		It("sets Phase=BackingOff, Ready=False/SecretError, Stalled=False, emits Warning/SecretError event, requeues", func() {
 			spec := baseSpec()
 			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
 				Name: "non-existent-secret",
@@ -288,17 +302,23 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			// Transient error: observedGeneration must NOT be stamped so that
 			// consumers can tell the controller has not finished this generation.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("SecretError"))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
 			expectEvent(corev1.EventTypeWarning, EventReasonSecretError)
 			expectNoEvent()
 		})
 	})
 
 	Context("Secret exists but is missing the required key", func() {
-		It("sets Phase=BackingOff and SecretError condition, emits Warning/SecretError event, requeues", func() {
+		It("sets Phase=BackingOff, Ready=False/SecretError, Stalled=False, emits Warning/SecretError event, requeues", func() {
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
 				Data: map[string][]byte{
@@ -321,11 +341,17 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).To(HaveOccurred()) // requeue with backoff
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("SecretError"))
-			Expect(cond.Message).To(ContainSubstring(`missing key "username"`))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+			Expect(ready.Message).To(ContainSubstring(`missing key "username"`))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
 			expectEvent(corev1.EventTypeWarning, EventReasonSecretError)
 			expectNoEvent()
 		})
@@ -334,7 +360,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// ── Aggregator 4xx errors ─────────────────────────────────────────────────
 
 	Context("HTTP 400 — invalid request (e.g. invalid classifier)", func() {
-		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event with TMF message, does not requeue", func() {
+		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
 			mockStatusCode = http.StatusBadRequest
 			mockBody = `{"code":"CORE-DBAAS-4010","reason":"Invalid classifier","message":"Invalid classifier. Classifier does not meet required conditions.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
@@ -349,12 +375,18 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("AggregatorRejected"))
-			Expect(cond.Message).To(ContainSubstring("Invalid classifier. Classifier does not meet required conditions."))
-			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorRejected))
+			Expect(ready.Message).To(ContainSubstring("Invalid classifier. Classifier does not meet required conditions."))
+			Expect(ready.ObservedGeneration).To(Equal(edb.Generation))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+
 			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Invalid classifier. Classifier does not meet required conditions.")
 			expectNoEvent()
@@ -362,7 +394,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	})
 
 	Context("HTTP 401 — operator credentials or role binding misconfigured", func() {
-		It("sets Phase=BackingOff and Unauthorized condition, emits Warning/Unauthorized event with TMF message, requeues", func() {
+		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, emits Warning/Unauthorized, requeues", func() {
 			mockStatusCode = http.StatusUnauthorized
 			mockBody = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
@@ -376,11 +408,17 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
 			// Transient error: observedGeneration must NOT be stamped.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("Unauthorized"))
-			Expect(cond.Message).To(ContainSubstring("Requested role is not allowed"))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonUnauthorized))
+			Expect(ready.Message).To(ContainSubstring("Requested role is not allowed"))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
 			expectEventContaining(corev1.EventTypeWarning, EventReasonUnauthorized,
 				"Requested role is not allowed")
 			expectNoEvent()
@@ -388,7 +426,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	})
 
 	Context("HTTP 403 — namespace mismatch between path and classifier", func() {
-		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event with TMF message, does not requeue", func() {
+		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
 			mockStatusCode = http.StatusForbidden
 			mockBody = `{"code":"CORE-DBAAS-4004","reason":"Namespace from request is not equal to one from database classifier","message":"Namespace from request is not equal to one from database classifier.","status":"403","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
@@ -403,12 +441,18 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("AggregatorRejected"))
-			Expect(cond.Message).To(ContainSubstring("Namespace from request is not equal to one from database classifier."))
-			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorRejected))
+			Expect(ready.Message).To(ContainSubstring("Namespace from request is not equal to one from database classifier."))
+			Expect(ready.ObservedGeneration).To(Equal(edb.Generation))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+
 			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Namespace from request is not equal to one from database classifier.")
 			expectNoEvent()
@@ -416,7 +460,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	})
 
 	Context("HTTP 409 — database exists as internal (not externally manageable)", func() {
-		It("sets Phase=InvalidConfiguration, emits Warning/AggregatorRejected event with TMF message, does not requeue", func() {
+		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
 			mockStatusCode = http.StatusConflict
 			mockBody = `{"code":"CORE-DBAAS-4002","reason":"Conflict database request","message":"Conflict database request. Logical database already exists and is not externally manageable.","status":"409","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
@@ -431,12 +475,18 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("AggregatorRejected"))
-			Expect(cond.Message).To(ContainSubstring("Conflict database request. Logical database already exists and is not externally manageable."))
-			Expect(cond.ObservedGeneration).To(Equal(edb.Generation))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorRejected))
+			Expect(ready.Message).To(ContainSubstring("Conflict database request. Logical database already exists and is not externally manageable."))
+			Expect(ready.ObservedGeneration).To(Equal(edb.Generation))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+
 			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Conflict database request. Logical database already exists and is not externally manageable.")
 			expectNoEvent()
@@ -446,7 +496,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// ── Aggregator 5xx / network errors ──────────────────────────────────────
 
 	Context("HTTP 500 — unexpected aggregator server error", func() {
-		It("sets Phase=BackingOff and AggregatorError condition, emits Warning/AggregatorError event with TMF message, requeues", func() {
+		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, emits Warning/AggregatorError, requeues", func() {
 			mockStatusCode = http.StatusInternalServerError
 			mockBody = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
@@ -460,18 +510,24 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
 			// Transient error: observedGeneration must NOT be stamped.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("AggregatorError"))
-			Expect(cond.Message).To(ContainSubstring("Unexpected exception"))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorError))
+			Expect(ready.Message).To(ContainSubstring("Unexpected exception"))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
 			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
 			expectNoEvent()
 		})
 	})
 
 	Context("Network error — aggregator is unreachable", func() {
-		It("sets Phase=BackingOff and AggregatorError condition, emits Warning/AggregatorError event, requeues", func() {
+		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, emits Warning/AggregatorError, requeues", func() {
 			// Close the server before reconcile so the HTTP call fails with a
 			// connection-refused / EOF error (no AggregatorError wrapping).
 			mockServer.Close()
@@ -487,10 +543,16 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
 			// Transient error: observedGeneration must NOT be stamped.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
-			cond := findCondition(edb.Status.Conditions, conditionTypeRegistered)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("AggregatorError"))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorError))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
 			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
 			expectNoEvent()
 		})

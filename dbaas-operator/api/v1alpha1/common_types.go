@@ -78,11 +78,15 @@ type OperatorStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// conditions represent the current state of the resource, translated from the
-	// dbaas-aggregator response. Standard condition types used by this operator:
-	//   - "Validated"  — the payload passed aggregator-side validation
-	//   - "DBCreated"  — the database provisioning operation result (DatabaseDeclaration only)
-	//   - "RolesCreated" — the role registration result (DbPolicy only)
+	// conditions represent the current state of the resource.
+	// Condition types used by ExternalDatabaseDeclaration:
+	//   - "Ready"   — True when the database is successfully registered with
+	//                 dbaas-aggregator for the current generation.
+	//                 False on any error; see Reason for the category.
+	//   - "Stalled" — True when the error is permanent and the controller will
+	//                 not retry until the spec is changed (e.g. InvalidSpec,
+	//                 AggregatorRejected). False for transient errors that are
+	//                 retried automatically (e.g. SecretError, AggregatorError).
 	// +optional
 	// +listType=map
 	// +listMapKey=type

@@ -73,17 +73,17 @@ secret-missing-key-test  BackingOff             postgresql   mydb
 
 ### CR reference table
 
-| CR file | dbName | Mock response | Expected Phase | Condition reason |
-|---|---|---|---|---|
-| `edb-with-secret.yaml` | `mydb` | 200 (default) | `Updated` | `Registered` |
-| `edb-201-created.yaml` | `db-201` | 201 | `Updated` | `Registered` |
-| `edb-400-bad-request.yaml` | `db-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` |
-| `edb-401-unauthorized.yaml` | `db-401` | 401 | `BackingOff` | `Unauthorized` |
-| `edb-403-forbidden.yaml` | `db-403` | 403 | `InvalidConfiguration` | `AggregatorRejected` |
-| `edb-409-conflict.yaml` | `db-409` | 409 | `InvalidConfiguration` | `AggregatorRejected` |
-| `edb-500-server-error.yaml` | `db-500` | 500 | `BackingOff` | `AggregatorError` |
-| `edb-missing-secret.yaml` | `ghostdb` | — (no HTTP call) | `BackingOff` | `SecretError` |
-| `edb-secret-missing-key.yaml` | `mydb` | — (no HTTP call) | `BackingOff` | `SecretError` |
+| CR file | dbName | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
+|---|---|---|---|---|---|
+| `edb-with-secret.yaml` | `mydb` | 200 (default) | `Updated` | `Registered` | `False` |
+| `edb-201-created.yaml` | `db-201` | 201 | `Updated` | `Registered` | `False` |
+| `edb-400-bad-request.yaml` | `db-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `edb-401-unauthorized.yaml` | `db-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
+| `edb-403-forbidden.yaml` | `db-403` | 403 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `edb-409-conflict.yaml` | `db-409` | 409 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `edb-500-server-error.yaml` | `db-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
+| `edb-missing-secret.yaml` | `ghostdb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
+| `edb-secret-missing-key.yaml` | `mydb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 
 ### Changing rules without rebuilding
 
