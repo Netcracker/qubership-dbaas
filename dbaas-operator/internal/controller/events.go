@@ -59,3 +59,16 @@ const (
 	// last operation completed successfully.
 	ReasonSucceeded = "Succeeded"
 )
+
+// Event action constants describe what the controller was attempting when the
+// event occurred. Used as the 'action' field in the new events.EventRecorder API.
+const (
+	// ActionValidatingSpec is the action for pre-flight spec validation.
+	ActionValidatingSpec = "ValidatingSpec"
+
+	// ActionReadingCredentials is the action for reading Secret credentials.
+	ActionReadingCredentials = "ReadingCredentials"
+
+	// ActionRegisteringDatabase is the action for calling dbaas-aggregator.
+	ActionRegisteringDatabase = "RegisteringDatabase"
+)

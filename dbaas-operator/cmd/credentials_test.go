@@ -79,10 +79,10 @@ func TestParseUsersFile(t *testing.T) {
 			wantPass: "s3cr3t",
 		},
 		{
-			name:    "file_missing",
-			setup:   func(dir string) { /* no file */ },
+			name:     "file_missing",
+			setup:    func(dir string) { /* no file */ },
 			username: "cluster-dba",
-			wantErr: true,
+			wantErr:  true,
 		},
 		{
 			name: "invalid_json",
@@ -93,10 +93,10 @@ func TestParseUsersFile(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:    "user_not_found",
-			setup:   func(dir string) { writeUsersJSON(t, dir, map[string]string{"other": "pass"}) },
+			name:     "user_not_found",
+			setup:    func(dir string) { writeUsersJSON(t, dir, map[string]string{"other": "pass"}) },
 			username: "cluster-dba",
-			wantErr: true,
+			wantErr:  true,
 		},
 	}
 

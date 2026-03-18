@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,8 +52,8 @@ const (
 
 // stalledMsg* are fixed human-readable messages for the Stalled condition.
 const (
-	stalledMsgPermanent  = "Permanent error — spec must be corrected before the controller will retry."
-	stalledMsgTransient  = "Transient error — the controller will retry automatically."
+	stalledMsgPermanent = "Permanent error — spec must be corrected before the controller will retry."
+	stalledMsgTransient = "Transient error — the controller will retry automatically."
 )
 
 // ExternalDatabaseDeclarationReconciler reconciles ExternalDatabaseDeclaration objects.
@@ -66,7 +66,7 @@ type ExternalDatabaseDeclarationReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Aggregator *aggregatorclient.AggregatorClient
-	Recorder   record.EventRecorder
+	Recorder   events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabasedeclarations,verbs=get;list;watch;create;update;patch;delete
@@ -120,7 +120,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 				conditionTypeReady, metav1.ConditionFalse, EventReasonInvalidSpec, msg)
 			setCondition(&edb.Status.Conditions, edb.Generation,
 				conditionTypeStalled, metav1.ConditionTrue, EventReasonInvalidSpec, stalledMsgPermanent)
-			r.Recorder.Event(edb, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
+			r.Recorder.Eventf(edb, nil, corev1.EventTypeWarning, EventReasonInvalidSpec, ActionValidatingSpec, msg)
 			return ctrl.Result{}, nil
 		}
 	}
@@ -134,8 +134,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 			conditionTypeReady, metav1.ConditionFalse, EventReasonSecretError, err.Error())
 		setCondition(&edb.Status.Conditions, edb.Generation,
 			conditionTypeStalled, metav1.ConditionFalse, EventReasonSecretError, stalledMsgTransient)
-		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonSecretError,
-			"failed to read credentials Secret: %s", err)
+		r.Recorder.Eventf(edb, nil, corev1.EventTypeWarning, EventReasonSecretError,
+			ActionReadingCredentials, "failed to read credentials Secret: %s", err)
 		return ctrl.Result{}, err // requeue with backoff
 	}
 
@@ -162,8 +162,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 					conditionTypeReady, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.UserMessage())
 				setCondition(&edb.Status.Conditions, edb.Generation,
 					conditionTypeStalled, metav1.ConditionFalse, EventReasonUnauthorized, stalledMsgTransient)
-				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonUnauthorized,
-					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
+				r.Recorder.Eventf(edb, nil, corev1.EventTypeWarning, EventReasonUnauthorized,
+					ActionRegisteringDatabase, "dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
 				return ctrl.Result{}, err // requeue with backoff
 			case aggErr.IsClientError():
 				// 400, 403, 409 — spec error; retrying won't help until the spec changes.
@@ -172,8 +172,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 					conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())
 				setCondition(&edb.Status.Conditions, edb.Generation,
 					conditionTypeStalled, metav1.ConditionTrue, EventReasonAggregatorRejected, stalledMsgPermanent)
-				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
+				r.Recorder.Eventf(edb, nil, corev1.EventTypeWarning, EventReasonAggregatorRejected,
+					ActionRegisteringDatabase, "dbaas-aggregator rejected request: %s", aggErr.UserMessage())
 				return ctrl.Result{}, nil // do not requeue
 			}
 		}
@@ -189,8 +189,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 			conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorError, errMsg)
 		setCondition(&edb.Status.Conditions, edb.Generation,
 			conditionTypeStalled, metav1.ConditionFalse, EventReasonAggregatorError, stalledMsgTransient)
-		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorError,
-			"dbaas-aggregator error: %s", errMsg)
+		r.Recorder.Eventf(edb, nil, corev1.EventTypeWarning, EventReasonAggregatorError,
+			ActionRegisteringDatabase, "dbaas-aggregator error: %s", errMsg)
 		return ctrl.Result{}, err
 	}
 
@@ -201,8 +201,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		conditionTypeReady, metav1.ConditionTrue, EventReasonRegistered, "")
 	setCondition(&edb.Status.Conditions, edb.Generation,
 		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
-	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonRegistered,
-		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
+	r.Recorder.Eventf(edb, nil, corev1.EventTypeNormal, EventReasonRegistered,
+		ActionRegisteringDatabase, "registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
 	return ctrl.Result{}, nil
 }
 
