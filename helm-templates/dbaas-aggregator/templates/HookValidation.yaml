@@ -19,17 +19,25 @@ spec:
     spec:
       terminationGracePeriodSeconds: 10
       containers:
-      - name: validation-hook-{{ .Values.SERVICE_NAME }}
-        image: {{ .Values.DECLARATIVE_HOOK_IMAGE }}
-        imagePullPolicy: IfNotPresent
-        envFrom:
-        - secretRef:
-            name: {{ .Values.SERVICE_NAME }}-env-variables
-        resources:
-          requests:
-            cpu: '100m'
-            memory: '50Mi'
-          limits:
-            cpu: '100m'
-            memory: '50Mi'
+        - name: validation-hook-{{ .Values.SERVICE_NAME }}
+          image: {{ .Values.DECLARATIVE_HOOK_IMAGE }}
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: {{ .Values.SERVICE_NAME }}-env-variables
+          resources:
+            requests:
+              cpu: '100m'
+              memory: '50Mi'
+            limits:
+              cpu: '100m'
+              memory: '50Mi'
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       restartPolicy: Never
