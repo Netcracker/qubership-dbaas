@@ -57,9 +57,21 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+# TEST_PKGS lists only packages that contain test files.
+# Passing packages without test files to "go test -coverprofile" causes Go to
+# invoke "covdata" to merge empty coverage shards — a tool that cannot be
+# executed on NTFS/WSL2 paths, producing "go: no such tool covdata" errors.
+# Filtering here is safe: packages without tests contribute no coverage anyway.
+TEST_PKGS = $(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /e2e)
+
+.PHONY: test-unit
+test-unit: fmt vet ## Run unit tests only — no envtest, no internet access required. Safe on any OS.
+	go test $(filter-out %/internal/controller,$(TEST_PKGS)) -coverprofile cover-unit.out
+
 .PHONY: test
-test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+test: manifests generate fmt vet setup-envtest ## Run all tests (unit + controller integration tests). Requires internet on first run to download envtest binaries.
+	@echo "Running tests with KUBEBUILDER_ASSETS=$$(\"$(ENVTEST)\" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)"
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $(TEST_PKGS) -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
@@ -247,7 +259,7 @@ rm -f "$(1)" ;\
 GOBIN="$(LOCALBIN)" go install $${package} ;\
 mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
 } ;\
-ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
+ln -sf "$(1)-$(3)" "$(1)"
 endef
 
 define gomodver
