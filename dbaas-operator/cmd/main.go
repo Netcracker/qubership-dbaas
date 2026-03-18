@@ -176,8 +176,7 @@ func main() {
 	// ── dbaas-aggregator client ───────────────────────────────────────────────
 	aggregatorURL := os.Getenv("DBAAS_AGGREGATOR_URL")
 	if aggregatorURL == "" {
-		setupLog.Error(nil, "DBAAS_AGGREGATOR_URL env var is required")
-		os.Exit(1)
+		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
 	securityDir := os.Getenv("DBAAS_SECURITY_CONFIGURATION_LOCATION")
 	if securityDir == "" {
