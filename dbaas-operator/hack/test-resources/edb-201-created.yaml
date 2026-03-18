@@ -10,7 +10,7 @@ spec:
     scope: service
   type: postgresql
   # dbName "db-201" is mapped to HTTP 201 in aggregator-mock-rules ConfigMap.
-  # Expected phase: Updated (201 = successfully registered)
+  # Expected phase: Succeeded (201 = successfully registered)
   dbName: db-201
   connectionProperties:
     - role: admin

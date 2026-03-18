@@ -247,9 +247,9 @@ spec:
                   resource.
                 enum:
                 - Unknown
-                - Updating
+                - Processing
                 - WaitingForDependency
-                - Updated
+                - Succeeded
                 - BackingOff
                 - InvalidConfiguration
                 type: string

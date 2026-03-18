@@ -219,7 +219,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// ── Success cases ─────────────────────────────────────────────────────────
 
 	Context("HTTP 200 — database already registered (no update)", func() {
-		It("sets Phase=Updated, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
+		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
 			mockStatusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -231,7 +231,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseUpdated))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -251,7 +251,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	})
 
 	Context("HTTP 201 — database successfully created or updated", func() {
-		It("sets Phase=Updated, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
+		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
 			mockStatusCode = http.StatusCreated
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -263,7 +263,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseUpdated))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)

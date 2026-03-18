@@ -21,29 +21,29 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // Phase represents the processing phase of a dbaas operator resource.
 // The controller drives resources through a state machine:
 //
-//	Unknown → Updating → WaitingForDependency → Updated
-//	                   ↘ BackingOff (transient error, will retry)
-//	                   ↘ InvalidConfiguration (permanent error, no retry)
+//	Unknown → Processing → WaitingForDependency → Succeeded
+//	                     ↘ BackingOff (transient error, will retry)
+//	                     ↘ InvalidConfiguration (permanent error, no retry)
 //
-// +kubebuilder:validation:Enum=Unknown;Updating;WaitingForDependency;Updated;BackingOff;InvalidConfiguration
+// +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
 type Phase string
 
 const (
 	// PhaseUnknown is the initial phase assigned to a newly created resource.
-	// The controller will immediately transition to Updating.
+	// The controller will immediately transition to Processing.
 	PhaseUnknown Phase = "Unknown"
 
-	// PhaseUpdating indicates the controller is actively sending the resource
+	// PhaseProcessing indicates the controller is actively sending the resource
 	// to the dbaas-aggregator POST /api/declarations/v1/apply endpoint.
-	PhaseUpdating Phase = "Updating"
+	PhaseProcessing Phase = "Processing"
 
 	// PhaseWaitingForDependency indicates an asynchronous database provisioning
 	// operation has been started and the controller is polling its status via
 	// GET /api/declarations/v1/operation/{trackingId}/status.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
-	// PhaseUpdated indicates the resource was successfully processed by dbaas-aggregator.
-	PhaseUpdated Phase = "Updated"
+	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.
+	PhaseSucceeded Phase = "Succeeded"
 
 	// PhaseBackingOff indicates a transient error occurred. The controller will
 	// retry with exponential back-off.

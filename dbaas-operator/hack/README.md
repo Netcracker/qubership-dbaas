@@ -60,8 +60,8 @@ Expected output:
 
 ```
 NAME                  PHASE                  TYPE         DBNAME
-my-postgres           Updated                postgresql   mydb
-edb-201               Updated                postgresql   db-201
+my-postgres           Succeeded              postgresql   mydb
+edb-201               Succeeded              postgresql   db-201
 edb-400               InvalidConfiguration   postgresql   db-400
 edb-401               BackingOff             postgresql   db-401
 edb-403               InvalidConfiguration   postgresql   db-403
@@ -75,8 +75,8 @@ secret-missing-key-test  BackingOff             postgresql   mydb
 
 | CR file | dbName | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
 |---|---|---|---|---|---|
-| `edb-with-secret.yaml` | `mydb` | 200 (default) | `Updated` | `Registered` | `False` |
-| `edb-201-created.yaml` | `db-201` | 201 | `Updated` | `Registered` | `False` |
+| `edb-with-secret.yaml` | `mydb` | 200 (default) | `Succeeded` | `Registered` | `False` |
+| `edb-201-created.yaml` | `db-201` | 201 | `Succeeded` | `Registered` | `False` |
 | `edb-400-bad-request.yaml` | `db-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
 | `edb-401-unauthorized.yaml` | `db-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
 | `edb-403-forbidden.yaml` | `db-403` | 403 | `InvalidConfiguration` | `AggregatorRejected` | `True` |

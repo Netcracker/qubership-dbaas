@@ -102,11 +102,11 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		}
 	}()
 
-	// Mark as Updating while we work.
+	// Mark as Processing while we work.
 	// Conditions are NOT cleared here — setCondition upserts each type in place,
 	// preserving LastTransitionTime when Status and Reason have not changed.
 	// This makes conditions durable API state across reconcile cycles.
-	edb.Status.Phase = dbaasv1alpha1.PhaseUpdating
+	edb.Status.Phase = dbaasv1alpha1.PhaseProcessing
 
 	// Pre-flight validation: every connectionProperty must have a non-empty role.
 	// The CRD already enforces this via MinLength=1, but we check defensively so
@@ -196,7 +196,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	log.Info("external database registered successfully",
 		"type", edb.Spec.Type, "dbName", edb.Spec.DbName)
-	edb.Status.Phase = dbaasv1alpha1.PhaseUpdated
+	edb.Status.Phase = dbaasv1alpha1.PhaseSucceeded
 	setCondition(&edb.Status.Conditions, edb.Generation,
 		conditionTypeReady, metav1.ConditionTrue, EventReasonRegistered, "")
 	setCondition(&edb.Status.Conditions, edb.Generation,
