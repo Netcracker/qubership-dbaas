@@ -1202,7 +1202,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .body(objectMapper.writeValueAsString(externalDatabaseRequest))
                 .when().put("/registration/externally_manageable")
                 .then()
-                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
+                .statusCode(BAD_REQUEST.getStatusCode())
                 .body("code", is(ErrorCodes.CORE_DBAAS_4025.getCode()))
                 .body("reason", is(ErrorCodes.CORE_DBAAS_4025.getDetail()));
     }

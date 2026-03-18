@@ -1,10 +1,10 @@
 package com.netcracker.cloud.dbaas.exceptions;
 
-import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
+import com.netcracker.cloud.dbaas.dto.Source;
 
 
-public class EmptyConnectionPropertiesException extends ErrorCodeException {
+public class EmptyConnectionPropertiesException extends ValidationException {
     public EmptyConnectionPropertiesException() {
-        super(ErrorCodes.CORE_DBAAS_4025, ErrorCodes.CORE_DBAAS_4025.getDetail());
+        super(ErrorCodes.CORE_DBAAS_4025, ErrorCodes.CORE_DBAAS_4025.getDetail(), Source.builder().build());
     }
 }
