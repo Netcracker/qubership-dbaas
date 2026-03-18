@@ -14,4 +14,5 @@ spec:
   dbName: db-201
   connectionProperties:
     - role: admin
-      url: jdbc:postgresql://pg.example.com:5432/db-201
+      extraProperties:
+        url: jdbc:postgresql://pg.example.com:5432/db-201

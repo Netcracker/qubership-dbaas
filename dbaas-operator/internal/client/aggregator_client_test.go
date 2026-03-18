@@ -528,7 +528,7 @@ func TestAggregatorError_IsClientError(t *testing.T) {
 		want bool
 	}{
 		{http.StatusBadRequest, true},
-		{http.StatusUnauthorized, true},
+		{http.StatusUnauthorized, false}, // 401 is handled by IsAuthError; IsClientError explicitly excludes it
 		{http.StatusForbidden, true},
 		{http.StatusConflict, true},
 		{http.StatusInternalServerError, false},

@@ -74,25 +74,21 @@ spec:
                 items:
                   description: "ConnectionProperty describes how to connect to the
                     external database for a specific role.\nThe controller assembles
-                    a flat map from the typed fields, credentialsSecretRef, and\nextraProperties
-                    before sending the request to dbaas-aggregator. The \"role\" key
-                    is\nrequired by the aggregator and validated server-side.\n\nAssembled
-                    flat map sent to dbaas-aggregator per entry:\n\n\t{ \"role\":
-                    role, \"url\": url, \"host\": host, \"port\": port, \"authDbName\":
-                    authDbName,\n\t  \"username\": <from Secret>, \"password\": <from
-                    Secret>, <extraProperties...> }"
+                    a flat map from role, credentialsSecretRef, and extraProperties\nbefore
+                    sending the request to dbaas-aggregator.\n\nAssembled flat map
+                    sent to dbaas-aggregator per entry:\n\n\t{ \"role\": role, \"username\":
+                    <from Secret>, \"password\": <from Secret>, <extraProperties...>
+                    }\n\nThe \"role\" key always takes precedence over the same key
+                    in extraProperties.\n\"username\" and \"password\" resolved from
+                    the Secret always take precedence over\nthe same keys in extraProperties.\nAll
+                    other connection parameters (host, port, url, authDbName, etc.)
+                    must be supplied\nvia extraProperties."
                   properties:
-                    authDbName:
-                      description: |-
-                        authDbName is the name of the authentication database (relevant for MongoDB and
-                        similar engines that separate the auth database from the data database).
-                      type: string
                     credentialsSecretRef:
                       description: |-
                         credentialsSecretRef points to a Kubernetes Secret containing the username and
                         password for this connection. The Secret must exist in the same namespace as the CR.
-                        If the Secret is missing at reconcile time, the controller transitions to BackingOff
-                        and retries until the Secret becomes available.
+                        The resolved username and password take precedence over the same keys in extraProperties.
                       properties:
                         name:
                           description: name is the name of the Kubernetes Secret containing
@@ -116,31 +112,20 @@ spec:
                       additionalProperties:
                         type: string
                       description: |-
-                        extraProperties holds additional adapter-specific connection parameters that are
-                        not covered by the typed fields above. All values must be strings.
-                        These are merged into the flat map sent to dbaas-aggregator alongside the typed fields.
-                        Example: sslMode: "require", connectTimeout: "10".
+                        extraProperties holds all adapter-specific connection parameters as string key-value pairs.
+                        Use this to supply host, port, url, authDbName, sslMode, and any other parameters
+                        required by the dbaas-aggregator adapter.
+                        All keys are merged into the flat map sent to the aggregator.
+                        The "role" key and Secret credentials ("username", "password") always override
+                        any values set here for those keys.
                       type: object
-                    host:
-                      description: host is the hostname or IP address of the database
-                        server.
-                      type: string
-                    port:
-                      description: |-
-                        port is the TCP port of the database server. Stored as a string to keep the
-                        CRD schema simple; the aggregator accepts it as-is in the flat map.
-                      type: string
                     role:
                       description: |-
                         role identifies the access level for this connection entry.
                         The value is adapter-specific, e.g. "admin", "readonly", "readwrite".
                         Required by dbaas-aggregator: every connectionProperties entry must contain a "role" key.
+                        Takes precedence over the same key in extraProperties.
                       minLength: 1
-                      type: string
-                    url:
-                      description: |-
-                        url is the full connection URL for this role, e.g.
-                        "jdbc:postgresql://pg-host:5432/mydb" or "mongodb://mongo-host:27017/mydb".
                       type: string
                   required:
                   - role

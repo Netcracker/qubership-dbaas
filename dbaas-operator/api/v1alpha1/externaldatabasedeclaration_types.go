@@ -39,52 +39,39 @@ type CredentialsSecretRef struct {
 }
 
 // ConnectionProperty describes how to connect to the external database for a specific role.
-// The controller assembles a flat map from the typed fields, credentialsSecretRef, and
-// extraProperties before sending the request to dbaas-aggregator. The "role" key is
-// required by the aggregator and validated server-side.
+// The controller assembles a flat map from role, credentialsSecretRef, and extraProperties
+// before sending the request to dbaas-aggregator.
 //
 // Assembled flat map sent to dbaas-aggregator per entry:
 //
-//	{ "role": role, "url": url, "host": host, "port": port, "authDbName": authDbName,
-//	  "username": <from Secret>, "password": <from Secret>, <extraProperties...> }
+//	{ "role": role, "username": <from Secret>, "password": <from Secret>, <extraProperties...> }
+//
+// The "role" key always takes precedence over the same key in extraProperties.
+// "username" and "password" resolved from the Secret always take precedence over
+// the same keys in extraProperties.
+// All other connection parameters (host, port, url, authDbName, etc.) must be supplied
+// via extraProperties.
 type ConnectionProperty struct {
 	// role identifies the access level for this connection entry.
 	// The value is adapter-specific, e.g. "admin", "readonly", "readwrite".
 	// Required by dbaas-aggregator: every connectionProperties entry must contain a "role" key.
+	// Takes precedence over the same key in extraProperties.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Role string `json:"role"`
 
-	// url is the full connection URL for this role, e.g.
-	// "jdbc:postgresql://pg-host:5432/mydb" or "mongodb://mongo-host:27017/mydb".
-	// +optional
-	URL string `json:"url,omitempty"`
-
-	// host is the hostname or IP address of the database server.
-	// +optional
-	Host string `json:"host,omitempty"`
-
-	// port is the TCP port of the database server. Stored as a string to keep the
-	// CRD schema simple; the aggregator accepts it as-is in the flat map.
-	// +optional
-	Port string `json:"port,omitempty"`
-
-	// authDbName is the name of the authentication database (relevant for MongoDB and
-	// similar engines that separate the auth database from the data database).
-	// +optional
-	AuthDbName string `json:"authDbName,omitempty"`
-
 	// credentialsSecretRef points to a Kubernetes Secret containing the username and
 	// password for this connection. The Secret must exist in the same namespace as the CR.
-	// If the Secret is missing at reconcile time, the controller transitions to BackingOff
-	// and retries until the Secret becomes available.
+	// The resolved username and password take precedence over the same keys in extraProperties.
 	// +optional
 	CredentialsSecretRef *CredentialsSecretRef `json:"credentialsSecretRef,omitempty"`
 
-	// extraProperties holds additional adapter-specific connection parameters that are
-	// not covered by the typed fields above. All values must be strings.
-	// These are merged into the flat map sent to dbaas-aggregator alongside the typed fields.
-	// Example: sslMode: "require", connectTimeout: "10".
+	// extraProperties holds all adapter-specific connection parameters as string key-value pairs.
+	// Use this to supply host, port, url, authDbName, sslMode, and any other parameters
+	// required by the dbaas-aggregator adapter.
+	// All keys are merged into the flat map sent to the aggregator.
+	// The "role" key and Secret credentials ("username", "password") always override
+	// any values set here for those keys.
 	// +optional
 	ExtraProperties map[string]string `json:"extraProperties,omitempty"`
 }

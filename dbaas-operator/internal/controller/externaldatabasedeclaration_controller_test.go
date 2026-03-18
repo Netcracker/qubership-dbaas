@@ -58,13 +58,13 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	)
 
 	var (
-		mockServer           *httptest.Server
-		mockStatusCode       int
-		mockBody             string // optional TMF JSON body; written after the status code
-		capturedRequestBody  []byte // body of the last request received by the mock server
-		reconciler           *ExternalDatabaseDeclarationReconciler
-		fakeRecorder         *record.FakeRecorder
-		namespacedName       types.NamespacedName
+		mockServer          *httptest.Server
+		mockStatusCode      int
+		mockBody            string // optional TMF JSON body; written after the status code
+		capturedRequestBody []byte // body of the last request received by the mock server
+		reconciler          *ExternalDatabaseDeclarationReconciler
+		fakeRecorder        *record.FakeRecorder
+		namespacedName      types.NamespacedName
 	)
 
 	// baseSpec builds a minimal valid spec without any credentialsSecretRef.
@@ -79,7 +79,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Type:   "postgresql",
 			DbName: "testdb",
 			ConnectionProperties: []dbaasv1alpha1.ConnectionProperty{
-				{Role: "admin", URL: "jdbc:postgresql://pg:5432/testdb"},
+				{
+					Role: "admin",
+					ExtraProperties: map[string]string{
+						"url": "jdbc:postgresql://pg:5432/testdb",
+					},
+				},
 			},
 		}
 	}
@@ -183,11 +188,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			spec.ConnectionProperties = []dbaasv1alpha1.ConnectionProperty{
 				{
 					Role: "primary",
-					URL:  "jdbc:postgresql://pg:5432/testdb",
-					// "role" and "url" in ExtraProperties must NOT win over the typed fields.
+					// "role" in ExtraProperties must NOT win over the typed Role field.
 					ExtraProperties: map[string]string{
 						"role": "admin",
-						"url":  "jdbc:postgresql://attacker:5432/evil",
 					},
 				},
 			}
@@ -210,8 +213,6 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			props := sent.ConnectionProperties[0]
 			Expect(props["role"]).To(Equal("primary"),
 				"typed Role must override ExtraProperties role")
-			Expect(props["url"]).To(Equal("jdbc:postgresql://pg:5432/testdb"),
-				"typed URL must override ExtraProperties url")
 		})
 	})
 
