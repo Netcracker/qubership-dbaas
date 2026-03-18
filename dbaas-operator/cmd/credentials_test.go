@@ -60,9 +60,9 @@ func (m *mockSetter) SetCredentials(username, password string) {
 	m.ch <- credPair{username, password}
 }
 
-// ── readCredentialsFromFile ───────────────────────────────────────────────────
+// ── parseUsersFile ────────────────────────────────────────────────────────────
 
-func TestReadCredentialsFromFile(t *testing.T) {
+func TestParseUsersFile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -70,26 +70,19 @@ func TestReadCredentialsFromFile(t *testing.T) {
 		setup    func(dir string)
 		username string
 		wantPass string
-		wantOK   bool
+		wantErr  bool
 	}{
 		{
 			name:     "success",
 			setup:    func(dir string) { writeUsersJSON(t, dir, map[string]string{"cluster-dba": "s3cr3t"}) },
 			username: "cluster-dba",
 			wantPass: "s3cr3t",
-			wantOK:   true,
 		},
 		{
-			name:     "user_not_found",
-			setup:    func(dir string) { writeUsersJSON(t, dir, map[string]string{"other": "pass"}) },
+			name:    "file_missing",
+			setup:   func(dir string) { /* no file */ },
 			username: "cluster-dba",
-			wantOK:   false,
-		},
-		{
-			name:     "file_missing",
-			setup:    func(dir string) { /* no file */ },
-			username: "cluster-dba",
-			wantOK:   false,
+			wantErr: true,
 		},
 		{
 			name: "invalid_json",
@@ -97,7 +90,13 @@ func TestReadCredentialsFromFile(t *testing.T) {
 				_ = os.WriteFile(filepath.Join(dir, "users.json"), []byte("not-json"), 0o600)
 			},
 			username: "cluster-dba",
-			wantOK:   false,
+			wantErr:  true,
+		},
+		{
+			name:    "user_not_found",
+			setup:   func(dir string) { writeUsersJSON(t, dir, map[string]string{"other": "pass"}) },
+			username: "cluster-dba",
+			wantErr: true,
 		},
 	}
 
@@ -107,16 +106,96 @@ func TestReadCredentialsFromFile(t *testing.T) {
 			dir := t.TempDir()
 			tc.setup(dir)
 
-			pass, ok := readCredentialsFromFile(logr.Discard(), dir, tc.username)
+			pass, err := parseUsersFile(dir, tc.username)
 
-			if ok != tc.wantOK {
-				t.Errorf("ok = %v, want %v", ok, tc.wantOK)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("err = %v, wantErr = %v", err, tc.wantErr)
 			}
-			if ok && pass != tc.wantPass {
+			if err == nil && pass != tc.wantPass {
 				t.Errorf("password = %q, want %q", pass, tc.wantPass)
 			}
 		})
 	}
+}
+
+// ── loadAggregatorCredentials ─────────────────────────────────────────────────
+
+func TestLoadAggregatorCredentials(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(dir string)
+		username    string
+		envPassword string
+		wantPass    string
+	}{
+		{
+			name:     "loads_from_users_json",
+			setup:    func(dir string) { writeUsersJSON(t, dir, map[string]string{"cluster-dba": "secret"}) },
+			username: "cluster-dba",
+			wantPass: "secret",
+		},
+		{
+			name:     "loads_from_users_json_custom_username",
+			setup:    func(dir string) { writeUsersJSON(t, dir, map[string]string{"operator": "op-pass"}) },
+			username: "operator",
+			wantPass: "op-pass",
+		},
+		{
+			name:        "falls_back_to_env_var_when_no_users_json",
+			setup:       func(dir string) { /* no file */ },
+			username:    "cluster-dba",
+			envPassword: "env-pass",
+			wantPass:    "env-pass",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// env vars are process-global — do not parallelise.
+			dir := t.TempDir()
+			tc.setup(dir)
+			t.Setenv("DBAAS_AGGREGATOR_PASSWORD", tc.envPassword)
+
+			gotPass := loadAggregatorCredentials(logr.Discard(), dir, tc.username)
+
+			if gotPass != tc.wantPass {
+				t.Errorf("password = %q, want %q", gotPass, tc.wantPass)
+			}
+		})
+	}
+}
+
+// ── readCredentialsFromFile ───────────────────────────────────────────────────
+
+// readCredentialsFromFile wraps parseUsersFile — only its bool contract is tested here.
+func TestReadCredentialsFromFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns_true_on_success", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeUsersJSON(t, dir, map[string]string{"cluster-dba": "s3cr3t"})
+
+		pass, ok := readCredentialsFromFile(logr.Discard(), dir, "cluster-dba")
+
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if pass != "s3cr3t" {
+			t.Errorf("password = %q, want %q", pass, "s3cr3t")
+		}
+	})
+
+	t.Run("returns_false_on_error", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir() // no users.json
+
+		_, ok := readCredentialsFromFile(logr.Discard(), dir, "cluster-dba")
+
+		if ok {
+			t.Fatal("expected ok=false for missing file")
+		}
+	})
 }
 
 // ── watchCredentials ──────────────────────────────────────────────────────────
