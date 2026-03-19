@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: databasedeclarations.dbaas.netcracker.com
+  name: externaldatabasedeclarations.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: DatabaseDeclaration
-    listKind: DatabaseDeclarationList
-    plural: databasedeclarations
-    singular: databasedeclaration
+    kind: ExternalDatabaseDeclaration
+    listKind: ExternalDatabaseDeclarationList
+    plural: externaldatabasedeclarations
+    singular: externaldatabasedeclaration
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -21,6 +21,9 @@ spec:
     - jsonPath: .spec.type
       name: Type
       type: string
+    - jsonPath: .spec.dbName
+      name: DbName
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -28,9 +31,11 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          DatabaseDeclaration is the Schema for the databasedeclarations API.
-          It declares a logical database that dbaas should provision and manage on behalf
-          of the owning microservice.
+          ExternalDatabaseDeclaration is the Schema for the externaldatabasedeclarations API.
+          It registers a pre-existing (externally managed) database in dbaas so that
+          microservices can discover its connection details through the standard dbaas API.
+          Unlike DatabaseDeclaration, the physical database is not created or destroyed by dbaas;
+          dbaas only stores and serves its connection properties.
         properties:
           apiVersion:
             description: |-
@@ -50,88 +55,112 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DatabaseDeclaration.
+            description: spec defines the desired state of ExternalDatabaseDeclaration.
             properties:
-              classifierConfig:
-                description: |-
-                  classifierConfig contains the classifier that uniquely identifies this database
-                  in dbaas. The aggregator uses it to look up or create the physical database.
-                properties:
-                  classifier:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      classifier is a key-value map that uniquely identifies a database in dbaas.
-                      All values must be strings. Typical keys:
-                        - namespace       — Kubernetes namespace of the owning service (required)
-                        - microserviceName — name of the microservice that owns the database (required)
-                        - scope           — logical scope, e.g. "service" or "tenant" (optional)
-                        - tenantId        — tenant identifier for multi-tenant deployments (optional)
-                    type: object
-                required:
-                - classifier
-                type: object
-              initialInstantiation:
-                description: |-
-                  initialInstantiation defines how the database is created on the first deployment.
-                  Optional; the aggregator applies its own defaults if omitted.
-                properties:
-                  approach:
-                    description: |-
-                      approach defines the strategy for initial database creation.
-                      Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
-                    type: string
-                  sourceClassifier:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      sourceClassifier is the classifier of the database to clone from.
-                      Required when approach is "clone". Must reference an existing database in dbaas.
-                    type: object
-                type: object
-              lazy:
-                description: |-
-                  lazy indicates whether the database should be provisioned on first access rather
-                  than immediately during reconciliation. When true, the aggregator defers physical
-                  database creation until a service requests a connection. Defaults to false.
-                type: boolean
-              namePrefix:
-                description: |-
-                  namePrefix is a prefix applied to the physical database name created in the DBMS.
-                  Useful for disambiguation when multiple logical databases share the same DBMS instance.
-                type: string
-              settings:
+              classifier:
                 additionalProperties:
                   type: string
                 description: |-
-                  settings contains database-engine-specific configuration passed through to the
-                  dbaas adapter. The accepted keys and their semantics depend on the specific adapter.
-                  All values are strings; numeric and boolean settings should be passed as their
-                  string representation (e.g. maxConnections: "100", createOnly: "true").
+                  classifier is a key-value map that uniquely identifies the external database in dbaas.
+                  Typical keys: namespace, microserviceName, scope, tenantId.
+                  The aggregator requires at minimum: microserviceName, scope.
+                  If scope is "tenant", tenantId must also be present.
                 type: object
-              type:
+              connectionProperties:
                 description: |-
-                  type is the database engine type. Must match a type known to dbaas-aggregator,
-                  e.g. "postgresql", "mongodb", "opensearch".
+                  connectionProperties lists the connection details for each access role.
+                  At least one entry is required. Each entry must have a "role" field; the
+                  aggregator rejects requests where any entry is missing "role".
+                items:
+                  description: "ConnectionProperty describes how to connect to the
+                    external database for a specific role.\nThe controller assembles
+                    a flat map from role, credentialsSecretRef, and extraProperties\nbefore
+                    sending the request to dbaas-aggregator.\n\nAssembled flat map
+                    sent to dbaas-aggregator per entry:\n\n\t{ \"role\": role, \"username\":
+                    <from Secret>, \"password\": <from Secret>, <extraProperties...>
+                    }\n\nThe \"role\" key always takes precedence over the same key
+                    in extraProperties.\n\"username\" and \"password\" resolved from
+                    the Secret always take precedence over\nthe same keys in extraProperties.\nAll
+                    other connection parameters (host, port, url, authDbName, etc.)
+                    must be supplied\nvia extraProperties."
+                  properties:
+                    credentialsSecretRef:
+                      description: |-
+                        credentialsSecretRef points to a Kubernetes Secret containing the username and
+                        password for this connection. The Secret must exist in the same namespace as the CR.
+                        The resolved username and password take precedence over the same keys in extraProperties.
+                      properties:
+                        name:
+                          description: name is the name of the Kubernetes Secret containing
+                            the credentials.
+                          minLength: 1
+                          type: string
+                        passwordKey:
+                          description: |-
+                            passwordKey is the key inside the Secret whose value is the database password.
+                            Defaults to "password" if omitted.
+                          type: string
+                        usernameKey:
+                          description: |-
+                            usernameKey is the key inside the Secret whose value is the database username.
+                            Defaults to "username" if omitted.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    extraProperties:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        extraProperties holds all adapter-specific connection parameters as string key-value pairs.
+                        Use this to supply host, port, url, authDbName, sslMode, and any other parameters
+                        required by the dbaas-aggregator adapter.
+                        All keys are merged into the flat map sent to the aggregator.
+                        The "role" key and Secret credentials ("username", "password") always override
+                        any values set here for those keys.
+                      type: object
+                    role:
+                      description: |-
+                        role identifies the access level for this connection entry.
+                        The value is adapter-specific, e.g. "admin", "readonly", "readwrite".
+                        Required by dbaas-aggregator: every connectionProperties entry must contain a "role" key.
+                        Takes precedence over the same key in extraProperties.
+                      minLength: 1
+                      type: string
+                  required:
+                  - role
+                  type: object
+                minItems: 1
+                type: array
+              dbName:
+                description: |-
+                  dbName is the name of the logical database as it exists in the external DBMS.
+                  Unlike DatabaseDeclaration (where the name is auto-generated), this field is
+                  required because the external database already exists with a known name.
                 minLength: 1
                 type: string
-              versioningConfig:
+              type:
                 description: |-
-                  versioningConfig defines the strategy for handling database versions during
-                  blue-green deployments. Optional; the aggregator applies its own defaults if omitted.
-                properties:
-                  approach:
-                    description: |-
-                      approach defines how a new database version is created during a blue-green update.
-                      Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
-                    type: string
-                type: object
+                  type is the database engine type, e.g. "postgresql", "mongodb".
+                  Must match a type registered in dbaas-aggregator.
+                minLength: 1
+                type: string
+              updateConnectionProperties:
+                description: |-
+                  updateConnectionProperties controls what happens when dbaas-aggregator already
+                  has a record for this classifier+type combination:
+                    false (default) — return the existing record unchanged.
+                    true            — replace the stored connectionProperties with those in this spec.
+                  Has no effect when the external database is being registered for the first time.
+                type: boolean
             required:
-            - classifierConfig
+            - classifier
+            - connectionProperties
+            - dbName
             - type
             type: object
           status:
-            description: status defines the observed state of DatabaseDeclaration.
+            description: status defines the observed state of ExternalDatabaseDeclaration.
             properties:
               conditions:
                 description: |-

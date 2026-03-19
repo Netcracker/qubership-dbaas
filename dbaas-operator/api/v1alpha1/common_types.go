@@ -21,29 +21,29 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // Phase represents the processing phase of a dbaas operator resource.
 // The controller drives resources through a state machine:
 //
-//	Unknown → Updating → WaitingForDependency → Updated
-//	                   ↘ BackingOff (transient error, will retry)
-//	                   ↘ InvalidConfiguration (permanent error, no retry)
+//	Unknown → Processing → WaitingForDependency → Succeeded
+//	                     ↘ BackingOff (transient error, will retry)
+//	                     ↘ InvalidConfiguration (permanent error, no retry)
 //
-// +kubebuilder:validation:Enum=Unknown;Updating;WaitingForDependency;Updated;BackingOff;InvalidConfiguration
+// +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
 type Phase string
 
 const (
 	// PhaseUnknown is the initial phase assigned to a newly created resource.
-	// The controller will immediately transition to Updating.
+	// The controller will immediately transition to Processing.
 	PhaseUnknown Phase = "Unknown"
 
-	// PhaseUpdating indicates the controller is actively sending the resource
+	// PhaseProcessing indicates the controller is actively sending the resource
 	// to the dbaas-aggregator POST /api/declarations/v1/apply endpoint.
-	PhaseUpdating Phase = "Updating"
+	PhaseProcessing Phase = "Processing"
 
 	// PhaseWaitingForDependency indicates an asynchronous database provisioning
 	// operation has been started and the controller is polling its status via
 	// GET /api/declarations/v1/operation/{trackingId}/status.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
-	// PhaseUpdated indicates the resource was successfully processed by dbaas-aggregator.
-	PhaseUpdated Phase = "Updated"
+	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.
+	PhaseSucceeded Phase = "Succeeded"
 
 	// PhaseBackingOff indicates a transient error occurred. The controller will
 	// retry with exponential back-off.
@@ -72,14 +72,21 @@ type OperatorStatus struct {
 	// observedGeneration reflects the .metadata.generation that was last processed
 	// by the controller. When the current generation differs from this value, the
 	// controller clears all conditions and starts a fresh reconciliation cycle.
+	// Zero (or less than metadata.generation) means the current generation has not
+	// yet been fully reconciled — for example, the controller is in BackingOff
+	// waiting for a transient error to clear.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// conditions represent the current state of the resource, translated from the
-	// dbaas-aggregator response. Standard condition types used by this operator:
-	//   - "Validated"  — the payload passed aggregator-side validation
-	//   - "DBCreated"  — the database provisioning operation result (DatabaseDeclaration only)
-	//   - "RolesCreated" — the role registration result (DbPolicy only)
+	// conditions represent the current state of the resource.
+	// Condition types used by ExternalDatabaseDeclaration:
+	//   - "Ready"   — True when the database is successfully registered with
+	//                 dbaas-aggregator for the current generation.
+	//                 False on any error; see Reason for the category.
+	//   - "Stalled" — True when the error is permanent and the controller will
+	//                 not retry until the spec is changed (e.g. InvalidSpec,
+	//                 AggregatorRejected). False for transient errors that are
+	//                 retried automatically (e.g. SecretError, AggregatorError).
 	// +optional
 	// +listType=map
 	// +listMapKey=type
