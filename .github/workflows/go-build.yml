@@ -1,0 +1,40 @@
+# Go Build Workflow
+#
+# Builds, tests Go projects with SonarQube analysis and Docker image creation.
+# Uses generic-go-build.yaml for the actual build process.
+#
+# Triggers:
+#   - Push to main branch
+#   - Pull requests
+#
+# See generic-go-build.yaml for full documentation on build features and required secrets/vars.
+
+name: Go Build
+
+run-name: >
+  Build —
+  ${{ github.event_name == 'push' && format('push [{0}]', github.event.head_commit.message) || '' }}
+  ${{ github.event_name == 'pull_request' && format('PR ({0}) [{1}]', github.head_ref, github.event.pull_request.title) || '' }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dbaas-operator/**'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'dbaas-operator/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and test
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.2.0
+    with:
+      sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
+      install-envtest: true
+      envtest-version: latest
+      skip-docker: true
+    secrets: inherit
