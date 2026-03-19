@@ -38,6 +38,9 @@ limitations under the License.
 //	                                    when no per-dbName rule matches (default: 200).
 //	MOCK_RULES_FILE                   – path to a JSON file mapping dbName → MockRule
 //	                                    (default: /config/rules.json). Missing = not an error.
+//	MOCK_APPLY_RULES_FILE             – path to a JSON file mapping microserviceName → MockRule
+//	                                    for POST /api/declarations/v1/apply (default: /config/apply-rules.json).
+//	                                    Missing = not an error; falls back to HTTP 200 COMPLETED.
 package main
 
 import (
@@ -114,6 +117,8 @@ func main() {
 	defaultRule := MockRule{HTTPCode: defaultCode}
 	rulesFile := envOr("MOCK_RULES_FILE", "/config/rules.json")
 	rules := loadRules(rulesFile)
+	applyRulesFile := envOr("MOCK_APPLY_RULES_FILE", "/config/apply-rules.json")
+	applyRules := loadRules(applyRulesFile)
 
 	// Load users from users.json — same path as the real dbaas-aggregator.
 	securityDir := envOr("DBAAS_SECURITY_CONFIGURATION_LOCATION", "/etc/dbaas/security")
@@ -122,10 +127,10 @@ func main() {
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
 		defaultRule.HTTPCode, len(rules))
-	log.Printf("  POST .../apply                 → 200 (sync)")
+	log.Printf("  POST .../apply                 → 200 (sync, %d per-microserviceName rules loaded)", len(applyRules))
 	log.Printf("  GET  .../operation/.../status  → 200 COMPLETED")
 
-	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, users)); err != nil {
+	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, users)); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
@@ -180,7 +185,7 @@ func loadRules(path string) map[string]MockRule {
 	return rules
 }
 
-func handler(defaultRule MockRule, rules map[string]MockRule, users map[string]UserConfig) http.Handler {
+func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[string]MockRule, users map[string]UserConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		logRequest(r)
@@ -197,7 +202,7 @@ func handler(defaultRule MockRule, rules map[string]MockRule, users map[string]U
 			if !checkAuth(w, r, users, roleDBClient) {
 				return
 			}
-			handleApply(w, r)
+			handleApply(w, r, applyRules)
 
 		case reOpStatus.MatchString(r.URL.Path) && r.Method == http.MethodGet:
 			if !checkAuth(w, r, users, roleDBClient) {
@@ -288,16 +293,42 @@ func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultRule MockRu
 }
 
 // handleApply serves POST /api/declarations/v1/apply.
-// Returns a synchronous 200 with a COMPLETED status and a Validated condition.
-func handleApply(w http.ResponseWriter, r *http.Request) {
-	log.Printf("  → apply config (sync 200 COMPLETED)")
+// The response rule is resolved from applyRules keyed by metadata.microserviceName.
+// Falls back to 200 COMPLETED when no rule matches.
+func handleApply(w http.ResponseWriter, r *http.Request, applyRules map[string]MockRule) {
+	// Parse microserviceName from the request body.
+	var req struct {
+		Metadata struct {
+			MicroserviceName string `json:"microserviceName"`
+		} `json:"metadata"`
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(strings.NewReader(string(body)))
+	_ = json.Unmarshal(body, &req)
+
+	msName := req.Metadata.MicroserviceName
+	if rule, ok := applyRules[msName]; ok {
+		log.Printf("  → apply config  microserviceName=%q → httpCode=%d", msName, rule.HTTPCode)
+		if rule.HTTPCode >= 400 {
+			writeTmfError(w, rule)
+			return
+		}
+		// 2xx override (e.g. to force a specific success code in tests)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(rule.HTTPCode)
+		writeJSON(w, map[string]interface{}{
+			"status":     "COMPLETED",
+			"conditions": []map[string]string{{"type": "Validated", "state": "COMPLETED"}},
+		})
+		return
+	}
+
+	log.Printf("  → apply config  microserviceName=%q → 200 COMPLETED (no rule)", msName)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	writeJSON(w, map[string]interface{}{
-		"status": "COMPLETED",
-		"conditions": []map[string]string{
-			{"type": "Validated", "state": "True", "reason": "OK", "message": ""},
-		},
+		"status":     "COMPLETED",
+		"conditions": []map[string]string{{"type": "Validated", "state": "COMPLETED"}},
 	})
 }
 

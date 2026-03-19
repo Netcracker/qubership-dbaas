@@ -29,7 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -63,7 +63,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		mockBody            string // optional TMF JSON body; written after the status code
 		capturedRequestBody []byte // body of the last request received by the mock server
 		reconciler          *ExternalDatabaseDeclarationReconciler
-		fakeRecorder        *events.FakeRecorder
+		fakeRecorder        *record.FakeRecorder
 		namespacedName      types.NamespacedName
 	)
 
@@ -105,7 +105,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 
 		// Buffered channel — large enough that a single reconcile never blocks.
-		fakeRecorder = events.NewFakeRecorder(16)
+		fakeRecorder = record.NewFakeRecorder(16)
 
 		reconciler = &ExternalDatabaseDeclarationReconciler{
 			Client:     k8sClient,
@@ -152,8 +152,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	// "<eventtype> <reason>" — it does not check the trailing message text so that
 	// minor wording changes do not break the test.
 	//
-	// events.FakeRecorder writes events as: eventtype + " " + reason + " " + note
-	// (see k8s.io/client-go/tools/events.FakeRecorder.Eventf).
+	// record.FakeRecorder writes events as: eventtype + " " + reason + " " + note
+	// (see k8s.io/client-go/tools/record.FakeRecorder.Eventf).
 	//
 	// Events are sent synchronously inside r.Recorder.Event / r.Recorder.Eventf,
 	// so the event is already in the channel when Reconcile returns — no Eventually
@@ -592,7 +592,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller — rate limiter", func
 		err = (&ExternalDatabaseDeclarationReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorder("edb-rate-limiter-test"),
+			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"),
 			Aggregator: aggregatorclient.NewAggregatorClient("http://localhost:9999", "u", "p"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())

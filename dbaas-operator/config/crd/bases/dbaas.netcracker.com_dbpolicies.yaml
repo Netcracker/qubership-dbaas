@@ -55,6 +55,12 @@ spec:
                   dbaas-aggregator would otherwise apply to all databases of the service.
                   Set to true to opt out of global defaults and rely solely on explicit entries.
                 type: boolean
+              microserviceName:
+                description: |-
+                  microserviceName is the microservice that owns this policy.
+                  Mapped to metadata.microserviceName in the DBaaS declarative payload.
+                minLength: 1
+                type: string
               policy:
                 description: |-
                   policy defines default and additional role rules per database type. Entries here
@@ -76,6 +82,7 @@ spec:
                         defaultRole is the database role assigned to any microservice that is not
                         explicitly listed in the services section. Allows a baseline access level
                         for all services without individual entries.
+                      minLength: 1
                       type: string
                     type:
                       description: |-
@@ -84,6 +91,7 @@ spec:
                       minLength: 1
                       type: string
                   required:
+                  - defaultRole
                   - type
                   type: object
                 type: array
@@ -108,12 +116,15 @@ spec:
                         Role names are adapter-specific, e.g. "admin", "readonly", "readwrite".
                       items:
                         type: string
+                      minItems: 1
                       type: array
                   required:
                   - name
                   - roles
                   type: object
                 type: array
+            required:
+            - microserviceName
             type: object
           status:
             description: status defines the observed state of DbPolicy.
@@ -121,14 +132,17 @@ spec:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by ExternalDatabaseDeclaration:
-                    - "Ready"   — True when the database is successfully registered with
+                  Condition types used by all dbaas operator resources (ExternalDatabaseDeclaration, DbPolicy):
+                    - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   False on any error; see Reason for the category.
+                                  ExternalDatabaseDeclaration: reason "Registered" on success.
+                                  DbPolicy: reason "PolicyApplied" on success.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,
                                   AggregatorRejected). False for transient errors that are
-                                  retried automatically (e.g. SecretError, AggregatorError).
+                                  retried automatically (e.g. SecretError, AggregatorError,
+                                  Unauthorized).
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

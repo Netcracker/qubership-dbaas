@@ -24,12 +24,16 @@ package controller
 //
 // Naming conventions (https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#events):
 //   - CamelCase, no spaces
-//   - Tense: past for one-off successes ("Registered"), present participle for
-//     ongoing problems that repeat on each reconcile ("Unauthorized")
+//   - Tense: past for one-off successes ("Registered", "PolicyApplied"), present
+//     participle for ongoing problems that repeat on each reconcile ("Unauthorized")
 const (
-	// EventReasonRegistered is emitted when the database is successfully
-	// registered with dbaas-aggregator. Type: Normal.
+	// EventReasonRegistered is emitted when an ExternalDatabaseDeclaration is
+	// successfully registered with dbaas-aggregator. Type: Normal.
 	EventReasonRegistered = "Registered"
+
+	// EventReasonPolicyApplied is emitted when a DbPolicy is successfully
+	// applied via dbaas-aggregator POST /api/declarations/v1/apply. Type: Normal.
+	EventReasonPolicyApplied = "PolicyApplied"
 
 	// EventReasonInvalidSpec is emitted when the CR spec fails pre-flight
 	// validation before the aggregator is even contacted. Type: Warning.
@@ -58,17 +62,4 @@ const (
 	// reconcile. It signals that the controller is not stalled because the
 	// last operation completed successfully.
 	ReasonSucceeded = "Succeeded"
-)
-
-// Event action constants describe what the controller was attempting when the
-// event occurred. Used as the 'action' field in the new events.EventRecorder API.
-const (
-	// ActionValidatingSpec is the action for pre-flight spec validation.
-	ActionValidatingSpec = "ValidatingSpec"
-
-	// ActionReadingCredentials is the action for reading Secret credentials.
-	ActionReadingCredentials = "ReadingCredentials"
-
-	// ActionRegisteringDatabase is the action for calling dbaas-aggregator.
-	ActionRegisteringDatabase = "RegisteringDatabase"
 )

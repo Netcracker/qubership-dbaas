@@ -79,14 +79,17 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Condition types used by ExternalDatabaseDeclaration:
-	//   - "Ready"   — True when the database is successfully registered with
+	// Condition types used by all dbaas operator resources (ExternalDatabaseDeclaration, DbPolicy):
+	//   - "Ready"   — True when the resource was successfully processed by
 	//                 dbaas-aggregator for the current generation.
 	//                 False on any error; see Reason for the category.
+	//                 ExternalDatabaseDeclaration: reason "Registered" on success.
+	//                 DbPolicy: reason "PolicyApplied" on success.
 	//   - "Stalled" — True when the error is permanent and the controller will
 	//                 not retry until the spec is changed (e.g. InvalidSpec,
 	//                 AggregatorRejected). False for transient errors that are
-	//                 retried automatically (e.g. SecretError, AggregatorError).
+	//                 retried automatically (e.g. SecretError, AggregatorError,
+	//                 Unauthorized).
 	// +optional
 	// +listType=map
 	// +listMapKey=type

@@ -30,6 +30,7 @@ type ServiceRole struct {
 	// roles is the list of database roles granted to this microservice.
 	// Role names are adapter-specific, e.g. "admin", "readonly", "readwrite".
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
 	Roles []string `json:"roles"`
 }
 
@@ -45,8 +46,9 @@ type PolicyRole struct {
 	// defaultRole is the database role assigned to any microservice that is not
 	// explicitly listed in the services section. Allows a baseline access level
 	// for all services without individual entries.
-	// +optional
-	DefaultRole string `json:"defaultRole,omitempty"`
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	DefaultRole string `json:"defaultRole"`
 
 	// additionalRole lists extra roles that may be granted beyond the defaultRole.
 	// Interpretation is adapter-specific.
@@ -60,11 +62,17 @@ type PolicyRole struct {
 // DeclarativePayload body to dbaas-aggregator:
 //
 //	POST /api/declarations/v1/apply
-//	{ "subKind": "DbPolicy", "spec": <this struct>, ... }
+//	{ "subKind": "DbPolicy", "metadata": { "microserviceName": <microserviceName> }, "spec": <roles>, ... }
 //
 // Field names and semantics match the RolesRegistration Java class in the aggregator.
-// All top-level fields are optional; at least one of services or policy should be provided.
+// At least one of services or policy must be provided.
 type DbPolicySpec struct {
+	// microserviceName is the microservice that owns this policy.
+	// Mapped to metadata.microserviceName in the DBaaS declarative payload.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	MicroserviceName string `json:"microserviceName"`
+
 	// services defines per-microservice database role assignments. Each entry grants
 	// a named microservice a specific set of database roles in this namespace.
 	// +optional
