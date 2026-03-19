@@ -2,6 +2,7 @@ apiVersion: dbaas.netcracker.com/v1alpha1
 kind: DbPolicy
 metadata:
   name: dp-invalid-empty-spec
+  namespace: test-ns
 spec:
   # Neither services nor policy are set — CRD allows it (both fields are +optional),
   # but the controller requires at least one to be non-empty.

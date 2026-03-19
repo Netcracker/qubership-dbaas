@@ -2,6 +2,7 @@ apiVersion: dbaas.netcracker.com/v1alpha1
 kind: DbPolicy
 metadata:
   name: dp-success
+  namespace: test-ns
 spec:
   # microserviceName has no matching rule in apply-rules.json → mock returns 200 COMPLETED
   microserviceName: svc-ok
