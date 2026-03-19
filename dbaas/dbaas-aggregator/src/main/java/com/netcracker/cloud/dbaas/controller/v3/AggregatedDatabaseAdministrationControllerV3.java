@@ -322,7 +322,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                 return Response.ok(new ExternalDatabaseResponseV3(processedDb)).build();
             } else {
                 if (externalDatabaseRequest.getConnectionProperties().isEmpty()) {
-                    throw new EmptyConnectionPropertiesException();
+                    throw new ExternalDbEmptyConnectionPropertiesException();
                 }
                 existingDatabaseRegistry.setConnectionProperties(databaseRegistry.getConnectionProperties());
             }
