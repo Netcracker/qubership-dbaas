@@ -37,6 +37,10 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     Response handshake(@PathParam("type") String type);
 
     @GET
+    @Path("/api/v2/dbaas/adapter/physical_database/force_registration")    
+    Response forceRegistration();    
+
+    @GET
     @Path("/api/v2/dbaas/adapter/{type}/supports")
     @Produces(MediaType.APPLICATION_JSON)
     Map<String, Boolean> supports(@PathParam("type") String type);

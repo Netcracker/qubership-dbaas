@@ -1,16 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
 
-import jakarta.ws.rs.core.Response;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
 import com.netcracker.cloud.dbaas.dto.backup.Status;
 import com.netcracker.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import com.netcracker.cloud.dbaas.dto.role.Role;
@@ -30,12 +19,24 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
 import com.netcracker.core.scheduler.po.task.TaskState;
+import jakarta.ws.rs.core.Response;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.mockito.Mockito.*;
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class BlueGreenServiceTest {
@@ -1141,6 +1142,56 @@ class BlueGreenServiceTest {
         List<DatabaseRegistry> orphanDatabases = blueGreenService.dropOrphanDatabases(List.of(NAMESPACE), false);
         Assertions.assertEquals(2, orphanDatabases.size());
         Mockito.verifyNoInteractions(dBaaService);
+    }
+
+    @Test
+    void testRestrictCreationBgDomainWithNotUniqueControllerNamespace() {
+        String activeNamespace1 = "test-namespace-active-1";
+        String activeNamespace2 = "test-namespace-active-2";
+        String candidateNamespace1 = "test-namespace-candidate-1";
+        String candidateNamespace2 = "test-namespace-candidate-2";
+
+        BgStateRequest bgStateRequest1 = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, activeNamespace1), createBgStateNamespace(IDLE_STATE, candidateNamespace1));
+        BgStateRequest bgStateRequest2 = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, activeNamespace2), createBgStateNamespace(IDLE_STATE, candidateNamespace2));
+
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(activeNamespace1)).thenReturn(Optional.empty());
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(candidateNamespace1)).thenReturn(Optional.empty());
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+
+        when(bgDomainRepository.findByControllerNamespace(NS_C))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(new BgDomain()));
+
+        blueGreenService.initBgDomain(bgStateRequest1);
+
+        assertThrows(BgRequestValidationException.class,
+                () -> blueGreenService.initBgDomain(bgStateRequest2));
+
+    }
+
+    @Test
+    void testRestrictCreationBgDomainWithNotUniqueControllerNamespaceRegardlessOfOrder() {
+        String activeNamespace = "test-namespace-active";
+        String candidateNamespace = "test-namespace-candidate";
+
+        BgStateRequest bgStateRequest1 = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, activeNamespace), createBgStateNamespace(IDLE_STATE, candidateNamespace));
+        BgStateRequest bgStateRequest2 = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, candidateNamespace), createBgStateNamespace(IDLE_STATE, activeNamespace));
+
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(activeNamespace)).thenReturn(Optional.empty());
+        when(bgNamespaceRepository.findBgNamespaceByNamespace(candidateNamespace)).thenReturn(Optional.empty());
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+
+        BgDomain existingDomain = new BgDomain();
+        existingDomain.setOriginNamespace(activeNamespace);
+        existingDomain.setPeerNamespace(candidateNamespace);
+        existingDomain.setControllerNamespace(NS_C);
+
+        when(bgDomainRepository.findByControllerNamespace(NS_C))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(existingDomain));
+
+        blueGreenService.initBgDomain(bgStateRequest1);
+        Assertions.assertDoesNotThrow(() -> blueGreenService.initBgDomain(bgStateRequest2));
     }
 
     BgNamespace createBgNamespace(String namespace, String state) {

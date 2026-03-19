@@ -21,10 +21,10 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.Map;
 
-import static com.netcracker.it.dbaas.helpers.BackupHelperV1.*;
+import static com.netcracker.it.dbaas.helpers.BackupHelperV1.BACKUP_METADATA;
+import static com.netcracker.it.dbaas.helpers.BackupHelperV1.DIGEST;
 import static com.netcracker.it.dbaas.helpers.BackupHelperV3.*;
-import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.EXTERNALLY_MANAGEABLE_V3;
-import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.calculateDigest;
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.*;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -63,7 +63,7 @@ class BackupV3IT extends AbstractIT {
         log.info("Deleting test data");
 
         helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
-        bgHelper.destroyDomains();
+        bgHelper.destroyAllDomains();
         backupHelperV1.deleteBackupRestore();
 
         log.info("Deleted test data");
@@ -372,6 +372,26 @@ class BackupV3IT extends AbstractIT {
             void testDeleteDatabaseBackup() throws IOException, InterruptedException {
                 BackupV3IT.this.testDeleteDatabaseBackup(databaseType);
             }
+
+            @Test
+            void testBackupRestoreV1_importAndExportBackupMetadata() throws IOException {
+                BackupV3IT.this.testImportAndExportBackupMetadata(databaseType);
+            }
+
+            @Test
+            void testBackupRestoreV1_testEnrichingBackupRestore() throws IOException {
+                BackupV3IT.this.testEnrichingBackupRestore(databaseType);
+            }
+
+            @Test
+            void testBackupRestoreV1_backupRestore() throws IOException {
+                BackupV3IT.this.testBackupRestoreToSameNamespace(databaseType);
+            }
+
+            @Test
+            void testBackupRestoreV1_restoreDeletedBackup() throws IOException {
+                BackupV3IT.this.testRestoreDeletedBackup(databaseType);
+            }
         }
     }
 
@@ -419,14 +439,14 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testFailedBackup() throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(CLICKHOUSE_TYPE));
+        assumeTrue(helperV3.hasAdapterOfType(CLICKHOUSE_TYPE), MessageFormat.format("No {0} adapter. Skip test.", CLICKHOUSE_TYPE));
 
         String namespace = helperV3.generateTestNamespace();
         var sourceDbIncludedInBackup1 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(namespace).build(), CLICKHOUSE_TYPE, 201);
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc -> fc.include(
-                        f -> f.dbType(DatabaseType.CLICKHOUSE)
+                        f -> f.dbType("clickhouse")
                 ))
                 .build();
         var backupResponse = backupHelperV1.startBackup(backupRequest, false, 200);
@@ -434,6 +454,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testImportAndExportBackupMetadata(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(type), MessageFormat.format("No {0} adapter. Skip test.", type));
+
         String sourceNamespace = helperV3.generateTestNamespace();
         String targetNamespace = helperV3.generateTestNamespace();
 
@@ -477,7 +499,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testExternalDbBackupRestore(String type) throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE));
+        assumeTrue(helperV3.hasAdapterOfType(type), MessageFormat.format("No {0} adapter. Skip test.", type));
+        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE), MessageFormat.format("No {0} adapter. Skip test.", CASSANDRA_TYPE));
 
         String sourceNamespace1 = helperV3.generateTestNamespace();
         String sourceNamespace2 = helperV3.generateTestNamespace();
@@ -490,7 +513,7 @@ class BackupV3IT extends AbstractIT {
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc -> fc
-                        .include(f -> f.ns(sourceNamespace1).dbType(mapDbType(type)))
+                        .include(f -> f.ns(sourceNamespace1).dbType(type))
                         .include(f -> f.ns(sourceNamespace2).ms(DBAAS_AUTO_TEST_3))
                         .exclude(f -> f.ns(sourceNamespace1).ms(DBAAS_AUTO_TEST_1))
                 ).externalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE).build();
@@ -521,7 +544,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testExternalInternalDbBackupRestore(String type) throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE));
+        assumeTrue(helperV3.hasAdapterOfType(type), MessageFormat.format("No {0} adapter. Skip test.", type));
+        assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE), MessageFormat.format("No {0} adapter. Skip test.", type));
 
         String sourceNamespace1 = helperV3.generateTestNamespace();
         String sourceNamespace2 = helperV3.generateTestNamespace();
@@ -539,7 +563,7 @@ class BackupV3IT extends AbstractIT {
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc -> fc
-                        .include(f -> f.ns(sourceNamespace1).dbType(mapDbType(type)))
+                        .include(f -> f.ns(sourceNamespace1).dbType(type))
                         .include(f -> f.ns(sourceNamespace2).ms(DBAAS_AUTO_TEST_3))
                 ).externalDatabaseStrategy(ExternalDatabaseStrategy.INCLUDE).build();
         var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
@@ -583,6 +607,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testEnrichingBackupRestore(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(type), MessageFormat.format("No {0} adapter. Skip test.", type));
+
         String targetNamespace = helperV3.generateTestNamespace();
         String mappedNamespace1 = helperV3.generateTestNamespace();
         String mappedNamespace2 = helperV3.generateTestNamespace();
@@ -590,18 +616,20 @@ class BackupV3IT extends AbstractIT {
 
         String activeNamespace = helperV3.generateTestNamespace();
         String candidateNamespace = helperV3.generateTestNamespace();
+        String controllerNamespace = helperV3.generateTestNamespace();
 
-        try (Response initResponse = bgHelper.initDomain(activeNamespace, candidateNamespace)) {
+        try (Response initResponse = bgHelper.initDomain(activeNamespace, candidateNamespace, controllerNamespace)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
         var payload = new DatabaseDeclaration.DeclarativeDBConfigBuilder()
+                .type(type)
                 .classifier(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2))
                 .versioning("new")
                 .build().asPayload(activeNamespace, DBAAS_AUTO_TEST_2);
         declarativeHelper.applyDeclarativeConfig(payload);
 
-        bgHelper.doWarmup(activeNamespace, candidateNamespace);
+        bgHelper.doWarmup(activeNamespace, candidateNamespace, controllerNamespace);
 
         var activeDatabaseTrans = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(activeNamespace).build(), type, 201);
         var candidateDatabaseTrans = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(candidateNamespace).build(), type, 200);
@@ -694,6 +722,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testParallelBackupRestore(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(type), MessageFormat.format("No {0} adapter. Skip test.", type));
+
         var namespace = helperV3.generateTestNamespace();
 
         var backupedDb = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(namespace).build(), type, 201);
@@ -723,6 +753,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testRestoreDeletedBackup(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(type), MessageFormat.format("No {0} adapter. Skip test.", type));
+
         var sourceNamespace = helperV3.generateTestNamespace();
         var targetNamespace = helperV3.generateTestNamespace();
 
@@ -754,6 +786,8 @@ class BackupV3IT extends AbstractIT {
     }
 
     private void testBackupRestoreToSameNamespace(String type) throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(type), MessageFormat.format("No {0} adapter. Skip test.", type));
+
         var sourceNamespace = helperV3.generateTestNamespace();
 
         var backupedSourceDb1 = helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(sourceNamespace).build(), type, 201);
@@ -763,7 +797,7 @@ class BackupV3IT extends AbstractIT {
 
         var backupRequest = new BackupRequestBuilder()
                 .filterCriteria(fc ->
-                        fc.include(f -> f.ns(sourceNamespace).dbType(mapDbType(type)))
+                        fc.include(f -> f.ns(sourceNamespace).dbType(type))
                 ).build();
         var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
         assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());

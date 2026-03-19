@@ -35,10 +35,6 @@ import static org.junit.jupiter.api.Assertions.*;
 @Slf4j
 @Tag("bg")
 class BlueGreenV1IT extends AbstractIT {
-    private final static String TEST_NAMESPACE_ACTIVE = "active-test-namespace";
-
-    private final static String TEST_NAMESPACE_CANDIDATE = "candidate-test-namespace";
-
     private static PaasHelper paasHelper;
     private static BGHelper bgHelper;
     private static BalancingRulesHelperV3 balancingRulesHelperV3;
@@ -68,13 +64,13 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testInitDomain() throws IOException {
-        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, 200);
+        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
     }
 
     @Test
     void testListDomains() throws IOException {
-        createBgDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
-        createBgDomain(TEST_NAMESPACE_ACTIVE + "_2", TEST_NAMESPACE_CANDIDATE + "_2", TEST_NAMESPACE_CONTROLLER + "_2");
+        createBgDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
+        createBgDomain(TEST_NAMESPACE_ACTIVE + "_2", TEST_NAMESPACE_CANDIDATE + "_2", TEST_NAMESPACE_CONTROLLER + "_2", 200);
 
         try (Response listResponse = bgHelper.listDomains()) {
             Assertions.assertEquals(200, listResponse.code());
@@ -95,15 +91,15 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testDoubleInitDomain() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        try (Response secondInitResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response secondInitResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, secondInitResponse.code());
         }
 
-        intiDomain(TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_ACTIVE, 409);
+        intiDomain(TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CONTROLLER, 409);
     }
 
     @Test
@@ -111,7 +107,7 @@ class BlueGreenV1IT extends AbstractIT {
         helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_CANDIDATE), 201);
 
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(409, initResponse.code());
         }
 
@@ -121,7 +117,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testDestroyDomain() throws IOException {
-        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, 200);
+        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
 
         try (Response response = bgHelper.destroyDomain(new BgNamespaceRequest(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE))) {
             Assertions.assertEquals(200, response.code());
@@ -138,11 +134,11 @@ class BlueGreenV1IT extends AbstractIT {
         DatabaseResponse activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
 
-        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, 200);
+        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
 
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -160,14 +156,14 @@ class BlueGreenV1IT extends AbstractIT {
     void testInitDomainWithUpdateVersionsBeforeDatabaseCreation() throws IOException, SQLException {
         applyDeclarativeDBConfig("toClone", "service", "clone");
 
-        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, 200);
+        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
 
         DatabaseResponse activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
 
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -183,7 +179,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     public void testDeleteAllDatabasesInNamespaceUsingOldAPIBlueGreen() throws Exception {
-        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, 200);
+        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
         log.info("Create database");
         helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 201);
@@ -200,7 +196,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     public void testDeleteAllDatabasesInNamespaceUsingNewAPIBlueGreen() throws Exception {
-        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, 200);
+        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
         log.info("Create database");
         helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 201);
@@ -216,8 +212,8 @@ class BlueGreenV1IT extends AbstractIT {
 
     }
 
-    private void intiDomain(String testNamespaceActive, String testNamespaceCandidate, int expected) throws IOException {
-        try (Response initResponse = bgHelper.initDomain(testNamespaceActive, testNamespaceCandidate)) {
+    private void intiDomain(String testNamespaceActive, String testNamespaceCandidate, String controllerNamespace, int expected) throws IOException {
+        try (Response initResponse = bgHelper.initDomain(testNamespaceActive, testNamespaceCandidate, controllerNamespace)) {
             Assertions.assertEquals(expected, initResponse.code());
         }
         checkBgDomainStatus(ACTIVE_STATE, IDLE_STATE);
@@ -238,7 +234,7 @@ class BlueGreenV1IT extends AbstractIT {
         helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 201);
 
-        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, 200);
+        intiDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
 
         applyDeclarativeDBConfig("toClone", "service", "clone");
 
@@ -246,7 +242,7 @@ class BlueGreenV1IT extends AbstractIT {
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
 
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -262,13 +258,13 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testPromote() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
-        try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             assertTrue(response.isSuccessful());
         }
 
@@ -285,19 +281,19 @@ class BlueGreenV1IT extends AbstractIT {
             portForwardService.closePortForwards();
             portForwardService.portForward(ServicePortForwardParams.builder(DBAAS_SERVICE_NAME, targetPort).build());
 
-            try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+            try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
                 Assertions.assertEquals(200, initResponse.code());
             }
 
             applyDeclarativeDBConfig("toNew", "service", "new");
 
-            bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+            bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
             List<DatabaseV3> candidateNamespaces = helperV3.getDatabasesByNamespace(TEST_NAMESPACE_CANDIDATE);
             Assertions.assertEquals(1, candidateNamespaces.size());
             List<DatabaseV3> activeNamespaces = helperV3.getDatabasesByNamespace(TEST_NAMESPACE_ACTIVE);
             Assertions.assertEquals(1, activeNamespaces.size());
 
-            try (Response commitResponse = bgHelper.commitDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+            try (Response commitResponse = bgHelper.commitDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
                 Assertions.assertEquals(200, commitResponse.code());
             }
             List<DatabaseV3> candidateNamespacesAfterCommit = helperV3.getDatabasesByNamespace(TEST_NAMESPACE_CANDIDATE);
@@ -338,18 +334,18 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testRollback() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
-        try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             assertTrue(response.isSuccessful());
         }
         checkBgDomainStatus(LEGACY_STATE, ACTIVE_STATE);
 
-        try (Response response = bgHelper.rollbackDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response response = bgHelper.rollbackDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             assertTrue(response.isSuccessful());
         }
         checkBgDomainStatus(ACTIVE_STATE, CANDIDATE_STATE);
@@ -372,12 +368,12 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testWarmupDomain() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
 
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         checkBgDomainStatus(ACTIVE_STATE, CANDIDATE_STATE);
     }
@@ -385,7 +381,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testWarmupTerminate() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -399,7 +395,7 @@ class BlueGreenV1IT extends AbstractIT {
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
         String finalTrackingId;
-        try (Response warmupResponse = bgHelper.warmupDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response warmupResponse = bgHelper.warmupDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(202, warmupResponse.code());
             JsonNode node = objectMapper.readTree(warmupResponse.body().string());
             finalTrackingId = node.get("trackingId").asText();
@@ -422,7 +418,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testWarmupTerminateAndRetry() {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -436,7 +432,7 @@ class BlueGreenV1IT extends AbstractIT {
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
         String finalTrackingId;
-        try (Response warmupResponse = bgHelper.warmupDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response warmupResponse = bgHelper.warmupDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(202, warmupResponse.code());
             JsonNode node = objectMapper.readTree(warmupResponse.body().string());
             finalTrackingId = node.get("trackingId").asText();
@@ -451,7 +447,7 @@ class BlueGreenV1IT extends AbstractIT {
 
         Thread.sleep(5000);
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -465,11 +461,11 @@ class BlueGreenV1IT extends AbstractIT {
 
         helperV3.checkConnectionPostgres(activeDatabase, "test1", "test1");
 
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_CANDIDATE), 200);
@@ -491,11 +487,11 @@ class BlueGreenV1IT extends AbstractIT {
 
         helperV3.checkConnectionPostgres(activeDatabase, "test1", "test1");
 
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_ACTIVE), 200);
@@ -533,7 +529,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testWarmupDeclarativeDatabaseClone() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -542,7 +538,7 @@ class BlueGreenV1IT extends AbstractIT {
         DatabaseResponse activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_ACTIVE), 200);
         helperV3.checkConnectionPostgres(activeDatabase, "toClone", "toClone");
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toClone", TEST_NAMESPACE_CANDIDATE), 200);
@@ -558,7 +554,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testWarmupDeclarativeDatabaseNew() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -568,7 +564,7 @@ class BlueGreenV1IT extends AbstractIT {
                 getSimplePostgresCreateRequest("toNew", TEST_NAMESPACE_ACTIVE), 200);
         helperV3.checkConnectionPostgres(activeDatabase, "toNew", "toNew");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("toNew", TEST_NAMESPACE_CANDIDATE), 200);
@@ -583,7 +579,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testWarmupDeclarativeTenantDatabaseNew() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
         Map<String, Object> tenantClassifier1 = new HashMap<>();
@@ -616,7 +612,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -647,7 +643,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testWarmupDeclarativeTenantDatabaseClone() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
         Map<String, Object> tenantClassifier1 = new HashMap<>();
@@ -680,7 +676,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -712,7 +708,7 @@ class BlueGreenV1IT extends AbstractIT {
     void testWarmupDeclarativeAbsentTenantDatabaseClone() throws IOException, SQLException {
         String MS2 = TEST_MICROSERVICE_NAME + "2";
 
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -731,7 +727,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase1, "tenant1", "tenant1");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         Map<String, Object> tenantClassifier2 = new HashMap<>(tenantClassifier1);
         tenantClassifier2.put("microserviceName", TEST_MICROSERVICE_NAME);
@@ -744,7 +740,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testWarmupTenantDatabaseCreationAfterConfigClone() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
         Map<String, Object> tenantClassifier1 = new HashMap<>();
@@ -772,7 +768,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 201);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -802,7 +798,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testWarmupDeclarativeTenantDatabase() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
         Map<String, Object> tenantClassifier1 = new HashMap<>();
@@ -834,7 +830,7 @@ class BlueGreenV1IT extends AbstractIT {
                         .build(), 200);
         helperV3.checkConnectionPostgres(activeTenantDatabase2, "tenant2", "tenant2");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         tenantClassifier1.put("namespace", TEST_NAMESPACE_CANDIDATE);
 
@@ -864,11 +860,11 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testCreateInActiveThenInCandidate() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_ACTIVE), 201);
@@ -881,11 +877,11 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testCreateInCandidateThenInActive() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_CANDIDATE), 201);
@@ -898,13 +894,13 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testCreateInLegacyThenInActive() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
-        try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response response = bgHelper.promoteDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             assertTrue(response.isSuccessful());
         }
         checkBgDomainStatus(LEGACY_STATE, ACTIVE_STATE);
@@ -935,11 +931,11 @@ class BlueGreenV1IT extends AbstractIT {
     void testCommitDomain() throws IOException {
         DatabaseResponse activeDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_ACTIVE), 201);
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         DatabaseResponse candidateDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("test", TEST_NAMESPACE_CANDIDATE), 200);
@@ -947,7 +943,7 @@ class BlueGreenV1IT extends AbstractIT {
         Assertions.assertEquals(activeDatabase.getName(), candidateDatabase.getName());
         Assertions.assertNotEquals(activeDatabase.getClassifier(), candidateDatabase.getClassifier());
 
-        try (Response warmupResponse = bgHelper.commitDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response warmupResponse = bgHelper.commitDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, warmupResponse.code());
         }
 
@@ -957,7 +953,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testDatabaseDeletionDuringCommit() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -966,7 +962,7 @@ class BlueGreenV1IT extends AbstractIT {
         DatabaseResponse sharedDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_ACTIVE),
                 getSimplePostgresCreateRequest("SHARED", TEST_NAMESPACE_ACTIVE), 201);
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
                 getSimplePostgresCreateRequest("CANDIDATE", TEST_NAMESPACE_CANDIDATE), 201);
@@ -977,7 +973,7 @@ class BlueGreenV1IT extends AbstractIT {
         List<DatabaseV3> candidateDatabases = helperV3.getDatabasesByNamespace(TEST_NAMESPACE_CANDIDATE);
         Assertions.assertEquals(3, candidateDatabases.size());
 
-        try (Response commitResponse = bgHelper.commitDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response commitResponse = bgHelper.commitDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, commitResponse.code());
         }
         // wait for all required databases to get deleted
@@ -995,7 +991,7 @@ class BlueGreenV1IT extends AbstractIT {
     @Test
     @Tag("backup")
     void testDeclarativeCloneDatabaseRequestInCandidateNamespace() throws IOException, SQLException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -1011,7 +1007,7 @@ class BlueGreenV1IT extends AbstractIT {
                 simplePostgresCreateRequest, 200);
         helperV3.checkConnectionPostgres(activeVersionedDb, "active", "active");
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         versioningClassifier.put("namespace", TEST_NAMESPACE_CANDIDATE);
         DatabaseResponse candidateVersionedDb = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE_CANDIDATE),
@@ -1041,7 +1037,7 @@ class BlueGreenV1IT extends AbstractIT {
 
     @Test
     void testWarmupCloneRolesAndRules() throws IOException {
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -1064,7 +1060,7 @@ class BlueGreenV1IT extends AbstractIT {
         assertEquals(true, accessGrantsResponseActive.getDisableGlobalPermissions());
         helperV3.getAccessRoles(TEST_NAMESPACE_CANDIDATE, TEST_MICROSERVICE_NAME, 404);
 
-        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
 
         BalancingRulesV3IT.createPerNamespaceRule(TEST_NAMESPACE_CANDIDATE, 200);
         AccessGrantsResponse accessGrantsResponseCandidate = helperV3.getAccessRoles(TEST_NAMESPACE_CANDIDATE, TEST_MICROSERVICE_NAME, 200);
@@ -1076,7 +1072,7 @@ class BlueGreenV1IT extends AbstractIT {
     void testDeleteBackupAfterWarmup() throws IOException, SQLException {
         BackupHelperV3 backupsHelper = new BackupHelperV3(helperV3);
 
-        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
 
@@ -1090,7 +1086,7 @@ class BlueGreenV1IT extends AbstractIT {
         helperV3.checkConnectionPostgres(activeDatabase1, "toClone", "toClone");
         helperV3.checkConnectionPostgres(activeDatabase2, "toClone", "toClone");
 
-        String trackingId = bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE);
+        String trackingId = bgHelper.doWarmup(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER);
         List<UUID> backups = new ArrayList<>();
         try (Response operationStatus = bgHelper.getOperationStatus(trackingId)) {
             JsonNode node = objectMapper.readTree(operationStatus.body().string());
@@ -1102,6 +1098,29 @@ class BlueGreenV1IT extends AbstractIT {
             backup.setNamespace(TEST_NAMESPACE_ACTIVE);
             backup.setId(backupId);
             backupsHelper.assertBackupNotExist(helperV3.getBackupDaemonAuthorization(), backup);
+        }
+    }
+
+    @Test
+    void testRestrictCreateBgsWithSameControllerNamespace() throws IOException {
+        try {
+            createBgDomain(TEST_NAMESPACE_ACTIVE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER, 200);
+            createBgDomain(TEST_NAMESPACE_ACTIVE + "_2", TEST_NAMESPACE_CANDIDATE + "_2", TEST_NAMESPACE_CONTROLLER, 409);
+
+            Response listResponse = bgHelper.listDomains();
+            Assertions.assertEquals(200, listResponse.code());
+            String responseBody = listResponse.body().string();
+            log.info("List domains response: {}", responseBody);
+            List<BgDomainForList> domains = objectMapper.readValue(responseBody, new TypeReference<>() {
+            });
+            Assertions.assertTrue(domains.stream().anyMatch(domain -> TEST_NAMESPACE_CONTROLLER.equals(domain.getControllerNamespace())
+                    && TEST_NAMESPACE_ACTIVE.equals(domain.getOriginNamespace())
+                    && TEST_NAMESPACE_CANDIDATE.equals(domain.getPeerNamespace())), "Must exists domain by provided properties");
+            Assertions.assertFalse(domains.stream().anyMatch(domain -> TEST_NAMESPACE_CONTROLLER.equals(domain.getControllerNamespace())
+                    && (TEST_NAMESPACE_ACTIVE + "_2").equals(domain.getOriginNamespace())
+                    && (TEST_NAMESPACE_CANDIDATE + "_2").equals(domain.getPeerNamespace())), "Must not exists domain by provided properties");
+        } finally {
+            bgHelper.destroyDomain(new BgNamespaceRequest(TEST_NAMESPACE_ACTIVE + "_2", TEST_NAMESPACE_CANDIDATE + "_2")).close();
         }
     }
 
@@ -1129,7 +1148,7 @@ class BlueGreenV1IT extends AbstractIT {
         return okHttpClient.newCall(request).execute();
     }
 
-    private void createBgDomain(String originName, String peerName, String controllerName) throws IOException {
+    private void createBgDomain(String originName, String peerName, String controllerName, int code) throws IOException {
         BgStateRequest bgStateRequest = new BgStateRequest();
         BgStateRequest.BGState bgState = new BgStateRequest.BGState();
         BgStateRequest.BGStateNamespace bgNamespaceActive = new BgStateRequest.BGStateNamespace();
@@ -1145,7 +1164,7 @@ class BlueGreenV1IT extends AbstractIT {
         bgState.setControllerNamespace(controllerName);
         bgStateRequest.setBGState(bgState);
         try (Response initResponse = bgHelper.initDomain(bgStateRequest)) {
-            Assertions.assertEquals(200, initResponse.code());
+            Assertions.assertEquals(code, initResponse.code());
         }
     }
 }

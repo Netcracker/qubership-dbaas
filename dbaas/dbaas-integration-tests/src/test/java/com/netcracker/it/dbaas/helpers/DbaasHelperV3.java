@@ -95,6 +95,7 @@ public class DbaasHelperV3 {
     public static final String TEST_NAMESPACE = "dbaas-autotests";
     public static final String TEST_MICROSERVICE_NAME = "dbaas-test-service";
     public static final String TEST_DECLARATIVE_MICROSERVICE_NAME = "dbaas-declarative-service";
+    public static final String TEST_SERVICE_ACCOUNT_NAME = "dbaas-test-service-account";
 
     public static final String MARKED_FOR_DROP = "MARKED_FOR_DROP";
     public static final String MICROSERVICE_NAME = "microserviceName";
@@ -358,7 +359,7 @@ public class DbaasHelperV3 {
             assertThat(response.code(), is(HttpStatus.SC_OK));
 
             // wait for all logical databases to be deleted
-            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(2))).run(() -> {
+            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(5))).run(() -> {
                 var logicalDatabases = this.findLogicalDatabasesByNamespaces(namespaces);
 
                 assertTrue(logicalDatabases.isEmpty(), "Namespaces still have the following logical databases: " +
@@ -384,7 +385,7 @@ public class DbaasHelperV3 {
             assertThat(response.code(), is(HttpStatus.SC_OK));
 
             // wait for all namespace backups to be deleted
-            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(2))).run(() -> {
+            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(5))).run(() -> {
                 var namespaceBackups = this.findNamespaceBackupsByNamespaces(namespaces);
 
                 assertTrue(namespaceBackups.isEmpty(), "Namespaces still have the following namespace backups: " +
@@ -445,6 +446,15 @@ public class DbaasHelperV3 {
                 "POST");
 
         executeRequest(request, null, 200);
+    }
+
+    public DatabaseResponse createDatabaseWithK8sToken(String token, String api, DatabaseCreateRequestV3 databaseCreateRequest, int expected) throws IOException {
+        databaseCreateRequest.getClassifier().put("namespace", kubernetesClient.getNamespace());
+        databaseCreateRequest.getClassifier().put("microserviceName", TEST_SERVICE_ACCOUNT_NAME);
+
+        Request createDbRequest = createRequestWithK8sToken(api, token, databaseCreateRequest, "PUT");
+        log.info("request: {}", createDbRequest);
+        return executeRequest(createDbRequest, DatabaseResponse.class, expected);
     }
 
     public SecurityRuleConfigurationRequest getRolesRegistrationRequest(String type, Boolean disableGlobalPermissions) {
@@ -1314,14 +1324,33 @@ public class DbaasHelperV3 {
     }
 
     public Request createRequest(String url, String authorization, Object body, String method) {
+        return createRequestWithScheme(url, "Basic", authorization, body, method);
+    }
+
+    public Request createRequestWithK8sToken(String url, String token, Object body, String method) {
+        return createRequestWithScheme(url, "Bearer", token, body, method);
+    }
+
+    public Request createRequestWithScheme(String url, String scheme, String authorization, Object body, String method) {
         String content = new GsonBuilder().create().toJson(body);
         log.info("Request body {}", content);
         return new Request.Builder()
                 .url(dbaasServiceUrl + url)
-                .addHeader("Authorization", "Basic " + authorization)
+                .addHeader("Authorization", "%s %s".formatted(scheme, authorization))
                 .addHeader("X-Request-Id", getRequestId())
                 .method(method, body != null ? RequestBody.create(content, JSON) : null)
                 .build();
+    }
+
+    public void deleteDatabasesByClassifierRequestWithK8sToken(String token, String namespace, String dbType, Map<String, Object> classifier, int expected) throws IOException {
+        var classifierWithRolesRequest = new ClassifierWithRolesRequest();
+        classifierWithRolesRequest.setClassifier(classifier);
+        classifierWithRolesRequest.setOriginService((String) classifier.get("microserviceName"));
+
+        Request request = createRequestWithK8sToken(String.format("api/v3/dbaas/%s/databases/%s", namespace, dbType), token, classifierWithRolesRequest, "DELETE");
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            assertThat(response.code(), is(expected));
+        }
     }
 
     private ExternalDatabaseRequestV3 createExternalDatabase(Map<String, Object> classifier, List<Map<String, Object>> connectionProperties, String dbType) {
@@ -1572,7 +1601,7 @@ public class DbaasHelperV3 {
         return namespace;
     }
 
-    public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces() {
+    public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces() throws IOException {
         log.info("Finding test namespaces for deleting all logical databases and namespace backups");
 
         var namespaces = findAllRegisteredNamespaces();
@@ -1595,6 +1624,7 @@ public class DbaasHelperV3 {
                 log.info("Deleted all logical databases in {} test namespaces", testNamespaces.size());
             } catch (Exception | AssertionFailedError ex) {
                 log.error("Error happened during deleting all logical databases in {} test namespaces", testNamespaces.size(), ex);
+                throw ex;
             }
 
             try {
@@ -1605,6 +1635,7 @@ public class DbaasHelperV3 {
                 log.info("Deleted all namespace backups in {} test namespaces", testNamespaces.size());
             } catch (Exception | AssertionFailedError ex) {
                 log.error("Error happened during deleting all namespace backups in {} test namespaces", testNamespaces.size(), ex);
+                throw ex;
             }
 
             log.info("Deleted all logical databases and namespace backups in {} test namespaces {}", testNamespaces.size(), testNamespaces);
