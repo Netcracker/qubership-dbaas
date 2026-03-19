@@ -1,4 +1,4 @@
-name: [DBaaS Operator] Go Build
+name: Go Build
 
 run-name: >
   Build —
