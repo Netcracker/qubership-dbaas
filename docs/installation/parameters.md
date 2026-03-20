@@ -18,6 +18,11 @@
         + [PRODUCTION_MODE](#production_mode)
         + [INTERNAL_TLS_ENABLED](#internal_tls_enabled)
         + [READONLY_CONTAINER_FILE_SYSTEM_ENABLED](#readonly_container_file_system_enabled)
+        + [DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT](#dbaas_backup_restore_check_lock_timeout)
+        + [DBAAS_BACKUP_RESTORE_CHECK_INTERVAL](#dbaas_backup_restore_check_interval)
+        + [DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS](#dbaas_backup_restore_check_attempts)
+        + [DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS](#dbaas_backup_restore_retry_delay_seconds)
+        + [DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS](#dbaas_backup_restore_retry_attempts)
         + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
         + [KUBERNETES_JWT_ENABLED](#kubernetes_jwt_enabled)
         + [KUBERNETES_JWT_AUDIENCE](#kubernetes_jwt_audience)
@@ -272,6 +277,46 @@ Note: Only valid for deployments in Kubernetes.
 | Default | Recommended                                         |
 |---------|-----------------------------------------------------|
 | false   | Set to true if need to enable read-only file system |
+
+### DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
+
+Specifies the default amount of time the lock should be kept in case the executing node dies for the backup restore operation
+
+| Default | Recommended                                        |
+|---------|----------------------------------------------------|
+| PT10M   | Set the default maximum time a lock should be held |
+
+### DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
+
+Specifies the period of backup or restore check
+
+| Default | Recommended                               |
+|---------|-------------------------------------------|
+| 1m      | Set the period of backup or restore check |
+
+### DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
+
+Specifies max number of attempts to check backup or restore
+
+| Default | Recommended                                               |
+|---------|-----------------------------------------------------------|
+| 10      | Set the max number of attempts to check backup or restore |
+
+### DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
+
+Specifies the delay between retries in seconds
+
+| Default | Recommended                              |
+|---------|------------------------------------------|
+| 3       | Set the delay between retries in seconds |
+
+### DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
+
+Specifies max number of retries to check backup or restore
+
+| Default | Recommended                                              |
+|---------|----------------------------------------------------------|
+| 3       | Set the max number of retries to check backup or restore |
 
 #### DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
 
