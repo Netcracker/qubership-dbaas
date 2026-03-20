@@ -280,43 +280,44 @@ Note: Only valid for deployments in Kubernetes.
 
 ### DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
 
-Specifies the default amount of time the lock should be kept in case the executing node dies for the backup restore operation.
+Specifies the amount of time the lock should be kept in case the executing node dies for the backup restore operation.
+Set the duration according to the ISO 8601 standard
 
-| Default | Recommended                                        |
-|---------|----------------------------------------------------|
-| PT10M   | Set the default maximum time a lock should be held |
+| Default | Recommended                                                                                                              |
+|---------|--------------------------------------------------------------------------------------------------------------------------|
+| PT10M   | Increasing this value will result in the backup/restore lock being held for a longer time if the node crashes or freezes |
 
 ### DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
 
-Specifies the amount of time the lock should be kept in case the executing node dies.
+Specifies the interval between requests to adapters for backup or restore status during an asynchronous process.
 
-| Default | Recommended                                             |
-|---------|---------------------------------------------------------|
-| 1m      | Set the period of check the status of backup or restore |
+| Default | Recommended                                                                                                  |
+|---------|--------------------------------------------------------------------------------------------------------------|
+| 1m      | Decrease the default value if you're creating a big count of small backups and want to decrease waiting time |
 
 ### DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
 
 Specifies the max number of attempts to request adapters for backup or restore status during an asynchronous process.
 
-| Default | Recommended                                               |
-|---------|-----------------------------------------------------------|
-| 10      | Set the max number of attempts to check backup or restore |
+| Default | Recommended                       |
+|---------|-----------------------------------|
+| 20      | We recommend to use default value |
 
 ### DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
 
 Specifies the delay between retries of requesting adapter in seconds if the previous attempt was failed.
 
-| Default | Recommended                                                    |
-|---------|----------------------------------------------------------------|
-| 3       | Set the delay between retries of requesting adapter in seconds |
+| Default | Recommended                       |
+|---------|-----------------------------------|
+| 3       | We recommend to use default value |
 
 ### DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
 
 Specifies the max number of retries to request adapter for backup or restore if the previous attempt failed.
 
-| Default | Recommended                                              |
-|---------|----------------------------------------------------------|
-| 3       | Set the max number of retries to check backup or restore |
+| Default | Recommended                       |
+|---------|-----------------------------------|
+| 3       | We recommend to use default value |
 
 #### DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
 
