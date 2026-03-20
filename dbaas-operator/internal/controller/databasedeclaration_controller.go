@@ -106,35 +106,8 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	log := logf.FromContext(ctx)
 	dd.Status.Phase = dbaasv1alpha1.PhaseProcessing
 
-	// ── Pre-flight validation ─────────────────────────────────────────────────
-	// CRD enforces: classifierConfig.required, classifier.microserviceName/scope required+minLength,
-	// type required+minLength. Controller handles cross-field constraints only.
-
-	// (1) lazy=true + clone → aggregator throws UnsupportedOperationException → HTTP 500
-	//     Without this check the CR would be stuck in BackingOff forever.
-	if dd.Spec.Lazy &&
-		dd.Spec.InitialInstantiation != nil &&
-		dd.Spec.InitialInstantiation.Approach == "clone" {
-		return r.invalidSpec(ctx, dd,
-			"spec: lazy=true is prohibited when initialInstantiation.approach=clone")
-	}
-
-	// (2) clone without sourceClassifier → aggregator returns HTTP 400 (wasted round trip).
-	if dd.Spec.InitialInstantiation != nil &&
-		dd.Spec.InitialInstantiation.Approach == "clone" &&
-		dd.Spec.InitialInstantiation.SourceClassifier == nil {
-		return r.invalidSpec(ctx, dd,
-			"spec: initialInstantiation.sourceClassifier is required when approach=clone")
-	}
-
-	// (3) sourceClassifier.microserviceName mismatch → aggregator returns HTTP 400.
-	if dd.Spec.InitialInstantiation != nil &&
-		dd.Spec.InitialInstantiation.SourceClassifier != nil &&
-		dd.Spec.InitialInstantiation.SourceClassifier.MicroserviceName !=
-			dd.Spec.ClassifierConfig.Classifier.MicroserviceName {
-		return r.invalidSpec(ctx, dd,
-			"spec: initialInstantiation.sourceClassifier.microserviceName must match"+
-				" classifierConfig.classifier.microserviceName")
+	if msg := validateDatabaseDeclarationSpec(dd); msg != "" {
+		return r.invalidSpec(ctx, dd, msg)
 	}
 
 	// ── Call aggregator ───────────────────────────────────────────────────────
@@ -150,14 +123,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 		log.Info("database provisioning started asynchronously",
 			"trackingId", resp.TrackingId,
 			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
-		dd.Status.TrackingId = resp.TrackingId
-		dd.Status.PendingOperationGeneration = dd.Generation
-		dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
-		setCondition(&dd.Status.Conditions, dd.Generation,
-			conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted,
-			fmt.Sprintf("database provisioning started asynchronously (trackingId=%s)", resp.TrackingId))
-		setCondition(&dd.Status.Conditions, dd.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
+		r.markProvisioningStarted(dd, resp.TrackingId)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s)", resp.TrackingId)
 		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
@@ -183,79 +149,10 @@ func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *d
 
 	resp, err := r.Aggregator.GetOperationStatus(ctx, trackingID)
 	if err != nil {
-		var aggErr *aggregatorclient.AggregatorError
-		errors.As(err, &aggErr)
-
-		if aggErr != nil && aggErr.IsAuthError() {
-			// 401 — keep trackingId, retry with backoff.
-			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-				EventReasonUnauthorized, aggErr.UserMessage())
-			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonUnauthorized,
-				"dbaas-aggregator rejected operator credentials during polling (HTTP 401): %s",
-				aggErr.UserMessage())
-			return ctrl.Result{}, err
-		}
-
-		if aggErr != nil && aggErr.StatusCode == http.StatusNotFound {
-			// 404 — trackingId expired or never existed; clear it so the next
-			// reconcile re-submits the operation.
-			log.Info("trackingId not found, will re-submit on next reconcile",
-				"trackingId", trackingID)
-			dd.Status.TrackingId = ""
-			dd.Status.PendingOperationGeneration = 0
-			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
-			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
-				"operation trackingId not found (will re-submit)")
-			return ctrl.Result{}, err
-		}
-
-		// 5xx / network error — keep trackingId, retry with backoff.
-		errMsg := err.Error()
-		if aggErr != nil {
-			errMsg = aggErr.UserMessage()
-		}
-		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-			EventReasonAggregatorError, errMsg)
-		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
-			"dbaas-aggregator error during polling: %s", errMsg)
-		return ctrl.Result{}, err
+		return r.handlePollError(ctx, dd, trackingID, err)
 	}
 
-	switch resp.Status {
-	case aggregatorclient.TaskStateCompleted:
-		log.Info("database provisioned",
-			"trackingId", trackingID,
-			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
-		dd.Status.TrackingId = ""
-		dd.Status.PendingOperationGeneration = 0
-		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
-		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
-			"database provisioned (microserviceName=%s, trackingId=%s)",
-			dd.Spec.ClassifierConfig.Classifier.MicroserviceName, trackingID)
-		return ctrl.Result{}, nil
-
-	case aggregatorclient.TaskStateFailed, aggregatorclient.TaskStateTerminated:
-		reason := pollFailureReason(resp)
-		log.Info("database provisioning failed",
-			"trackingId", trackingID, "status", resp.Status, "reason", reason)
-		dd.Status.TrackingId = ""
-		dd.Status.PendingOperationGeneration = 0
-		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-			EventReasonAggregatorRejected, reason)
-		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-			"database provisioning failed: %s", reason)
-		return ctrl.Result{}, nil
-
-	default: // IN_PROGRESS, NOT_STARTED — keep polling
-		log.V(1).Info("provisioning still in progress",
-			"status", resp.Status, "trackingId", trackingID)
-		if msg := pollProgressMessage(resp); msg != "" {
-			setCondition(&dd.Status.Conditions, dd.Generation,
-				conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted, msg)
-		}
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
-	}
+	return r.handlePollResponse(ctx, dd, trackingID, resp)
 }
 
 // handleApplyError maps an error from ApplyConfig to the appropriate phase/conditions.
@@ -365,6 +262,137 @@ func pollConditionText(resp *aggregatorclient.DeclarativeResponse, fallback stri
 		return otherReason
 	}
 	return fallback
+}
+
+func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) string {
+	// CRD enforces: classifierConfig.required, classifier.microserviceName/scope required+minLength,
+	// type required+minLength. Controller handles cross-field constraints only.
+	if dd.Spec.Lazy &&
+		dd.Spec.InitialInstantiation != nil &&
+		dd.Spec.InitialInstantiation.Approach == "clone" {
+		return "spec: lazy=true is prohibited when initialInstantiation.approach=clone"
+	}
+
+	if dd.Spec.InitialInstantiation != nil &&
+		dd.Spec.InitialInstantiation.Approach == "clone" &&
+		dd.Spec.InitialInstantiation.SourceClassifier == nil {
+		return "spec: initialInstantiation.sourceClassifier is required when approach=clone"
+	}
+
+	if dd.Spec.InitialInstantiation != nil &&
+		dd.Spec.InitialInstantiation.SourceClassifier != nil &&
+		dd.Spec.InitialInstantiation.SourceClassifier.MicroserviceName !=
+			dd.Spec.ClassifierConfig.Classifier.MicroserviceName {
+		return "spec: initialInstantiation.sourceClassifier.microserviceName must match" +
+			" classifierConfig.classifier.microserviceName"
+	}
+
+	return ""
+}
+
+func (r *DatabaseDeclarationReconciler) markProvisioningStarted(
+	dd *dbaasv1alpha1.DatabaseDeclaration,
+	trackingID string,
+) {
+	dd.Status.TrackingId = trackingID
+	dd.Status.PendingOperationGeneration = dd.Generation
+	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+	setCondition(&dd.Status.Conditions, dd.Generation,
+		conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted,
+		fmt.Sprintf("database provisioning started asynchronously (trackingId=%s)", trackingID))
+	setCondition(&dd.Status.Conditions, dd.Generation,
+		conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
+}
+
+func (r *DatabaseDeclarationReconciler) clearPendingOperation(dd *dbaasv1alpha1.DatabaseDeclaration) {
+	dd.Status.TrackingId = ""
+	dd.Status.PendingOperationGeneration = 0
+}
+
+func (r *DatabaseDeclarationReconciler) handlePollError(
+	ctx context.Context,
+	dd *dbaasv1alpha1.DatabaseDeclaration,
+	trackingID string,
+	err error,
+) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	var aggErr *aggregatorclient.AggregatorError
+	errors.As(err, &aggErr)
+
+	if aggErr != nil && aggErr.IsAuthError() {
+		// 401 — keep trackingId, retry with backoff.
+		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+			EventReasonUnauthorized, aggErr.UserMessage())
+		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonUnauthorized,
+			"dbaas-aggregator rejected operator credentials during polling (HTTP 401): %s",
+			aggErr.UserMessage())
+		return ctrl.Result{}, err
+	}
+
+	if aggErr != nil && aggErr.StatusCode == http.StatusNotFound {
+		// 404 — trackingId expired or never existed; clear it so the next
+		// reconcile re-submits the operation.
+		log.Info("trackingId not found, will re-submit on next reconcile", "trackingId", trackingID)
+		r.clearPendingOperation(dd)
+		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+			EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
+		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
+			"operation trackingId not found (will re-submit)")
+		return ctrl.Result{}, err
+	}
+
+	// 5xx / network error — keep trackingId, retry with backoff.
+	errMsg := err.Error()
+	if aggErr != nil {
+		errMsg = aggErr.UserMessage()
+	}
+	markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+		EventReasonAggregatorError, errMsg)
+	r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
+		"dbaas-aggregator error during polling: %s", errMsg)
+	return ctrl.Result{}, err
+}
+
+func (r *DatabaseDeclarationReconciler) handlePollResponse(
+	ctx context.Context,
+	dd *dbaasv1alpha1.DatabaseDeclaration,
+	trackingID string,
+	resp *aggregatorclient.DeclarativeResponse,
+) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	switch resp.Status {
+	case aggregatorclient.TaskStateCompleted:
+		log.Info("database provisioned",
+			"trackingId", trackingID,
+			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+		r.clearPendingOperation(dd)
+		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
+		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
+			"database provisioned (microserviceName=%s, trackingId=%s)",
+			dd.Spec.ClassifierConfig.Classifier.MicroserviceName, trackingID)
+		return ctrl.Result{}, nil
+
+	case aggregatorclient.TaskStateFailed, aggregatorclient.TaskStateTerminated:
+		reason := pollFailureReason(resp)
+		log.Info("database provisioning failed",
+			"trackingId", trackingID, "status", resp.Status, "reason", reason)
+		r.clearPendingOperation(dd)
+		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+			EventReasonAggregatorRejected, reason)
+		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			"database provisioning failed: %s", reason)
+		return ctrl.Result{}, nil
+
+	default: // IN_PROGRESS, NOT_STARTED — keep polling
+		log.V(1).Info("provisioning still in progress", "status", resp.Status, "trackingId", trackingID)
+		if msg := pollProgressMessage(resp); msg != "" {
+			setCondition(&dd.Status.Conditions, dd.Generation,
+				conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted, msg)
+		}
+		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+	}
 }
 
 // pollFailureReason extracts a human-readable failure message from the poll response.
