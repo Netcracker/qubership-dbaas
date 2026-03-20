@@ -280,7 +280,7 @@ Note: Only valid for deployments in Kubernetes.
 
 ### DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
 
-Specifies the default amount of time the lock should be kept in case the executing node dies for the backup restore operation
+Specifies the default amount of time the lock should be kept in case the executing node dies for the backup restore operation.
 
 | Default | Recommended                                        |
 |---------|----------------------------------------------------|
@@ -288,7 +288,7 @@ Specifies the default amount of time the lock should be kept in case the executi
 
 ### DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
 
-Specifies the interval between requests to adapters for backup or restore status during an asynchronous process
+Specifies the amount of time the lock should be kept in case the executing node dies.
 
 | Default | Recommended                                             |
 |---------|---------------------------------------------------------|
@@ -296,7 +296,7 @@ Specifies the interval between requests to adapters for backup or restore status
 
 ### DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
 
-Specifies the max number of attempts to request adapters for backup or restore status during an asynchronous process
+Specifies the max number of attempts to request adapters for backup or restore status during an asynchronous process.
 
 | Default | Recommended                                               |
 |---------|-----------------------------------------------------------|
@@ -304,7 +304,7 @@ Specifies the max number of attempts to request adapters for backup or restore s
 
 ### DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
 
-Specifies the delay between retries of requesting adapter in seconds if the previous attempt was failed
+Specifies the delay between retries of requesting adapter in seconds if the previous attempt was failed.
 
 | Default | Recommended                                                    |
 |---------|----------------------------------------------------------------|
@@ -312,7 +312,7 @@ Specifies the delay between retries of requesting adapter in seconds if the prev
 
 ### DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
 
-Specifies max number of retries to requesting adapter for backup or restore if the previous attempt was failed
+Specifies the max number of retries to request adapter for backup or restore if the previous attempt failed.
 
 | Default | Recommended                                              |
 |---------|----------------------------------------------------------|
