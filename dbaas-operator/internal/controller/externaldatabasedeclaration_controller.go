@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -112,11 +111,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {
 		log.Error(err, "failed to build registration request")
-		edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeReady, metav1.ConditionFalse, EventReasonSecretError, err.Error())
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, EventReasonSecretError, stalledMsgTransient)
+		markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+			EventReasonSecretError, err.Error())
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonSecretError,
 			"failed to read credentials Secret: %s", err)
 		return ctrl.Result{}, err // requeue with backoff
@@ -140,21 +136,15 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 				// 401 — operator credentials or role binding misconfigured.
 				// This is NOT a spec error: the user should not edit the CR.
 				// Retry so the operator recovers once the admin fixes the credentials.
-				edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeReady, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.UserMessage())
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeStalled, metav1.ConditionFalse, EventReasonUnauthorized, stalledMsgTransient)
+				markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+					EventReasonUnauthorized, aggErr.UserMessage())
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonUnauthorized,
 					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
 				return ctrl.Result{}, err // requeue with backoff
-			case aggErr.IsClientError():
+			case aggErr.IsSpecRejection():
 				// 400, 403, 409 — spec error; retrying won't help until the spec changes.
-				edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeStalled, metav1.ConditionTrue, EventReasonAggregatorRejected, stalledMsgPermanent)
+				markPermanentFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+					EventReasonAggregatorRejected, aggErr.UserMessage())
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
 				return ctrl.Result{}, nil // do not requeue
@@ -167,11 +157,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		if aggErr != nil {
 			errMsg = aggErr.UserMessage()
 		}
-		edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorError, errMsg)
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, EventReasonAggregatorError, stalledMsgTransient)
+		markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+			EventReasonAggregatorError, errMsg)
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorError,
 			"dbaas-aggregator error: %s", errMsg)
 		return ctrl.Result{}, err
@@ -179,11 +166,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	log.Info("external database registered successfully",
 		"type", edb.Spec.Type, "dbName", edb.Spec.DbName)
-	edb.Status.Phase = dbaasv1alpha1.PhaseSucceeded
-	setCondition(&edb.Status.Conditions, edb.Generation,
-		conditionTypeReady, metav1.ConditionTrue, EventReasonRegistered, "")
-	setCondition(&edb.Status.Conditions, edb.Generation,
-		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
+	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonRegistered)
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
 	return ctrl.Result{}, nil

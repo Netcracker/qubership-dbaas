@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -53,4 +54,43 @@ func setCondition(
 		}
 	}
 	*conditions = append(*conditions, cond)
+}
+
+func markSucceeded(
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	readyReason string,
+) {
+	*phase = dbaasv1alpha1.PhaseSucceeded
+	setCondition(conditions, generation,
+		conditionTypeReady, metav1.ConditionTrue, readyReason, "")
+	setCondition(conditions, generation,
+		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
+}
+
+func markTransientFailure(
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	readyReason, readyMessage string,
+) {
+	*phase = dbaasv1alpha1.PhaseBackingOff
+	setCondition(conditions, generation,
+		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
+	setCondition(conditions, generation,
+		conditionTypeStalled, metav1.ConditionFalse, readyReason, stalledMsgTransient)
+}
+
+func markPermanentFailure(
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	readyReason, readyMessage string,
+) {
+	*phase = dbaasv1alpha1.PhaseInvalidConfiguration
+	setCondition(conditions, generation,
+		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
+	setCondition(conditions, generation,
+		conditionTypeStalled, metav1.ConditionTrue, readyReason, stalledMsgPermanent)
 }

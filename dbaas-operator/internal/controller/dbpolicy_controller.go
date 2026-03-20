@@ -21,7 +21,6 @@ import (
 	"errors"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -96,11 +95,8 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 			switch {
 			case aggErr.IsAuthError():
 				// 401 — operator credentials or role binding misconfigured; retry.
-				dp.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-				setCondition(&dp.Status.Conditions, dp.Generation,
-					conditionTypeReady, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.UserMessage())
-				setCondition(&dp.Status.Conditions, dp.Generation,
-					conditionTypeStalled, metav1.ConditionFalse, EventReasonUnauthorized, stalledMsgTransient)
+				markTransientFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
+					EventReasonUnauthorized, aggErr.UserMessage())
 				r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonUnauthorized,
 					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
 				return ctrl.Result{}, err // requeue with backoff
@@ -108,11 +104,8 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 			case aggErr.IsSpecRejection():
 				// 400/403/409/410/422 — aggregator explicitly rejected the spec.
 				// Retrying the same payload will not help; wait for a spec change.
-				dp.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
-				setCondition(&dp.Status.Conditions, dp.Generation,
-					conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())
-				setCondition(&dp.Status.Conditions, dp.Generation,
-					conditionTypeStalled, metav1.ConditionTrue, EventReasonAggregatorRejected, stalledMsgPermanent)
+				markPermanentFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
+					EventReasonAggregatorRejected, aggErr.UserMessage())
 				r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
 				return ctrl.Result{}, nil // do not requeue
@@ -124,22 +117,15 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 		if aggErr != nil {
 			errMsg = aggErr.UserMessage()
 		}
-		dp.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-		setCondition(&dp.Status.Conditions, dp.Generation,
-			conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorError, errMsg)
-		setCondition(&dp.Status.Conditions, dp.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, EventReasonAggregatorError, stalledMsgTransient)
+		markTransientFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
+			EventReasonAggregatorError, errMsg)
 		r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonAggregatorError,
 			"dbaas-aggregator error: %s", errMsg)
 		return ctrl.Result{}, err
 	}
 
 	log.Info("DbPolicy applied successfully", "microserviceName", dp.Spec.MicroserviceName)
-	dp.Status.Phase = dbaasv1alpha1.PhaseSucceeded
-	setCondition(&dp.Status.Conditions, dp.Generation,
-		conditionTypeReady, metav1.ConditionTrue, EventReasonPolicyApplied, "")
-	setCondition(&dp.Status.Conditions, dp.Generation,
-		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
+	markSucceeded(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, EventReasonPolicyApplied)
 	r.Recorder.Eventf(dp, corev1.EventTypeNormal, EventReasonPolicyApplied,
 		"policy applied to dbaas-aggregator (microserviceName=%s)", dp.Spec.MicroserviceName)
 	return ctrl.Result{}, nil
@@ -150,11 +136,8 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 // observedGeneration is stamped (permanent error, wait for spec change).
 func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1alpha1.DbPolicy, msg string) (ctrl.Result, error) {
 	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
-	dp.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
-	setCondition(&dp.Status.Conditions, dp.Generation,
-		conditionTypeReady, metav1.ConditionFalse, EventReasonInvalidSpec, msg)
-	setCondition(&dp.Status.Conditions, dp.Generation,
-		conditionTypeStalled, metav1.ConditionTrue, EventReasonInvalidSpec, stalledMsgPermanent)
+	markPermanentFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
+		EventReasonInvalidSpec, msg)
 	r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
 	return ctrl.Result{}, nil
 }

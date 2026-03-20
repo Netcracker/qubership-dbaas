@@ -526,6 +526,37 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		})
 	})
 
+	Context("HTTP 404 — aggregator endpoint mismatch", func() {
+		It("treats the response as transient and requeues instead of marking the spec invalid", func() {
+			mockStatusCode = http.StatusNotFound
+			mockBody = `{"message":"endpoint not found"}`
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorError))
+			Expect(ready.Message).To(ContainSubstring("endpoint not found"))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			Expect(stalled.Reason).To(Equal(EventReasonAggregatorError))
+
+			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "endpoint not found")
+			expectNoEvent()
+		})
+	})
+
 	Context("Network error — aggregator is unreachable", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, emits Warning/AggregatorError, requeues", func() {
 			// Close the server before reconcile so the HTTP call fails with a
