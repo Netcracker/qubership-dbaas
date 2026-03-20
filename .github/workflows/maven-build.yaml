@@ -10,6 +10,10 @@ on:
     paths-ignore:
       - 'dbaas-operator/**'
 
+concurrency:
+  group: ci-maven-build-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   mvn:
     uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@e7c8933e41d7e732f6f1f77dab34441d093c5577 # v2.1.0
