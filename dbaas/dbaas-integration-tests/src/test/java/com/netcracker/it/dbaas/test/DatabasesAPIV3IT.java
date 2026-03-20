@@ -385,7 +385,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", false, 200);
         Assertions.assertEquals(connectionProperties, externalDatabaseResponse.getConnectionProperties());
 
-        helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", true, 500);
+        helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", true, 400);
     }
 
     @Test
