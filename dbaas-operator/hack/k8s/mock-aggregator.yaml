@@ -74,6 +74,25 @@ data:
         "message": "Unexpected exception"
       }
     }
+  apply-rules.json: |
+    {
+      "svc-400": {
+        "httpCode": 400,
+        "tmfCode": "CORE-DBAAS-4036",
+        "reason": "Declarative configuration request validation failed",
+        "message": "Declarative configuration validation failed. Unknown kind."
+      },
+      "svc-401": {
+        "httpCode": 401,
+        "message": "Requested role is not allowed"
+      },
+      "svc-500": {
+        "httpCode": 500,
+        "tmfCode": "CORE-DBAAS-2000",
+        "reason": "Unexpected exception",
+        "message": "Unexpected exception"
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -110,6 +129,8 @@ spec:
               value: "200"
             - name: MOCK_RULES_FILE
               value: /config/rules.json
+            - name: MOCK_APPLY_RULES_FILE
+              value: /config/apply-rules.json
           volumeMounts:
             - name: security
               mountPath: /etc/dbaas/security

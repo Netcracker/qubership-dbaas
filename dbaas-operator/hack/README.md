@@ -8,7 +8,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | Resource | Namespace | Description |
 |---|---|---|
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
-| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-dbName response code rules |
+| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules (`rules.json` for EDB by `dbName`, `apply-rules.json` for DbPolicy by `microserviceName`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC |
 | Namespace `test-ns` | — | Working namespace for CRs |
 | Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabaseDeclaration |
@@ -46,34 +46,35 @@ The script runs these steps in order:
 
 ## Test scenarios
 
-The aggregator-mock routes requests by `dbName` from the request body.
-Rules are defined in the `aggregator-mock-rules` ConfigMap (`hack/k8s/mock-aggregator.yaml`).
-
 Apply all test CRs at once and observe their phases:
 
 ```bash
 kubectl apply -f hack/test-resources/ -n test-ns
 kubectl get externaldatabasedeclaration -n test-ns
+kubectl get dbpolicy -n test-ns
 ```
+
+### ExternalDatabaseDeclaration
+
+The mock routes `PUT .../externally_manageable` requests by `dbName` from the request body.
+Rules are defined in `rules.json` inside the `aggregator-mock-rules` ConfigMap.
 
 Expected output:
 
 ```
-NAME                  PHASE                  TYPE         DBNAME
-my-postgres           Succeeded              postgresql   mydb
-edb-201               Succeeded              postgresql   db-201
-edb-400               InvalidConfiguration   postgresql   db-400
-edb-401               BackingOff             postgresql   db-401
-edb-403               InvalidConfiguration   postgresql   db-403
-edb-409               InvalidConfiguration   postgresql   db-409
-edb-500               BackingOff             postgresql   db-500
-missing-secret-test      BackingOff             postgresql   ghostdb
-secret-missing-key-test  BackingOff             postgresql   mydb
+NAME                      PHASE                  TYPE         DBNAME
+my-postgres               Succeeded              postgresql   mydb
+edb-201                   Succeeded              postgresql   db-201
+edb-400                   InvalidConfiguration   postgresql   db-400
+edb-401                   BackingOff             postgresql   db-401
+edb-403                   InvalidConfiguration   postgresql   db-403
+edb-409                   InvalidConfiguration   postgresql   db-409
+edb-500                   BackingOff             postgresql   db-500
+missing-secret-test       BackingOff             postgresql   ghostdb
+secret-missing-key-test   BackingOff             postgresql   mydb
 ```
 
-### CR reference table
-
-| CR file | dbName | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
+| CR file | `dbName` | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
 |---|---|---|---|---|---|
 | `edb-with-secret.yaml` | `mydb` | 200 (default) | `Succeeded` | `Registered` | `False` |
 | `edb-201-created.yaml` | `db-201` | 201 | `Succeeded` | `Registered` | `False` |
@@ -85,6 +86,32 @@ secret-missing-key-test  BackingOff             postgresql   mydb
 | `edb-missing-secret.yaml` | `ghostdb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 | `edb-secret-missing-key.yaml` | `mydb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 
+### DbPolicy
+
+The mock routes `POST /api/declarations/v1/apply` requests by `metadata.microserviceName` from the request body.
+Rules are defined in `apply-rules.json` inside the `aggregator-mock-rules` ConfigMap.
+
+Expected output:
+
+```
+NAME                      PHASE
+dp-success                Succeeded
+dp-400                    InvalidConfiguration
+dp-401                    BackingOff
+dp-500                    BackingOff
+dp-invalid-empty-spec     InvalidConfiguration
+```
+
+| CR file | `microserviceName` | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
+|---|---|---|---|---|---|
+| `dbpolicy-success.yaml` | `svc-ok` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
+| `dbpolicy-400.yaml` | `svc-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `dbpolicy-401.yaml` | `svc-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
+| `dbpolicy-500.yaml` | `svc-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
+| `dbpolicy-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (no HTTP call) | `InvalidConfiguration` | `InvalidSpec` | `True` |
+
+> **Note:** `dbpolicy-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
+
 ### Changing rules without rebuilding
 
 Edit the ConfigMap directly and restart the pod:
@@ -94,7 +121,7 @@ kubectl edit configmap aggregator-mock-rules -n dbaas-system
 kubectl rollout restart deployment/aggregator-mock -n dbaas-system
 ```
 
-Override the global fallback code for all unmatched dbNames:
+Override the global fallback code for all unmatched requests:
 
 ```bash
 kubectl set env deployment/aggregator-mock -n dbaas-system MOCK_RESPONSE_CODE=400
@@ -109,12 +136,25 @@ kubectl logs -n dbaas-system deployment/dbaas-operator -f
 # aggregator-mock logs (shows incoming requests and rule matches)
 kubectl logs -n dbaas-system deployment/aggregator-mock -f
 
-# Full CR status
+# Full CR status — ExternalDatabaseDeclaration
 kubectl get externaldatabasedeclaration -n test-ns edb-401 -o yaml
+
+# Full CR status — DbPolicy
+kubectl get dbpolicy -n test-ns dp-401 -o yaml
+
+# Events for a CR
+kubectl get events -n test-ns --field-selector involvedObject.name=dp-401
 
 # Reset a CR — delete and reapply
 kubectl delete externaldatabasedeclaration -n test-ns edb-401
-kubectl apply -f hack/test-resources/edb-401-unauthorized.yaml
+kubectl apply -f hack/test-resources/edb-401-unauthorized.yaml -n test-ns
+
+kubectl delete dbpolicy -n test-ns dp-401
+kubectl apply -f hack/test-resources/dbpolicy-401.yaml -n test-ns
+
+# Redeploy all test resources at once
+kubectl delete externaldatabasedeclaration,dbpolicy -n test-ns --all
+kubectl apply -f hack/test-resources/ -n test-ns
 ```
 
 ## Tear down
@@ -139,18 +179,27 @@ hack/
 │   ├── main.go                 # HTTP stub for dbaas-aggregator
 │   └── Dockerfile
 ├── k8s/
-│   ├── mock-aggregator.yaml    # Namespace + ConfigMap + Deployment + Service for aggregator-mock
+│   ├── mock-aggregator.yaml    # Namespace + Secret + ConfigMap + Deployment + Service for aggregator-mock
 │   └── operator.yaml           # ServiceAccount + RBAC + Deployment for the operator
 └── test-resources/
     ├── namespace.yaml               # namespace test-ns
-    ├── secret.yaml                  # Secret pg-credentials
-    ├── edb-with-secret.yaml         # ExternalDatabaseDeclaration — 200 OK (happy path)
-    ├── edb-201-created.yaml         # ExternalDatabaseDeclaration — 201 Created
-    ├── edb-400-bad-request.yaml     # ExternalDatabaseDeclaration — 400 InvalidConfiguration
-    ├── edb-401-unauthorized.yaml    # ExternalDatabaseDeclaration — 401 BackingOff
-    ├── edb-403-forbidden.yaml       # ExternalDatabaseDeclaration — 403 InvalidConfiguration
-    ├── edb-409-conflict.yaml        # ExternalDatabaseDeclaration — 409 InvalidConfiguration
-    ├── edb-500-server-error.yaml    # ExternalDatabaseDeclaration — 500 BackingOff
-    ├── edb-missing-secret.yaml      # ExternalDatabaseDeclaration — BackingOff (Secret does not exist)
-    └── edb-secret-missing-key.yaml  # ExternalDatabaseDeclaration — BackingOff (Secret exists, key missing)
+    ├── secret.yaml                  # Secret pg-credentials (and pg-credentials-incomplete)
+    │
+    │   # ExternalDatabaseDeclaration test CRs
+    ├── edb-with-secret.yaml         # EDB — 200 OK (happy path, uses secret)
+    ├── edb-201-created.yaml         # EDB — 201 Created → Succeeded
+    ├── edb-400-bad-request.yaml     # EDB — 400 → InvalidConfiguration
+    ├── edb-401-unauthorized.yaml    # EDB — 401 → BackingOff
+    ├── edb-403-forbidden.yaml       # EDB — 403 → InvalidConfiguration
+    ├── edb-409-conflict.yaml        # EDB — 409 → InvalidConfiguration
+    ├── edb-500-server-error.yaml    # EDB — 500 → BackingOff
+    ├── edb-missing-secret.yaml      # EDB — Secret does not exist → BackingOff
+    ├── edb-secret-missing-key.yaml  # EDB — Secret exists, key missing → BackingOff
+    │
+    │   # DbPolicy test CRs
+    ├── dbpolicy-success.yaml                # DbPolicy — 200 OK → Succeeded (reason: PolicyApplied)
+    ├── dbpolicy-400.yaml                    # DbPolicy — 400 → InvalidConfiguration
+    ├── dbpolicy-401.yaml                    # DbPolicy — 401 → BackingOff
+    ├── dbpolicy-500.yaml                    # DbPolicy — 500 → BackingOff
+    └── dbpolicy-invalid-empty-spec.yaml     # DbPolicy — pre-flight: no services/policy → InvalidConfiguration
 ```

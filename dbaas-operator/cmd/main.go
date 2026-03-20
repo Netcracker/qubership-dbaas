@@ -242,10 +242,17 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "DatabaseDeclaration")
 		os.Exit(1)
 	}
+	dpCtrlOpts := ctrlcontroller.Options{
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](
+			backoffBaseDelay, backoffMaxDelay,
+		),
+	}
 	if err := (&controller.DbPolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   mgr.GetEventRecorderFor("dbpolicy"),
+	}).SetupWithManager(mgr, dpCtrlOpts); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DbPolicy")
 		os.Exit(1)
 	}
@@ -260,7 +267,7 @@ func main() {
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
-		Recorder:   mgr.GetEventRecorder("externaldatabasedeclaration"),
+		Recorder:   mgr.GetEventRecorderFor("externaldatabasedeclaration"),
 	}).SetupWithManager(mgr, edbCtrlOpts); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ExternalDatabaseDeclaration")
 		os.Exit(1)

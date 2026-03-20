@@ -86,21 +86,29 @@ func (c *AggregatorClient) SetCredentials(username, password string) {
 //   - error (*AggregatorError) → non-2xx response; IsClientError() distinguishes
 //     a permanent config error from a transient failure.
 func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *DeclarativePayload) (*DeclarativeResponse, error) {
-	var result DeclarativeResponse
-
 	resp, err := c.rc.R().
 		SetContext(ctx).
 		SetBody(payload).
-		SetResult(&result).
 		Post("/api/declarations/v1/apply")
 	if err != nil {
 		return nil, err
 	}
 
 	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusAccepted {
-		return nil, &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
+		aggErr := &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
+		var tmfResp tmf.Response
+		if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
+			aggErr.TmfMessage = tmfResp.Message
+		}
+		return nil, aggErr
 	}
 
+	var result DeclarativeResponse
+	if len(resp.Body()) > 0 {
+		if err := json.Unmarshal(resp.Body(), &result); err != nil {
+			return nil, fmt.Errorf("decode apply response: %w", err)
+		}
+	}
 	return &result, nil
 }
 
