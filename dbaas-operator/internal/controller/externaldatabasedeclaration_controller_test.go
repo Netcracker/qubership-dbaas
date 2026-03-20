@@ -18,9 +18,7 @@ package controller
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,7 +27,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -48,14 +45,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	)
 
 	var (
-		mockServer          *httptest.Server
-		mockStatusCode      int
-		mockBody            string // optional TMF JSON body; written after the status code
-		capturedRequestBody []byte // body of the last request received by the mock server
-		capturedRequestPath string
-		reconciler          *ExternalDatabaseDeclarationReconciler
-		fakeRecorder        *record.FakeRecorder
-		namespacedName      types.NamespacedName
+		fixture        *aggregatorSyncFixture
+		reconciler     *ExternalDatabaseDeclarationReconciler
+		namespacedName types.NamespacedName
 	)
 
 	// baseSpec builds a minimal valid spec without any credentialsSecretRef.
@@ -81,56 +73,28 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	}
 
 	BeforeEach(func() {
-		mockStatusCode = http.StatusOK
-		mockBody = ""
-		capturedRequestBody = nil
-		capturedRequestPath = ""
-		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedRequestBody, _ = io.ReadAll(r.Body)
-			capturedRequestPath = r.URL.Path
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(mockStatusCode)
-			if mockBody != "" {
-				_, _ = w.Write([]byte(mockBody))
-			}
-		}))
-
+		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
-
-		// Buffered channel — large enough that a single reconcile never blocks.
-		fakeRecorder = record.NewFakeRecorder(16)
-
 		reconciler = &ExternalDatabaseDeclarationReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewAggregatorClient(mockServer.URL, "user", "pass"),
-			Recorder:   fakeRecorder,
+			Aggregator: aggregatorclient.NewAggregatorClient(fixture.server.URL, "user", "pass"),
+			Recorder:   fixture.recorder,
 		}
 	})
 
 	AfterEach(func() {
-		mockServer.Close()
-
-		edb := &dbaasv1alpha1.ExternalDatabaseDeclaration{}
-		if err := k8sClient.Get(ctx, namespacedName, edb); err == nil {
-			Expect(k8sClient.Delete(ctx, edb)).To(Succeed())
-		}
-
-		secret := &corev1.Secret{}
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret); err == nil {
-			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
-		}
-
-		drainRecordedEvents(fakeRecorder.Events)
+		fixture.close()
+		deleteIfExists(&dbaasv1alpha1.ExternalDatabaseDeclaration{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+		deleteIfExists(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}})
 	})
 
 	// reconcileAndFetch calls Reconcile and re-fetches the CR from the API server.
 	// The CR must be created before calling this helper.
 	reconcileAndFetch := func() (*dbaasv1alpha1.ExternalDatabaseDeclaration, reconcile.Result, error) {
-		result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
-		fetched := &dbaasv1alpha1.ExternalDatabaseDeclaration{}
-		Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
-		return fetched, result, err
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1alpha1.ExternalDatabaseDeclaration {
+			return &dbaasv1alpha1.ExternalDatabaseDeclaration{}
+		})
 	}
 
 	// ── Request assembly ──────────────────────────────────────────────────────
@@ -147,7 +111,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 					},
 				},
 			}
-			mockStatusCode = http.StatusOK
+			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
@@ -155,12 +119,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 			_, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(capturedRequestBody).NotTo(BeEmpty())
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
 
 			var sent struct {
 				ConnectionProperties []map[string]string `json:"connectionProperties"`
 			}
-			Expect(json.Unmarshal(capturedRequestBody, &sent)).To(Succeed())
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
 			Expect(sent.ConnectionProperties).To(HaveLen(1))
 
 			props := sent.ConnectionProperties[0]
@@ -180,7 +144,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 			_, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(capturedRequestPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
+			Expect(fixture.capturedPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
 		})
 	})
 
@@ -188,7 +152,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 	Context("HTTP 200 — database already registered (no update)", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
-			mockStatusCode = http.StatusOK
+			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -213,14 +177,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("HTTP 201 — database successfully created or updated", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
-			mockStatusCode = http.StatusCreated
+			fixture.statusCode = http.StatusCreated
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -245,8 +209,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
@@ -280,8 +244,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
@@ -320,8 +284,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
@@ -329,8 +293,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 	Context("HTTP 400 — invalid request (e.g. invalid classifier)", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
-			mockStatusCode = http.StatusBadRequest
-			mockBody = `{"code":"CORE-DBAAS-4010","reason":"Invalid classifier","message":"Invalid classifier. Classifier does not meet required conditions.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusBadRequest
+			fixture.body = `{"code":"CORE-DBAAS-4010","reason":"Invalid classifier","message":"Invalid classifier. Classifier does not meet required conditions.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -355,16 +319,16 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Invalid classifier. Classifier does not meet required conditions.")
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("HTTP 401 — operator credentials or role binding misconfigured", func() {
 		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, emits Warning/Unauthorized, requeues", func() {
-			mockStatusCode = http.StatusUnauthorized
-			mockBody = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusUnauthorized
+			fixture.body = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -387,16 +351,16 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized,
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized,
 				"Requested role is not allowed")
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("HTTP 403 — namespace mismatch between path and classifier", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
-			mockStatusCode = http.StatusForbidden
-			mockBody = `{"code":"CORE-DBAAS-4004","reason":"Namespace from request is not equal to one from database classifier","message":"Namespace from request is not equal to one from database classifier.","status":"403","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusForbidden
+			fixture.body = `{"code":"CORE-DBAAS-4004","reason":"Namespace from request is not equal to one from database classifier","message":"Namespace from request is not equal to one from database classifier.","status":"403","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -421,16 +385,16 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Namespace from request is not equal to one from database classifier.")
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("HTTP 409 — database exists as internal (not externally manageable)", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
-			mockStatusCode = http.StatusConflict
-			mockBody = `{"code":"CORE-DBAAS-4002","reason":"Conflict database request","message":"Conflict database request. Logical database already exists and is not externally manageable.","status":"409","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusConflict
+			fixture.body = `{"code":"CORE-DBAAS-4002","reason":"Conflict database request","message":"Conflict database request. Logical database already exists and is not externally manageable.","status":"409","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -455,9 +419,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Conflict database request. Logical database already exists and is not externally manageable.")
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
@@ -465,8 +429,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 	Context("HTTP 500 — unexpected aggregator server error", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, emits Warning/AggregatorError, requeues", func() {
-			mockStatusCode = http.StatusInternalServerError
-			mockBody = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusInternalServerError
+			fixture.body = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -489,15 +453,15 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("HTTP 404 — aggregator endpoint mismatch", func() {
 		It("treats the response as transient and requeues instead of marking the spec invalid", func() {
-			mockStatusCode = http.StatusNotFound
-			mockBody = `{"message":"endpoint not found"}`
+			fixture.statusCode = http.StatusNotFound
+			fixture.body = `{"message":"endpoint not found"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -520,8 +484,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(EventReasonAggregatorError))
 
-			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "endpoint not found")
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "endpoint not found")
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
@@ -529,7 +493,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, emits Warning/AggregatorError, requeues", func() {
 			// Close the server before reconcile so the HTTP call fails with a
 			// connection-refused / EOF error (no AggregatorError wrapping).
-			mockServer.Close()
+			fixture.server.Close()
 
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -552,8 +516,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoRecordedEvent(fakeRecorder.Events)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 })
