@@ -546,6 +546,42 @@ func TestAggregatorError_IsClientError(t *testing.T) {
 	}
 }
 
+func TestAggregatorError_IsSpecRejection(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		code int
+		want bool
+	}{
+		// Permanent spec rejections — aggregator explicitly rejects the payload.
+		{http.StatusBadRequest, true},          // 400 — validation failure
+		{http.StatusForbidden, true},           // 403 — namespace/policy violation
+		{http.StatusConflict, true},            // 409 — resource already exists
+		{http.StatusGone, true},                // 410 — resource permanently removed
+		{http.StatusUnprocessableEntity, true}, // 422 — semantic validation failure
+		// Infrastructure / proxy 4xx — transient, must NOT be spec rejections.
+		{http.StatusUnauthorized, false},     // 401 — handled by IsAuthError
+		{http.StatusNotFound, false},         // 404 — routing/proxy issue
+		{http.StatusMethodNotAllowed, false}, // 405 — wrong HTTP method
+		{http.StatusRequestTimeout, false},   // 408 — transient timeout
+		{http.StatusTooManyRequests, false},  // 429 — rate limit
+		// Server errors — transient.
+		{http.StatusInternalServerError, false},
+		{http.StatusBadGateway, false},
+		{http.StatusServiceUnavailable, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(http.StatusText(tc.code), func(t *testing.T) {
+			t.Parallel()
+			e := &AggregatorError{StatusCode: tc.code}
+			if got := e.IsSpecRejection(); got != tc.want {
+				t.Errorf("IsSpecRejection() for %d: got %v, want %v", tc.code, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestAggregatorError_ErrorMessage(t *testing.T) {
 	t.Parallel()
 	e := &AggregatorError{StatusCode: 409, Body: "conflict"}

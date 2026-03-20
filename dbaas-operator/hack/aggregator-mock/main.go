@@ -40,7 +40,13 @@ limitations under the License.
 //	                                    (default: /config/rules.json). Missing = not an error.
 //	MOCK_APPLY_RULES_FILE             – path to a JSON file mapping microserviceName → MockRule
 //	                                    for POST /api/declarations/v1/apply (default: /config/apply-rules.json).
-//	                                    Missing = not an error; falls back to HTTP 200 COMPLETED.
+//	                                    Missing = not an error.
+//	                                    For DbPolicy: no rule → 200 COMPLETED.
+//	                                    For DatabaseDeclaration: no rule → 202 IN_PROGRESS with trackingId.
+//	MOCK_POLL_RULES_FILE              – path to a JSON file mapping trackingId → MockPollRule
+//	                                    for GET /api/declarations/v1/operation/{id}/status
+//	                                    (default: /config/poll-rules.json). Missing = not an error.
+//	                                    No rule → 200 COMPLETED.
 package main
 
 import (
@@ -64,7 +70,7 @@ type UserConfig struct {
 	Roles    []string `json:"roles"`
 }
 
-// MockRule fully describes the response for a specific dbName.
+// MockRule fully describes the response for a specific dbName or microserviceName.
 // All TmfErrorResponse fields are specified here — the mock contains no hardcoded
 // templates; the ConfigMap is the single source of truth for every response.
 //
@@ -78,9 +84,19 @@ type MockRule struct {
 	Message  string `json:"message,omitempty"`
 }
 
+// MockPollRule describes the poll response for a specific trackingId.
+// HTTPCode overrides the response code (e.g. 404). Status controls the payload.
+type MockPollRule struct {
+	// HTTPCode, when non-zero, returns a non-200 response (e.g. 404).
+	HTTPCode int `json:"httpCode,omitempty"`
+	// Status is the operation status to return: "COMPLETED", "FAILED", "TERMINATED",
+	// "IN_PROGRESS", "NOT_STARTED". Defaults to "COMPLETED" when HTTPCode is 0.
+	Status string `json:"status,omitempty"`
+	// FailReason is included in the DataBaseCreated condition reason when Status=FAILED.
+	FailReason string `json:"failReason,omitempty"`
+}
+
 // authRuleUnauthorized is the fixed response for missing/wrong credentials (401).
-// The security framework in the real dbaas-aggregator does not assign a CORE-DBAAS-*
-// error code for 401 responses.
 var authRuleUnauthorized = MockRule{
 	HTTPCode: http.StatusUnauthorized,
 	Message:  "Requested role is not allowed",
@@ -119,6 +135,8 @@ func main() {
 	rules := loadRules(rulesFile)
 	applyRulesFile := envOr("MOCK_APPLY_RULES_FILE", "/config/apply-rules.json")
 	applyRules := loadRules(applyRulesFile)
+	pollRulesFile := envOr("MOCK_POLL_RULES_FILE", "/config/poll-rules.json")
+	pollRules := loadPollRules(pollRulesFile)
 
 	// Load users from users.json — same path as the real dbaas-aggregator.
 	securityDir := envOr("DBAAS_SECURITY_CONFIGURATION_LOCATION", "/etc/dbaas/security")
@@ -127,10 +145,10 @@ func main() {
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
 		defaultRule.HTTPCode, len(rules))
-	log.Printf("  POST .../apply                 → 200 (sync, %d per-microserviceName rules loaded)", len(applyRules))
-	log.Printf("  GET  .../operation/.../status  → 200 COMPLETED")
+	log.Printf("  POST .../apply                 → DbPolicy:200 / DatabaseDeclaration:202  (%d per-microserviceName rules loaded)", len(applyRules))
+	log.Printf("  GET  .../operation/.../status  → default COMPLETED  (%d per-trackingId poll rules loaded)", len(pollRules))
 
-	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, users)); err != nil {
+	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, pollRules, users)); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
@@ -165,27 +183,47 @@ func loadUsers(dir string) map[string]UserConfig {
 	return users
 }
 
-// loadRules reads a JSON file that maps dbName → MockRule.
-// A missing file is not an error — the mock falls back to the global default code.
+// loadRules reads a JSON file that maps a string key → MockRule.
+// A missing file is not an error.
 func loadRules(path string) map[string]MockRule {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Printf("rules file %q not found or unreadable, using MOCK_RESPONSE_CODE only: %v", path, err)
+		log.Printf("rules file %q not found or unreadable, using defaults: %v", path, err)
 		return nil
 	}
 	var rules map[string]MockRule
 	if err := json.Unmarshal(data, &rules); err != nil {
 		log.Fatalf("parse rules file %q: %v", path, err)
 	}
-	log.Printf("loaded %d dbName rules from %q", len(rules), path)
-	for db, rule := range rules {
-		log.Printf("  rule: dbName=%q → httpCode=%d tmfCode=%q reason=%q message=%q",
-			db, rule.HTTPCode, rule.TmfCode, rule.Reason, rule.Message)
+	log.Printf("loaded %d rules from %q", len(rules), path)
+	for k, rule := range rules {
+		log.Printf("  rule: key=%q → httpCode=%d tmfCode=%q reason=%q message=%q",
+			k, rule.HTTPCode, rule.TmfCode, rule.Reason, rule.Message)
 	}
 	return rules
 }
 
-func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[string]MockRule, users map[string]UserConfig) http.Handler {
+// loadPollRules reads a JSON file that maps trackingId → MockPollRule.
+// A missing file is not an error.
+func loadPollRules(path string) map[string]MockPollRule {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("poll-rules file %q not found or unreadable, using defaults: %v", path, err)
+		return nil
+	}
+	var rules map[string]MockPollRule
+	if err := json.Unmarshal(data, &rules); err != nil {
+		log.Fatalf("parse poll-rules file %q: %v", path, err)
+	}
+	log.Printf("loaded %d poll rules from %q", len(rules), path)
+	for k, rule := range rules {
+		log.Printf("  poll-rule: trackingId=%q → httpCode=%d status=%q failReason=%q",
+			k, rule.HTTPCode, rule.Status, rule.FailReason)
+	}
+	return rules
+}
+
+func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[string]MockRule, pollRules map[string]MockPollRule, users map[string]UserConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		logRequest(r)
@@ -208,7 +246,7 @@ func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[str
 			if !checkAuth(w, r, users, roleDBClient) {
 				return
 			}
-			handleOpStatus(w, r)
+			handleOpStatus(w, r, pollRules)
 
 		default:
 			log.Printf("  → 404 no route for %s %s", r.Method, r.URL.Path)
@@ -255,14 +293,10 @@ func hasRole(roles []string, role string) bool {
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
-// The response rule is resolved from the per-dbName rules map, falling back to defaultRule.
-// For error responses (4xx/5xx) a full TmfErrorResponse body is returned using the
-// fields specified in the rule — no hardcoded templates.
 func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultRule MockRule, rules map[string]MockRule) {
 	m := reExternalDB.FindStringSubmatch(r.URL.Path)
 	namespace := m[1]
 
-	// Parse dbName from the request body.
 	var req struct {
 		DbName string `json:"dbName"`
 	}
@@ -293,11 +327,16 @@ func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultRule MockRu
 }
 
 // handleApply serves POST /api/declarations/v1/apply.
-// The response rule is resolved from applyRules keyed by metadata.microserviceName.
-// Falls back to 200 COMPLETED when no rule matches.
+//
+// Behaviour by subKind (when no rule matches):
+//   - "DbPolicy"             → 200 COMPLETED (synchronous)
+//   - "DatabaseDeclaration"  → 202 IN_PROGRESS with deterministic trackingId
+//
+// An explicit rule in applyRules (keyed by microserviceName) overrides the default.
+// Error rules (4xx/5xx) are returned as TmfErrorResponse regardless of subKind.
 func handleApply(w http.ResponseWriter, r *http.Request, applyRules map[string]MockRule) {
-	// Parse microserviceName from the request body.
 	var req struct {
+		SubKind  string `json:"subKind"`
 		Metadata struct {
 			MicroserviceName string `json:"microserviceName"`
 		} `json:"metadata"`
@@ -307,13 +346,15 @@ func handleApply(w http.ResponseWriter, r *http.Request, applyRules map[string]M
 	_ = json.Unmarshal(body, &req)
 
 	msName := req.Metadata.MicroserviceName
+
+	// Explicit rule overrides default.
 	if rule, ok := applyRules[msName]; ok {
-		log.Printf("  → apply config  microserviceName=%q → httpCode=%d", msName, rule.HTTPCode)
+		log.Printf("  → apply config  subKind=%q microserviceName=%q → httpCode=%d (rule)", req.SubKind, msName, rule.HTTPCode)
 		if rule.HTTPCode >= 400 {
 			writeTmfError(w, rule)
 			return
 		}
-		// 2xx override (e.g. to force a specific success code in tests)
+		// 2xx rule: honour the exact code.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(rule.HTTPCode)
 		writeJSON(w, map[string]interface{}{
@@ -323,7 +364,27 @@ func handleApply(w http.ResponseWriter, r *http.Request, applyRules map[string]M
 		return
 	}
 
-	log.Printf("  → apply config  microserviceName=%q → 200 COMPLETED (no rule)", msName)
+	// Default behaviour depends on subKind.
+	if req.SubKind == "DatabaseDeclaration" {
+		// DatabaseDeclaration is always async: return 202 with a deterministic trackingId.
+		trackingID := "tracking-" + msName
+		log.Printf("  → apply config  subKind=DatabaseDeclaration microserviceName=%q → 202 IN_PROGRESS trackingId=%q (default)",
+			msName, trackingID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		writeJSON(w, map[string]interface{}{
+			"status":     "IN_PROGRESS",
+			"trackingId": trackingID,
+			"conditions": []map[string]string{
+				{"type": "Validated", "state": "COMPLETED"},
+				{"type": "DataBaseCreated", "state": "IN_PROGRESS"},
+			},
+		})
+		return
+	}
+
+	// DbPolicy and any other subKind: default 200 COMPLETED (synchronous).
+	log.Printf("  → apply config  subKind=%q microserviceName=%q → 200 COMPLETED (default)", req.SubKind, msName)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	writeJSON(w, map[string]interface{}{
@@ -333,17 +394,60 @@ func handleApply(w http.ResponseWriter, r *http.Request, applyRules map[string]M
 }
 
 // handleOpStatus serves GET /api/declarations/v1/operation/{id}/status.
-func handleOpStatus(w http.ResponseWriter, r *http.Request) {
+//
+// The response is resolved from pollRules keyed by trackingId.
+// Missing rule → 200 COMPLETED (happy-path default).
+func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string]MockPollRule) {
 	m := reOpStatus.FindStringSubmatch(r.URL.Path)
 	trackingID := m[1]
-	log.Printf("  → operation status  trackingId=%q  → COMPLETED", trackingID)
+
+	if rule, ok := pollRules[trackingID]; ok {
+		log.Printf("  → operation status  trackingId=%q → rule: httpCode=%d status=%q", trackingID, rule.HTTPCode, rule.Status)
+
+		// Non-200 response (e.g. 404).
+		if rule.HTTPCode != 0 && rule.HTTPCode != http.StatusOK {
+			w.WriteHeader(rule.HTTPCode)
+			return
+		}
+
+		status := rule.Status
+		if status == "" {
+			status = "COMPLETED"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		dbCreatedCondition := map[string]string{
+			"type":  "DataBaseCreated",
+			"state": status,
+		}
+		if rule.FailReason != "" {
+			dbCreatedCondition["reason"] = rule.FailReason
+			dbCreatedCondition["message"] = "Failed"
+		}
+
+		writeJSON(w, map[string]interface{}{
+			"status":     status,
+			"trackingId": trackingID,
+			"conditions": []map[string]string{
+				{"type": "Validated", "state": "COMPLETED"},
+				dbCreatedCondition,
+			},
+		})
+		return
+	}
+
+	// Default: COMPLETED.
+	log.Printf("  → operation status  trackingId=%q → COMPLETED (default)", trackingID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	writeJSON(w, map[string]interface{}{
 		"status":     "COMPLETED",
 		"trackingId": trackingID,
 		"conditions": []map[string]string{
-			{"type": "DBCreated", "state": "True", "reason": "OK", "message": ""},
+			{"type": "Validated", "state": "COMPLETED"},
+			{"type": "DataBaseCreated", "state": "COMPLETED"},
 		},
 	})
 }
@@ -368,10 +472,7 @@ func logRequest(r *http.Request) {
 	}
 }
 
-// writeTmfError writes a complete error response using the fields from rule:
-// sets Content-Type, optional WWW-Authenticate header (for 401), writes the HTTP
-// status code, then a tmf.Response JSON body. The id and @type fields are
-// always generated; all other fields come directly from the rule.
+// writeTmfError writes a complete error response using the fields from rule.
 func writeTmfError(w http.ResponseWriter, rule MockRule) {
 	w.Header().Set("Content-Type", "application/json")
 	if rule.HTTPCode == http.StatusUnauthorized {

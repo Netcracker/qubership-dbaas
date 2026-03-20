@@ -91,6 +91,35 @@ data:
         "tmfCode": "CORE-DBAAS-2000",
         "reason": "Unexpected exception",
         "message": "Unexpected exception"
+      },
+      "dd-svc-sync": {
+        "httpCode": 200
+      },
+      "dd-svc-400": {
+        "httpCode": 400,
+        "tmfCode": "CORE-DBAAS-4036",
+        "reason": "Declarative configuration request validation failed",
+        "message": "Declarative configuration validation failed. Unknown dbType."
+      },
+      "dd-svc-401": {
+        "httpCode": 401,
+        "message": "Requested role is not allowed"
+      },
+      "dd-svc-500": {
+        "httpCode": 500,
+        "tmfCode": "CORE-DBAAS-2000",
+        "reason": "Unexpected exception",
+        "message": "Unexpected exception"
+      }
+    }
+  poll-rules.json: |
+    {
+      "tracking-dd-poll-failed": {
+        "status": "FAILED",
+        "failReason": "disk quota exceeded on host pg-primary-0"
+      },
+      "tracking-dd-poll-terminated": {
+        "status": "TERMINATED"
       }
     }
 ---
@@ -131,6 +160,8 @@ spec:
               value: /config/rules.json
             - name: MOCK_APPLY_RULES_FILE
               value: /config/apply-rules.json
+            - name: MOCK_POLL_RULES_FILE
+              value: /config/poll-rules.json
           volumeMounts:
             - name: security
               mountPath: /etc/dbaas/security

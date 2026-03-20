@@ -235,10 +235,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	ddCtrlOpts := ctrlcontroller.Options{
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](
+			backoffBaseDelay, backoffMaxDelay,
+		),
+	}
 	if err := (&controller.DatabaseDeclarationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   mgr.GetEventRecorderFor("databasedeclaration"),
+	}).SetupWithManager(mgr, ddCtrlOpts); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DatabaseDeclaration")
 		os.Exit(1)
 	}

@@ -1,0 +1,15 @@
+# DatabaseDeclaration — asynchronous success (HTTP 202 → poll → COMPLETED)
+# No apply-rule → default 202 IN_PROGRESS with trackingId="tracking-dd-svc-async"
+# No poll-rule → default COMPLETED
+# Expected: Phase=WaitingForDependency → Phase=Succeeded
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: DatabaseDeclaration
+metadata:
+  name: dd-success-async
+  namespace: test-ns
+spec:
+  classifierConfig:
+    classifier:
+      microserviceName: dd-svc-async
+      scope: service
+  type: postgresql

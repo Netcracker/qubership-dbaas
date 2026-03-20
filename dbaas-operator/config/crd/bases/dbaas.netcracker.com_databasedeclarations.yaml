@@ -58,15 +58,43 @@ spec:
                   in dbaas. The aggregator uses it to look up or create the physical database.
                 properties:
                   classifier:
-                    additionalProperties:
-                      type: string
                     description: |-
-                      classifier is a key-value map that uniquely identifies a database in dbaas.
-                      All values must be strings. Typical keys:
-                        - namespace       — Kubernetes namespace of the owning service (required)
-                        - microserviceName — name of the microservice that owns the database (required)
-                        - scope           — logical scope, e.g. "service" or "tenant" (optional)
-                        - tenantId        — tenant identifier for multi-tenant deployments (optional)
+                      classifier is the set of keys that uniquely identify this database.
+                      Required keys: microserviceName, scope.
+                    properties:
+                      customKeys:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          customKeys is an optional nested map for adapter-specific or
+                          application-specific identifiers (e.g. logicalDBName).
+                          Values are arbitrary strings; not validated by the aggregator.
+                        type: object
+                      microserviceName:
+                        description: |-
+                          microserviceName is the name of the microservice that owns the database.
+                          Must match metadata.microserviceName sent in the declarative payload.
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          namespace is the Kubernetes namespace of the owning service.
+                          If omitted, the aggregator uses metadata.namespace from the request.
+                        type: string
+                      scope:
+                        description: scope defines the logical scope of the database,
+                          e.g. "service" or "tenant".
+                        minLength: 1
+                        type: string
+                      tenantId:
+                        description: |-
+                          tenantId is the tenant identifier for multi-tenant deployments.
+                          Only relevant when scope="tenant". When absent, the aggregator applies
+                          the declaration for every tenant already registered in the namespace.
+                        type: string
+                    required:
+                    - microserviceName
+                    - scope
                     type: object
                 required:
                 - classifier
@@ -74,40 +102,71 @@ spec:
               initialInstantiation:
                 description: |-
                   initialInstantiation defines how the database is created on the first deployment.
-                  Optional; the aggregator applies its own defaults if omitted.
+                  If absent — instantiationApproach defaults to "new".
                 properties:
                   approach:
                     description: |-
                       approach defines the strategy for initial database creation.
-                      Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
+                      "clone" — clone from sourceClassifier (lazy=true is prohibited in this mode).
+                      "new"   — create an empty database (default when initialInstantiation is absent).
                     type: string
                   sourceClassifier:
-                    additionalProperties:
-                      type: string
                     description: |-
                       sourceClassifier is the classifier of the database to clone from.
                       Required when approach is "clone". Must reference an existing database in dbaas.
+                      microserviceName must match classifierConfig.classifier.microserviceName.
+                    properties:
+                      customKeys:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          customKeys is an optional nested map for adapter-specific or
+                          application-specific identifiers (e.g. logicalDBName).
+                          Values are arbitrary strings; not validated by the aggregator.
+                        type: object
+                      microserviceName:
+                        description: |-
+                          microserviceName is the name of the microservice that owns the database.
+                          Must match metadata.microserviceName sent in the declarative payload.
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          namespace is the Kubernetes namespace of the owning service.
+                          If omitted, the aggregator uses metadata.namespace from the request.
+                        type: string
+                      scope:
+                        description: scope defines the logical scope of the database,
+                          e.g. "service" or "tenant".
+                        minLength: 1
+                        type: string
+                      tenantId:
+                        description: |-
+                          tenantId is the tenant identifier for multi-tenant deployments.
+                          Only relevant when scope="tenant". When absent, the aggregator applies
+                          the declaration for every tenant already registered in the namespace.
+                        type: string
+                    required:
+                    - microserviceName
+                    - scope
                     type: object
                 type: object
               lazy:
                 description: |-
                   lazy indicates whether the database should be provisioned on first access rather
-                  than immediately during reconciliation. When true, the aggregator defers physical
-                  database creation until a service requests a connection. Defaults to false.
+                  than immediately during reconciliation. Defaults to false.
+                  Prohibited when initialInstantiation.approach=clone.
                 type: boolean
               namePrefix:
-                description: |-
-                  namePrefix is a prefix applied to the physical database name created in the DBMS.
-                  Useful for disambiguation when multiple logical databases share the same DBMS instance.
+                description: namePrefix is a prefix applied to the physical database
+                  name created in the DBMS.
                 type: string
               settings:
                 additionalProperties:
                   type: string
                 description: |-
                   settings contains database-engine-specific configuration passed through to the
-                  dbaas adapter. The accepted keys and their semantics depend on the specific adapter.
-                  All values are strings; numeric and boolean settings should be passed as their
-                  string representation (e.g. maxConnections: "100", createOnly: "true").
+                  dbaas adapter. All values are strings.
                 type: object
               type:
                 description: |-
@@ -118,7 +177,7 @@ spec:
               versioningConfig:
                 description: |-
                   versioningConfig defines the strategy for handling database versions during
-                  blue-green deployments. Optional; the aggregator applies its own defaults if omitted.
+                  blue-green deployments. If absent — versioningType="static" (no versioning).
                 properties:
                   approach:
                     description: |-
@@ -136,17 +195,19 @@ spec:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by all dbaas operator resources (ExternalDatabaseDeclaration, DbPolicy):
+                  Condition types used by all dbaas operator resources (ExternalDatabaseDeclaration, DbPolicy, DatabaseDeclaration):
                     - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   False on any error; see Reason for the category.
                                   ExternalDatabaseDeclaration: reason "Registered" on success.
                                   DbPolicy: reason "PolicyApplied" on success.
+                                  DatabaseDeclaration: reason "DatabaseProvisioned" on success;
+                                    reason "ProvisioningStarted" while the async operation is in progress.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,
                                   AggregatorRejected). False for transient errors that are
                                   retried automatically (e.g. SecretError, AggregatorError,
-                                  Unauthorized).
+                                  Unauthorized, ProvisioningStarted).
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -213,6 +274,16 @@ spec:
                   Zero (or less than metadata.generation) means the current generation has not
                   yet been fully reconciled — for example, the controller is in BackingOff
                   waiting for a transient error to clear.
+                format: int64
+                type: integer
+              pendingOperationGeneration:
+                description: |-
+                  pendingOperationGeneration stores the .metadata.generation at which the
+                  current status.trackingId was obtained. The controller uses this to detect
+                  spec changes that occur while an async operation is in progress: if the
+                  current generation differs from pendingOperationGeneration, the stale
+                  trackingId is cleared and the operation is re-submitted.
+                  Zero means no pending async operation.
                 format: int64
                 type: integer
               phase:

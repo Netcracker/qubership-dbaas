@@ -105,8 +105,9 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
 				return ctrl.Result{}, err // requeue with backoff
 
-			case aggErr.IsClientError():
-				// 400 — spec error; retrying won't help until the spec changes.
+			case aggErr.IsSpecRejection():
+				// 400/403/409/410/422 — aggregator explicitly rejected the spec.
+				// Retrying the same payload will not help; wait for a spec change.
 				dp.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
 				setCondition(&dp.Status.Conditions, dp.Generation,
 					conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())

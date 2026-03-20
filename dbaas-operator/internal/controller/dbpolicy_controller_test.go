@@ -432,6 +432,30 @@ var _ = Describe("DbPolicy Controller", func() {
 		})
 	})
 
+	Context("HTTP 404 — infrastructure error, not a spec rejection", func() {
+		It("sets Phase=BackingOff (not InvalidConfiguration), Stalled=False, requeues", func() {
+			mockStatusCode = http.StatusNotFound
+			mockBody = ""
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			dp, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff),
+				"404 is an infrastructure error, not a spec rejection; CR must not be stuck in InvalidConfiguration")
+
+			stalled := findCondition(dp.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoEvent()
+		})
+	})
+
 	Context("Network error — aggregator is unreachable", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, requeues", func() {
 			mockServer.Close()

@@ -35,6 +35,16 @@ const (
 	// applied via dbaas-aggregator POST /api/declarations/v1/apply. Type: Normal.
 	EventReasonPolicyApplied = "PolicyApplied"
 
+	// EventReasonProvisioningStarted is emitted when dbaas-aggregator returns HTTP 202
+	// for a DatabaseDeclaration, meaning the async operation has been accepted.
+	// Type: Normal (informational — not yet complete).
+	EventReasonProvisioningStarted = "ProvisioningStarted"
+
+	// EventReasonDatabaseProvisioned is emitted when a DatabaseDeclaration is
+	// successfully provisioned by dbaas-aggregator (either via HTTP 200 sync or
+	// after polling completes with COMPLETED). Type: Normal.
+	EventReasonDatabaseProvisioned = "DatabaseProvisioned"
+
 	// EventReasonInvalidSpec is emitted when the CR spec fails pre-flight
 	// validation before the aggregator is even contacted. Type: Warning.
 	EventReasonInvalidSpec = "InvalidSpec"
