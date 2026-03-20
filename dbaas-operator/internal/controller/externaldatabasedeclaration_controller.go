@@ -120,10 +120,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	// The namespace used in the aggregator URL comes from the classifier; fall
 	// back to the CR's own namespace if the classifier does not contain one.
-	namespace := edb.Spec.Classifier["namespace"]
-	if namespace == "" {
-		namespace = edb.Namespace
-	}
+	namespace := resolveAggregatorNamespace(edb)
 
 	// Call the aggregator.
 	if err := r.Aggregator.RegisterExternalDatabase(ctx, namespace, aggReq); err != nil {
@@ -179,58 +176,9 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 	ctx context.Context,
 	edb *dbaasv1alpha1.ExternalDatabaseDeclaration,
 ) (*aggregatorclient.ExternalDatabaseRequest, error) {
-	connProps := make([]map[string]string, 0, len(edb.Spec.ConnectionProperties))
-
-	for i, cp := range edb.Spec.ConnectionProperties {
-		flat := make(map[string]string)
-
-		// Extra properties are merged first so that role and Secret credentials
-		// written below always take precedence over them.
-		for k, v := range cp.ExtraProperties {
-			flat[k] = v
-		}
-
-		// role is the only typed field; written after ExtraProperties so it
-		// cannot be overridden by a user-supplied "role" key.
-		flat["role"] = cp.Role
-
-		// Credentials from a Kubernetes Secret.
-		if cp.CredentialsSecretRef != nil {
-			secret := &corev1.Secret{}
-			key := types.NamespacedName{
-				Namespace: edb.Namespace,
-				Name:      cp.CredentialsSecretRef.Name,
-			}
-			if err := r.Get(ctx, key, secret); err != nil {
-				return nil, fmt.Errorf(
-					"connectionProperties[%d]: get Secret %q: %w",
-					i, cp.CredentialsSecretRef.Name, err)
-			}
-
-			usernameKey := cp.CredentialsSecretRef.UsernameKey
-			if usernameKey == "" {
-				usernameKey = "username"
-			}
-			passwordKey := cp.CredentialsSecretRef.PasswordKey
-			if passwordKey == "" {
-				passwordKey = "password"
-			}
-
-			if _, ok := secret.Data[usernameKey]; !ok {
-				return nil, fmt.Errorf(
-					"connectionProperties[%d]: Secret %q missing key %q",
-					i, cp.CredentialsSecretRef.Name, usernameKey)
-			}
-			if _, ok := secret.Data[passwordKey]; !ok {
-				return nil, fmt.Errorf(
-					"connectionProperties[%d]: Secret %q missing key %q",
-					i, cp.CredentialsSecretRef.Name, passwordKey)
-			}
-			flat["username"] = string(secret.Data[usernameKey])
-			flat["password"] = string(secret.Data[passwordKey])
-		}
-
-		connProps = append(connProps, flat)
+	connProps, err := r.buildConnectionProperties(ctx, edb)
+	if err != nil {
+		return nil, err
 	}
 
 	return &aggregatorclient.ExternalDatabaseRequest{
@@ -240,6 +188,97 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 		ConnectionProperties:       connProps,
 		UpdateConnectionProperties: edb.Spec.UpdateConnectionProperties,
 	}, nil
+}
+
+func resolveAggregatorNamespace(edb *dbaasv1alpha1.ExternalDatabaseDeclaration) string {
+	if namespace := edb.Spec.Classifier["namespace"]; namespace != "" {
+		return namespace
+	}
+	return edb.Namespace
+}
+
+func (r *ExternalDatabaseDeclarationReconciler) buildConnectionProperties(
+	ctx context.Context,
+	edb *dbaasv1alpha1.ExternalDatabaseDeclaration,
+) ([]map[string]string, error) {
+	connProps := make([]map[string]string, 0, len(edb.Spec.ConnectionProperties))
+
+	for i, cp := range edb.Spec.ConnectionProperties {
+		flat := make(map[string]string, len(cp.ExtraProperties)+3)
+
+		// Extra properties are merged first so that typed fields and resolved
+		// Secret credentials always win on key collisions.
+		for k, v := range cp.ExtraProperties {
+			flat[k] = v
+		}
+
+		flat["role"] = cp.Role
+
+		if err := r.applySecretCredentials(ctx, edb.Namespace, i, cp, flat); err != nil {
+			return nil, err
+		}
+
+		connProps = append(connProps, flat)
+	}
+
+	return connProps, nil
+}
+
+func (r *ExternalDatabaseDeclarationReconciler) applySecretCredentials(
+	ctx context.Context,
+	namespace string,
+	index int,
+	cp dbaasv1alpha1.ConnectionProperty,
+	flat map[string]string,
+) error {
+	if cp.CredentialsSecretRef == nil {
+		return nil
+	}
+
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      cp.CredentialsSecretRef.Name,
+	}
+	if err := r.Get(ctx, key, secret); err != nil {
+		return fmt.Errorf(
+			"connectionProperties[%d]: get Secret %q: %w",
+			index, cp.CredentialsSecretRef.Name, err)
+	}
+
+	usernameKey, passwordKey := secretCredentialKeys(cp.CredentialsSecretRef)
+
+	username, ok := secret.Data[usernameKey]
+	if !ok {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q missing key %q",
+			index, cp.CredentialsSecretRef.Name, usernameKey)
+	}
+
+	password, ok := secret.Data[passwordKey]
+	if !ok {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q missing key %q",
+			index, cp.CredentialsSecretRef.Name, passwordKey)
+	}
+
+	flat["username"] = string(username)
+	flat["password"] = string(password)
+	return nil
+}
+
+func secretCredentialKeys(ref *dbaasv1alpha1.CredentialsSecretRef) (usernameKey, passwordKey string) {
+	usernameKey = ref.UsernameKey
+	if usernameKey == "" {
+		usernameKey = "username"
+	}
+
+	passwordKey = ref.PasswordKey
+	if passwordKey == "" {
+		passwordKey = "password"
+	}
+
+	return usernameKey, passwordKey
 }
 
 // SetupWithManager sets up the controller with the Manager.

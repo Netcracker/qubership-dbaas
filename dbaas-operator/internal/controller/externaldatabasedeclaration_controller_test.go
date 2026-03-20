@@ -62,6 +62,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		mockStatusCode      int
 		mockBody            string // optional TMF JSON body; written after the status code
 		capturedRequestBody []byte // body of the last request received by the mock server
+		capturedRequestPath string
 		reconciler          *ExternalDatabaseDeclarationReconciler
 		fakeRecorder        *record.FakeRecorder
 		namespacedName      types.NamespacedName
@@ -93,8 +94,10 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		mockStatusCode = http.StatusOK
 		mockBody = ""
 		capturedRequestBody = nil
+		capturedRequestPath = ""
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			capturedRequestBody, _ = io.ReadAll(r.Body)
+			capturedRequestPath = r.URL.Path
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(mockStatusCode)
 			if mockBody != "" {
@@ -213,6 +216,21 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			props := sent.ConnectionProperties[0]
 			Expect(props["role"]).To(Equal("primary"),
 				"typed Role must override ExtraProperties role")
+		})
+	})
+
+	Context("aggregator namespace resolution", func() {
+		It("falls back to the CR namespace when classifier.namespace is absent", func() {
+			spec := baseSpec()
+			delete(spec.Classifier, "namespace")
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(capturedRequestPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
 		})
 	})
 
