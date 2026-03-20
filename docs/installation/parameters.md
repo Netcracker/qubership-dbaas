@@ -288,7 +288,7 @@ Specifies the default amount of time the lock should be kept in case the executi
 
 ### DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
 
-Specifies the period requesting adapters for backup or restore during an asynchronous process
+Specifies the interval for requesting adapters for backup or restore status during an asynchronous process
 
 | Default | Recommended                                             |
 |---------|---------------------------------------------------------|
@@ -296,7 +296,7 @@ Specifies the period requesting adapters for backup or restore during an asynchr
 
 ### DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
 
-Specifies the max number of attempts to requesting adapters for backup or restore during an asynchronous process
+Specifies the max number of attempts to requesting adapters for backup or restore status during an asynchronous process
 
 | Default | Recommended                                               |
 |---------|-----------------------------------------------------------|
