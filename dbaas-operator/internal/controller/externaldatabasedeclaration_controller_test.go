@@ -40,16 +40,6 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-// findCondition returns the first condition with the given type, or nil.
-func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
-	for i := range conditions {
-		if conditions[i].Type == condType {
-			return &conditions[i]
-		}
-	}
-	return nil
-}
-
 var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	const (
 		ns           = "default"
@@ -131,15 +121,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
 		}
 
-		// Drain any unconsumed events so a missed assertion in one test does
-		// not leak into the next test's recorder channel.
-		for {
-			select {
-			case <-fakeRecorder.Events:
-			default:
-				return
-			}
-		}
+		drainRecordedEvents(fakeRecorder.Events)
 	})
 
 	// reconcileAndFetch calls Reconcile and re-fetches the CR from the API server.
@@ -149,38 +131,6 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		fetched := &dbaasv1alpha1.ExternalDatabaseDeclaration{}
 		Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
 		return fetched, result, err
-	}
-
-	// expectEvent asserts that the next item in the recorder channel starts with
-	// "<eventtype> <reason>" — it does not check the trailing message text so that
-	// minor wording changes do not break the test.
-	//
-	// record.FakeRecorder writes events as: eventtype + " " + reason + " " + note
-	// (see k8s.io/client-go/tools/record.FakeRecorder.Eventf).
-	//
-	// Events are sent synchronously inside r.Recorder.Event / r.Recorder.Eventf,
-	// so the event is already in the channel when Reconcile returns — no Eventually
-	// is needed.
-	expectEvent := func(eventtype, reason string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(HavePrefix(eventtype + " " + reason)))
-	}
-
-	// expectNoEvent asserts that no event was emitted.
-	expectNoEvent := func() {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).NotTo(Receive())
-	}
-
-	// expectEventContaining asserts that the next event starts with
-	// "<eventtype> <reason>" AND contains substr somewhere in its text.
-	// Use this when a TMF message should appear verbatim in the event body.
-	expectEventContaining := func(eventtype, reason, substr string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(And(
-			HavePrefix(eventtype+" "+reason),
-			ContainSubstring(substr),
-		)))
 	}
 
 	// ── Request assembly ──────────────────────────────────────────────────────
@@ -263,8 +213,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectEvent(corev1.EventTypeNormal, EventReasonRegistered)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -295,8 +245,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectEvent(corev1.EventTypeNormal, EventReasonRegistered)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -330,8 +280,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonSecretError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -370,8 +320,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonSecretError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -405,9 +355,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Invalid classifier. Classifier does not meet required conditions.")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -437,9 +387,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonUnauthorized,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized,
 				"Requested role is not allowed")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -471,9 +421,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Namespace from request is not equal to one from database classifier.")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -505,9 +455,9 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Conflict database request. Logical database already exists and is not externally manageable.")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -539,8 +489,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
-			expectNoEvent()
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -570,8 +520,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(EventReasonAggregatorError))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "endpoint not found")
-			expectNoEvent()
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "endpoint not found")
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -602,8 +552,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 })

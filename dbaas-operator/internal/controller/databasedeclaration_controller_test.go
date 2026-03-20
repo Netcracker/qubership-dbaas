@@ -121,13 +121,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(k8sClient.Delete(ctx, dd)).To(Succeed())
 		}
 
-		for {
-			select {
-			case <-fakeRecorder.Events:
-			default:
-				return
-			}
-		}
+		drainRecordedEvents(fakeRecorder.Events)
 	})
 
 	reconcileAndFetch := func() (*dbaasv1alpha1.DatabaseDeclaration, reconcile.Result, error) {
@@ -135,24 +129,6 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		fetched := &dbaasv1alpha1.DatabaseDeclaration{}
 		Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
 		return fetched, result, err
-	}
-
-	expectEvent := func(eventtype, reason string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(HavePrefix(eventtype + " " + reason)))
-	}
-
-	expectNoEvent := func() {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).NotTo(Receive())
-	}
-
-	expectEventContaining := func(eventtype, reason, substr string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(And(
-			HavePrefix(eventtype+" "+reason),
-			ContainSubstring(substr),
-		)))
 	}
 
 	// ── CRD admission validation ──────────────────────────────────────────────
@@ -236,8 +212,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonInvalidSpec)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -264,8 +240,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
 			Expect(ready.Message).To(ContainSubstring("sourceClassifier"))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonInvalidSpec)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -295,8 +271,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
 			Expect(ready.Message).To(ContainSubstring("microserviceName"))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonInvalidSpec)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -368,8 +344,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectEvent(corev1.EventTypeNormal, EventReasonDatabaseProvisioned)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonDatabaseProvisioned)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -404,8 +380,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeNormal, EventReasonProvisioningStarted, "track-abc-123")
-			expectNoEvent()
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonProvisioningStarted, "track-abc-123")
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -442,8 +418,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
 			Expect(ready.Reason).To(Equal(EventReasonDatabaseProvisioned))
 
-			expectEvent(corev1.EventTypeNormal, EventReasonDatabaseProvisioned)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonDatabaseProvisioned)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -484,8 +460,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected, "disk quota exceeded")
-			expectNoEvent()
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected, "disk quota exceeded")
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -517,8 +493,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorRejected)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -551,7 +527,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(dd.Status.ObservedGeneration).To(BeZero(),
 				"observedGeneration must not be stamped while in progress")
 
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -585,8 +561,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -622,8 +598,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonUnauthorized)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -656,8 +632,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -687,9 +663,9 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Declarative configuration validation failed.")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -715,9 +691,9 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonUnauthorized,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized,
 				"Requested role is not allowed")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -743,8 +719,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -766,8 +742,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -793,8 +769,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
-			expectNoEvent()
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -814,8 +790,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
 			Expect(ready.Reason).To(Equal(EventReasonAggregatorError))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -849,8 +825,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			// The apply endpoint must have been called (not the poll endpoint).
 			Expect(capturedApplyBody).NotTo(BeEmpty())
 
-			expectEvent(corev1.EventTypeNormal, EventReasonDatabaseProvisioned)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonDatabaseProvisioned)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 })

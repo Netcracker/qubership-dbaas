@@ -97,13 +97,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(k8sClient.Delete(ctx, dp)).To(Succeed())
 		}
 
-		for {
-			select {
-			case <-fakeRecorder.Events:
-			default:
-				return
-			}
-		}
+		drainRecordedEvents(fakeRecorder.Events)
 	})
 
 	reconcileAndFetch := func() (*dbaasv1alpha1.DbPolicy, reconcile.Result, error) {
@@ -111,24 +105,6 @@ var _ = Describe("DbPolicy Controller", func() {
 		fetched := &dbaasv1alpha1.DbPolicy{}
 		Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
 		return fetched, result, err
-	}
-
-	expectEvent := func(eventtype, reason string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(HavePrefix(eventtype + " " + reason)))
-	}
-
-	expectNoEvent := func() {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).NotTo(Receive())
-	}
-
-	expectEventContaining := func(eventtype, reason, substr string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(And(
-			HavePrefix(eventtype+" "+reason),
-			ContainSubstring(substr),
-		)))
 	}
 
 	// ── Request payload assembly ──────────────────────────────────────────────
@@ -238,8 +214,8 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
 			Expect(ready.Message).To(ContainSubstring("at least one of"))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonInvalidSpec)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -332,8 +308,8 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectEvent(corev1.EventTypeNormal, EventReasonPolicyApplied)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonPolicyApplied)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -365,9 +341,9 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Declarative configuration validation failed.")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -396,9 +372,9 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonUnauthorized,
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized,
 				"Requested role is not allowed")
-			expectNoEvent()
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -427,8 +403,8 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
-			expectNoEvent()
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -451,8 +427,8 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 
@@ -480,8 +456,8 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 	})
 })
