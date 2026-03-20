@@ -288,11 +288,11 @@ Specifies the default amount of time the lock should be kept in case the executi
 
 ### DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
 
-Specifies the period of backup or restore check
+Specifies the period of check the status of backup or restore during an asynchronous process
 
-| Default | Recommended                               |
-|---------|-------------------------------------------|
-| 1m      | Set the period of backup or restore check |
+| Default | Recommended                                             |
+|---------|---------------------------------------------------------|
+| 1m      | Set the period of check the status of backup or restore |
 
 ### DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
 
@@ -304,11 +304,11 @@ Specifies max number of attempts to check backup or restore
 
 ### DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
 
-Specifies the delay between retries in seconds
+Specifies the delay between retries of requesting adapter in seconds if the previous attempt was failed
 
-| Default | Recommended                              |
-|---------|------------------------------------------|
-| 3       | Set the delay between retries in seconds |
+| Default | Recommended                                                    |
+|---------|----------------------------------------------------------------|
+| 3       | Set the delay between retries of requesting adapter in seconds |
 
 ### DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
 
