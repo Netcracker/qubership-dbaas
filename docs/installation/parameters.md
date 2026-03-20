@@ -299,25 +299,25 @@ Specifies the interval between requests to adapters for backup or restore status
 
 Specifies the max number of attempts to request adapters for backup or restore status during an asynchronous process.
 
-| Default | Recommended                       |
-|---------|-----------------------------------|
-| 20      | We recommend to use default value |
+| Default | Recommended                                                                                                                      |
+|---------|----------------------------------------------------------------------------------------------------------------------------------|
+| 20      | Increase if the adapters are working correctly, but slowly, and do not have time to finish backups/restores in the allotted time |
 
 ### DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
 
 Specifies the delay between retries of requesting adapter in seconds if the previous attempt was failed.
 
-| Default | Recommended                       |
-|---------|-----------------------------------|
-| 3       | We recommend to use default value |
+| Default | Recommended                                       |
+|---------|---------------------------------------------------|
+| 3       | Increase it if there are serious network problems |
 
 ### DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
 
 Specifies the max number of retries to request adapter for backup or restore if the previous attempt failed.
 
-| Default | Recommended                       |
-|---------|-----------------------------------|
-| 3       | We recommend to use default value |
+| Default | Recommended                                       |
+|---------|---------------------------------------------------|
+| 3       | Increase it if there are serious network problems |
 
 #### DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
 
