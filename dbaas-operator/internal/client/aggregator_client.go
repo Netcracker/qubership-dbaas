@@ -95,12 +95,7 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 	}
 
 	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusAccepted {
-		aggErr := &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
-		var tmfResp tmf.Response
-		if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
-			aggErr.TmfMessage = tmfResp.Message
-		}
-		return nil, aggErr
+		return nil, newAggregatorError(resp)
 	}
 
 	var result DeclarativeResponse
@@ -130,7 +125,7 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 	}
 
 	if resp.StatusCode() != http.StatusOK {
-		return nil, &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
+		return nil, newAggregatorError(resp)
 	}
 
 	return &result, nil
@@ -154,13 +149,22 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	}
 
 	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated {
-		aggErr := &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
-		var tmfResp tmf.Response
-		if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
-			aggErr.TmfMessage = tmfResp.Message
-		}
-		return aggErr
+		return newAggregatorError(resp)
 	}
 
 	return nil
+}
+
+func newAggregatorError(resp *resty.Response) *AggregatorError {
+	aggErr := &AggregatorError{
+		StatusCode: resp.StatusCode(),
+		Body:       string(resp.Body()),
+	}
+
+	var tmfResp tmf.Response
+	if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
+		aggErr.TmfMessage = tmfResp.Message
+	}
+
+	return aggErr
 }

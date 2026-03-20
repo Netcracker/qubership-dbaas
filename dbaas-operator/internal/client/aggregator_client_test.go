@@ -493,6 +493,40 @@ func TestGetOperationStatus_NonSuccessReturnsAggregatorError(t *testing.T) {
 	}
 }
 
+func TestGetOperationStatus_ParsesTmfMessage(t *testing.T) {
+	t.Parallel()
+
+	const tmfMessage = "Operation trackingId not found."
+	tmfBody := `{"code":"CORE-DBAAS-4040","reason":"TrackingId not found","message":"` + tmfMessage + `","status":"404","@type":"NC.TMFErrorResponse.v1.0"}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(tmfBody))
+	}))
+	defer srv.Close()
+
+	c := NewAggregatorClient(srv.URL, "user", "pass")
+	_, err := c.GetOperationStatus(context.Background(), "tid")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var aggErr *AggregatorError
+	if !errors.As(err, &aggErr) {
+		t.Fatalf("expected *AggregatorError, got %T", err)
+	}
+	if aggErr.StatusCode != http.StatusNotFound {
+		t.Errorf("StatusCode: got %d, want 404", aggErr.StatusCode)
+	}
+	if aggErr.TmfMessage != tmfMessage {
+		t.Errorf("TmfMessage: got %q, want %q", aggErr.TmfMessage, tmfMessage)
+	}
+	if aggErr.UserMessage() != tmfMessage {
+		t.Errorf("UserMessage(): got %q, want %q", aggErr.UserMessage(), tmfMessage)
+	}
+}
+
 // ── AggregatorError ───────────────────────────────────────────────────────────
 
 func TestAggregatorError_IsAuthError(t *testing.T) {
