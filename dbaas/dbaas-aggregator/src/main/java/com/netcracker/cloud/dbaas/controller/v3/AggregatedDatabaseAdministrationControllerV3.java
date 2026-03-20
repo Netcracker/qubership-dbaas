@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
@@ -279,16 +280,13 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     @Operation(summary = "V3. External database registration",
             description = "This API supports registration in DBaaS for any external logical database.")
     @APIResponses({
-            @APIResponse(responseCode = "500", description = "Internal error"),
-            @APIResponse(responseCode = "200",
-                    description = "Successfully found database",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "201",
-                    description = "The database was added or updated successfully",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "401", description = ROLE_IS_NOT_ALLOWED, content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "403", description = "Namespace in classifier and path variable are not equal", content = @Content(schema = @Schema(implementation = String.class)))
+            @APIResponse(responseCode = "200", description = "Successfully found database", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "201", description = "The database was added or updated successfully", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
+            @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
+            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "Internal error", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/registration/externally_manageable")
     @PUT
@@ -324,7 +322,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                 return Response.ok(new ExternalDatabaseResponseV3(processedDb)).build();
             } else {
                 if (externalDatabaseRequest.getConnectionProperties().isEmpty()) {
-                    throw new EmptyConnectionPropertiesException();
+                    throw new ExternalDbEmptyConnectionPropertiesException();
                 }
                 existingDatabaseRegistry.setConnectionProperties(databaseRegistry.getConnectionProperties());
             }

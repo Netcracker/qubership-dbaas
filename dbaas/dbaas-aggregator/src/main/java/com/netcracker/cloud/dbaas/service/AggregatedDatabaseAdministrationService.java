@@ -362,7 +362,7 @@ public class AggregatedDatabaseAdministrationService {
         log.debug("enrich database = {} by createdDatabase = {}", databaseRegistry, createdDatabase);
         databaseRegistry.getDatabase().setAdapterId(createdDatabase.getAdapterId());
         databaseRegistry.getDatabase().setConnectionProperties(Optional.ofNullable(createdDatabase.getConnectionProperties())
-                .orElseThrow(EmptyConnectionPropertiesException::new));
+                .orElseThrow(InternalDbEmptyConnectionPropertiesException::new));
         ConnectionPropertiesUtils.getConnectionProperties(databaseRegistry.getDatabase().getConnectionProperties(), role)
                 .put(PASSWORD_FIELD, password.apply(databaseRegistry.getDatabase(), role));
         databaseRegistry.getDatabase().setResources(createdDatabase.getResources());

@@ -1618,7 +1618,7 @@
               "type": "object",
               "additionalProperties": {}
             },
-            "description": "There is an information about connection to database. It contains such keys as url, authDbName, port, host. username and password do not need to specify here.You should specify them in order for the client to be able to connect to the database."
+            "description": "There is an information about connection to database. It contains such keys as url, authDbName, username, password, port, host, etc. You should specify them in order for the client to be able to connect to the database."
           },
           "type": {
             "type": "string",
@@ -8175,9 +8175,6 @@
           "required": true
         },
         "responses": {
-          "500": {
-            "description": "Internal error"
-          },
           "200": {
             "description": "Successfully found database",
             "content": {
@@ -8198,38 +8195,41 @@
               }
             }
           },
-          "401": {
-            "description": "Requested role is not allowed",
+          "400": {
+            "description": "The request was invalid or cannot be served",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
           },
           "409": {
             "description": "Logical database with such classifier and type already exist in namespace and it is internal logical database",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
           },
-          "403": {
-            "description": "Namespace in classifier and path variable are not equal",
+          "500": {
+            "description": "Internal error",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
-          },
-          "400": {
-            "description": "Bad Request"
           }
         },
         "security": [
