@@ -36,25 +36,6 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-const (
-	// conditionTypeReady is the canonical condition describing whether the
-	// database is successfully registered with dbaas-aggregator.
-	// Ready=True means the current generation is registered and healthy.
-	// Ready=False means registration failed; see Reason for details.
-	conditionTypeReady = "Ready"
-
-	// conditionTypeStalled is set to True when the error is permanent and
-	// retrying will not help until the spec is changed.
-	// Stalled=False means the error is transient and the controller is retrying.
-	conditionTypeStalled = "Stalled"
-)
-
-// stalledMsg* are fixed human-readable messages for the Stalled condition.
-const (
-	stalledMsgPermanent = "Permanent error — spec must be corrected before the controller will retry."
-	stalledMsgTransient = "Transient error — the controller will retry automatically."
-)
-
 // ExternalDatabaseDeclarationReconciler reconciles ExternalDatabaseDeclaration objects.
 //
 // On every reconcile it assembles the registration request (reading credentials
