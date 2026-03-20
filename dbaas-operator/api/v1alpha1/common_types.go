@@ -18,6 +18,12 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// ObservedGenerationSetter is implemented by CR root types whose status embeds
+// OperatorStatus and therefore can persist the latest reconciled generation.
+type ObservedGenerationSetter interface {
+	SetObservedGeneration(int64)
+}
+
 // Phase represents the processing phase of a dbaas operator resource.
 // The controller drives resources through a state machine:
 //

@@ -100,7 +100,10 @@ func markPermanentFailure(
 		conditionTypeStalled, metav1.ConditionTrue, readyReason, stalledMsgPermanent)
 }
 
-func patchStatusOnExit[T client.Object](
+func patchStatusOnExit[T interface {
+	client.Object
+	dbaasv1alpha1.ObservedGenerationSetter
+}](
 	ctx context.Context,
 	statusWriter client.StatusWriter,
 	obj T,
@@ -119,13 +122,9 @@ func patchStatusOnExit[T client.Object](
 	}
 }
 
-func setObservedGeneration(obj client.Object) {
-	switch typed := obj.(type) {
-	case *dbaasv1alpha1.DbPolicy:
-		typed.Status.ObservedGeneration = typed.Generation
-	case *dbaasv1alpha1.ExternalDatabaseDeclaration:
-		typed.Status.ObservedGeneration = typed.Generation
-	case *dbaasv1alpha1.DatabaseDeclaration:
-		typed.Status.ObservedGeneration = typed.Generation
-	}
+func setObservedGeneration[T interface {
+	client.Object
+	dbaasv1alpha1.ObservedGenerationSetter
+}](obj T) {
+	obj.SetObservedGeneration(obj.GetGeneration())
 }

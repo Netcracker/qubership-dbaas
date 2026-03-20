@@ -118,6 +118,10 @@ type DbPolicy struct {
 	Status DbPolicyStatus `json:"status,omitzero"`
 }
 
+func (p *DbPolicy) SetObservedGeneration(generation int64) {
+	p.Status.ObservedGeneration = generation
+}
+
 // +kubebuilder:object:root=true
 
 // DbPolicyList contains a list of DbPolicy.

@@ -168,6 +168,10 @@ type DatabaseDeclaration struct {
 	Status DatabaseDeclarationStatus `json:"status,omitzero"`
 }
 
+func (d *DatabaseDeclaration) SetObservedGeneration(generation int64) {
+	d.Status.ObservedGeneration = generation
+}
+
 // +kubebuilder:object:root=true
 
 // DatabaseDeclarationList contains a list of DatabaseDeclaration.
