@@ -17,8 +17,13 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"errors"
+
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // setCondition upserts a metav1.Condition in the given slice.
@@ -93,4 +98,34 @@ func markPermanentFailure(
 		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
 	setCondition(conditions, generation,
 		conditionTypeStalled, metav1.ConditionTrue, readyReason, stalledMsgPermanent)
+}
+
+func patchStatusOnExit[T client.Object](
+	ctx context.Context,
+	statusWriter client.StatusWriter,
+	obj T,
+	original T,
+	retErr *error,
+	shouldObserve func(T, error) bool,
+	objectType string,
+) {
+	if shouldObserve(obj, *retErr) {
+		setObservedGeneration(obj)
+	}
+
+	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
+		logf.FromContext(ctx).Error(patchErr, "patch "+objectType+" status")
+		*retErr = errors.Join(*retErr, patchErr)
+	}
+}
+
+func setObservedGeneration(obj client.Object) {
+	switch typed := obj.(type) {
+	case *dbaasv1alpha1.DbPolicy:
+		typed.Status.ObservedGeneration = typed.Generation
+	case *dbaasv1alpha1.ExternalDatabaseDeclaration:
+		typed.Status.ObservedGeneration = typed.Generation
+	case *dbaasv1alpha1.DatabaseDeclaration:
+		typed.Status.ObservedGeneration = typed.Generation
+	}
 }

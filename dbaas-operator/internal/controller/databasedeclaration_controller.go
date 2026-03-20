@@ -73,14 +73,12 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	// Stamp observedGeneration only when reaching a terminal state.
 	// WaitingForDependency/BackingOff are not terminal — don't stamp.
 	defer func() {
-		if dd.Status.Phase == dbaasv1alpha1.PhaseSucceeded ||
-			dd.Status.Phase == dbaasv1alpha1.PhaseInvalidConfiguration {
-			dd.Status.ObservedGeneration = dd.Generation
-		}
-		if patchErr := r.Status().Patch(ctx, dd, client.MergeFrom(original)); patchErr != nil {
-			log.Error(patchErr, "patch DatabaseDeclaration status")
-			retErr = errors.Join(retErr, patchErr)
-		}
+		patchStatusOnExit(ctx, r.Status(), dd, original, &retErr,
+			func(dd *dbaasv1alpha1.DatabaseDeclaration, _ error) bool {
+				return dd.Status.Phase == dbaasv1alpha1.PhaseSucceeded ||
+					dd.Status.Phase == dbaasv1alpha1.PhaseInvalidConfiguration
+			},
+			"DatabaseDeclaration")
 	}()
 
 	// If spec changed while an async operation was in progress, discard the

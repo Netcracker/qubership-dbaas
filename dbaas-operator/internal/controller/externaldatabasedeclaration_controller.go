@@ -87,18 +87,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	// Always patch status on exit, even if reconcile fails.
 	// This ensures the CR reflects the actual outcome.
 	defer func() {
-		// Stamp observedGeneration only when the reconcile cycle is complete
-		// and no retry is requested (retErr == nil means "do not requeue").
-		// For transient BackingOff exits retErr != nil, so we leave it unset:
-		// consumers that check generation > observedGeneration can tell the
-		// controller has not yet finished processing the current spec.
-		if retErr == nil {
-			edb.Status.ObservedGeneration = edb.Generation
-		}
-		if patchErr := r.Status().Patch(ctx, edb, client.MergeFrom(original)); patchErr != nil {
-			log.Error(patchErr, "patch ExternalDatabaseDeclaration status")
-			retErr = errors.Join(retErr, patchErr)
-		}
+		patchStatusOnExit(ctx, r.Status(), edb, original, &retErr,
+			func(_ *dbaasv1alpha1.ExternalDatabaseDeclaration, retErr error) bool { return retErr == nil },
+			"ExternalDatabaseDeclaration")
 	}()
 
 	// Mark as Processing while we work.

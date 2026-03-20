@@ -64,13 +64,9 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 
 	// Always patch status on exit, even if reconcile fails.
 	defer func() {
-		if retErr == nil {
-			dp.Status.ObservedGeneration = dp.Generation
-		}
-		if patchErr := r.Status().Patch(ctx, dp, client.MergeFrom(original)); patchErr != nil {
-			log.Error(patchErr, "patch DbPolicy status")
-			retErr = errors.Join(retErr, patchErr)
-		}
+		patchStatusOnExit(ctx, r.Status(), dp, original, &retErr,
+			func(_ *dbaasv1alpha1.DbPolicy, retErr error) bool { return retErr == nil },
+			"DbPolicy")
 	}()
 
 	// Mark as Processing while we work.
