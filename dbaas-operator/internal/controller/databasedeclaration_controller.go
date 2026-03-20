@@ -156,9 +156,7 @@ func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *d
 // handleApplyError maps an error from ApplyConfig to the appropriate phase/conditions.
 func (r *DatabaseDeclarationReconciler) handleApplyError(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration, err error) (ctrl.Result, error) {
 	var aggErr *aggregatorclient.AggregatorError
-	errors.As(err, &aggErr)
-
-	if aggErr != nil {
+	if errors.As(err, &aggErr) {
 		switch {
 		case aggErr.IsAuthError():
 			// 401 — credentials misconfigured; retry.
@@ -316,28 +314,28 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 	log := logf.FromContext(ctx)
 
 	var aggErr *aggregatorclient.AggregatorError
-	errors.As(err, &aggErr)
+	if errors.As(err, &aggErr) {
+		if aggErr.IsAuthError() {
+			// 401 — keep trackingId, retry with backoff.
+			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+				EventReasonUnauthorized, aggErr.UserMessage())
+			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonUnauthorized,
+				"dbaas-aggregator rejected operator credentials during polling (HTTP 401): %s",
+				aggErr.UserMessage())
+			return ctrl.Result{}, err
+		}
 
-	if aggErr != nil && aggErr.IsAuthError() {
-		// 401 — keep trackingId, retry with backoff.
-		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-			EventReasonUnauthorized, aggErr.UserMessage())
-		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonUnauthorized,
-			"dbaas-aggregator rejected operator credentials during polling (HTTP 401): %s",
-			aggErr.UserMessage())
-		return ctrl.Result{}, err
-	}
-
-	if aggErr != nil && aggErr.StatusCode == http.StatusNotFound {
-		// 404 — trackingId expired or never existed; clear it so the next
-		// reconcile re-submits the operation.
-		log.Info("trackingId not found, will re-submit on next reconcile", "trackingId", trackingID)
-		r.clearPendingOperation(dd)
-		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-			EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
-		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
-			"operation trackingId not found (will re-submit)")
-		return ctrl.Result{}, err
+		if aggErr.StatusCode == http.StatusNotFound {
+			// 404 — trackingId expired or never existed; clear it so the next
+			// reconcile re-submits the operation.
+			log.Info("trackingId not found, will re-submit on next reconcile", "trackingId", trackingID)
+			r.clearPendingOperation(dd)
+			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
+			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
+				"operation trackingId not found (will re-submit)")
+			return ctrl.Result{}, err
+		}
 	}
 
 	// 5xx / network error — keep trackingId, retry with backoff.
