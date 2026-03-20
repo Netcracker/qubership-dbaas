@@ -20,6 +20,8 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // ObservedGenerationSetter is implemented by CR root types whose status embeds
 // OperatorStatus and therefore can persist the latest reconciled generation.
+//
+// +kubebuilder:object:generate=false
 type ObservedGenerationSetter interface {
 	SetObservedGeneration(int64)
 }
