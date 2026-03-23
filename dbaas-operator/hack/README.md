@@ -8,7 +8,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | Resource | Namespace | Description |
 |---|---|---|
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
-| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules (`rules.json` for EDB by `dbName`, `apply-rules.json` for DbPolicy by `microserviceName`) |
+| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DbPolicy/DatabaseDeclaration by `microserviceName`), `poll-rules.json` (DatabaseDeclaration async poll by `trackingId`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC |
 | Namespace `test-ns` | — | Working namespace for CRs |
 | Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabaseDeclaration |
@@ -52,6 +52,7 @@ Apply all test CRs at once and observe their phases:
 kubectl apply -f hack/test-resources/ -n test-ns
 kubectl get externaldatabasedeclaration -n test-ns
 kubectl get dbpolicy -n test-ns
+kubectl get databasedeclaration -n test-ns
 ```
 
 ### ExternalDatabaseDeclaration
@@ -112,6 +113,42 @@ dp-invalid-empty-spec     InvalidConfiguration
 
 > **Note:** `dbpolicy-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
 
+### DatabaseDeclaration
+
+The mock routes `POST /api/declarations/v1/apply` requests by `metadata.microserviceName`.
+For `DatabaseDeclaration` the default response is HTTP 202 (async) with
+`trackingId = "tracking-<microserviceName>"`. Poll responses are controlled by
+`poll-rules.json` (keyed by `trackingId`); missing rule → `COMPLETED`.
+
+Expected output (`kubectl get databasedeclaration -n test-ns`):
+
+```
+NAME                    PHASE                  TYPE
+dd-success-sync         Succeeded              postgresql
+dd-success-async        Succeeded              postgresql
+dd-400-bad-request      InvalidConfiguration   postgresql
+dd-401-unauthorized     BackingOff             postgresql
+dd-500-server-error     BackingOff             postgresql
+dd-poll-failed          InvalidConfiguration   postgresql
+dd-invalid-lazy-clone   InvalidConfiguration   postgresql
+dd-invalid-no-source    InvalidConfiguration   postgresql
+```
+
+| CR file | `microserviceName` | Apply response | Poll response | Expected Phase | `Ready.reason` | `Stalled` |
+|---|---|---|---|---|---|---|
+| `dd-success-sync.yaml` | `dd-svc-sync` | 200 (rule) | — | `Succeeded` | `DatabaseProvisioned` | `False` |
+| `dd-success-async.yaml` | `dd-svc-async` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
+| `dd-400-bad-request.yaml` | `dd-svc-400` | 400 (rule) | — | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `dd-401-unauthorized.yaml` | `dd-svc-401` | 401 (rule) | — | `BackingOff` | `Unauthorized` | `False` |
+| `dd-500-server-error.yaml` | `dd-svc-500` | 500 (rule) | — | `BackingOff` | `AggregatorError` | `False` |
+| `dd-poll-failed.yaml` | `dd-poll-failed` | 202 (default) | `FAILED` (poll rule) | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `dd-invalid-lazy-clone.yaml` | `dd-svc-lazy` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
+| `dd-invalid-no-source.yaml` | `dd-svc-nosrc` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
+
+`dd-invalid-lazy-clone` and `dd-invalid-no-source` exercise controller-level pre-flight checks
+(`lazy=true` + `approach=clone` and `approach=clone` without `sourceClassifier` respectively).
+These are cross-field constraints that the CRD schema cannot enforce.
+
 ### Changing rules without rebuilding
 
 Edit the ConfigMap directly and restart the pod:
@@ -142,8 +179,12 @@ kubectl get externaldatabasedeclaration -n test-ns edb-401 -o yaml
 # Full CR status — DbPolicy
 kubectl get dbpolicy -n test-ns dp-401 -o yaml
 
+# Full CR status — DatabaseDeclaration
+kubectl get databasedeclaration -n test-ns dd-400-bad-request -o yaml
+
 # Events for a CR
 kubectl get events -n test-ns --field-selector involvedObject.name=dp-401
+kubectl get events -n test-ns --field-selector involvedObject.name=dd-poll-failed
 
 # Reset a CR — delete and reapply
 kubectl delete externaldatabasedeclaration -n test-ns edb-401
@@ -152,8 +193,11 @@ kubectl apply -f hack/test-resources/edb-401-unauthorized.yaml -n test-ns
 kubectl delete dbpolicy -n test-ns dp-401
 kubectl apply -f hack/test-resources/dbpolicy-401.yaml -n test-ns
 
+kubectl delete databasedeclaration -n test-ns dd-401-unauthorized
+kubectl apply -f hack/test-resources/dd-401-unauthorized.yaml -n test-ns
+
 # Redeploy all test resources at once
-kubectl delete externaldatabasedeclaration,dbpolicy -n test-ns --all
+kubectl delete externaldatabasedeclaration,dbpolicy,databasedeclaration -n test-ns --all
 kubectl apply -f hack/test-resources/ -n test-ns
 ```
 
@@ -201,5 +245,15 @@ hack/
     ├── dbpolicy-400.yaml                    # DbPolicy — 400 → InvalidConfiguration
     ├── dbpolicy-401.yaml                    # DbPolicy — 401 → BackingOff
     ├── dbpolicy-500.yaml                    # DbPolicy — 500 → BackingOff
-    └── dbpolicy-invalid-empty-spec.yaml     # DbPolicy — pre-flight: no services/policy → InvalidConfiguration
+    ├── dbpolicy-invalid-empty-spec.yaml     # DbPolicy — pre-flight: no services/policy → InvalidConfiguration
+    │
+    │   # DatabaseDeclaration test CRs
+    ├── dd-success-sync.yaml                 # DD — apply-rule 200 (sync) → Succeeded
+    ├── dd-success-async.yaml                # DD — 202 default → poll COMPLETED → Succeeded
+    ├── dd-400-bad-request.yaml              # DD — apply-rule 400 → InvalidConfiguration
+    ├── dd-401-unauthorized.yaml             # DD — apply-rule 401 → BackingOff
+    ├── dd-500-server-error.yaml             # DD — apply-rule 500 → BackingOff
+    ├── dd-poll-failed.yaml                  # DD — 202 → poll FAILED → InvalidConfiguration
+    ├── dd-invalid-lazy-clone.yaml           # DD — pre-flight: lazy=true + clone → InvalidConfiguration
+    └── dd-invalid-no-source.yaml            # DD — pre-flight: clone without sourceClassifier → InvalidConfiguration
 ```

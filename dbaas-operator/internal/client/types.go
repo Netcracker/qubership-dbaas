@@ -119,14 +119,31 @@ func (e *AggregatorError) IsAuthError() bool {
 	return e.StatusCode == 401
 }
 
-// IsClientError returns true for 4xx responses.
-// The controller uses this to distinguish a permanent spec error
-// (phase → InvalidConfiguration) from a transient server error (phase → BackingOff).
-// Note: 401 is handled separately by IsAuthError and maps to BackingOff.
+// IsClientError returns true for 4xx responses (excluding 401 which IsAuthError handles).
+// Use IsSpecRejection to distinguish permanent spec errors from infrastructure 4xx codes.
 func (e *AggregatorError) IsClientError() bool {
 	if e.StatusCode == 401 {
 		return false
 	}
-
 	return e.StatusCode >= 400 && e.StatusCode < 500
+}
+
+// IsSpecRejection returns true when the aggregator explicitly rejected the request
+// content — codes where retrying the same payload will not succeed:
+//   - 400 Bad Request    — validation failure (CORE-DBAAS-4035/4036)
+//   - 403 Forbidden      — namespace/policy violation (CORE-DBAAS-4004)
+//   - 409 Conflict       — resource already exists (CORE-DBAAS-4002)
+//   - 410 Gone           — resource permanently removed
+//   - 422 Unprocessable  — semantic validation failure
+//
+// Infrastructure and proxy 4xx codes (404 Not Found, 405 Method Not Allowed,
+// 408 Request Timeout, 429 Too Many Requests, etc.) are NOT spec rejections.
+// They are transient and the controller should back-off and retry.
+// 401 is handled separately by IsAuthError.
+func (e *AggregatorError) IsSpecRejection() bool {
+	switch e.StatusCode {
+	case 400, 403, 409, 410, 422:
+		return true
+	}
+	return false
 }

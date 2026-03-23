@@ -18,19 +18,44 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// ClassifierConfig holds the classifier that uniquely identifies a database in dbaas.
-// The classifier is the primary identity key used by dbaas-aggregator to locate or
-// create a physical database. Keys are sorted alphabetically by the aggregator for
-// identity comparison, so order does not matter here.
-type ClassifierConfig struct {
-	// classifier is a key-value map that uniquely identifies a database in dbaas.
-	// All values must be strings. Typical keys:
-	//   - namespace       — Kubernetes namespace of the owning service (required)
-	//   - microserviceName — name of the microservice that owns the database (required)
-	//   - scope           — logical scope, e.g. "service" or "tenant" (optional)
-	//   - tenantId        — tenant identifier for multi-tenant deployments (optional)
+// Classifier uniquely identifies a database in dbaas-aggregator.
+// All keys are sorted alphabetically by the aggregator for identity comparison.
+type Classifier struct {
+	// microserviceName is the name of the microservice that owns the database.
+	// Must match metadata.microserviceName sent in the declarative payload.
 	// +kubebuilder:validation:Required
-	Classifier map[string]string `json:"classifier"`
+	// +kubebuilder:validation:MinLength=1
+	MicroserviceName string `json:"microserviceName"`
+
+	// scope defines the logical scope of the database, e.g. "service" or "tenant".
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Scope string `json:"scope"`
+
+	// namespace is the Kubernetes namespace of the owning service.
+	// If omitted, the aggregator uses metadata.namespace from the request.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// tenantId is the tenant identifier for multi-tenant deployments.
+	// Only relevant when scope="tenant". When absent, the aggregator applies
+	// the declaration for every tenant already registered in the namespace.
+	// +optional
+	TenantId string `json:"tenantId,omitempty"`
+
+	// customKeys is an optional nested map for adapter-specific or
+	// application-specific identifiers (e.g. logicalDBName).
+	// Values are arbitrary strings; not validated by the aggregator.
+	// +optional
+	CustomKeys map[string]string `json:"customKeys,omitempty"`
+}
+
+// ClassifierConfig holds the classifier that uniquely identifies a database in dbaas.
+type ClassifierConfig struct {
+	// classifier is the set of keys that uniquely identify this database.
+	// Required keys: microserviceName, scope.
+	// +kubebuilder:validation:Required
+	Classifier Classifier `json:"classifier"`
 }
 
 // VersioningConfig defines the strategy for managing database versions during
@@ -46,14 +71,16 @@ type VersioningConfig struct {
 // Mirrors DatabaseDeclaration.InitialInstantiation in the aggregator.
 type InitialInstantiation struct {
 	// approach defines the strategy for initial database creation.
-	// Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
+	// "clone" — clone from sourceClassifier (lazy=true is prohibited in this mode).
+	// "new"   — create an empty database (default when initialInstantiation is absent).
 	// +optional
 	Approach string `json:"approach,omitempty"`
 
 	// sourceClassifier is the classifier of the database to clone from.
 	// Required when approach is "clone". Must reference an existing database in dbaas.
+	// microserviceName must match classifierConfig.classifier.microserviceName.
 	// +optional
-	SourceClassifier map[string]string `json:"sourceClassifier,omitempty"`
+	SourceClassifier *Classifier `json:"sourceClassifier,omitempty"`
 }
 
 // DatabaseDeclarationSpec defines the desired state of DatabaseDeclaration.
@@ -62,7 +89,7 @@ type InitialInstantiation struct {
 // DeclarativePayload body to dbaas-aggregator:
 //
 //	POST /api/declarations/v1/apply
-//	{ "subKind": "DatabaseDeclaration", "spec": <this struct>, ... }
+//	{ "kind": "DBaaS", "subKind": "DatabaseDeclaration", "spec": <this struct>, ... }
 //
 // Field names and semantics match the DatabaseDeclaration Java DTO in the aggregator.
 type DatabaseDeclarationSpec struct {
@@ -78,30 +105,27 @@ type DatabaseDeclarationSpec struct {
 	Type string `json:"type"`
 
 	// lazy indicates whether the database should be provisioned on first access rather
-	// than immediately during reconciliation. When true, the aggregator defers physical
-	// database creation until a service requests a connection. Defaults to false.
+	// than immediately during reconciliation. Defaults to false.
+	// Prohibited when initialInstantiation.approach=clone.
 	// +optional
 	Lazy bool `json:"lazy,omitempty"`
 
 	// settings contains database-engine-specific configuration passed through to the
-	// dbaas adapter. The accepted keys and their semantics depend on the specific adapter.
-	// All values are strings; numeric and boolean settings should be passed as their
-	// string representation (e.g. maxConnections: "100", createOnly: "true").
+	// dbaas adapter. All values are strings.
 	// +optional
 	Settings map[string]string `json:"settings,omitempty"`
 
 	// namePrefix is a prefix applied to the physical database name created in the DBMS.
-	// Useful for disambiguation when multiple logical databases share the same DBMS instance.
 	// +optional
 	NamePrefix string `json:"namePrefix,omitempty"`
 
 	// versioningConfig defines the strategy for handling database versions during
-	// blue-green deployments. Optional; the aggregator applies its own defaults if omitted.
+	// blue-green deployments. If absent — versioningType="static" (no versioning).
 	// +optional
 	VersioningConfig *VersioningConfig `json:"versioningConfig,omitempty"`
 
 	// initialInstantiation defines how the database is created on the first deployment.
-	// Optional; the aggregator applies its own defaults if omitted.
+	// If absent — instantiationApproach defaults to "new".
 	// +optional
 	InitialInstantiation *InitialInstantiation `json:"initialInstantiation,omitempty"`
 }
@@ -109,6 +133,15 @@ type DatabaseDeclarationSpec struct {
 // DatabaseDeclarationStatus defines the observed state of DatabaseDeclaration.
 type DatabaseDeclarationStatus struct {
 	OperatorStatus `json:",inline"`
+
+	// pendingOperationGeneration stores the .metadata.generation at which the
+	// current status.trackingId was obtained. The controller uses this to detect
+	// spec changes that occur while an async operation is in progress: if the
+	// current generation differs from pendingOperationGeneration, the stale
+	// trackingId is cleared and the operation is re-submitted.
+	// Zero means no pending async operation.
+	// +optional
+	PendingOperationGeneration int64 `json:"pendingOperationGeneration,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -133,6 +166,10 @@ type DatabaseDeclaration struct {
 	// status defines the observed state of DatabaseDeclaration.
 	// +optional
 	Status DatabaseDeclarationStatus `json:"status,omitzero"`
+}
+
+func (d *DatabaseDeclaration) SetObservedGeneration(generation int64) {
+	d.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true

@@ -18,9 +18,7 @@ package controller
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,7 +27,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -47,13 +44,9 @@ var _ = Describe("DbPolicy Controller", func() {
 	)
 
 	var (
-		mockServer          *httptest.Server
-		mockStatusCode      int
-		mockBody            string
-		capturedRequestBody []byte
-		reconciler          *DbPolicyReconciler
-		fakeRecorder        *record.FakeRecorder
-		namespacedName      types.NamespacedName
+		fixture        *aggregatorSyncFixture
+		reconciler     *DbPolicyReconciler
+		namespacedName types.NamespacedName
 	)
 
 	// baseSpec builds a minimal valid spec for use in aggregator-response tests.
@@ -67,75 +60,32 @@ var _ = Describe("DbPolicy Controller", func() {
 	}
 
 	BeforeEach(func() {
-		mockStatusCode = http.StatusOK
-		mockBody = ""
-		capturedRequestBody = nil
-		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capturedRequestBody, _ = io.ReadAll(r.Body)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(mockStatusCode)
-			if mockBody != "" {
-				_, _ = w.Write([]byte(mockBody))
-			}
-		}))
-
+		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
-		fakeRecorder = record.NewFakeRecorder(16)
 		reconciler = &DbPolicyReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewAggregatorClient(mockServer.URL, "user", "pass"),
-			Recorder:   fakeRecorder,
+			Aggregator: aggregatorclient.NewAggregatorClient(fixture.server.URL, "user", "pass"),
+			Recorder:   fixture.recorder,
 		}
 	})
 
 	AfterEach(func() {
-		mockServer.Close()
-
-		dp := &dbaasv1alpha1.DbPolicy{}
-		if err := k8sClient.Get(ctx, namespacedName, dp); err == nil {
-			Expect(k8sClient.Delete(ctx, dp)).To(Succeed())
-		}
-
-		for {
-			select {
-			case <-fakeRecorder.Events:
-			default:
-				return
-			}
-		}
+		fixture.close()
+		deleteIfExists(&dbaasv1alpha1.DbPolicy{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 	})
 
 	reconcileAndFetch := func() (*dbaasv1alpha1.DbPolicy, reconcile.Result, error) {
-		result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
-		fetched := &dbaasv1alpha1.DbPolicy{}
-		Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
-		return fetched, result, err
-	}
-
-	expectEvent := func(eventtype, reason string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(HavePrefix(eventtype + " " + reason)))
-	}
-
-	expectNoEvent := func() {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).NotTo(Receive())
-	}
-
-	expectEventContaining := func(eventtype, reason, substr string) {
-		GinkgoHelper()
-		Expect(fakeRecorder.Events).To(Receive(And(
-			HavePrefix(eventtype+" "+reason),
-			ContainSubstring(substr),
-		)))
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1alpha1.DbPolicy {
+			return &dbaasv1alpha1.DbPolicy{}
+		})
 	}
 
 	// ── Request payload assembly ──────────────────────────────────────────────
 
 	Context("buildPayload — microserviceName goes to metadata, not spec", func() {
 		It("serializes microserviceName in metadata and excludes it from spec", func() {
-			mockStatusCode = http.StatusOK
+			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -143,7 +93,7 @@ var _ = Describe("DbPolicy Controller", func() {
 
 			_, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(capturedRequestBody).NotTo(BeEmpty())
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
 
 			var sent struct {
 				Metadata struct {
@@ -153,7 +103,7 @@ var _ = Describe("DbPolicy Controller", func() {
 					MicroserviceName string `json:"microserviceName"`
 				} `json:"spec"`
 			}
-			Expect(json.Unmarshal(capturedRequestBody, &sent)).To(Succeed())
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
 			Expect(sent.Metadata.MicroserviceName).To(Equal("test-service"))
 			Expect(sent.Spec.MicroserviceName).To(BeEmpty(),
 				"microserviceName must not appear in spec")
@@ -171,7 +121,7 @@ var _ = Describe("DbPolicy Controller", func() {
 					{Type: "postgresql", DefaultRole: "admin", AdditionalRole: []string{"readonly"}},
 				},
 			}
-			mockStatusCode = http.StatusOK
+			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
@@ -193,7 +143,7 @@ var _ = Describe("DbPolicy Controller", func() {
 					} `json:"policy"`
 				} `json:"spec"`
 			}
-			Expect(json.Unmarshal(capturedRequestBody, &sent)).To(Succeed())
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
 			Expect(sent.Spec.Services).To(HaveLen(1))
 			Expect(sent.Spec.Services[0].Name).To(Equal("other-svc"))
 			Expect(sent.Spec.Services[0].Roles).To(ConsistOf("admin", "readonly"))
@@ -215,7 +165,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("microserviceName"))
-			Expect(capturedRequestBody).To(BeEmpty(), "aggregator must not be called")
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
 		})
 	})
 
@@ -231,15 +181,15 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
-			Expect(capturedRequestBody).To(BeEmpty())
+			Expect(fixture.capturedBody).To(BeEmpty())
 
 			ready := findCondition(dp.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
 			Expect(ready.Message).To(ContainSubstring("at least one of"))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonInvalidSpec)
-			expectNoEvent()
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
@@ -254,7 +204,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("services"))
-			Expect(capturedRequestBody).To(BeEmpty(), "aggregator must not be called")
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
 		})
 	})
 
@@ -269,7 +219,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("roles"))
-			Expect(capturedRequestBody).To(BeEmpty(), "aggregator must not be called")
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
 		})
 	})
 
@@ -284,7 +234,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("type"))
-			Expect(capturedRequestBody).To(BeEmpty(), "aggregator must not be called")
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
 		})
 	})
 
@@ -299,7 +249,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("defaultRole"))
-			Expect(capturedRequestBody).To(BeEmpty(), "aggregator must not be called")
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
 		})
 	})
 
@@ -307,7 +257,7 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("HTTP 200 — policy applied synchronously", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/PolicyApplied, does not requeue", func() {
-			mockStatusCode = http.StatusOK
+			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -332,8 +282,8 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectEvent(corev1.EventTypeNormal, EventReasonPolicyApplied)
-			expectNoEvent()
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonPolicyApplied)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
@@ -341,8 +291,8 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("HTTP 400 — invalid request", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, does not requeue", func() {
-			mockStatusCode = http.StatusBadRequest
-			mockBody = `{"code":"CORE-DBAAS-4036","reason":"Validation failed","message":"Declarative configuration validation failed.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusBadRequest
+			fixture.body = `{"code":"CORE-DBAAS-4036","reason":"Validation failed","message":"Declarative configuration validation failed.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -365,16 +315,16 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorRejected,
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 				"Declarative configuration validation failed.")
-			expectNoEvent()
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("HTTP 401 — operator credentials misconfigured", func() {
 		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, requeues", func() {
-			mockStatusCode = http.StatusUnauthorized
-			mockBody = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusUnauthorized
+			fixture.body = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -396,16 +346,16 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonUnauthorized,
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized,
 				"Requested role is not allowed")
-			expectNoEvent()
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("HTTP 500 — unexpected aggregator server error", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, requeues", func() {
-			mockStatusCode = http.StatusInternalServerError
-			mockBody = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.statusCode = http.StatusInternalServerError
+			fixture.body = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -427,14 +377,38 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEventContaining(corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
-			expectNoEvent()
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("HTTP 404 — infrastructure error, not a spec rejection", func() {
+		It("sets Phase=BackingOff (not InvalidConfiguration), Stalled=False, requeues", func() {
+			fixture.statusCode = http.StatusNotFound
+			fixture.body = ""
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			dp, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff),
+				"404 is an infrastructure error, not a spec rejection; CR must not be stuck in InvalidConfiguration")
+
+			stalled := findCondition(dp.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 
 	Context("Network error — aggregator is unreachable", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, requeues", func() {
-			mockServer.Close()
+			fixture.server.Close()
 
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -456,8 +430,8 @@ var _ = Describe("DbPolicy Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectEvent(corev1.EventTypeWarning, EventReasonAggregatorError)
-			expectNoEvent()
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 })

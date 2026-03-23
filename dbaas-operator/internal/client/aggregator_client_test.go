@@ -493,6 +493,40 @@ func TestGetOperationStatus_NonSuccessReturnsAggregatorError(t *testing.T) {
 	}
 }
 
+func TestGetOperationStatus_ParsesTmfMessage(t *testing.T) {
+	t.Parallel()
+
+	const tmfMessage = "Operation trackingId not found."
+	tmfBody := `{"code":"CORE-DBAAS-4040","reason":"TrackingId not found","message":"` + tmfMessage + `","status":"404","@type":"NC.TMFErrorResponse.v1.0"}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(tmfBody))
+	}))
+	defer srv.Close()
+
+	c := NewAggregatorClient(srv.URL, "user", "pass")
+	_, err := c.GetOperationStatus(context.Background(), "tid")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var aggErr *AggregatorError
+	if !errors.As(err, &aggErr) {
+		t.Fatalf("expected *AggregatorError, got %T", err)
+	}
+	if aggErr.StatusCode != http.StatusNotFound {
+		t.Errorf("StatusCode: got %d, want 404", aggErr.StatusCode)
+	}
+	if aggErr.TmfMessage != tmfMessage {
+		t.Errorf("TmfMessage: got %q, want %q", aggErr.TmfMessage, tmfMessage)
+	}
+	if aggErr.UserMessage() != tmfMessage {
+		t.Errorf("UserMessage(): got %q, want %q", aggErr.UserMessage(), tmfMessage)
+	}
+}
+
 // ── AggregatorError ───────────────────────────────────────────────────────────
 
 func TestAggregatorError_IsAuthError(t *testing.T) {
@@ -541,6 +575,42 @@ func TestAggregatorError_IsClientError(t *testing.T) {
 			e := &AggregatorError{StatusCode: tc.code}
 			if got := e.IsClientError(); got != tc.want {
 				t.Errorf("IsClientError() for %d: got %v, want %v", tc.code, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAggregatorError_IsSpecRejection(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		code int
+		want bool
+	}{
+		// Permanent spec rejections — aggregator explicitly rejects the payload.
+		{http.StatusBadRequest, true},          // 400 — validation failure
+		{http.StatusForbidden, true},           // 403 — namespace/policy violation
+		{http.StatusConflict, true},            // 409 — resource already exists
+		{http.StatusGone, true},                // 410 — resource permanently removed
+		{http.StatusUnprocessableEntity, true}, // 422 — semantic validation failure
+		// Infrastructure / proxy 4xx — transient, must NOT be spec rejections.
+		{http.StatusUnauthorized, false},     // 401 — handled by IsAuthError
+		{http.StatusNotFound, false},         // 404 — routing/proxy issue
+		{http.StatusMethodNotAllowed, false}, // 405 — wrong HTTP method
+		{http.StatusRequestTimeout, false},   // 408 — transient timeout
+		{http.StatusTooManyRequests, false},  // 429 — rate limit
+		// Server errors — transient.
+		{http.StatusInternalServerError, false},
+		{http.StatusBadGateway, false},
+		{http.StatusServiceUnavailable, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(http.StatusText(tc.code), func(t *testing.T) {
+			t.Parallel()
+			e := &AggregatorError{StatusCode: tc.code}
+			if got := e.IsSpecRejection(); got != tc.want {
+				t.Errorf("IsSpecRejection() for %d: got %v, want %v", tc.code, got, tc.want)
 			}
 		})
 	}

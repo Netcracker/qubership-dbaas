@@ -18,6 +18,14 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// ObservedGenerationSetter is implemented by CR root types whose status embeds
+// OperatorStatus and therefore can persist the latest reconciled generation.
+//
+// +kubebuilder:object:generate=false
+type ObservedGenerationSetter interface {
+	SetObservedGeneration(int64)
+}
+
 // Phase represents the processing phase of a dbaas operator resource.
 // The controller drives resources through a state machine:
 //
@@ -79,17 +87,19 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Condition types used by all dbaas operator resources (ExternalDatabaseDeclaration, DbPolicy):
+	// Condition types used by all dbaas operator resources (ExternalDatabaseDeclaration, DbPolicy, DatabaseDeclaration):
 	//   - "Ready"   — True when the resource was successfully processed by
 	//                 dbaas-aggregator for the current generation.
 	//                 False on any error; see Reason for the category.
 	//                 ExternalDatabaseDeclaration: reason "Registered" on success.
 	//                 DbPolicy: reason "PolicyApplied" on success.
+	//                 DatabaseDeclaration: reason "DatabaseProvisioned" on success;
+	//                   reason "ProvisioningStarted" while the async operation is in progress.
 	//   - "Stalled" — True when the error is permanent and the controller will
 	//                 not retry until the spec is changed (e.g. InvalidSpec,
 	//                 AggregatorRejected). False for transient errors that are
 	//                 retried automatically (e.g. SecretError, AggregatorError,
-	//                 Unauthorized).
+	//                 Unauthorized, ProvisioningStarted).
 	// +optional
 	// +listType=map
 	// +listMapKey=type

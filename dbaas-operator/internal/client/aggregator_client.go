@@ -83,8 +83,8 @@ func (c *AggregatorClient) SetCredentials(username, password string) {
 //     aggregator); call GetOperationStatus to poll for completion.
 //   - response.TrackingId == "" → operation completed synchronously (HTTP 200);
 //     inspect response.Conditions for the outcome.
-//   - error (*AggregatorError) → non-2xx response; IsClientError() distinguishes
-//     a permanent config error from a transient failure.
+//   - error (*AggregatorError) → non-2xx response; IsSpecRejection() distinguishes
+//     a permanent spec error (400/403/409/410/422) from a transient failure.
 func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *DeclarativePayload) (*DeclarativeResponse, error) {
 	resp, err := c.rc.R().
 		SetContext(ctx).
@@ -95,12 +95,7 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 	}
 
 	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusAccepted {
-		aggErr := &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
-		var tmfResp tmf.Response
-		if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
-			aggErr.TmfMessage = tmfResp.Message
-		}
-		return nil, aggErr
+		return nil, newAggregatorError(resp)
 	}
 
 	var result DeclarativeResponse
@@ -130,7 +125,7 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 	}
 
 	if resp.StatusCode() != http.StatusOK {
-		return nil, &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
+		return nil, newAggregatorError(resp)
 	}
 
 	return &result, nil
@@ -154,13 +149,22 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	}
 
 	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated {
-		aggErr := &AggregatorError{StatusCode: resp.StatusCode(), Body: string(resp.Body())}
-		var tmfResp tmf.Response
-		if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
-			aggErr.TmfMessage = tmfResp.Message
-		}
-		return aggErr
+		return newAggregatorError(resp)
 	}
 
 	return nil
+}
+
+func newAggregatorError(resp *resty.Response) *AggregatorError {
+	aggErr := &AggregatorError{
+		StatusCode: resp.StatusCode(),
+		Body:       string(resp.Body()),
+	}
+
+	var tmfResp tmf.Response
+	if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
+		aggErr.TmfMessage = tmfResp.Message
+	}
+
+	return aggErr
 }

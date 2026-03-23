@@ -155,6 +155,10 @@ type ExternalDatabaseDeclaration struct {
 	Status ExternalDatabaseDeclarationStatus `json:"status,omitzero"`
 }
 
+func (e *ExternalDatabaseDeclaration) SetObservedGeneration(generation int64) {
+	e.Status.ObservedGeneration = generation
+}
+
 // +kubebuilder:object:root=true
 
 // ExternalDatabaseDeclarationList contains a list of ExternalDatabaseDeclaration.

@@ -17,7 +17,13 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"errors"
+
+	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // setCondition upserts a metav1.Condition in the given slice.
@@ -53,4 +59,72 @@ func setCondition(
 		}
 	}
 	*conditions = append(*conditions, cond)
+}
+
+func markSucceeded(
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	readyReason string,
+) {
+	*phase = dbaasv1alpha1.PhaseSucceeded
+	setCondition(conditions, generation,
+		conditionTypeReady, metav1.ConditionTrue, readyReason, "")
+	setCondition(conditions, generation,
+		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
+}
+
+func markTransientFailure(
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	readyReason, readyMessage string,
+) {
+	*phase = dbaasv1alpha1.PhaseBackingOff
+	setCondition(conditions, generation,
+		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
+	setCondition(conditions, generation,
+		conditionTypeStalled, metav1.ConditionFalse, readyReason, stalledMsgTransient)
+}
+
+func markPermanentFailure(
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	readyReason, readyMessage string,
+) {
+	*phase = dbaasv1alpha1.PhaseInvalidConfiguration
+	setCondition(conditions, generation,
+		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
+	setCondition(conditions, generation,
+		conditionTypeStalled, metav1.ConditionTrue, readyReason, stalledMsgPermanent)
+}
+
+func patchStatusOnExit[T interface {
+	client.Object
+	dbaasv1alpha1.ObservedGenerationSetter
+}](
+	ctx context.Context,
+	statusWriter client.StatusWriter,
+	obj T,
+	original T,
+	retErr *error,
+	shouldObserve func(T, error) bool,
+	objectType string,
+) {
+	if shouldObserve(obj, *retErr) {
+		setObservedGeneration(obj)
+	}
+
+	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
+		logf.FromContext(ctx).Error(patchErr, "patch "+objectType+" status")
+		*retErr = errors.Join(*retErr, patchErr)
+	}
+}
+
+func setObservedGeneration[T interface {
+	client.Object
+	dbaasv1alpha1.ObservedGenerationSetter
+}](obj T) {
+	obj.SetObservedGeneration(obj.GetGeneration())
 }

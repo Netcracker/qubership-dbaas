@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -35,25 +34,6 @@ import (
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-)
-
-const (
-	// conditionTypeReady is the canonical condition describing whether the
-	// database is successfully registered with dbaas-aggregator.
-	// Ready=True means the current generation is registered and healthy.
-	// Ready=False means registration failed; see Reason for details.
-	conditionTypeReady = "Ready"
-
-	// conditionTypeStalled is set to True when the error is permanent and
-	// retrying will not help until the spec is changed.
-	// Stalled=False means the error is transient and the controller is retrying.
-	conditionTypeStalled = "Stalled"
-)
-
-// stalledMsg* are fixed human-readable messages for the Stalled condition.
-const (
-	stalledMsgPermanent = "Permanent error — spec must be corrected before the controller will retry."
-	stalledMsgTransient = "Transient error — the controller will retry automatically."
 )
 
 // ExternalDatabaseDeclarationReconciler reconciles ExternalDatabaseDeclaration objects.
@@ -88,18 +68,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	// Always patch status on exit, even if reconcile fails.
 	// This ensures the CR reflects the actual outcome.
 	defer func() {
-		// Stamp observedGeneration only when the reconcile cycle is complete
-		// and no retry is requested (retErr == nil means "do not requeue").
-		// For transient BackingOff exits retErr != nil, so we leave it unset:
-		// consumers that check generation > observedGeneration can tell the
-		// controller has not yet finished processing the current spec.
-		if retErr == nil {
-			edb.Status.ObservedGeneration = edb.Generation
-		}
-		if patchErr := r.Status().Patch(ctx, edb, client.MergeFrom(original)); patchErr != nil {
-			log.Error(patchErr, "patch ExternalDatabaseDeclaration status")
-			retErr = errors.Join(retErr, patchErr)
-		}
+		patchStatusOnExit(ctx, r.Status(), edb, original, &retErr,
+			func(_ *dbaasv1alpha1.ExternalDatabaseDeclaration, retErr error) bool { return retErr == nil },
+			"ExternalDatabaseDeclaration")
 	}()
 
 	// Mark as Processing while we work.
@@ -112,11 +83,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {
 		log.Error(err, "failed to build registration request")
-		edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeReady, metav1.ConditionFalse, EventReasonSecretError, err.Error())
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, EventReasonSecretError, stalledMsgTransient)
+		markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+			EventReasonSecretError, err.Error())
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonSecretError,
 			"failed to read credentials Secret: %s", err)
 		return ctrl.Result{}, err // requeue with backoff
@@ -124,10 +92,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	// The namespace used in the aggregator URL comes from the classifier; fall
 	// back to the CR's own namespace if the classifier does not contain one.
-	namespace := edb.Spec.Classifier["namespace"]
-	if namespace == "" {
-		namespace = edb.Namespace
-	}
+	namespace := resolveAggregatorNamespace(edb)
 
 	// Call the aggregator.
 	if err := r.Aggregator.RegisterExternalDatabase(ctx, namespace, aggReq); err != nil {
@@ -140,21 +105,15 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 				// 401 — operator credentials or role binding misconfigured.
 				// This is NOT a spec error: the user should not edit the CR.
 				// Retry so the operator recovers once the admin fixes the credentials.
-				edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeReady, metav1.ConditionFalse, EventReasonUnauthorized, aggErr.UserMessage())
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeStalled, metav1.ConditionFalse, EventReasonUnauthorized, stalledMsgTransient)
+				markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+					EventReasonUnauthorized, aggErr.UserMessage())
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonUnauthorized,
 					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
 				return ctrl.Result{}, err // requeue with backoff
-			case aggErr.IsClientError():
+			case aggErr.IsSpecRejection():
 				// 400, 403, 409 — spec error; retrying won't help until the spec changes.
-				edb.Status.Phase = dbaasv1alpha1.PhaseInvalidConfiguration
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorRejected, aggErr.UserMessage())
-				setCondition(&edb.Status.Conditions, edb.Generation,
-					conditionTypeStalled, metav1.ConditionTrue, EventReasonAggregatorRejected, stalledMsgPermanent)
+				markPermanentFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+					EventReasonAggregatorRejected, aggErr.UserMessage())
 				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
 				return ctrl.Result{}, nil // do not requeue
@@ -167,11 +126,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		if aggErr != nil {
 			errMsg = aggErr.UserMessage()
 		}
-		edb.Status.Phase = dbaasv1alpha1.PhaseBackingOff
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeReady, metav1.ConditionFalse, EventReasonAggregatorError, errMsg)
-		setCondition(&edb.Status.Conditions, edb.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, EventReasonAggregatorError, stalledMsgTransient)
+		markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+			EventReasonAggregatorError, errMsg)
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorError,
 			"dbaas-aggregator error: %s", errMsg)
 		return ctrl.Result{}, err
@@ -179,11 +135,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	log.Info("external database registered successfully",
 		"type", edb.Spec.Type, "dbName", edb.Spec.DbName)
-	edb.Status.Phase = dbaasv1alpha1.PhaseSucceeded
-	setCondition(&edb.Status.Conditions, edb.Generation,
-		conditionTypeReady, metav1.ConditionTrue, EventReasonRegistered, "")
-	setCondition(&edb.Status.Conditions, edb.Generation,
-		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
+	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonRegistered)
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
 	return ctrl.Result{}, nil
@@ -196,58 +148,9 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 	ctx context.Context,
 	edb *dbaasv1alpha1.ExternalDatabaseDeclaration,
 ) (*aggregatorclient.ExternalDatabaseRequest, error) {
-	connProps := make([]map[string]string, 0, len(edb.Spec.ConnectionProperties))
-
-	for i, cp := range edb.Spec.ConnectionProperties {
-		flat := make(map[string]string)
-
-		// Extra properties are merged first so that role and Secret credentials
-		// written below always take precedence over them.
-		for k, v := range cp.ExtraProperties {
-			flat[k] = v
-		}
-
-		// role is the only typed field; written after ExtraProperties so it
-		// cannot be overridden by a user-supplied "role" key.
-		flat["role"] = cp.Role
-
-		// Credentials from a Kubernetes Secret.
-		if cp.CredentialsSecretRef != nil {
-			secret := &corev1.Secret{}
-			key := types.NamespacedName{
-				Namespace: edb.Namespace,
-				Name:      cp.CredentialsSecretRef.Name,
-			}
-			if err := r.Get(ctx, key, secret); err != nil {
-				return nil, fmt.Errorf(
-					"connectionProperties[%d]: get Secret %q: %w",
-					i, cp.CredentialsSecretRef.Name, err)
-			}
-
-			usernameKey := cp.CredentialsSecretRef.UsernameKey
-			if usernameKey == "" {
-				usernameKey = "username"
-			}
-			passwordKey := cp.CredentialsSecretRef.PasswordKey
-			if passwordKey == "" {
-				passwordKey = "password"
-			}
-
-			if _, ok := secret.Data[usernameKey]; !ok {
-				return nil, fmt.Errorf(
-					"connectionProperties[%d]: Secret %q missing key %q",
-					i, cp.CredentialsSecretRef.Name, usernameKey)
-			}
-			if _, ok := secret.Data[passwordKey]; !ok {
-				return nil, fmt.Errorf(
-					"connectionProperties[%d]: Secret %q missing key %q",
-					i, cp.CredentialsSecretRef.Name, passwordKey)
-			}
-			flat["username"] = string(secret.Data[usernameKey])
-			flat["password"] = string(secret.Data[passwordKey])
-		}
-
-		connProps = append(connProps, flat)
+	connProps, err := r.buildConnectionProperties(ctx, edb)
+	if err != nil {
+		return nil, err
 	}
 
 	return &aggregatorclient.ExternalDatabaseRequest{
@@ -257,6 +160,97 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 		ConnectionProperties:       connProps,
 		UpdateConnectionProperties: edb.Spec.UpdateConnectionProperties,
 	}, nil
+}
+
+func resolveAggregatorNamespace(edb *dbaasv1alpha1.ExternalDatabaseDeclaration) string {
+	if namespace := edb.Spec.Classifier["namespace"]; namespace != "" {
+		return namespace
+	}
+	return edb.Namespace
+}
+
+func (r *ExternalDatabaseDeclarationReconciler) buildConnectionProperties(
+	ctx context.Context,
+	edb *dbaasv1alpha1.ExternalDatabaseDeclaration,
+) ([]map[string]string, error) {
+	connProps := make([]map[string]string, 0, len(edb.Spec.ConnectionProperties))
+
+	for i, cp := range edb.Spec.ConnectionProperties {
+		flat := make(map[string]string, len(cp.ExtraProperties)+3)
+
+		// Extra properties are merged first so that typed fields and resolved
+		// Secret credentials always win on key collisions.
+		for k, v := range cp.ExtraProperties {
+			flat[k] = v
+		}
+
+		flat["role"] = cp.Role
+
+		if err := r.applySecretCredentials(ctx, edb.Namespace, i, cp, flat); err != nil {
+			return nil, err
+		}
+
+		connProps = append(connProps, flat)
+	}
+
+	return connProps, nil
+}
+
+func (r *ExternalDatabaseDeclarationReconciler) applySecretCredentials(
+	ctx context.Context,
+	namespace string,
+	index int,
+	cp dbaasv1alpha1.ConnectionProperty,
+	flat map[string]string,
+) error {
+	if cp.CredentialsSecretRef == nil {
+		return nil
+	}
+
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      cp.CredentialsSecretRef.Name,
+	}
+	if err := r.Get(ctx, key, secret); err != nil {
+		return fmt.Errorf(
+			"connectionProperties[%d]: get Secret %q: %w",
+			index, cp.CredentialsSecretRef.Name, err)
+	}
+
+	usernameKey, passwordKey := secretCredentialKeys(cp.CredentialsSecretRef)
+
+	username, ok := secret.Data[usernameKey]
+	if !ok {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q missing key %q",
+			index, cp.CredentialsSecretRef.Name, usernameKey)
+	}
+
+	password, ok := secret.Data[passwordKey]
+	if !ok {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q missing key %q",
+			index, cp.CredentialsSecretRef.Name, passwordKey)
+	}
+
+	flat["username"] = string(username)
+	flat["password"] = string(password)
+	return nil
+}
+
+func secretCredentialKeys(ref *dbaasv1alpha1.CredentialsSecretRef) (usernameKey, passwordKey string) {
+	usernameKey = ref.UsernameKey
+	if usernameKey == "" {
+		usernameKey = "username"
+	}
+
+	passwordKey = ref.PasswordKey
+	if passwordKey == "" {
+		passwordKey = "password"
+	}
+
+	return usernameKey, passwordKey
 }
 
 // SetupWithManager sets up the controller with the Manager.
