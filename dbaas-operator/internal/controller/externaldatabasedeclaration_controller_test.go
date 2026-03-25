@@ -289,6 +289,80 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		})
 	})
 
+	Context("Secret exists but the username key is empty", func() {
+		It("sets Phase=BackingOff, SecretError (not Unauthorized), Stalled=False, requeues", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				Data: map[string][]byte{
+					"username": []byte(""), // key present but empty
+					"password": []byte("s3cr3t"),
+				},
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred()) // requeue with backoff
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			// Must be SecretError, not Unauthorized — the aggregator is never called.
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+			Expect(ready.Message).To(ContainSubstring(`key "username" is empty`))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("Secret exists but the password key is empty", func() {
+		It("sets Phase=BackingOff, SecretError, message mentions password key", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte(""), // key present but empty
+				},
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+			Expect(ready.Message).To(ContainSubstring(`key "password" is empty`))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
 	// ── Aggregator 4xx errors ─────────────────────────────────────────────────
 
 	Context("HTTP 400 — invalid request (e.g. invalid classifier)", func() {

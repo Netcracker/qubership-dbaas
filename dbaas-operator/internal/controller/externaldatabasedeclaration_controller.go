@@ -192,11 +192,21 @@ func (r *ExternalDatabaseDeclarationReconciler) applySecretCredentials(
 			"connectionProperties[%d]: Secret %q missing key %q",
 			index, cp.CredentialsSecretRef.Name, usernameKey)
 	}
+	if len(username) == 0 {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q key %q is empty",
+			index, cp.CredentialsSecretRef.Name, usernameKey)
+	}
 
 	password, ok := secret.Data[passwordKey]
 	if !ok {
 		return fmt.Errorf(
 			"connectionProperties[%d]: Secret %q missing key %q",
+			index, cp.CredentialsSecretRef.Name, passwordKey)
+	}
+	if len(password) == 0 {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q key %q is empty",
 			index, cp.CredentialsSecretRef.Name, passwordKey)
 	}
 
