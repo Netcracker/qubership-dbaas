@@ -125,10 +125,10 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	})
 
 	reconcileAndFetch := func() (*dbaasv1alpha1.DatabaseDeclaration, reconcile.Result, error) {
-		result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
-		fetched := &dbaasv1alpha1.DatabaseDeclaration{}
-		Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
-		return fetched, result, err
+		GinkgoHelper()
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1alpha1.DatabaseDeclaration {
+			return &dbaasv1alpha1.DatabaseDeclaration{}
+		})
 	}
 
 	// ── CRD admission validation ──────────────────────────────────────────────

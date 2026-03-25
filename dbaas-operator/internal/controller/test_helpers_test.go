@@ -98,6 +98,7 @@ func reconcileAndFetchObject[T client.Object](
 	key types.NamespacedName,
 	newObj func() T,
 ) (T, reconcile.Result, error) {
+	GinkgoHelper()
 	result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 	obj := newObj()
 	Expect(k8sClient.Get(ctx, key, obj)).To(Succeed())
