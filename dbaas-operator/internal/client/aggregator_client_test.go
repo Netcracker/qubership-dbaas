@@ -267,8 +267,8 @@ func TestApplyConfig_HTTP200SyncResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.TrackingId != "" {
-		t.Errorf("sync response should have empty TrackingId, got %q", got.TrackingId)
+	if got.TrackingID != "" {
+		t.Errorf("sync response should have empty TrackingID, got %q", got.TrackingID)
 	}
 	if got.Status != TaskStateCompleted {
 		t.Errorf("status: got %q, want COMPLETED", got.Status)
@@ -283,7 +283,7 @@ func TestApplyConfig_HTTP202AsyncResponse(t *testing.T) {
 
 	resp := DeclarativeResponse{
 		Status:     TaskStateInProgress,
-		TrackingId: "abc-123",
+		TrackingID: "abc-123",
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(t, w, http.StatusAccepted, resp)
@@ -295,8 +295,8 @@ func TestApplyConfig_HTTP202AsyncResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.TrackingId != "abc-123" {
-		t.Errorf("TrackingId: got %q, want abc-123", got.TrackingId)
+	if got.TrackingID != "abc-123" {
+		t.Errorf("TrackingID: got %q, want abc-123", got.TrackingID)
 	}
 	if got.Status != TaskStateInProgress {
 		t.Errorf("status: got %q, want IN_PROGRESS", got.Status)
@@ -413,7 +413,7 @@ func TestGetOperationStatus_InProgressResponse(t *testing.T) {
 
 	resp := DeclarativeResponse{
 		Status:     TaskStateInProgress,
-		TrackingId: "track-99",
+		TrackingID: "track-99",
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(t, w, http.StatusOK, resp)
@@ -497,7 +497,7 @@ func TestGetOperationStatus_ParsesTmfMessage(t *testing.T) {
 	t.Parallel()
 
 	const tmfMessage = "Operation trackingId not found."
-	tmfBody := `{"code":"CORE-DBAAS-4040","reason":"TrackingId not found","message":"` + tmfMessage + `","status":"404","@type":"NC.TMFErrorResponse.v1.0"}`
+	tmfBody := `{"code":"CORE-DBAAS-4040","reason":"TrackingID not found","message":"` + tmfMessage + `","status":"404","@type":"NC.TMFErrorResponse.v1.0"}`
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

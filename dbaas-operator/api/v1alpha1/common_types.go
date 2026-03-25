@@ -75,7 +75,7 @@ type OperatorStatus struct {
 	// stores it here and uses it to poll the operation status on subsequent reconciles.
 	// Cleared once the operation reaches a terminal state (Completed or Failed).
 	// +optional
-	TrackingId string `json:"trackingId,omitempty"`
+	TrackingID string `json:"trackingID,omitempty"`
 
 	// observedGeneration reflects the .metadata.generation that was last processed
 	// by the controller. When the current generation differs from this value, the

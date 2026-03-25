@@ -63,11 +63,11 @@ type AggregatorCondition struct {
 //   - POST /api/declarations/v1/apply
 //   - GET  /api/declarations/v1/operation/{trackingId}/status
 //
-// When TrackingId is non-empty the operation is asynchronous; the caller must
+// When TrackingID is non-empty the operation is asynchronous; the caller must
 // poll GetOperationStatus until Status is no longer TaskStateInProgress.
 type DeclarativeResponse struct {
 	Status     TaskState             `json:"status"`
-	TrackingId string                `json:"trackingId,omitempty"`
+	TrackingID string                `json:"trackingId,omitempty"`
 	Conditions []AggregatorCondition `json:"conditions,omitempty"`
 }
 

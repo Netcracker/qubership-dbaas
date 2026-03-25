@@ -79,9 +79,9 @@ func (c *AggregatorClient) SetCredentials(username, password string) {
 // the resource (DatabaseDeclaration or DbPolicy).
 //
 // Return semantics:
-//   - response.TrackingId != "" → operation is asynchronous (HTTP 202 from the
+//   - response.TrackingID != "" → operation is asynchronous (HTTP 202 from the
 //     aggregator); call GetOperationStatus to poll for completion.
-//   - response.TrackingId == "" → operation completed synchronously (HTTP 200);
+//   - response.TrackingID == "" → operation completed synchronously (HTTP 200);
 //     inspect response.Conditions for the outcome.
 //   - error (*AggregatorError) → non-2xx response; IsSpecRejection() distinguishes
 //     a permanent spec error (400/403/409/410/422) from a transient failure.

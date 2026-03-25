@@ -83,17 +83,17 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	// If spec changed while an async operation was in progress, discard the
 	// stale trackingId and start fresh.
-	if dd.Status.TrackingId != "" &&
+	if dd.Status.TrackingID != "" &&
 		dd.Status.PendingOperationGeneration != dd.Generation {
 		log.Info("spec changed while polling, clearing stale trackingId",
 			"pendingGen", dd.Status.PendingOperationGeneration,
 			"currentGen", dd.Generation,
-			"trackingId", dd.Status.TrackingId)
-		dd.Status.TrackingId = ""
+			"trackingId", dd.Status.TrackingID)
+		dd.Status.TrackingID = ""
 		dd.Status.PendingOperationGeneration = 0
 	}
 
-	if dd.Status.TrackingId != "" {
+	if dd.Status.TrackingID != "" {
 		return r.reconcilePoll(ctx, dd)
 	}
 	return r.reconcileSubmit(ctx, dd)
@@ -116,14 +116,14 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 		return r.handleApplyError(ctx, dd, err)
 	}
 
-	if resp.TrackingId != "" {
+	if resp.TrackingID != "" {
 		// HTTP 202 Accepted — async operation started.
 		log.Info("database provisioning started asynchronously",
-			"trackingId", resp.TrackingId,
+			"trackingId", resp.TrackingID,
 			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
-		r.markProvisioningStarted(dd, resp.TrackingId)
+		r.markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
-			"database provisioning started asynchronously (trackingId=%s)", resp.TrackingId)
+			"database provisioning started asynchronously (trackingId=%s)", resp.TrackingID)
 		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 	}
 
@@ -140,7 +140,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 // reconcilePoll handles the POLL branch: GET /operation/{trackingId}/status.
 func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
-	trackingID := dd.Status.TrackingId
+	trackingID := dd.Status.TrackingID
 	log.V(1).Info("polling operation status", "trackingId", trackingID)
 
 	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
@@ -290,7 +290,7 @@ func (r *DatabaseDeclarationReconciler) markProvisioningStarted(
 	dd *dbaasv1alpha1.DatabaseDeclaration,
 	trackingID string,
 ) {
-	dd.Status.TrackingId = trackingID
+	dd.Status.TrackingID = trackingID
 	dd.Status.PendingOperationGeneration = dd.Generation
 	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 	setCondition(&dd.Status.Conditions, dd.Generation,
@@ -301,7 +301,7 @@ func (r *DatabaseDeclarationReconciler) markProvisioningStarted(
 }
 
 func (r *DatabaseDeclarationReconciler) clearPendingOperation(dd *dbaasv1alpha1.DatabaseDeclaration) {
-	dd.Status.TrackingId = ""
+	dd.Status.TrackingID = ""
 	dd.Status.PendingOperationGeneration = 0
 }
 
