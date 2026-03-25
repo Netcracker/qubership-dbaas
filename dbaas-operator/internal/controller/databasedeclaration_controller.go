@@ -121,7 +121,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 		log.Info("database provisioning started asynchronously",
 			"trackingId", resp.TrackingID,
 			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
-		r.markProvisioningStarted(dd, resp.TrackingID)
+		markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s)", resp.TrackingID)
 		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
@@ -249,10 +249,7 @@ func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) stri
 	return ""
 }
 
-func (r *DatabaseDeclarationReconciler) markProvisioningStarted(
-	dd *dbaasv1alpha1.DatabaseDeclaration,
-	trackingID string,
-) {
+func markProvisioningStarted(dd *dbaasv1alpha1.DatabaseDeclaration, trackingID string) {
 	dd.Status.TrackingID = trackingID
 	dd.Status.PendingOperationGeneration = dd.Generation
 	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
@@ -263,7 +260,7 @@ func (r *DatabaseDeclarationReconciler) markProvisioningStarted(
 		conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
 }
 
-func (r *DatabaseDeclarationReconciler) clearPendingOperation(dd *dbaasv1alpha1.DatabaseDeclaration) {
+func clearPendingOperation(dd *dbaasv1alpha1.DatabaseDeclaration) {
 	dd.Status.TrackingID = ""
 	dd.Status.PendingOperationGeneration = 0
 }
@@ -292,7 +289,7 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 			// 404 — trackingId expired or never existed; clear it so the next
 			// reconcile re-submits the operation.
 			log.Info("trackingId not found, will re-submit on next reconcile", "trackingId", trackingID)
-			r.clearPendingOperation(dd)
+			clearPendingOperation(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
 			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
@@ -326,7 +323,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		log.Info("database provisioned",
 			"trackingId", trackingID,
 			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
-		r.clearPendingOperation(dd)
+		clearPendingOperation(dd)
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 			"database provisioned (microserviceName=%s, trackingId=%s)",
@@ -337,7 +334,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		reason := pollFailureReason(resp)
 		log.Info("database provisioning failed",
 			"trackingId", trackingID, "status", resp.Status, "reason", reason)
-		r.clearPendingOperation(dd)
+		clearPendingOperation(dd)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonAggregatorRejected, reason)
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorRejected,
