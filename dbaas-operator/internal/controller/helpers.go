@@ -50,8 +50,9 @@ func setCondition(
 
 	for i, existing := range *conditions {
 		if existing.Type == condType {
-			if existing.Status == status && existing.Reason == reason {
-				// Neither Status nor Reason changed: preserve the transition time.
+			if existing.Status == status {
+				// Status unchanged: preserve the transition time per Kubernetes API
+				// conventions (LastTransitionTime reflects Status changes only).
 				cond.LastTransitionTime = existing.LastTransitionTime
 			}
 			(*conditions)[i] = cond
