@@ -154,39 +154,8 @@ func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *d
 }
 
 // handleApplyError maps an error from ApplyConfig to the appropriate phase/conditions.
-func (r *DatabaseDeclarationReconciler) handleApplyError(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration, err error) (ctrl.Result, error) {
-	var aggErr *aggregatorclient.AggregatorError
-	if errors.As(err, &aggErr) {
-		switch {
-		case aggErr.IsAuthError():
-			// 401 — credentials misconfigured; retry.
-			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-				EventReasonUnauthorized, aggErr.UserMessage())
-			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonUnauthorized,
-				"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
-			return ctrl.Result{}, err
-
-		case aggErr.IsSpecRejection():
-			// 400/403/409/410/422 — aggregator explicitly rejected the spec.
-			// Retrying the same payload will not help; wait for a spec change.
-			markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-				EventReasonAggregatorRejected, aggErr.UserMessage())
-			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-				"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
-			return ctrl.Result{}, nil
-		}
-	}
-
-	// 5xx / network — transient; retry with backoff.
-	errMsg := err.Error()
-	if aggErr != nil {
-		errMsg = aggErr.UserMessage()
-	}
-	markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-		EventReasonAggregatorError, errMsg)
-	r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
-		"dbaas-aggregator error: %s", errMsg)
-	return ctrl.Result{}, err
+func (r *DatabaseDeclarationReconciler) handleApplyError(_ context.Context, dd *dbaasv1alpha1.DatabaseDeclaration, err error) (ctrl.Result, error) {
+	return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err)
 }
 
 // invalidSpec sets InvalidConfiguration phase + conditions, emits a Warning event,
