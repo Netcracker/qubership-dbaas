@@ -225,13 +225,6 @@ spec:
                 - BackingOff
                 - InvalidConfiguration
                 type: string
-              trackingID:
-                description: |-
-                  trackingId is the identifier returned by dbaas-aggregator when a database
-                  provisioning operation is started asynchronously (HTTP 202). The controller
-                  stores it here and uses it to poll the operation status on subsequent reconciles.
-                  Cleared once the operation reaches a terminal state (Completed or Failed).
-                type: string
             type: object
         required:
         - spec

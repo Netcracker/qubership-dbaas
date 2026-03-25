@@ -134,11 +134,18 @@ type DatabaseDeclarationSpec struct {
 type DatabaseDeclarationStatus struct {
 	OperatorStatus `json:",inline"`
 
+	// trackingID is the identifier returned by dbaas-aggregator when a database
+	// provisioning operation is started asynchronously (HTTP 202). The controller
+	// stores it here and uses it to poll the operation status on subsequent reconciles.
+	// Cleared once the operation reaches a terminal state (Completed or Failed).
+	// +optional
+	TrackingID string `json:"trackingID,omitempty"`
+
 	// pendingOperationGeneration stores the .metadata.generation at which the
-	// current status.trackingId was obtained. The controller uses this to detect
-	// spec changes that occur while an async operation is in progress: if the
-	// current generation differs from pendingOperationGeneration, the stale
-	// trackingId is cleared and the operation is re-submitted.
+	// current trackingID was obtained. The controller uses this to detect spec
+	// changes that occur while an async operation is in progress: if the current
+	// generation differs from pendingOperationGeneration, the stale trackingID is
+	// cleared and the operation is re-submitted.
 	// Zero means no pending async operation.
 	// +optional
 	PendingOperationGeneration int64 `json:"pendingOperationGeneration,omitempty"`
