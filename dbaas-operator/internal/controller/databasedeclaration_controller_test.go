@@ -468,7 +468,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	// ── POLL — TERMINATED ─────────────────────────────────────────────────────
 
 	Context("POLL — status=TERMINATED", func() {
-		It("sets Phase=InvalidConfiguration, Stalled=True, clears trackingId", func() {
+		It("sets Phase=BackingOff, Stalled=False, clears trackingId, emits OperationTerminated, requeues", func() {
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -484,17 +484,64 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			pollCode = http.StatusOK
 			pollBody = `{"status":"TERMINATED"}`
 
-			dd, _, err := reconcileAndFetch()
+			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			// Transient — requeues automatically.
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			// BackingOff (not InvalidConfiguration) so the operator keeps retrying.
+			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			// trackingID cleared so the next reconcile enters the SUBMIT branch.
 			Expect(dd.Status.TrackingID).To(BeEmpty())
+			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
 
+			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonOperationTerminated))
+			Expect(ready.Message).To(ContainSubstring("resubmitting"))
+
+			// Stalled=False: this is transient, not a permanent spec error.
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
-			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected)
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonOperationTerminated, "track-terminated")
 			expectNoRecordedEvent(fakeRecorder.Events)
+		})
+
+		It("resubmits to the aggregator on the next reconcile after TERMINATED", func() {
+			applyCode = http.StatusAccepted
+			applyBody = `{"trackingId":"track-resubmit"}`
+
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			// Simulate a pending tracking ID that comes back TERMINATED.
+			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
+			dd.Status.TrackingID = "track-stale"
+			dd.Status.PendingOperationGeneration = dd.Generation
+			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
+
+			pollCode = http.StatusOK
+			pollBody = `{"status":"TERMINATED"}`
+
+			// First reconcile: TERMINATED → BackingOff, trackingID cleared.
+			dd, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dd.Status.TrackingID).To(BeEmpty())
+			Expect(capturedApplyBody).To(BeEmpty(), "apply must not be called during poll reconcile")
+			drainRecordedEvents(fakeRecorder.Events)
+
+			// Second reconcile: trackingID is empty → SUBMIT branch → POST /apply.
+			pollBody = `{"status":"IN_PROGRESS"}`
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			Expect(capturedApplyBody).NotTo(BeEmpty(), "apply must be called on resubmit")
+			Expect(dd.Status.TrackingID).To(Equal("track-resubmit"))
 		})
 	})
 

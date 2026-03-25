@@ -68,6 +68,13 @@ const (
 	// retry with exponential backoff. Type: Warning.
 	EventReasonAggregatorError = "AggregatorError"
 
+	// EventReasonOperationTerminated is emitted when dbaas-aggregator reports
+	// status=TERMINATED for a polling operation. This occurs when the aggregator
+	// pod is restarted mid-operation or when an admin explicitly cancels the
+	// operation via the terminate API. It is NOT a spec error — the controller
+	// clears the stale trackingID and resubmits automatically. Type: Warning.
+	EventReasonOperationTerminated = "OperationTerminated"
+
 	// ReasonSucceeded is used as the Stalled condition reason on successful
 	// reconcile. It signals that the controller is not stalled because the
 	// last operation completed successfully.

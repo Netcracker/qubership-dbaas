@@ -119,7 +119,6 @@ func (e *AggregatorError) IsAuthError() bool {
 	return e.StatusCode == 401
 }
 
-
 // IsSpecRejection returns true when the aggregator explicitly rejected the request
 // content — codes where retrying the same payload will not succeed:
 //   - 400 Bad Request    — validation failure (CORE-DBAAS-4035/4036)

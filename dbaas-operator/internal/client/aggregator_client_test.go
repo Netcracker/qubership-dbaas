@@ -554,7 +554,6 @@ func TestAggregatorError_IsAuthError(t *testing.T) {
 	}
 }
 
-
 func TestAggregatorError_IsSpecRejection(t *testing.T) {
 	t.Parallel()
 

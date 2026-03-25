@@ -330,7 +330,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 			dd.Spec.ClassifierConfig.Classifier.MicroserviceName, trackingID)
 		return ctrl.Result{}, nil
 
-	case aggregatorclient.TaskStateFailed, aggregatorclient.TaskStateTerminated:
+	case aggregatorclient.TaskStateFailed:
 		reason := pollFailureReason(resp)
 		log.Info("database provisioning failed",
 			"trackingId", trackingID, "status", resp.Status, "reason", reason)
@@ -340,6 +340,20 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorRejected,
 			"database provisioning failed: %s", reason)
 		return ctrl.Result{}, nil
+
+	case aggregatorclient.TaskStateTerminated:
+		// The operation was terminated mid-flight (e.g. aggregator pod restart or an
+		// explicit admin call to POST /operation/{id}/terminate). This is NOT a spec
+		// error — the same payload can succeed when resubmitted.
+		// Clear the stale trackingID so the next reconcile enters the SUBMIT branch.
+		log.Info("provisioning was terminated, clearing trackingId for resubmit",
+			"trackingId", trackingID)
+		clearPendingOperation(dd)
+		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+			EventReasonOperationTerminated, "provisioning was terminated by the aggregator, resubmitting")
+		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonOperationTerminated,
+			"provisioning terminated (trackingId=%s), resubmitting", trackingID)
+		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 
 	default: // IN_PROGRESS, NOT_STARTED — keep polling
 		log.V(1).Info("provisioning still in progress", "status", resp.Status, "trackingId", trackingID)
