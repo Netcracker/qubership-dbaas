@@ -105,6 +105,14 @@ func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1alpha1.
 	return ctrl.Result{}, nil
 }
 
+// dbPolicyAggregatorSpec is the wire-format spec sent to dbaas-aggregator.
+// MicroserviceName is intentionally excluded: it goes into Metadata, not Spec.
+type dbPolicyAggregatorSpec struct {
+	Services                 []dbaasv1alpha1.ServiceRole `json:"services,omitempty"`
+	Policy                   []dbaasv1alpha1.PolicyRole  `json:"policy,omitempty"`
+	DisableGlobalPermissions bool                        `json:"disableGlobalPermissions,omitempty"`
+}
+
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
 // MicroserviceName goes into metadata (not into the spec that is forwarded to the aggregator).
 func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1alpha1.DbPolicy) *aggregatorclient.DeclarativePayload {
@@ -117,11 +125,7 @@ func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1alpha1.DbPolicy) *aggregato
 			Namespace:        dp.Namespace,
 			MicroserviceName: dp.Spec.MicroserviceName,
 		},
-		Spec: struct {
-			Services                 []dbaasv1alpha1.ServiceRole `json:"services,omitempty"`
-			Policy                   []dbaasv1alpha1.PolicyRole  `json:"policy,omitempty"`
-			DisableGlobalPermissions bool                        `json:"disableGlobalPermissions,omitempty"`
-		}{
+		Spec: dbPolicyAggregatorSpec{
 			Services:                 dp.Spec.Services,
 			Policy:                   dp.Spec.Policy,
 			DisableGlobalPermissions: dp.Spec.DisableGlobalPermissions,
