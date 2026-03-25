@@ -255,7 +255,7 @@ func markProvisioningStarted(dd *dbaasv1alpha1.DatabaseDeclaration, trackingID s
 	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 	setCondition(&dd.Status.Conditions, dd.Generation,
 		conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted,
-		fmt.Sprintf("database provisioning started asynchronously (trackingId=%s)", trackingID))
+		"database provisioning started asynchronously")
 	setCondition(&dd.Status.Conditions, dd.Generation,
 		conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
 }

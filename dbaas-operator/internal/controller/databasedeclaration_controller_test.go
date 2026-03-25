@@ -374,7 +374,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 			Expect(ready.Reason).To(Equal(EventReasonProvisioningStarted))
-			Expect(ready.Message).To(ContainSubstring("track-abc-123"))
+			Expect(ready.Message).To(Equal("database provisioning started asynchronously"))
 
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
