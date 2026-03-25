@@ -20,11 +20,13 @@ import (
 	"context"
 	"errors"
 
+	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var log = logging.GetLogger("dbaas-operator")
 
 // setCondition upserts a metav1.Condition in the given slice.
 // LastTransitionTime is preserved only when both Status and Reason are
@@ -117,7 +119,7 @@ func patchStatusOnExit[T interface {
 	}
 
 	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
-		logf.FromContext(ctx).Error(patchErr, "patch "+objectType+" status")
+		log.Errorf("patch %v status: %v", objectType, patchErr)
 		*retErr = errors.Join(*retErr, patchErr)
 	}
 }

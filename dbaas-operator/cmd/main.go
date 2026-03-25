@@ -36,13 +36,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
@@ -51,7 +50,7 @@ import (
 
 var (
 	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	setupLog = logging.GetLogger("dbaas-operator")
 )
 
 func init() {
@@ -65,7 +64,6 @@ func init() {
 func main() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
-	var webhookCertPath, webhookCertName, webhookCertKey string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
@@ -82,15 +80,12 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
-	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
-	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+		"If set, HTTP/2 will be enabled for the metrics server")
 	flag.StringVar(&watchNamespaces, "watch-namespaces", "",
 		"Comma-separated list of namespaces to watch. Empty string means all namespaces (cluster-scoped).")
 	flag.DurationVar(&backoffBaseDelay, "backoff-base-delay", 1*time.Second,
@@ -98,13 +93,7 @@ func main() {
 			"Doubles on each consecutive failure up to --backoff-max-delay.")
 	flag.DurationVar(&backoffMaxDelay, "backoff-max-delay", 5*time.Minute,
 		"Maximum delay cap for exponential backoff on reconcile errors.")
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
-
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -117,26 +106,10 @@ func main() {
 		c.NextProtos = []string{"http/1.1"}
 	}
 
+
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
-
-	// Initial webhook TLS options
-	webhookTLSOpts := tlsOpts
-	webhookServerOptions := webhook.Options{
-		TLSOpts: webhookTLSOpts,
-	}
-
-	if len(webhookCertPath) > 0 {
-		setupLog.Info("Initializing webhook certificate watcher using provided certificates",
-			"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
-
-		webhookServerOptions.CertDir = webhookCertPath
-		webhookServerOptions.CertName = webhookCertName
-		webhookServerOptions.KeyName = webhookCertKey
-	}
-
-	webhookServer := webhook.NewServer(webhookServerOptions)
 
 	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
@@ -192,7 +165,7 @@ func main() {
 		aggregatorUsername,
 		aggregatorPassword,
 	)
-	setupLog.Info("dbaas-aggregator client configured", "url", aggregatorURL, "username", aggregatorUsername)
+	setupLog.Infof("dbaas-aggregator client configured url=%v username=%v", aggregatorURL, aggregatorUsername)
 
 	// Build the cache options: restrict to specific namespaces if requested.
 	var cacheOpts cache.Options
@@ -205,7 +178,7 @@ func main() {
 			}
 		}
 		cacheOpts.DefaultNamespaces = nsMap
-		setupLog.Info("watching specific namespaces", "namespaces", watchNamespaces)
+		setupLog.Infof("watching specific namespaces namespaces=%v", watchNamespaces)
 	} else {
 		setupLog.Info("watching all namespaces (cluster-scoped)")
 	}
@@ -213,7 +186,6 @@ func main() {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
-		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
@@ -231,7 +203,7 @@ func main() {
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
-		setupLog.Error(err, "Failed to start manager")
+		setupLog.Errorf("Failed to start manager: %v", err)
 		os.Exit(1)
 	}
 
@@ -246,7 +218,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   mgr.GetEventRecorderFor("databasedeclaration"),
 	}).SetupWithManager(mgr, ddCtrlOpts); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "DatabaseDeclaration")
+		setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
 		os.Exit(1)
 	}
 	dpCtrlOpts := ctrlcontroller.Options{
@@ -260,7 +232,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   mgr.GetEventRecorderFor("dbpolicy"),
 	}).SetupWithManager(mgr, dpCtrlOpts); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "DbPolicy")
+		setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
 		os.Exit(1)
 	}
 	edbCtrlOpts := ctrlcontroller.Options{
@@ -268,15 +240,14 @@ func main() {
 			backoffBaseDelay, backoffMaxDelay,
 		),
 	}
-	setupLog.Info("backoff configured",
-		"base", backoffBaseDelay, "max", backoffMaxDelay)
+	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
 	if err := (&controller.ExternalDatabaseDeclarationReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
 		Recorder:   mgr.GetEventRecorderFor("externaldatabasedeclaration"),
 	}).SetupWithManager(mgr, edbCtrlOpts); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "ExternalDatabaseDeclaration")
+		setupLog.Errorf("Failed to create controller controller=ExternalDatabaseDeclaration: %v", err)
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
@@ -285,24 +256,24 @@ func main() {
 	// When Kubernetes updates the mounted Secret, the watcher reloads credentials
 	// without requiring a pod restart.
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		return watchCredentials(ctx, setupLog.WithName("credential-watcher"), securityDir, aggregatorUsername, aggregator)
+		return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregatorUsername, aggregator)
 	})); err != nil {
-		setupLog.Error(err, "Failed to register credential watcher")
+		setupLog.Errorf("Failed to register credential watcher: %v", err)
 		os.Exit(1)
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "Failed to set up health check")
+		setupLog.Errorf("Failed to set up health check: %v", err)
 		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "Failed to set up ready check")
+		setupLog.Errorf("Failed to set up ready check: %v", err)
 		os.Exit(1)
 	}
 
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "Failed to run manager")
+		setupLog.Errorf("Failed to run manager: %v", err)
 		os.Exit(1)
 	}
 }

@@ -31,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
@@ -61,7 +60,6 @@ type DatabaseDeclarationReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	log := logf.FromContext(ctx)
 
 	dd := &dbaasv1alpha1.DatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
@@ -85,10 +83,8 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	// stale trackingId and start fresh.
 	if dd.Status.TrackingId != "" &&
 		dd.Status.PendingOperationGeneration != dd.Generation {
-		log.Info("spec changed while polling, clearing stale trackingId",
-			"pendingGen", dd.Status.PendingOperationGeneration,
-			"currentGen", dd.Generation,
-			"trackingId", dd.Status.TrackingId)
+		log.Infof("spec changed while polling, clearing stale trackingId pendingGen=%v currentGen=%v trackingId=%v",
+			dd.Status.PendingOperationGeneration, dd.Generation, dd.Status.TrackingId)
 		dd.Status.TrackingId = ""
 		dd.Status.PendingOperationGeneration = 0
 	}
@@ -101,7 +97,6 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 
 // reconcileSubmit handles the SUBMIT branch: pre-flight validation + POST /apply.
 func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
 	dd.Status.Phase = dbaasv1alpha1.PhaseProcessing
 
 	if msg := validateDatabaseDeclarationSpec(dd); msg != "" {
@@ -112,15 +107,14 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	payload := r.buildPayload(dd)
 	resp, err := r.Aggregator.ApplyConfig(ctx, payload)
 	if err != nil {
-		log.Error(err, "failed to apply DatabaseDeclaration to dbaas-aggregator")
+		log.Errorf("failed to apply DatabaseDeclaration to dbaas-aggregator: %v", err)
 		return r.handleApplyError(ctx, dd, err)
 	}
 
 	if resp.TrackingId != "" {
 		// HTTP 202 Accepted — async operation started.
-		log.Info("database provisioning started asynchronously",
-			"trackingId", resp.TrackingId,
-			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+		log.Infof("database provisioning started asynchronously trackingId=%v microserviceName=%v",
+			resp.TrackingId, dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
 		r.markProvisioningStarted(dd, resp.TrackingId)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s)", resp.TrackingId)
@@ -128,8 +122,8 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	}
 
 	// HTTP 200 OK — synchronous completion.
-	log.Info("database provisioned synchronously",
-		"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+	log.Infof("database provisioned synchronously microserviceName=%v",
+		dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 		"database provisioned synchronously (microserviceName=%s)",
@@ -139,9 +133,8 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 
 // reconcilePoll handles the POLL branch: GET /operation/{trackingId}/status.
 func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
 	trackingID := dd.Status.TrackingId
-	log.V(1).Info("polling operation status", "trackingId", trackingID)
+	log.Debugf("polling operation status trackingId=%v", trackingID)
 
 	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 
@@ -192,7 +185,7 @@ func (r *DatabaseDeclarationReconciler) handleApplyError(ctx context.Context, dd
 // invalidSpec sets InvalidConfiguration phase + conditions, emits a Warning event,
 // and returns (no requeue) so the CR waits for a spec change.
 func (r *DatabaseDeclarationReconciler) invalidSpec(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration, msg string) (ctrl.Result, error) {
-	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
+	log.Infof("invalid spec reason=%v", msg)
 	markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 		EventReasonInvalidSpec, msg)
 	r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
@@ -311,8 +304,6 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 	trackingID string,
 	err error,
 ) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
 	var aggErr *aggregatorclient.AggregatorError
 	if errors.As(err, &aggErr) {
 		if aggErr.IsAuthError() {
@@ -328,7 +319,7 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 		if aggErr.StatusCode == http.StatusNotFound {
 			// 404 — trackingId expired or never existed; clear it so the next
 			// reconcile re-submits the operation.
-			log.Info("trackingId not found, will re-submit on next reconcile", "trackingId", trackingID)
+			log.Infof("trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
 			r.clearPendingOperation(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
@@ -356,13 +347,10 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 	trackingID string,
 	resp *aggregatorclient.DeclarativeResponse,
 ) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
 	switch resp.Status {
 	case aggregatorclient.TaskStateCompleted:
-		log.Info("database provisioned",
-			"trackingId", trackingID,
-			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+		log.Infof("database provisioned trackingId=%v microserviceName=%v",
+			trackingID, dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
 		r.clearPendingOperation(dd)
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
@@ -372,8 +360,8 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 
 	case aggregatorclient.TaskStateFailed, aggregatorclient.TaskStateTerminated:
 		reason := pollFailureReason(resp)
-		log.Info("database provisioning failed",
-			"trackingId", trackingID, "status", resp.Status, "reason", reason)
+		log.Infof("database provisioning failed trackingId=%v status=%v reason=%v",
+			trackingID, resp.Status, reason)
 		r.clearPendingOperation(dd)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonAggregatorRejected, reason)
@@ -382,7 +370,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		return ctrl.Result{}, nil
 
 	default: // IN_PROGRESS, NOT_STARTED — keep polling
-		log.V(1).Info("provisioning still in progress", "status", resp.Status, "trackingId", trackingID)
+		log.Debugf("provisioning still in progress status=%v trackingId=%v", resp.Status, trackingID)
 		if msg := pollProgressMessage(resp); msg != "" {
 			setCondition(&dd.Status.Conditions, dd.Generation,
 				conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted, msg)
