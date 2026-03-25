@@ -114,11 +114,8 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 //
 // Returns *AggregatorError on non-2xx.
 func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID string) (*DeclarativeResponse, error) {
-	var result DeclarativeResponse
-
 	resp, err := c.rc.R().
 		SetContext(ctx).
-		SetResult(&result).
 		Get(fmt.Sprintf("/api/declarations/v1/operation/%s/status", trackingID))
 	if err != nil {
 		return nil, err
@@ -128,6 +125,12 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 		return nil, newAggregatorError(resp)
 	}
 
+	var result DeclarativeResponse
+	if len(resp.Body()) > 0 {
+		if err := json.Unmarshal(resp.Body(), &result); err != nil {
+			return nil, fmt.Errorf("decode operation status response: %w", err)
+		}
+	}
 	return &result, nil
 }
 
