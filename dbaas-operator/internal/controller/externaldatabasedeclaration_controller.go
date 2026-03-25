@@ -75,7 +75,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	// Mark as Processing while we work.
 	// Conditions are NOT cleared here — setCondition upserts each type in place,
-	// preserving LastTransitionTime when Status and Reason have not changed.
+	// preserving LastTransitionTime when Status has not changed.
 	// This makes conditions durable API state across reconcile cycles.
 	edb.Status.Phase = dbaasv1alpha1.PhaseProcessing
 

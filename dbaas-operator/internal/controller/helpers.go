@@ -27,10 +27,9 @@ import (
 )
 
 // setCondition upserts a metav1.Condition in the given slice.
-// LastTransitionTime is preserved only when both Status and Reason are
-// unchanged. A change in either field is considered a transition so that
-// diagnostics tools can tell exactly when the error category shifted
-// (e.g. SecretError → Unauthorized at the same Status=False).
+// LastTransitionTime is preserved when Status is unchanged, per Kubernetes API
+// conventions. A change in Reason or Message at the same Status does not reset
+// the transition time.
 func setCondition(
 	conditions *[]metav1.Condition,
 	generation int64,
