@@ -119,14 +119,6 @@ func (e *AggregatorError) IsAuthError() bool {
 	return e.StatusCode == 401
 }
 
-// IsClientError returns true for 4xx responses (excluding 401 which IsAuthError handles).
-// Use IsSpecRejection to distinguish permanent spec errors from infrastructure 4xx codes.
-func (e *AggregatorError) IsClientError() bool {
-	if e.StatusCode == 401 {
-		return false
-	}
-	return e.StatusCode >= 400 && e.StatusCode < 500
-}
 
 // IsSpecRejection returns true when the aggregator explicitly rejected the request
 // content — codes where retrying the same payload will not succeed:

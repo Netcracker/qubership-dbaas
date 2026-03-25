@@ -554,31 +554,6 @@ func TestAggregatorError_IsAuthError(t *testing.T) {
 	}
 }
 
-func TestAggregatorError_IsClientError(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		code int
-		want bool
-	}{
-		{http.StatusBadRequest, true},
-		{http.StatusUnauthorized, false}, // 401 is handled by IsAuthError; IsClientError explicitly excludes it
-		{http.StatusForbidden, true},
-		{http.StatusConflict, true},
-		{http.StatusInternalServerError, false},
-		{http.StatusBadGateway, false},
-	}
-
-	for _, tc := range cases {
-		t.Run(http.StatusText(tc.code), func(t *testing.T) {
-			t.Parallel()
-			e := &AggregatorError{StatusCode: tc.code}
-			if got := e.IsClientError(); got != tc.want {
-				t.Errorf("IsClientError() for %d: got %v, want %v", tc.code, got, tc.want)
-			}
-		})
-	}
-}
 
 func TestAggregatorError_IsSpecRejection(t *testing.T) {
 	t.Parallel()
@@ -752,8 +727,8 @@ func TestRegisterExternalDatabase_ParsesTmfMessage(t *testing.T) {
 	if aggErr.UserMessage() != tmfMessage {
 		t.Errorf("UserMessage(): got %q, want %q", aggErr.UserMessage(), tmfMessage)
 	}
-	if !aggErr.IsClientError() {
-		t.Error("IsClientError() should be true for HTTP 400")
+	if !aggErr.IsSpecRejection() {
+		t.Error("IsSpecRejection() should be true for HTTP 400")
 	}
 }
 
