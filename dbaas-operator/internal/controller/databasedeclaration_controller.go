@@ -158,14 +158,8 @@ func (r *DatabaseDeclarationReconciler) handleApplyError(_ context.Context, dd *
 	return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err)
 }
 
-// invalidSpec sets InvalidConfiguration phase + conditions, emits a Warning event,
-// and returns (no requeue) so the CR waits for a spec change.
 func (r *DatabaseDeclarationReconciler) invalidSpec(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration, msg string) (ctrl.Result, error) {
-	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
-	markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
-		EventReasonInvalidSpec, msg)
-	r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
-	return ctrl.Result{}, nil
+	return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.

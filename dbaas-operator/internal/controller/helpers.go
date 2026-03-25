@@ -92,6 +92,24 @@ func markTransientFailure(
 		conditionTypeStalled, metav1.ConditionFalse, readyReason, stalledMsgTransient)
 }
 
+// invalidSpec sets InvalidConfiguration phase + conditions, emits a Warning event,
+// and returns (no requeue) so the CR waits for a spec change.
+// Shared by all controllers that perform pre-flight spec validation.
+func invalidSpec(
+	ctx context.Context,
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	recorder record.EventRecorder,
+	obj runtime.Object,
+	msg string,
+) (ctrl.Result, error) {
+	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
+	markPermanentFailure(phase, conditions, generation, EventReasonInvalidSpec, msg)
+	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
+	return ctrl.Result{}, nil
+}
+
 // handleAggregatorError maps a non-nil error from any aggregator call to the
 // appropriate phase/conditions and emits a Kubernetes event.
 // It is the shared implementation used by all three controllers.

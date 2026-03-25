@@ -94,15 +94,8 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	return ctrl.Result{}, nil
 }
 
-// invalidSpec is a helper that sets InvalidConfiguration phase + conditions,
-// emits a Warning event, and returns (no requeue, nil error) so
-// observedGeneration is stamped (permanent error, wait for spec change).
 func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1alpha1.DbPolicy, msg string) (ctrl.Result, error) {
-	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
-	markPermanentFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
-		EventReasonInvalidSpec, msg)
-	r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
-	return ctrl.Result{}, nil
+	return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, msg)
 }
 
 // dbPolicyAggregatorSpec is the wire-format spec sent to dbaas-aggregator.
