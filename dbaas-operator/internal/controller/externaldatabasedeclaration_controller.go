@@ -21,6 +21,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
+
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
+	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
+	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,9 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
-	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
 // ExternalDatabaseDeclarationReconciler reconciles ExternalDatabaseDeclaration objects.
@@ -54,6 +56,9 @@ type ExternalDatabaseDeclarationReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
+	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+		"X-Request-Id": uuid.New().String(),
+	})
 
 	edb := &dbaasv1alpha1.ExternalDatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
@@ -80,7 +85,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	// Build the flat-map request, resolving any Secret references.
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {
-		log.Errorf("failed to build registration request: %v", err)
+		log.ErrorC(ctx, "failed to build registration request: %v", err)
 		markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
 			EventReasonSecretError, err.Error())
 		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonSecretError,
@@ -94,7 +99,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	// Call the aggregator.
 	if err := r.Aggregator.RegisterExternalDatabase(ctx, namespace, aggReq); err != nil {
-		log.Errorf("failed to register external database in dbaas-aggregator: %v", err)
+		log.ErrorC(ctx, "failed to register external database in dbaas-aggregator: %v", err)
 
 		var aggErr *aggregatorclient.AggregatorError
 		if errors.As(err, &aggErr) {
@@ -131,7 +136,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, err
 	}
 
-	log.Infof("external database registered successfully type=%v dbName=%v", edb.Spec.Type, edb.Spec.DbName)
+	log.InfoC(ctx, "external database registered successfully type=%v dbName=%v", edb.Spec.Type, edb.Spec.DbName)
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonRegistered)
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)

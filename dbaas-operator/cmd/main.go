@@ -41,6 +41,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
@@ -62,6 +64,10 @@ func init() {
 
 // nolint:gocyclo
 func main() {
+	ctxmanager.Register([]ctxmanager.ContextProvider{
+		xrequestid.XRequestIdProvider{},
+	})
+
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var enableLeaderElection bool
@@ -106,7 +112,6 @@ func main() {
 		c.NextProtos = []string{"http/1.1"}
 	}
 
-
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
@@ -138,8 +143,8 @@ func main() {
 	// managed by cert-manager for the metrics server.
 	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(metricsCertPath) > 0 {
-		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
-			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
+		setupLog.Infof("Initializing metrics certificate watcher metrics-cert-path=%v metrics-cert-name=%v metrics-cert-key=%v",
+			metricsCertPath, metricsCertName, metricsCertKey)
 
 		metricsServerOptions.CertDir = metricsCertPath
 		metricsServerOptions.CertName = metricsCertName

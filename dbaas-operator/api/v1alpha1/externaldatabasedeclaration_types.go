@@ -145,14 +145,14 @@ type ExternalDatabaseDeclaration struct {
 
 	// metadata is standard object metadata.
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of ExternalDatabaseDeclaration.
 	Spec ExternalDatabaseDeclarationSpec `json:"spec"`
 
 	// status defines the observed state of ExternalDatabaseDeclaration.
 	// +optional
-	Status ExternalDatabaseDeclarationStatus `json:"status,omitzero"`
+	Status ExternalDatabaseDeclarationStatus `json:"status,omitempty"`
 }
 
 func (e *ExternalDatabaseDeclaration) SetObservedGeneration(generation int64) {
@@ -164,7 +164,7 @@ func (e *ExternalDatabaseDeclaration) SetObservedGeneration(generation int64) {
 // ExternalDatabaseDeclarationList contains a list of ExternalDatabaseDeclaration.
 type ExternalDatabaseDeclarationList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ExternalDatabaseDeclaration `json:"items"`
 }
 

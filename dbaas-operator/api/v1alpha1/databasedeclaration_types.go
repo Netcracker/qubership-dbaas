@@ -158,14 +158,14 @@ type DatabaseDeclaration struct {
 
 	// metadata is standard object metadata.
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of DatabaseDeclaration.
 	Spec DatabaseDeclarationSpec `json:"spec"`
 
 	// status defines the observed state of DatabaseDeclaration.
 	// +optional
-	Status DatabaseDeclarationStatus `json:"status,omitzero"`
+	Status DatabaseDeclarationStatus `json:"status,omitempty"`
 }
 
 func (d *DatabaseDeclaration) SetObservedGeneration(generation int64) {
@@ -177,7 +177,7 @@ func (d *DatabaseDeclaration) SetObservedGeneration(generation int64) {
 // DatabaseDeclarationList contains a list of DatabaseDeclaration.
 type DatabaseDeclarationList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []DatabaseDeclaration `json:"items"`
 }
 

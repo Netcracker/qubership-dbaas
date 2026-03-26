@@ -33,6 +33,8 @@ import (
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/google/uuid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
@@ -60,6 +62,9 @@ type DatabaseDeclarationReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
+	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+		"X-Request-Id": uuid.New().String(),
+	})
 
 	dd := &dbaasv1alpha1.DatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
@@ -83,7 +88,7 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	// stale trackingId and start fresh.
 	if dd.Status.TrackingId != "" &&
 		dd.Status.PendingOperationGeneration != dd.Generation {
-		log.Infof("spec changed while polling, clearing stale trackingId pendingGen=%v currentGen=%v trackingId=%v",
+		log.InfoC(ctx, "spec changed while polling, clearing stale trackingId pendingGen=%v currentGen=%v trackingId=%v",
 			dd.Status.PendingOperationGeneration, dd.Generation, dd.Status.TrackingId)
 		dd.Status.TrackingId = ""
 		dd.Status.PendingOperationGeneration = 0
@@ -107,13 +112,13 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	payload := r.buildPayload(dd)
 	resp, err := r.Aggregator.ApplyConfig(ctx, payload)
 	if err != nil {
-		log.Errorf("failed to apply DatabaseDeclaration to dbaas-aggregator: %v", err)
+		log.ErrorC(ctx, "failed to apply DatabaseDeclaration to dbaas-aggregator: %v", err)
 		return r.handleApplyError(ctx, dd, err)
 	}
 
 	if resp.TrackingId != "" {
 		// HTTP 202 Accepted — async operation started.
-		log.Infof("database provisioning started asynchronously trackingId=%v microserviceName=%v",
+		log.InfoC(ctx, "database provisioning started asynchronously trackingId=%v microserviceName=%v",
 			resp.TrackingId, dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
 		r.markProvisioningStarted(dd, resp.TrackingId)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
@@ -122,7 +127,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	}
 
 	// HTTP 200 OK — synchronous completion.
-	log.Infof("database provisioned synchronously microserviceName=%v",
+	log.InfoC(ctx, "database provisioned synchronously microserviceName=%v",
 		dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
@@ -134,7 +139,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 // reconcilePoll handles the POLL branch: GET /operation/{trackingId}/status.
 func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
 	trackingID := dd.Status.TrackingId
-	log.Debugf("polling operation status trackingId=%v", trackingID)
+	log.DebugC(ctx, "polling operation status trackingId=%v", trackingID)
 
 	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 
@@ -185,7 +190,7 @@ func (r *DatabaseDeclarationReconciler) handleApplyError(ctx context.Context, dd
 // invalidSpec sets InvalidConfiguration phase + conditions, emits a Warning event,
 // and returns (no requeue) so the CR waits for a spec change.
 func (r *DatabaseDeclarationReconciler) invalidSpec(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration, msg string) (ctrl.Result, error) {
-	log.Infof("invalid spec reason=%v", msg)
+	log.InfoC(ctx, "invalid spec reason=%v", msg)
 	markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 		EventReasonInvalidSpec, msg)
 	r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
@@ -319,7 +324,7 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 		if aggErr.StatusCode == http.StatusNotFound {
 			// 404 — trackingId expired or never existed; clear it so the next
 			// reconcile re-submits the operation.
-			log.Infof("trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
+			log.InfoC(ctx, "trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
 			r.clearPendingOperation(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
@@ -349,7 +354,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 ) (ctrl.Result, error) {
 	switch resp.Status {
 	case aggregatorclient.TaskStateCompleted:
-		log.Infof("database provisioned trackingId=%v microserviceName=%v",
+		log.InfoC(ctx, "database provisioned trackingId=%v microserviceName=%v",
 			trackingID, dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
 		r.clearPendingOperation(dd)
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
@@ -360,7 +365,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 
 	case aggregatorclient.TaskStateFailed, aggregatorclient.TaskStateTerminated:
 		reason := pollFailureReason(resp)
-		log.Infof("database provisioning failed trackingId=%v status=%v reason=%v",
+		log.InfoC(ctx, "database provisioning failed trackingId=%v status=%v reason=%v",
 			trackingID, resp.Status, reason)
 		r.clearPendingOperation(dd)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
@@ -370,7 +375,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		return ctrl.Result{}, nil
 
 	default: // IN_PROGRESS, NOT_STARTED — keep polling
-		log.Debugf("provisioning still in progress status=%v trackingId=%v", resp.Status, trackingID)
+		log.DebugC(ctx, "provisioning still in progress status=%v trackingId=%v", resp.Status, trackingID)
 		if msg := pollProgressMessage(resp); msg != "" {
 			setCondition(&dd.Status.Conditions, dd.Generation,
 				conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted, msg)

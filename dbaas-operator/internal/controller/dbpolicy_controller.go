@@ -29,6 +29,8 @@ import (
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/google/uuid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
@@ -51,6 +53,9 @@ type DbPolicyReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
+	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+		"X-Request-Id": uuid.New().String(),
+	})
 
 	dp := &dbaasv1alpha1.DbPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, dp); err != nil {
@@ -82,7 +87,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 
 	payload := r.buildPayload(dp)
 	if _, err := r.Aggregator.ApplyConfig(ctx, payload); err != nil {
-		log.Errorf("failed to apply DbPolicy to dbaas-aggregator: %v", err)
+		log.ErrorC(ctx, "failed to apply DbPolicy to dbaas-aggregator: %v", err)
 
 		var aggErr *aggregatorclient.AggregatorError
 		if errors.As(err, &aggErr) {
@@ -118,7 +123,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 		return ctrl.Result{}, err
 	}
 
-	log.Infof("DbPolicy applied successfully microserviceName=%v", dp.Spec.MicroserviceName)
+	log.InfoC(ctx, "DbPolicy applied successfully microserviceName=%v", dp.Spec.MicroserviceName)
 	markSucceeded(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, EventReasonPolicyApplied)
 	r.Recorder.Eventf(dp, corev1.EventTypeNormal, EventReasonPolicyApplied,
 		"policy applied to dbaas-aggregator (microserviceName=%s)", dp.Spec.MicroserviceName)
@@ -129,7 +134,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 // emits a Warning event, and returns (no requeue, nil error) so
 // observedGeneration is stamped (permanent error, wait for spec change).
 func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1alpha1.DbPolicy, msg string) (ctrl.Result, error) {
-	log.Infof("invalid spec reason=%v", msg)
+	log.InfoC(ctx, "invalid spec reason=%v", msg)
 	markPermanentFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
 		EventReasonInvalidSpec, msg)
 	r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
