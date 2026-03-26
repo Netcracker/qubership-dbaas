@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -85,39 +84,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	payload := r.buildPayload(dp)
 	if _, err := r.Aggregator.ApplyConfig(ctx, payload); err != nil {
 		log.Error(err, "failed to apply DbPolicy to dbaas-aggregator")
-
-		var aggErr *aggregatorclient.AggregatorError
-		if errors.As(err, &aggErr) {
-			switch {
-			case aggErr.IsAuthError():
-				// 401 — operator credentials or role binding misconfigured; retry.
-				markTransientFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
-					EventReasonUnauthorized, aggErr.UserMessage())
-				r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonUnauthorized,
-					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
-				return ctrl.Result{}, err // requeue with backoff
-
-			case aggErr.IsSpecRejection():
-				// 400/403/409/410/422 — aggregator explicitly rejected the spec.
-				// Retrying the same payload will not help; wait for a spec change.
-				markPermanentFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
-					EventReasonAggregatorRejected, aggErr.UserMessage())
-				r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
-				return ctrl.Result{}, nil // do not requeue
-			}
-		}
-
-		// 5xx / network error — transient; requeue with backoff.
-		errMsg := err.Error()
-		if aggErr != nil {
-			errMsg = aggErr.UserMessage()
-		}
-		markTransientFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
-			EventReasonAggregatorError, errMsg)
-		r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonAggregatorError,
-			"dbaas-aggregator error: %s", errMsg)
-		return ctrl.Result{}, err
+		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, err)
 	}
 
 	log.Info("DbPolicy applied successfully", "microserviceName", dp.Spec.MicroserviceName)
@@ -127,15 +94,16 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	return ctrl.Result{}, nil
 }
 
-// invalidSpec is a helper that sets InvalidConfiguration phase + conditions,
-// emits a Warning event, and returns (no requeue, nil error) so
-// observedGeneration is stamped (permanent error, wait for spec change).
 func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1alpha1.DbPolicy, msg string) (ctrl.Result, error) {
-	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
-	markPermanentFailure(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation,
-		EventReasonInvalidSpec, msg)
-	r.Recorder.Eventf(dp, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
-	return ctrl.Result{}, nil
+	return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, msg)
+}
+
+// dbPolicyAggregatorSpec is the wire-format spec sent to dbaas-aggregator.
+// MicroserviceName is intentionally excluded: it goes into Metadata, not Spec.
+type dbPolicyAggregatorSpec struct {
+	Services                 []dbaasv1alpha1.ServiceRole `json:"services,omitempty"`
+	Policy                   []dbaasv1alpha1.PolicyRole  `json:"policy,omitempty"`
+	DisableGlobalPermissions bool                        `json:"disableGlobalPermissions,omitempty"`
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
@@ -150,11 +118,7 @@ func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1alpha1.DbPolicy) *aggregato
 			Namespace:        dp.Namespace,
 			MicroserviceName: dp.Spec.MicroserviceName,
 		},
-		Spec: struct {
-			Services                 []dbaasv1alpha1.ServiceRole `json:"services,omitempty"`
-			Policy                   []dbaasv1alpha1.PolicyRole  `json:"policy,omitempty"`
-			DisableGlobalPermissions bool                        `json:"disableGlobalPermissions,omitempty"`
-		}{
+		Spec: dbPolicyAggregatorSpec{
 			Services:                 dp.Spec.Services,
 			Policy:                   dp.Spec.Policy,
 			DisableGlobalPermissions: dp.Spec.DisableGlobalPermissions,

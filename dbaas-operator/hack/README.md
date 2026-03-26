@@ -73,6 +73,7 @@ edb-409                   InvalidConfiguration   postgresql   db-409
 edb-500                   BackingOff             postgresql   db-500
 missing-secret-test       BackingOff             postgresql   ghostdb
 secret-missing-key-test   BackingOff             postgresql   mydb
+edb-secret-empty-key      BackingOff             postgresql   mydb-empty-key
 ```
 
 | CR file | `dbName` | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
@@ -86,6 +87,7 @@ secret-missing-key-test   BackingOff             postgresql   mydb
 | `edb-500-server-error.yaml` | `db-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
 | `edb-missing-secret.yaml` | `ghostdb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 | `edb-secret-missing-key.yaml` | `mydb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
+| `edb-secret-empty-key.yaml` | `mydb-empty-key` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 
 ### DbPolicy
 
@@ -130,6 +132,7 @@ dd-400-bad-request      InvalidConfiguration   postgresql
 dd-401-unauthorized     BackingOff             postgresql
 dd-500-server-error     BackingOff             postgresql
 dd-poll-failed          InvalidConfiguration   postgresql
+dd-poll-terminated      BackingOff             postgresql
 dd-invalid-lazy-clone   InvalidConfiguration   postgresql
 dd-invalid-no-source    InvalidConfiguration   postgresql
 ```
@@ -142,6 +145,7 @@ dd-invalid-no-source    InvalidConfiguration   postgresql
 | `dd-401-unauthorized.yaml` | `dd-svc-401` | 401 (rule) | — | `BackingOff` | `Unauthorized` | `False` |
 | `dd-500-server-error.yaml` | `dd-svc-500` | 500 (rule) | — | `BackingOff` | `AggregatorError` | `False` |
 | `dd-poll-failed.yaml` | `dd-poll-failed` | 202 (default) | `FAILED` (poll rule) | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `dd-poll-terminated.yaml` | `dd-poll-terminated` | 202 (default) | `TERMINATED` (poll rule) | `BackingOff` (cycling) | `OperationTerminated` | `False` |
 | `dd-invalid-lazy-clone.yaml` | `dd-svc-lazy` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
 | `dd-invalid-no-source.yaml` | `dd-svc-nosrc` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
 
@@ -239,6 +243,7 @@ hack/
     ├── edb-500-server-error.yaml    # EDB — 500 → BackingOff
     ├── edb-missing-secret.yaml      # EDB — Secret does not exist → BackingOff
     ├── edb-secret-missing-key.yaml  # EDB — Secret exists, key missing → BackingOff
+    ├── edb-secret-empty-key.yaml    # EDB — Secret exists, key present but empty → BackingOff (SecretError, not Unauthorized)
     │
     │   # DbPolicy test CRs
     ├── dbpolicy-success.yaml                # DbPolicy — 200 OK → Succeeded (reason: PolicyApplied)
@@ -254,6 +259,7 @@ hack/
     ├── dd-401-unauthorized.yaml             # DD — apply-rule 401 → BackingOff
     ├── dd-500-server-error.yaml             # DD — apply-rule 500 → BackingOff
     ├── dd-poll-failed.yaml                  # DD — 202 → poll FAILED → InvalidConfiguration
+    ├── dd-poll-terminated.yaml              # DD — 202 → poll TERMINATED → BackingOff (resubmits automatically)
     ├── dd-invalid-lazy-clone.yaml           # DD — pre-flight: lazy=true + clone → InvalidConfiguration
     └── dd-invalid-no-source.yaml            # DD — pre-flight: clone without sourceClassifier → InvalidConfiguration
 ```

@@ -79,9 +79,9 @@ func (c *AggregatorClient) SetCredentials(username, password string) {
 // the resource (DatabaseDeclaration or DbPolicy).
 //
 // Return semantics:
-//   - response.TrackingId != "" → operation is asynchronous (HTTP 202 from the
+//   - response.TrackingID != "" → operation is asynchronous (HTTP 202 from the
 //     aggregator); call GetOperationStatus to poll for completion.
-//   - response.TrackingId == "" → operation completed synchronously (HTTP 200);
+//   - response.TrackingID == "" → operation completed synchronously (HTTP 200);
 //     inspect response.Conditions for the outcome.
 //   - error (*AggregatorError) → non-2xx response; IsSpecRejection() distinguishes
 //     a permanent spec error (400/403/409/410/422) from a transient failure.
@@ -114,11 +114,8 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 //
 // Returns *AggregatorError on non-2xx.
 func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID string) (*DeclarativeResponse, error) {
-	var result DeclarativeResponse
-
 	resp, err := c.rc.R().
 		SetContext(ctx).
-		SetResult(&result).
 		Get(fmt.Sprintf("/api/declarations/v1/operation/%s/status", trackingID))
 	if err != nil {
 		return nil, err
@@ -128,6 +125,12 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 		return nil, newAggregatorError(resp)
 	}
 
+	var result DeclarativeResponse
+	if len(resp.Body()) > 0 {
+		if err := json.Unmarshal(resp.Body(), &result); err != nil {
+			return nil, fmt.Errorf("decode operation status response: %w", err)
+		}
+	}
 	return &result, nil
 }
 

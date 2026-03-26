@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -75,7 +74,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	// Mark as Processing while we work.
 	// Conditions are NOT cleared here — setCondition upserts each type in place,
-	// preserving LastTransitionTime when Status and Reason have not changed.
+	// preserving LastTransitionTime when Status has not changed.
 	// This makes conditions durable API state across reconcile cycles.
 	edb.Status.Phase = dbaasv1alpha1.PhaseProcessing
 
@@ -97,40 +96,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	// Call the aggregator.
 	if err := r.Aggregator.RegisterExternalDatabase(ctx, namespace, aggReq); err != nil {
 		log.Error(err, "failed to register external database in dbaas-aggregator")
-
-		var aggErr *aggregatorclient.AggregatorError
-		if errors.As(err, &aggErr) {
-			switch {
-			case aggErr.IsAuthError():
-				// 401 — operator credentials or role binding misconfigured.
-				// This is NOT a spec error: the user should not edit the CR.
-				// Retry so the operator recovers once the admin fixes the credentials.
-				markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
-					EventReasonUnauthorized, aggErr.UserMessage())
-				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonUnauthorized,
-					"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
-				return ctrl.Result{}, err // requeue with backoff
-			case aggErr.IsSpecRejection():
-				// 400, 403, 409 — spec error; retrying won't help until the spec changes.
-				markPermanentFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
-					EventReasonAggregatorRejected, aggErr.UserMessage())
-				r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-					"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
-				return ctrl.Result{}, nil // do not requeue
-			}
-		}
-
-		// 5xx / network error — transient; requeue with backoff.
-		// aggErr may be nil for pure network failures (no HTTP response at all).
-		errMsg := err.Error()
-		if aggErr != nil {
-			errMsg = aggErr.UserMessage()
-		}
-		markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
-			EventReasonAggregatorError, errMsg)
-		r.Recorder.Eventf(edb, corev1.EventTypeWarning, EventReasonAggregatorError,
-			"dbaas-aggregator error: %s", errMsg)
-		return ctrl.Result{}, err
+		return handleAggregatorError(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, r.Recorder, edb, err)
 	}
 
 	log.Info("external database registered successfully",
@@ -226,11 +192,21 @@ func (r *ExternalDatabaseDeclarationReconciler) applySecretCredentials(
 			"connectionProperties[%d]: Secret %q missing key %q",
 			index, cp.CredentialsSecretRef.Name, usernameKey)
 	}
+	if len(username) == 0 {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q key %q is empty",
+			index, cp.CredentialsSecretRef.Name, usernameKey)
+	}
 
 	password, ok := secret.Data[passwordKey]
 	if !ok {
 		return fmt.Errorf(
 			"connectionProperties[%d]: Secret %q missing key %q",
+			index, cp.CredentialsSecretRef.Name, passwordKey)
+	}
+	if len(password) == 0 {
+		return fmt.Errorf(
+			"connectionProperties[%d]: Secret %q key %q is empty",
 			index, cp.CredentialsSecretRef.Name, passwordKey)
 	}
 

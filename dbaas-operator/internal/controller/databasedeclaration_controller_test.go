@@ -125,10 +125,10 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	})
 
 	reconcileAndFetch := func() (*dbaasv1alpha1.DatabaseDeclaration, reconcile.Result, error) {
-		result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
-		fetched := &dbaasv1alpha1.DatabaseDeclaration{}
-		Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
-		return fetched, result, err
+		GinkgoHelper()
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1alpha1.DatabaseDeclaration {
+			return &dbaasv1alpha1.DatabaseDeclaration{}
+		})
 	}
 
 	// ── CRD admission validation ──────────────────────────────────────────────
@@ -331,7 +331,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
-			Expect(dd.Status.TrackingId).To(BeEmpty())
+			Expect(dd.Status.TrackingID).To(BeEmpty())
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
@@ -365,7 +365,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseWaitingForDependency))
-			Expect(dd.Status.TrackingId).To(Equal("track-abc-123"))
+			Expect(dd.Status.TrackingID).To(Equal("track-abc-123"))
 			Expect(dd.Status.PendingOperationGeneration).To(Equal(dd.Generation))
 			Expect(dd.Status.ObservedGeneration).To(BeZero(),
 				"observedGeneration must not be stamped while waiting for dependency")
@@ -374,7 +374,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 			Expect(ready.Reason).To(Equal(EventReasonProvisioningStarted))
-			Expect(ready.Message).To(ContainSubstring("track-abc-123"))
+			Expect(ready.Message).To(Equal("database provisioning started asynchronously"))
 
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
@@ -396,7 +396,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
-			dd.Status.TrackingId = "track-poll-completed"
+			dd.Status.TrackingID = "track-poll-completed"
 			dd.Status.PendingOperationGeneration = dd.Generation
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -410,7 +410,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
-			Expect(dd.Status.TrackingId).To(BeEmpty())
+			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 
@@ -434,7 +434,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
-			dd.Status.TrackingId = "track-poll-failed"
+			dd.Status.TrackingID = "track-poll-failed"
 			dd.Status.PendingOperationGeneration = dd.Generation
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -448,7 +448,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
-			Expect(dd.Status.TrackingId).To(BeEmpty())
+			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 
@@ -468,7 +468,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	// ── POLL — TERMINATED ─────────────────────────────────────────────────────
 
 	Context("POLL — status=TERMINATED", func() {
-		It("sets Phase=InvalidConfiguration, Stalled=True, clears trackingId", func() {
+		It("sets Phase=BackingOff, Stalled=False, clears trackingId, emits OperationTerminated, requeues", func() {
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -476,7 +476,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
-			dd.Status.TrackingId = "track-terminated"
+			dd.Status.TrackingID = "track-terminated"
 			dd.Status.PendingOperationGeneration = dd.Generation
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -484,17 +484,64 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			pollCode = http.StatusOK
 			pollBody = `{"status":"TERMINATED"}`
 
-			dd, _, err := reconcileAndFetch()
+			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
-			Expect(dd.Status.TrackingId).To(BeEmpty())
+			// Transient — requeues automatically.
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			// BackingOff (not InvalidConfiguration) so the operator keeps retrying.
+			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			// trackingID cleared so the next reconcile enters the SUBMIT branch.
+			Expect(dd.Status.TrackingID).To(BeEmpty())
+			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
 
+			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonOperationTerminated))
+			Expect(ready.Message).To(ContainSubstring("resubmitting"))
+
+			// Stalled=False: this is transient, not a permanent spec error.
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
-			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected)
+			expectRecordedEventContaining(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonOperationTerminated, "track-terminated")
 			expectNoRecordedEvent(fakeRecorder.Events)
+		})
+
+		It("resubmits to the aggregator on the next reconcile after TERMINATED", func() {
+			applyCode = http.StatusAccepted
+			applyBody = `{"trackingId":"track-resubmit"}`
+
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			// Simulate a pending tracking ID that comes back TERMINATED.
+			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
+			dd.Status.TrackingID = "track-stale"
+			dd.Status.PendingOperationGeneration = dd.Generation
+			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
+
+			pollCode = http.StatusOK
+			pollBody = `{"status":"TERMINATED"}`
+
+			// First reconcile: TERMINATED → BackingOff, trackingID cleared.
+			dd, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dd.Status.TrackingID).To(BeEmpty())
+			Expect(capturedApplyBody).To(BeEmpty(), "apply must not be called during poll reconcile")
+			drainRecordedEvents(fakeRecorder.Events)
+
+			// Second reconcile: trackingID is empty → SUBMIT branch → POST /apply.
+			pollBody = `{"status":"IN_PROGRESS"}`
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			Expect(capturedApplyBody).NotTo(BeEmpty(), "apply must be called on resubmit")
+			Expect(dd.Status.TrackingID).To(Equal("track-resubmit"))
 		})
 	})
 
@@ -510,7 +557,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			gen := dd.Generation
-			dd.Status.TrackingId = "track-in-progress"
+			dd.Status.TrackingID = "track-in-progress"
 			dd.Status.PendingOperationGeneration = gen
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -523,7 +570,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseWaitingForDependency))
-			Expect(dd.Status.TrackingId).To(Equal("track-in-progress"))
+			Expect(dd.Status.TrackingID).To(Equal("track-in-progress"))
 			Expect(dd.Status.ObservedGeneration).To(BeZero(),
 				"observedGeneration must not be stamped while in progress")
 
@@ -542,7 +589,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
-			dd.Status.TrackingId = "track-gone"
+			dd.Status.TrackingID = "track-gone"
 			dd.Status.PendingOperationGeneration = dd.Generation
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -554,7 +601,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
-			Expect(dd.Status.TrackingId).To(BeEmpty(),
+			Expect(dd.Status.TrackingID).To(BeEmpty(),
 				"trackingId must be cleared on 404 so next reconcile re-submits")
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
 
@@ -577,7 +624,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
-			dd.Status.TrackingId = "track-unauth"
+			dd.Status.TrackingID = "track-unauth"
 			dd.Status.PendingOperationGeneration = dd.Generation
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -589,7 +636,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
-			Expect(dd.Status.TrackingId).To(Equal("track-unauth"),
+			Expect(dd.Status.TrackingID).To(Equal("track-unauth"),
 				"trackingId must be retained on 401 to resume polling after credentials are fixed")
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -614,7 +661,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
-			dd.Status.TrackingId = "track-500"
+			dd.Status.TrackingID = "track-500"
 			dd.Status.PendingOperationGeneration = dd.Generation
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -626,7 +673,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
-			Expect(dd.Status.TrackingId).To(Equal("track-500"),
+			Expect(dd.Status.TrackingID).To(Equal("track-500"),
 				"trackingId must be retained on 5xx to resume polling after the aggregator recovers")
 
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
@@ -810,7 +857,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd := &dbaasv1alpha1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			// Simulate a stale trackingId from a previous generation.
-			dd.Status.TrackingId = "track-stale"
+			dd.Status.TrackingID = "track-stale"
 			dd.Status.PendingOperationGeneration = dd.Generation - 1 // mismatch
 			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
@@ -820,7 +867,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			// Stale trackingId cleared → took the SUBMIT branch → sync 200 → Succeeded.
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
-			Expect(dd.Status.TrackingId).To(BeEmpty())
+			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(result.RequeueAfter).To(BeZero())
 			// The apply endpoint must have been called (not the poll endpoint).
 			Expect(capturedApplyBody).NotTo(BeEmpty())

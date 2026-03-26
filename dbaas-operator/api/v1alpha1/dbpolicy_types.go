@@ -108,14 +108,14 @@ type DbPolicy struct {
 
 	// metadata is standard object metadata.
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of DbPolicy.
 	Spec DbPolicySpec `json:"spec"`
 
 	// status defines the observed state of DbPolicy.
 	// +optional
-	Status DbPolicyStatus `json:"status,omitzero"`
+	Status DbPolicyStatus `json:"status,omitempty"`
 }
 
 func (p *DbPolicy) SetObservedGeneration(generation int64) {
@@ -127,7 +127,7 @@ func (p *DbPolicy) SetObservedGeneration(generation int64) {
 // DbPolicyList contains a list of DbPolicy.
 type DbPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []DbPolicy `json:"items"`
 }
 

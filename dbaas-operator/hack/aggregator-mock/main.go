@@ -58,7 +58,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
@@ -226,7 +225,7 @@ func loadPollRules(path string) map[string]MockPollRule {
 func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[string]MockRule, pollRules map[string]MockPollRule, users map[string]UserConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		logRequest(r)
+		body := logRequest(r)
 
 		switch {
 		case reExternalDB.MatchString(r.URL.Path) && r.Method == http.MethodPut:
@@ -234,13 +233,13 @@ func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[str
 			if !checkAuth(w, r, users, roleDBClient) {
 				return
 			}
-			handleExternalDB(w, r, defaultRule, rules)
+			handleExternalDB(w, r, body, defaultRule, rules)
 
 		case reApply.MatchString(r.URL.Path) && r.Method == http.MethodPost:
 			if !checkAuth(w, r, users, roleDBClient) {
 				return
 			}
-			handleApply(w, r, applyRules)
+			handleApply(w, body, applyRules)
 
 		case reOpStatus.MatchString(r.URL.Path) && r.Method == http.MethodGet:
 			if !checkAuth(w, r, users, roleDBClient) {
@@ -293,15 +292,13 @@ func hasRole(roles []string, role string) bool {
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
-func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultRule MockRule, rules map[string]MockRule) {
+func handleExternalDB(w http.ResponseWriter, r *http.Request, body []byte, defaultRule MockRule, rules map[string]MockRule) {
 	m := reExternalDB.FindStringSubmatch(r.URL.Path)
 	namespace := m[1]
 
 	var req struct {
 		DbName string `json:"dbName"`
 	}
-	body, _ := io.ReadAll(r.Body)
-	r.Body = io.NopCloser(strings.NewReader(string(body)))
 	_ = json.Unmarshal(body, &req)
 
 	rule := defaultRule
@@ -334,15 +331,13 @@ func handleExternalDB(w http.ResponseWriter, r *http.Request, defaultRule MockRu
 //
 // An explicit rule in applyRules (keyed by microserviceName) overrides the default.
 // Error rules (4xx/5xx) are returned as TmfErrorResponse regardless of subKind.
-func handleApply(w http.ResponseWriter, r *http.Request, applyRules map[string]MockRule) {
+func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockRule) {
 	var req struct {
 		SubKind  string `json:"subKind"`
 		Metadata struct {
 			MicroserviceName string `json:"microserviceName"`
 		} `json:"metadata"`
 	}
-	body, _ := io.ReadAll(r.Body)
-	r.Body = io.NopCloser(strings.NewReader(string(body)))
 	_ = json.Unmarshal(body, &req)
 
 	msName := req.Metadata.MicroserviceName
@@ -454,12 +449,13 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func logRequest(r *http.Request) {
+// logRequest logs the incoming request and returns the body bytes.
+// The caller is responsible for passing the body to any handler that needs it.
+func logRequest(r *http.Request) []byte {
 	username, _, _ := r.BasicAuth()
 	log.Printf("← %s %s  auth-user=%q", r.Method, r.URL.Path, username)
 
 	body, _ := io.ReadAll(r.Body)
-	r.Body = io.NopCloser(strings.NewReader(string(body))) // restore for handlers
 
 	if len(body) > 0 {
 		var v any
@@ -470,6 +466,8 @@ func logRequest(r *http.Request) {
 			log.Printf("  body: %s", body)
 		}
 	}
+
+	return body
 }
 
 // writeTmfError writes a complete error response using the fields from rule.

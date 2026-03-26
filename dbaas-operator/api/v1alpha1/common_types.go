@@ -63,19 +63,11 @@ const (
 )
 
 // OperatorStatus contains common status fields shared by all dbaas operator resources.
-// Both DatabaseDeclaration and DbPolicy embed this struct inline.
 type OperatorStatus struct {
 	// phase represents the current processing phase of the resource.
 	// +kubebuilder:default=Unknown
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
-
-	// trackingId is the identifier returned by dbaas-aggregator when a database
-	// provisioning operation is started asynchronously (HTTP 202). The controller
-	// stores it here and uses it to poll the operation status on subsequent reconciles.
-	// Cleared once the operation reaches a terminal state (Completed or Failed).
-	// +optional
-	TrackingId string `json:"trackingId,omitempty"`
 
 	// observedGeneration reflects the .metadata.generation that was last processed
 	// by the controller. When the current generation differs from this value, the

@@ -21,16 +21,20 @@ import (
 	"errors"
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
+	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // setCondition upserts a metav1.Condition in the given slice.
-// LastTransitionTime is preserved only when both Status and Reason are
-// unchanged. A change in either field is considered a transition so that
-// diagnostics tools can tell exactly when the error category shifted
-// (e.g. SecretError → Unauthorized at the same Status=False).
+// LastTransitionTime is preserved when Status is unchanged, per Kubernetes API
+// conventions. A change in Reason or Message at the same Status does not reset
+// the transition time.
 func setCondition(
 	conditions *[]metav1.Condition,
 	generation int64,
@@ -50,8 +54,9 @@ func setCondition(
 
 	for i, existing := range *conditions {
 		if existing.Type == condType {
-			if existing.Status == status && existing.Reason == reason {
-				// Neither Status nor Reason changed: preserve the transition time.
+			if existing.Status == status {
+				// Status unchanged: preserve the transition time per Kubernetes API
+				// conventions (LastTransitionTime reflects Status changes only).
 				cond.LastTransitionTime = existing.LastTransitionTime
 			}
 			(*conditions)[i] = cond
@@ -85,6 +90,73 @@ func markTransientFailure(
 		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
 	setCondition(conditions, generation,
 		conditionTypeStalled, metav1.ConditionFalse, readyReason, stalledMsgTransient)
+}
+
+// invalidSpec sets InvalidConfiguration phase + conditions, emits a Warning event,
+// and returns (no requeue) so the CR waits for a spec change.
+// Shared by all controllers that perform pre-flight spec validation.
+func invalidSpec(
+	ctx context.Context,
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	recorder record.EventRecorder,
+	obj runtime.Object,
+	msg string,
+) (ctrl.Result, error) {
+	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
+	markPermanentFailure(phase, conditions, generation, EventReasonInvalidSpec, msg)
+	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
+	return ctrl.Result{}, nil
+}
+
+// handleAggregatorError maps a non-nil error from any aggregator call to the
+// appropriate phase/conditions and emits a Kubernetes event.
+// It is the shared implementation used by all three controllers.
+//
+//   - 401                   → BackingOff  (transient, requeue)
+//   - 400/403/409/410/422   → InvalidConfiguration (permanent, no requeue)
+//   - 5xx / network         → BackingOff  (transient, requeue)
+func handleAggregatorError(
+	phase *dbaasv1alpha1.Phase,
+	conditions *[]metav1.Condition,
+	generation int64,
+	recorder record.EventRecorder,
+	obj runtime.Object,
+	err error,
+) (ctrl.Result, error) {
+	var aggErr *aggregatorclient.AggregatorError
+	if errors.As(err, &aggErr) {
+		switch {
+		case aggErr.IsAuthError():
+			// 401 — credentials misconfigured; retry.
+			markTransientFailure(phase, conditions, generation,
+				EventReasonUnauthorized, aggErr.UserMessage())
+			recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonUnauthorized,
+				"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
+			return ctrl.Result{}, err
+
+		case aggErr.IsSpecRejection():
+			// 400/403/409/410/422 — aggregator explicitly rejected the spec.
+			// Retrying the same payload will not help; wait for a spec change.
+			markPermanentFailure(phase, conditions, generation,
+				EventReasonAggregatorRejected, aggErr.UserMessage())
+			recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonAggregatorRejected,
+				"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
+			return ctrl.Result{}, nil
+		}
+	}
+
+	// 5xx / network — transient; retry with backoff.
+	errMsg := err.Error()
+	if aggErr != nil {
+		errMsg = aggErr.UserMessage()
+	}
+	markTransientFailure(phase, conditions, generation,
+		EventReasonAggregatorError, errMsg)
+	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonAggregatorError,
+		"dbaas-aggregator error: %s", errMsg)
+	return ctrl.Result{}, err
 }
 
 func markPermanentFailure(
