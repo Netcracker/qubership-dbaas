@@ -3,7 +3,7 @@ FROM golang:1.26 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
-WORKDIR /workspace
+WORKDIR /app
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
@@ -19,13 +19,13 @@ COPY . .
 # was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager ./cmd/
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o dbaas-operator ./cmd/
 
 # Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
-WORKDIR /
-COPY --from=builder /workspace/manager .
-USER 65532:65532
+# Refer to https://github.com/Netcracker/qubership-core-base-images/pkgs/container/qubership-core-base for more details
+FROM ghcr.io/netcracker/qubership-core-base:latest
+WORKDIR /app
+COPY --chown=10001:0 --chmod=555 --from=builder /app/dbaas-operator /app/dbaas-operator
+USER 10001:10001
 
-ENTRYPOINT ["/manager"]
+ENTRYPOINT ["/app/dbaas-operator"]
