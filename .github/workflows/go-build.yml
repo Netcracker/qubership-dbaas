@@ -20,10 +20,10 @@ on:
 jobs:
   build:
     name: Build and test
-    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.2.1
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.3.0
     with:
       install-envtest: true
       envtest-version: latest
-      skip-docker: true
+      docker-config-file: 'docker-go-dev-config.json'
       # sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
     secrets: inherit

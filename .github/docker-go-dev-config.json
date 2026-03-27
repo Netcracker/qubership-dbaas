@@ -1,0 +1,11 @@
+{
+    "components" : [
+      {
+        "name": "dbaas-operator",
+        "file": "dbaas-operator/Dockerfile",
+        "context": "./artifacts/dbaas-operator",
+        "download-artifact": true
+      }
+    ],
+    "platforms" : "linux/amd64,linux/arm64"
+}
