@@ -3,7 +3,7 @@
       {
         "name": "qubership-dbaas-dbaas-operator",
         "file": "dbaas-operator/Dockerfile",
-        "context": "./artifacts/dbaas-operator",
+        "context": ".",
         "download-artifact": true
       }
     ],
