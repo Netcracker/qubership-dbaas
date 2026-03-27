@@ -1,7 +1,7 @@
 {
     "components" : [
       {
-        "name": "dbaas-operator",
+        "name": "qubership-dbaas-dbaas-operator",
         "file": "dbaas-operator/Dockerfile",
         "context": "./artifacts/dbaas-operator",
         "download-artifact": true
