@@ -2,7 +2,84 @@
 // TODO(user): Add simple overview of use/purpose
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+`dbaas-operator` is a Kubernetes operator that reconciles three custom resource kinds:
+
+| Kind | Purpose |
+|---|---|
+| `ExternalDatabaseDeclaration` | Registers a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
+| `DatabaseDeclaration` | Requests provisioning of a new database via the dbaas-aggregator declarative API. |
+| `DbPolicy` | Applies a database policy via the dbaas-aggregator declarative API. |
+
+---
+
+## ExternalDatabaseDeclaration
+
+### Minimal example (no Secret)
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: ExternalDatabaseDeclaration
+metadata:
+  name: my-postgres
+  namespace: my-ns
+spec:
+  type: postgresql
+  dbName: mydb
+  classifier:
+    namespace: my-ns
+    microserviceName: my-service
+    scope: service
+  connectionProperties:
+    - role: admin
+      extraProperties:
+        host: pg.example.com
+        port: "5432"
+        url: "jdbc:postgresql://pg.example.com:5432/mydb"
+```
+
+### With credentials from a Kubernetes Secret
+
+Use `credentialsSecretRef` to read credentials from a Secret at reconcile time.
+The Secret must exist in the same namespace as the CR.
+
+```yaml
+spec:
+  connectionProperties:
+    - role: admin
+      credentialsSecretRef:
+        name: pg-credentials       # Secret name
+        keys:
+          - key: db-user           # Secret.data key
+            name: username         # aggregator request flat-map key
+          - key: db-pass
+            name: password
+      extraProperties:
+        host: pg.example.com
+        port: "5432"
+```
+
+**Merge priority** (later sources win on key collision):
+1. `extraProperties` — lowest priority
+2. `role` — overrides `extraProperties["role"]`
+3. `credentialsSecretRef.keys` — highest priority; Secret values override matching `extraProperties` keys
+
+**Constraints enforced by the CRD:**
+- `keys` is required when `credentialsSecretRef` is specified; at least one mapping must be present (`MinItems=1`).
+- `keys[*].name` values must be unique within the list (CEL validation).
+
+**Transient vs permanent errors:**
+- Secret not found, key missing, or key value is empty → `BackingOff` (retried automatically; no operator restart needed after fixing the Secret).
+- Aggregator rejects the request (400/403/409/410/422) → `InvalidConfiguration` (permanent until spec is fixed).
+
+### Status phases
+
+| Phase | Meaning |
+|---|---|
+| `Processing` | Controller is actively reconciling |
+| `Succeeded` | Aggregator accepted the registration |
+| `BackingOff` | Transient error; controller will retry with exponential back-off |
+| `InvalidConfiguration` | Permanent failure; spec must be corrected |
 
 ## Getting Started
 
@@ -12,7 +89,7 @@ To spin up a full local environment (kind + aggregator-mock + operator) see
 **[hack/README.md](hack/README.md)**.
 
 ### Prerequisites
-- go version v1.24.6+
+- go version v1.26+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.

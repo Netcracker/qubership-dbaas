@@ -18,39 +18,72 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// CredentialsSecretRef points to a Kubernetes Secret that holds the username and password
-// for a single connection property entry. The Secret must exist in the same namespace
-// as the ExternalDatabaseDeclaration CR.
+// SecretKeyMapping maps a single key from a Kubernetes Secret to a key
+// in the aggregator request flat map.
+type SecretKeyMapping struct {
+	// key is the key inside Secret.data whose value will be read.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Key string `json:"key"`
+
+	// name is the key to use in the aggregator request flat map.
+	// Secret credentials take precedence over the same key in extraProperties.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// CredentialsSecretRef points to a Kubernetes Secret and maps its keys
+// to aggregator request flat map keys.
+// The Secret must exist in the same namespace as the ExternalDatabaseDeclaration CR.
+//
+// Example — standard username/password:
+//
+//	credentialsSecretRef:
+//	  name: pg-credentials
+//	  keys:
+//	    - key: db-user     # Secret.data key
+//	      name: username   # aggregator request key
+//	    - key: db-pass
+//	      name: password
+//
+// Example — additional TLS fields:
+//
+//	credentialsSecretRef:
+//	  name: pg-tls
+//	  keys:
+//	    - key: ssl-cert
+//	      name: sslCertificate
+//	    - key: ca-cert
+//	      name: sslCA
 type CredentialsSecretRef struct {
 	// name is the name of the Kubernetes Secret containing the credentials.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
-	// usernameKey is the key inside the Secret whose value is the database username.
-	// Defaults to "username" if omitted.
-	// +optional
-	UsernameKey string `json:"usernameKey,omitempty"`
-
-	// passwordKey is the key inside the Secret whose value is the database password.
-	// Defaults to "password" if omitted.
-	// +optional
-	PasswordKey string `json:"passwordKey,omitempty"`
+	// keys is the list of mappings from Secret.data keys to aggregator request keys.
+	// Each entry reads Secret.data[key] and inserts it into the aggregator flat map
+	// under name. Secret credentials always take precedence over the same keys in
+	// extraProperties. At least one mapping is required.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:XValidations:rule="self.map(k, k.name).toSet().size() == self.size()",message="keys must not contain duplicate name values"
+	Keys []SecretKeyMapping `json:"keys"`
 }
 
 // ConnectionProperty describes how to connect to the external database for a specific role.
 // The controller assembles a flat map from role, credentialsSecretRef, and extraProperties
 // before sending the request to dbaas-aggregator.
 //
-// Assembled flat map sent to dbaas-aggregator per entry:
+// Merge order (later sources win on key collision):
 //
-//	{ "role": role, "username": <from Secret>, "password": <from Secret>, <extraProperties...> }
+//  1. extraProperties — lowest priority
+//  2. role            — overrides extraProperties["role"]
+//  3. credentialsSecretRef.keys — highest priority, override matching extraProperties keys
 //
-// The "role" key always takes precedence over the same key in extraProperties.
-// "username" and "password" resolved from the Secret always take precedence over
-// the same keys in extraProperties.
-// All other connection parameters (host, port, url, authDbName, etc.) must be supplied
-// via extraProperties.
+// All other connection parameters (host, port, url, authDbName, sslMode, etc.) must be
+// supplied via extraProperties.
 type ConnectionProperty struct {
 	// role identifies the access level for this connection entry.
 	// The value is adapter-specific, e.g. "admin", "readonly", "readwrite".
@@ -60,9 +93,9 @@ type ConnectionProperty struct {
 	// +kubebuilder:validation:MinLength=1
 	Role string `json:"role"`
 
-	// credentialsSecretRef points to a Kubernetes Secret containing the username and
-	// password for this connection. The Secret must exist in the same namespace as the CR.
-	// The resolved username and password take precedence over the same keys in extraProperties.
+	// credentialsSecretRef points to a Kubernetes Secret and maps its keys into the
+	// aggregator request flat map. The Secret must exist in the same namespace as the CR.
+	// Resolved Secret values take precedence over matching keys in extraProperties.
 	// +optional
 	CredentialsSecretRef *CredentialsSecretRef `json:"credentialsSecretRef,omitempty"`
 
@@ -70,8 +103,7 @@ type ConnectionProperty struct {
 	// Use this to supply host, port, url, authDbName, sslMode, and any other parameters
 	// required by the dbaas-aggregator adapter.
 	// All keys are merged into the flat map sent to the aggregator.
-	// The "role" key and Secret credentials ("username", "password") always override
-	// any values set here for those keys.
+	// The "role" key and Secret credentials always override any values set here for those keys.
 	// +optional
 	ExtraProperties map[string]string `json:"extraProperties,omitempty"`
 }

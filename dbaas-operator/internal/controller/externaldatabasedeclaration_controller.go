@@ -109,7 +109,7 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 // buildRequest assembles an ExternalDatabaseRequest from the CR spec.
 // For each ConnectionProperty that has a credentialsSecretRef it reads the
-// referenced Secret and injects the username/password into the flat map.
+// referenced Secret and injects the mapped keys into the flat map.
 func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 	ctx context.Context,
 	edb *dbaasv1alpha1.ExternalDatabaseDeclaration,
@@ -173,60 +173,39 @@ func (r *ExternalDatabaseDeclarationReconciler) applySecretCredentials(
 		return nil
 	}
 
+	ref := cp.CredentialsSecretRef
 	secret := &corev1.Secret{}
-	key := types.NamespacedName{
-		Namespace: namespace,
-		Name:      cp.CredentialsSecretRef.Name,
-	}
-	if err := r.Get(ctx, key, secret); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, secret); err != nil {
 		return fmt.Errorf(
 			"connectionProperties[%d]: get Secret %q: %w",
-			index, cp.CredentialsSecretRef.Name, err)
+			index, ref.Name, err)
 	}
 
-	usernameKey, passwordKey := secretCredentialKeys(cp.CredentialsSecretRef)
+	// Defence-in-depth duplicate name check — CRD CEL validation should catch this
+	// first, but we guard here too in case validation is bypassed.
+	seen := make(map[string]string, len(ref.Keys))
+	for _, km := range ref.Keys {
+		if prevKey, dup := seen[km.Name]; dup {
+			return fmt.Errorf(
+				"connectionProperties[%d]: credentialsSecretRef has duplicate target key %q (from Secret keys %q and %q)",
+				index, km.Name, prevKey, km.Key)
+		}
+		seen[km.Name] = km.Key
 
-	username, ok := secret.Data[usernameKey]
-	if !ok {
-		return fmt.Errorf(
-			"connectionProperties[%d]: Secret %q missing key %q",
-			index, cp.CredentialsSecretRef.Name, usernameKey)
+		val, ok := secret.Data[km.Key]
+		if !ok {
+			return fmt.Errorf(
+				"connectionProperties[%d]: Secret %q missing key %q",
+				index, ref.Name, km.Key)
+		}
+		if len(val) == 0 {
+			return fmt.Errorf(
+				"connectionProperties[%d]: Secret %q key %q is empty",
+				index, ref.Name, km.Key)
+		}
+		flat[km.Name] = string(val)
 	}
-	if len(username) == 0 {
-		return fmt.Errorf(
-			"connectionProperties[%d]: Secret %q key %q is empty",
-			index, cp.CredentialsSecretRef.Name, usernameKey)
-	}
-
-	password, ok := secret.Data[passwordKey]
-	if !ok {
-		return fmt.Errorf(
-			"connectionProperties[%d]: Secret %q missing key %q",
-			index, cp.CredentialsSecretRef.Name, passwordKey)
-	}
-	if len(password) == 0 {
-		return fmt.Errorf(
-			"connectionProperties[%d]: Secret %q key %q is empty",
-			index, cp.CredentialsSecretRef.Name, passwordKey)
-	}
-
-	flat["username"] = string(username)
-	flat["password"] = string(password)
 	return nil
-}
-
-func secretCredentialKeys(ref *dbaasv1alpha1.CredentialsSecretRef) (usernameKey, passwordKey string) {
-	usernameKey = ref.UsernameKey
-	if usernameKey == "" {
-		usernameKey = "username"
-	}
-
-	passwordKey = ref.PasswordKey
-	if passwordKey == "" {
-		passwordKey = "password"
-	}
-
-	return usernameKey, passwordKey
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -221,6 +221,10 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			spec := baseSpec()
 			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
 				Name: "non-existent-secret",
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "username", Name: "username"},
+					{Key: "password", Name: "password"},
+				},
 			}
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -249,12 +253,12 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		})
 	})
 
-	Context("Secret exists but is missing the required key", func() {
+	Context("Secret exists but is missing a required key", func() {
 		It("sets Phase=BackingOff, Ready=False/SecretError, Stalled=False, emits Warning/SecretError event, requeues", func() {
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
 				Data: map[string][]byte{
-					// Secret exists but does not contain "username" or "password".
+					// Secret exists but does not contain "db-user".
 					"irrelevant-key": []byte("irrelevant-value"),
 				},
 			})).To(Succeed())
@@ -262,6 +266,10 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			spec := baseSpec()
 			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
 				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+				},
 			}
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -278,7 +286,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 			Expect(ready.Reason).To(Equal(EventReasonSecretError))
-			Expect(ready.Message).To(ContainSubstring(`missing key "username"`))
+			Expect(ready.Message).To(ContainSubstring(`missing key "db-user"`))
 
 			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
@@ -289,19 +297,23 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		})
 	})
 
-	Context("Secret exists but the username key is empty", func() {
+	Context("Secret exists but the mapped key value is empty", func() {
 		It("sets Phase=BackingOff, SecretError (not Unauthorized), Stalled=False, requeues", func() {
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
 				Data: map[string][]byte{
-					"username": []byte(""), // key present but empty
-					"password": []byte("s3cr3t"),
+					"db-user": []byte(""), // key present but empty
+					"db-pass": []byte("s3cr3t"),
 				},
 			})).To(Succeed())
 
 			spec := baseSpec()
 			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
 				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+				},
 			}
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -319,7 +331,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 			// Must be SecretError, not Unauthorized — the aggregator is never called.
 			Expect(ready.Reason).To(Equal(EventReasonSecretError))
-			Expect(ready.Message).To(ContainSubstring(`key "username" is empty`))
+			Expect(ready.Message).To(ContainSubstring(`key "db-user" is empty`))
 
 			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
@@ -330,19 +342,23 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		})
 	})
 
-	Context("Secret exists but the password key is empty", func() {
-		It("sets Phase=BackingOff, SecretError, message mentions password key", func() {
+	Context("Secret exists but the second mapped key value is empty", func() {
+		It("sets Phase=BackingOff, SecretError, message mentions the empty key", func() {
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
 				Data: map[string][]byte{
-					"username": []byte("admin"),
-					"password": []byte(""), // key present but empty
+					"db-user": []byte("admin"),
+					"db-pass": []byte(""), // key present but empty
 				},
 			})).To(Succeed())
 
 			spec := baseSpec()
 			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
 				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+				},
 			}
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -356,9 +372,292 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
 			Expect(ready.Reason).To(Equal(EventReasonSecretError))
-			Expect(ready.Message).To(ContainSubstring(`key "password" is empty`))
+			Expect(ready.Message).To(ContainSubstring(`key "db-pass" is empty`))
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("duplicate name in credentialsSecretRef.keys (defence-in-depth)", func() {
+		It("sets Phase=BackingOff, SecretError, message mentions duplicate target key", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				Data: map[string][]byte{
+					"db-user":  []byte("admin"),
+					"db-user2": []byte("admin2"),
+				},
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-user2", Name: "username"}, // duplicate name
+				},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+			Expect(ready.Message).To(ContainSubstring(`duplicate target key "username"`))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("multiple keys mapped from Secret override matching extraProperties", func() {
+		It("sends all mapped keys in the aggregator request and overrides extraProperties", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				Data: map[string][]byte{
+					"db-user": []byte("admin"),
+					"db-pass": []byte("s3cr3t"),
+					"ssl-ca":  []byte("ca-cert-data"),
+				},
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].ExtraProperties = map[string]string{
+				"host":     "pg.example.com",
+				"port":     "5432",
+				"username": "should-be-overridden", // will be overridden by Secret
+			}
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+					{Key: "ssl-ca", Name: "sslCA"},
+				},
+			}
+			fixture.statusCode = http.StatusOK
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+
+			var sent struct {
+				ConnectionProperties []map[string]string `json:"connectionProperties"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.ConnectionProperties).To(HaveLen(1))
+
+			props := sent.ConnectionProperties[0]
+			Expect(props["username"]).To(Equal("admin"),
+				"Secret value must override extraProperties")
+			Expect(props["password"]).To(Equal("s3cr3t"))
+			Expect(props["sslCA"]).To(Equal("ca-cert-data"))
+			Expect(props["host"]).To(Equal("pg.example.com"))
+			Expect(props["port"]).To(Equal("5432"))
+		})
+	})
+
+	// ── credentialsSecretRef — key resolution ────────────────────────────────
+	//
+	// Four canonical scenarios covering the full key-resolution lifecycle:
+	//   1. Secret does not exist.
+	//   2. Secret exists but has no data (empty).
+	//   3. Secret has data but the mapped key is absent.
+	//   4. All keys present — credentials injected, aggregator call succeeds.
+
+	Context("credentialsSecretRef — Secret does not exist", func() {
+		It("returns error, sets Phase=BackingOff / SecretError, never calls aggregator", func() {
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: "ghost-secret",
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			// Controller must return an error so controller-runtime applies back-off.
+			Expect(err).To(HaveOccurred())
+			// Aggregator must not be called.
+			Expect(fixture.capturedBody).To(BeEmpty())
+
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("credentialsSecretRef — Secret exists but has no data (empty Secret)", func() {
+		It("returns error, sets Phase=BackingOff / SecretError, never calls aggregator", func() {
+			// Secret exists but Data map is completely empty.
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				// Data intentionally omitted — equivalent to an empty map.
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(fixture.capturedBody).To(BeEmpty())
+
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+			// First mapping key "db-user" is checked first and reported as missing.
+			Expect(ready.Message).To(ContainSubstring(`missing key "db-user"`))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("credentialsSecretRef — Secret has data but the mapped key is absent", func() {
+		It("returns error, sets Phase=BackingOff / SecretError, message names the missing key, never calls aggregator", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				Data: map[string][]byte{
+					// Secret contains an unrelated key — the required "db-user" is absent.
+					"other-key": []byte("other-value"),
+				},
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(fixture.capturedBody).To(BeEmpty())
+
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.ObservedGeneration).To(BeZero())
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonSecretError))
+			Expect(ready.Message).To(ContainSubstring(`missing key "db-user"`))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("credentialsSecretRef — all keys present and non-empty (happy path)", func() {
+		It("injects Secret values into the aggregator request, sets Phase=Succeeded", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				Data: map[string][]byte{
+					"db-user": []byte("app_user"),
+					"db-pass": []byte("s3cr3t"),
+				},
+			})).To(Succeed())
+
+			spec := baseSpec()
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+				Name: secretName,
+				Keys: []dbaasv1alpha1.SecretKeyMapping{
+					{Key: "db-user", Name: "username"},
+					{Key: "db-pass", Name: "password"},
+				},
+			}
+			fixture.statusCode = http.StatusOK
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+
+			// Verify the credentials were sent to the aggregator.
+			var sent struct {
+				ConnectionProperties []map[string]string `json:"connectionProperties"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.ConnectionProperties).To(HaveLen(1))
+			props := sent.ConnectionProperties[0]
+			Expect(props["username"]).To(Equal("app_user"))
+			Expect(props["password"]).To(Equal("s3cr3t"))
+
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			Expect(ready.Reason).To(Equal(EventReasonRegistered))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
