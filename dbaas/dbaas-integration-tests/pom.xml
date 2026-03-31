@@ -23,7 +23,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.junit.cloudcore</groupId>
             <artifactId>cloud-core-extension</artifactId>
-            <version>8.8.3</version>
+            <version>8.8.4</version>
             <scope>test</scope>
         </dependency>
 
@@ -101,7 +101,7 @@
         <dependency>
             <groupId>org.opensearch.client</groupId>
             <artifactId>opensearch-java</artifactId>
-            <version>3.7.0</version>
+            <version>3.8.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.httpcomponents.core5</groupId>
