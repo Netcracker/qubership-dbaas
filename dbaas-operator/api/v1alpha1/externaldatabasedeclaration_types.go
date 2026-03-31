@@ -146,13 +146,6 @@ type ExternalDatabaseDeclarationSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	ConnectionProperties []ConnectionProperty `json:"connectionProperties"`
 
-	// updateConnectionProperties controls what happens when dbaas-aggregator already
-	// has a record for this classifier+type combination:
-	//   false (default) — return the existing record unchanged.
-	//   true            — replace the stored connectionProperties with those in this spec.
-	// Has no effect when the external database is being registered for the first time.
-	// +optional
-	UpdateConnectionProperties bool `json:"updateConnectionProperties,omitempty"`
 }
 
 // ExternalDatabaseDeclarationStatus defines the observed state of ExternalDatabaseDeclaration.

@@ -132,7 +132,7 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 		Type:                       edb.Spec.Type,
 		DbName:                     edb.Spec.DbName,
 		ConnectionProperties:       connProps,
-		UpdateConnectionProperties: edb.Spec.UpdateConnectionProperties,
+		UpdateConnectionProperties: true,
 	}, nil
 }
 

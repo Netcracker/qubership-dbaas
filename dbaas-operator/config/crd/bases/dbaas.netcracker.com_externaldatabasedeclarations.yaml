@@ -165,14 +165,6 @@ spec:
                   Must match a type registered in dbaas-aggregator.
                 minLength: 1
                 type: string
-              updateConnectionProperties:
-                description: |-
-                  updateConnectionProperties controls what happens when dbaas-aggregator already
-                  has a record for this classifier+type combination:
-                    false (default) — return the existing record unchanged.
-                    true            — replace the stored connectionProperties with those in this spec.
-                  Has no effect when the external database is being registered for the first time.
-                type: boolean
             required:
             - classifier
             - connectionProperties

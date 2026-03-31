@@ -122,7 +122,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(fixture.capturedBody).NotTo(BeEmpty())
 
 			var sent struct {
-				ConnectionProperties []map[string]string `json:"connectionProperties"`
+				ConnectionProperties       []map[string]string `json:"connectionProperties"`
+				UpdateConnectionProperties bool                `json:"updateConnectionProperties"`
 			}
 			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
 			Expect(sent.ConnectionProperties).To(HaveLen(1))
@@ -130,6 +131,8 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			props := sent.ConnectionProperties[0]
 			Expect(props["role"]).To(Equal("primary"),
 				"typed Role must override ExtraProperties role")
+			Expect(sent.UpdateConnectionProperties).To(BeTrue(),
+				"updateConnectionProperties must always be sent as true")
 		})
 	})
 
