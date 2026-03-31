@@ -14,14 +14,14 @@ metadata:
 spec:
     replicas: {{ .Values.REPLICAS | default 1 }}
     strategy:
-{{ if  (.Values.DBAAS_RECREATE_DEPLOYMENT_STRATEGY) }}
+{{- if  (.Values.DBAAS_RECREATE_DEPLOYMENT_STRATEGY) }}
         type: Recreate
-{{ else }}
+{{- else }}
         type: RollingUpdate
         rollingUpdate:
             maxSurge: 25%
             maxUnavailable: 25%
-{{ end }}
+{{- end }}
     template:
         metadata:
             labels:
@@ -35,58 +35,58 @@ spec:
                 deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
         spec:
             nodeSelector:
-              {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
+                {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
             serviceAccountName: '{{ .Values.SERVICE_NAME }}'
             volumes:
-              - name: dbaas-security-volume
-                secret:
-                  secretName: dbaas-security-configuration-secret
+                -   name: dbaas-security-volume
+                    secret:
+                        secretName: dbaas-security-configuration-secret
             containers:
-              - name: '{{ .Values.SERVICE_NAME }}'
-                image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
-                volumeMounts:
-                  -   name: dbaas-security-volume
-                      mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-                      readOnly: true
-                args:
-                  - --health-probe-bind-address=:'{{ .Values.HEALTH_PROBE_BIND_ADDRESS }}'
-                  - --metrics-bind-address='{{ .Values.METRICS_BIND_ADDRESS }}
-                  - --watch-namespaces='{{ .Values.WATCH_NAMESPACE }}'
-                  - --leader-elect
-                env:
-                  - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
-                    value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-                  - name: DBAAS_AGGREGATOR_USERNAME
-                    value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
-                ports:
-                  - name: web
-                    containerPort: 8081
-                    protocol: TCP
-                livenessProbe:
-                    httpGet:
-                      path: /healthz
-                      port: web
-                    initialDelaySeconds: {{ .Values.LIVENESS_PROBE_INITIAL_DELAY_SECONDS }}
-                    periodSeconds: 20
-                readinessProbe:
-                    httpGet:
-                      path: /readyz
-                      port: web
-                    initialDelaySeconds: 5
-                    periodSeconds: 10
-                securityContext:
-                    readOnlyRootFilesystem: {{ .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
-                    allowPrivilegeEscalation: false
-                    capabilities:
-                        drop:
-                          - ALL
-                resources:
-                    requests:
-                        cpu: '{{ .Values.CPU_REQUEST }}'
-                        memory: '{{ .Values.MEMORY_LIMIT }}'
-                    limits:
-                        cpu: '{{ .Values.CPU_LIMIT }}'
-                        memory: '{{ .Values.MEMORY_LIMIT }}'
+                -   name: '{{ .Values.SERVICE_NAME }}'
+                    image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
+                    volumeMounts:
+                        -   name: dbaas-security-volume
+                            mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+                            readOnly: true
+                    args:
+                        - --health-probe-bind-address=:8081
+                        - --metrics-bind-address={{ .Values.METRICS_BIND_ADDRESS }}
+                        - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
+                        - --leader-elect
+                    env:
+                        -   name: DBAAS_SECURITY_CONFIGURATION_LOCATION
+                            value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+                        -   name: DBAAS_AGGREGATOR_USERNAME
+                            value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
+                    ports:
+                        -   name: web
+                            containerPort: 8081
+                            protocol: TCP
+                    livenessProbe:
+                        httpGet:
+                            path: /healthz
+                            port: web
+                        initialDelaySeconds: {{ .Values.LIVENESS_PROBE_INITIAL_DELAY_SECONDS }}
+                        periodSeconds: 20
+                    readinessProbe:
+                        httpGet:
+                            path: /readyz
+                            port: web
+                        initialDelaySeconds: 5
+                        periodSeconds: 10
+                    securityContext:
+                        readOnlyRootFilesystem: {{ .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                            drop:
+                                - ALL
+                    resources:
+                        requests:
+                            cpu: '{{ .Values.CPU_REQUEST }}'
+                            memory: '{{ .Values.MEMORY_REQUEST }}'
+                        limits:
+                            cpu: '{{ .Values.CPU_LIMIT }}'
+                            memory: '{{ .Values.MEMORY_LIMIT }}'
     selector:
-      matchLabels:
-        name: '{{ .Values.SERVICE_NAME }}'
+        matchLabels:
+            name: '{{ .Values.SERVICE_NAME }}'
