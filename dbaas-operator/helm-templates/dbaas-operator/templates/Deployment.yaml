@@ -1,11 +1,13 @@
-kind: Deployment
 apiVersion: apps/v1
+kind: Deployment
 metadata:
     name: '{{ .Values.SERVICE_NAME }}'
     labels:
         name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-        app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+        app.kubernetes.io/instance: '{{ cat (coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME) "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+        app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
+        app.kubernetes.io/part-of: 'dbaas'
         app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
         app.kubernetes.io/component: 'backend'
         app.kubernetes.io/technology: 'java-quarkus'
@@ -42,12 +44,12 @@ spec:
             labels:
                 name: '{{ .Values.SERVICE_NAME }}'
                 app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+                app.kubernetes.io/instance: '{{ cat (coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME) "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+                app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
                 app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
-                app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
                 app.kubernetes.io/component: 'backend'
                 app.kubernetes.io/technology: 'java-quarkus'
                 netcracker.cloud/disaster-recovery.manageable: 'true'
-                deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
         spec:
             nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
@@ -65,7 +67,7 @@ spec:
                             readOnly: true
                     args:
                         - --health-probe-bind-address=:8081
-                        - --metrics-bind-address={{ .Values.METRICS_BIND_ADDRESS }}
+                        - --metrics-bind-address=0
                         - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
                         - --leader-elect
                     env:
