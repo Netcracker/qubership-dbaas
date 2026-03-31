@@ -24,12 +24,12 @@ package controller
 //
 // Naming conventions (https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#events):
 //   - CamelCase, no spaces
-//   - Tense: past for one-off successes ("Registered", "PolicyApplied"), present
+//   - Tense: past for one-off successes ("DatabaseRegistered", "PolicyApplied"), present
 //     participle for ongoing problems that repeat on each reconcile ("Unauthorized")
 const (
-	// EventReasonRegistered is emitted when an ExternalDatabaseDeclaration is
+	// EventReasonDatabaseRegistered is emitted when an ExternalDatabaseDeclaration is
 	// successfully registered with dbaas-aggregator. Type: Normal.
-	EventReasonRegistered = "Registered"
+	EventReasonDatabaseRegistered = "DatabaseRegistered"
 
 	// EventReasonPolicyApplied is emitted when a DbPolicy is successfully
 	// applied via dbaas-aggregator POST /api/declarations/v1/apply. Type: Normal.

@@ -8,8 +8,7 @@ metadata:
   name: dd-success-async
   namespace: test-ns
 spec:
-  classifierConfig:
-    classifier:
+  classifier:
       microserviceName: dd-svc-async
       scope: service
   type: postgresql

@@ -8,8 +8,7 @@ metadata:
   name: dd-poll-failed
   namespace: test-ns
 spec:
-  classifierConfig:
-    classifier:
+  classifier:
       microserviceName: dd-poll-failed
       scope: service
   type: postgresql

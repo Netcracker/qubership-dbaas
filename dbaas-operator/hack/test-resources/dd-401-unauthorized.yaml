@@ -7,8 +7,7 @@ metadata:
   name: dd-401-unauthorized
   namespace: test-ns
 spec:
-  classifierConfig:
-    classifier:
+  classifier:
       microserviceName: dd-svc-401
       scope: service
   type: postgresql

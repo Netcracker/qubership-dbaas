@@ -63,11 +63,9 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	// baseSpec returns a minimal valid DatabaseDeclaration spec.
 	baseSpec := func() dbaasv1alpha1.DatabaseDeclarationSpec {
 		return dbaasv1alpha1.DatabaseDeclarationSpec{
-			ClassifierConfig: dbaasv1alpha1.ClassifierConfig{
-				Classifier: dbaasv1alpha1.Classifier{
-					MicroserviceName: "test-service",
-					Scope:            "service",
-				},
+			Classifier: dbaasv1alpha1.Classifier{
+				MicroserviceName: "test-service",
+				Scope:            "service",
 			},
 			Type: "postgresql",
 		}
@@ -133,10 +131,10 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	// ── CRD admission validation ──────────────────────────────────────────────
 
-	Context("classifierConfig.classifier.microserviceName is empty", func() {
+	Context("classifier.microserviceName is empty", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
-			spec.ClassifierConfig.Classifier.MicroserviceName = ""
+			spec.Classifier.MicroserviceName = ""
 			err := k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
@@ -147,10 +145,10 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		})
 	})
 
-	Context("classifierConfig.classifier.scope is empty", func() {
+	Context("classifier.scope is empty", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
-			spec.ClassifierConfig.Classifier.Scope = ""
+			spec.Classifier.Scope = ""
 			err := k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
@@ -276,6 +274,73 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		})
 	})
 
+	Context("classifier.namespace absent — omitted field, no validation error", func() {
+		It("proceeds normally; aggregator receives namespace from metadata", func() {
+			spec := baseSpec()
+			// Namespace field left unset (zero value / omitempty).
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			dd, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(capturedApplyBody).NotTo(BeEmpty())
+		})
+	})
+
+	Context("classifier.namespace matches metadata.namespace", func() {
+		It("proceeds normally and succeeds", func() {
+			spec := baseSpec()
+			spec.Classifier.Namespace = ns // same as metadata.namespace
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+		})
+	})
+
+	Context("classifier.namespace does not match metadata.namespace", func() {
+		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue, never calls aggregator", func() {
+			spec := baseSpec()
+			spec.Classifier.Namespace = "other-namespace"
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			dd, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
+
+			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
+
+			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
+			Expect(ready.Message).To(ContainSubstring(`"other-namespace"`))
+			Expect(ready.Message).To(ContainSubstring(ns))
+
+			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fakeRecorder.Events)
+		})
+	})
+
 	// ── buildPayload ──────────────────────────────────────────────────────────
 
 	Context("buildPayload", func() {
@@ -297,11 +362,9 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 					Namespace        string `json:"namespace"`
 				} `json:"metadata"`
 				Spec struct {
-					ClassifierConfig struct {
-						Classifier struct {
-							MicroserviceName string `json:"microserviceName"`
-						} `json:"classifier"`
-					} `json:"classifierConfig"`
+					Classifier struct {
+						MicroserviceName string `json:"microserviceName"`
+					} `json:"classifier"`
 				} `json:"spec"`
 			}
 			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
@@ -309,7 +372,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(sent.SubKind).To(Equal("DatabaseDeclaration"))
 			Expect(sent.Metadata.MicroserviceName).To(Equal("test-service"))
 			Expect(sent.Metadata.Namespace).To(Equal(ns))
-			Expect(sent.Spec.ClassifierConfig.Classifier.MicroserviceName).To(Equal("test-service"))
+			Expect(sent.Spec.Classifier.MicroserviceName).To(Equal("test-service"))
 		})
 	})
 
