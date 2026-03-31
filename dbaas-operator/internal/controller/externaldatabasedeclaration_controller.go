@@ -78,6 +78,14 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	// This makes conditions durable API state across reconcile cycles.
 	edb.Status.Phase = dbaasv1alpha1.PhaseProcessing
 
+	// Validate that classifier.namespace, if set, matches the CR's own namespace.
+	// A mismatch is a permanent misconfiguration — no retry.
+	if ns := edb.Spec.Classifier["namespace"]; ns != "" && ns != edb.Namespace {
+		return invalidSpec(ctx, &edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+			r.Recorder, edb,
+			fmt.Sprintf("spec.classifier[\"namespace\"] %q must match metadata.namespace %q", ns, edb.Namespace))
+	}
+
 	// Build the flat-map request, resolving any Secret references.
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {

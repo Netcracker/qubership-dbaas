@@ -133,18 +133,75 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		})
 	})
 
-	Context("aggregator namespace resolution", func() {
-		It("falls back to the CR namespace when classifier.namespace is absent", func() {
+	// ── classifier.namespace validation ──────────────────────────────────────
+
+	Context("classifier.namespace absent — falls back to metadata.namespace", func() {
+		It("uses CR namespace in the aggregator URL and succeeds", func() {
 			spec := baseSpec()
 			delete(spec.Classifier, "namespace")
+			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
 
-			_, _, err := reconcileAndFetch()
+			edb, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fixture.capturedPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+		})
+	})
+
+	Context("classifier.namespace matches metadata.namespace", func() {
+		It("proceeds normally and succeeds", func() {
+			spec := baseSpec()
+			spec.Classifier["namespace"] = ns // same as metadata.namespace
+			fixture.statusCode = http.StatusOK
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+		})
+	})
+
+	Context("classifier.namespace does not match metadata.namespace", func() {
+		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue, never calls aggregator", func() {
+			spec := baseSpec()
+			spec.Classifier["namespace"] = "other-namespace"
+			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
+			// Aggregator must not be called.
+			Expect(fixture.capturedBody).To(BeEmpty())
+
+			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
+
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
+			Expect(ready.Message).To(ContainSubstring(`"other-namespace"`))
+			Expect(ready.Message).To(ContainSubstring(ns))
+
+			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
 

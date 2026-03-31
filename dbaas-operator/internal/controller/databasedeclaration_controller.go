@@ -226,6 +226,15 @@ func pollConditionText(resp *aggregatorclient.DeclarativeResponse, fallback stri
 func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) string {
 	// CRD enforces: classifierConfig.required, classifier.microserviceName/scope required+minLength,
 	// type required+minLength. Controller handles cross-field constraints only.
+
+	// If classifier.namespace is set it must match the CR's own namespace.
+	// A mismatch is a permanent misconfiguration — no retry.
+	if ns := dd.Spec.ClassifierConfig.Classifier.Namespace; ns != "" && ns != dd.Namespace {
+		return fmt.Sprintf(
+			"spec.classifierConfig.classifier.namespace %q must match metadata.namespace %q",
+			ns, dd.Namespace)
+	}
+
 	if dd.Spec.Lazy &&
 		dd.Spec.InitialInstantiation != nil &&
 		dd.Spec.InitialInstantiation.Approach == "clone" {
