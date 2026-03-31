@@ -60,8 +60,8 @@ import org.slf4j.MDC;
 
 import java.io.EOFException;
 import java.io.IOException;
-import java.net.URL;
 import java.net.SocketException;
+import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
@@ -75,10 +75,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.netcracker.it.dbaas.test.AbstractIT.DEFAULT_RETRY_POLICY;
-import static com.netcracker.it.dbaas.test.AbstractIT.DBAAS_SERVICE_NAME;
-import static com.netcracker.it.dbaas.test.AbstractIT.HTTP_PORT;
-import static com.netcracker.it.dbaas.test.AbstractIT.OPENSEARCH_TYPE;
+import static com.netcracker.it.dbaas.test.AbstractIT.*;
 import static io.undertow.server.handlers.SSLHeaderHandler.HTTPS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -89,6 +86,8 @@ import static org.junit.jupiter.api.Assertions.*;
 public class DbaasHelperV3 {
     public final static RetryPolicy<Object> AWAIT_DB_CREATION_RETRY_POLICY = new RetryPolicy<>()
             .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(2));
+    private final static RetryPolicy<Object> NAMESPACES_DBS_CLEANUP_POLICY = new RetryPolicy<>()
+            .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(10));
 
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
@@ -359,7 +358,7 @@ public class DbaasHelperV3 {
             assertThat(response.code(), is(HttpStatus.SC_OK));
 
             // wait for all logical databases to be deleted
-            Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(5))).run(() -> {
+            Failsafe.with(NAMESPACES_DBS_CLEANUP_POLICY).run(() -> {
                 var logicalDatabases = this.findLogicalDatabasesByNamespaces(namespaces);
 
                 assertTrue(logicalDatabases.isEmpty(), "Namespaces still have the following logical databases: " +
@@ -414,6 +413,14 @@ public class DbaasHelperV3 {
                         databases.stream().map(DatabaseV3::getName).collect(Collectors.joining(",")));
             });
             return response.body() != null ? response.body().string() : null;
+        }
+    }
+
+    public void deleteDatabasesAsync(String api, String authorization, String namespace, int httpCode) throws IOException {
+        Request request = deleteDatabasesRequest(api, authorization, namespace);
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            log.info("Response: {}", response);
+            assertThat(response.code(), is(httpCode));
         }
     }
 
@@ -1399,6 +1406,18 @@ public class DbaasHelperV3 {
         }
         Request request = createRequest(String.format(url, dbName, withDecryptedPassword), clusterDbaAuthorization, null, "GET");
         return Arrays.asList(executeRequest(request, DatabaseV3[].class, 200));
+    }
+
+    public List<DatabaseV3> getMarkedForDrop(List<String> namespaces) {
+        String url = "api/v3/dbaas/databases/marked-for-drop";
+        Request request = createRequest(url, clusterDbaAuthorization, namespaces, "POST");
+        return Arrays.asList(executeRequest(request, DatabaseV3[].class, 200));
+    }
+
+    public List<DatabaseV3> cleanupMarkedForDrop(CleanupMarkedForDropRequest body, int expectedHttpCode) {
+        String url = "api/v3/dbaas/databases/marked-for-drop";
+        Request request = createRequest(url, clusterDbaAuthorization, body, "DELETE");
+        return Arrays.asList(executeRequest(request, DatabaseV3[].class, expectedHttpCode));
     }
 
     public List<LostDatabasesResponse> findLostDatabases() {

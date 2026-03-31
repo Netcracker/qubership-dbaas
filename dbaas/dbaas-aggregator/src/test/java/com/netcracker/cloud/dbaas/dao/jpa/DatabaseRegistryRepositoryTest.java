@@ -11,7 +11,6 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
 import jakarta.persistence.EntityManager;
-
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -140,18 +139,8 @@ class DatabaseRegistryRepositoryTest {
     void testDelete() {
         DatabaseRegistry db = generateRandomDatabase(true);
         when(databasesRepository.findByIdOptional(db.getDatabase().getId())).thenReturn(Optional.of(db.getDatabase()));
-        databaseRegistryDbaasRepository.delete(db);
-
-        verify(databasesRepository, times(1)).delete(eq(db.getDatabase()));
-    }
-
-    @Test
-    void testDeleteById() {
-        DatabaseRegistry db = generateRandomDatabase(true);
-
-        when(databasesRepository.findByIdOptional(db.getDatabase().getId())).thenReturn(Optional.of(db.getDatabase()));
         when(databaseRegistryRepository.findByIdOptional(db.getId())).thenReturn(Optional.of(db));
-        databaseRegistryDbaasRepository.deleteById(db.getId());
+        databaseRegistryDbaasRepository.delete(db);
 
         verify(databasesRepository, times(1)).delete(eq(db.getDatabase()));
     }

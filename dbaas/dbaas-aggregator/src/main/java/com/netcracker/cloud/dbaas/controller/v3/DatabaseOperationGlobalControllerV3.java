@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
 import com.netcracker.cloud.dbaas.dto.v3.UpdateHostRequest;
@@ -8,6 +7,7 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
 import com.netcracker.cloud.dbaas.exceptions.RequestValidationException;
 import com.netcracker.cloud.dbaas.service.OperationService;
+import com.netcracker.cloud.dbaas.service.ResponseHelper;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
@@ -40,17 +40,12 @@ import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
         description = "This controller provides APIs for performing operations on existing databases and users " +
                 "without requiring a specific namespace in the endpoints.")
 @Produces(MediaType.APPLICATION_JSON)
-public class DatabaseOperationGlobalControllerV3 extends AbstractDatabaseAdministrationController {
-
-    private OperationService operationService;
-
-    public DatabaseOperationGlobalControllerV3() {}
+public class DatabaseOperationGlobalControllerV3 {
 
     @Inject
-    public DatabaseOperationGlobalControllerV3(OperationService operationService) {
-        this.operationService = operationService;
-    }
-
+    OperationService operationService;
+    @Inject
+    ResponseHelper responseHelper;
 
     @Operation(summary = "V3. Update Physical Host in Connection Properties",
             description = "This API updates the physical database host in the connection properties of logical databases. " +
@@ -64,7 +59,7 @@ public class DatabaseOperationGlobalControllerV3 extends AbstractDatabaseAdminis
     @POST
     @RolesAllowed(DB_CLIENT)
     public Response updateHost(@Parameter(description = "List of request objects", required = true)
-                                   List<UpdateHostRequest> updateHostRequests) {
+                               List<UpdateHostRequest> updateHostRequests) {
         log.info("Received request to change physical db host of logical db {}", updateHostRequests);
         Response response = validateRequest(updateHostRequests);
         if (response != null) {
