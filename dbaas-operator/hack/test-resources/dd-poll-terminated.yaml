@@ -18,8 +18,7 @@ metadata:
   name: dd-poll-terminated
   namespace: test-ns
 spec:
-  classifierConfig:
-    classifier:
+  classifier:
       microserviceName: dd-poll-terminated
       scope: service
   type: postgresql

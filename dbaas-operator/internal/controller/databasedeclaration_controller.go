@@ -120,7 +120,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 		// HTTP 202 Accepted — async operation started.
 		log.Info("database provisioning started asynchronously",
 			"trackingId", resp.TrackingID,
-			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+			"microserviceName", dd.Spec.Classifier.MicroserviceName)
 		markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s)", resp.TrackingID)
@@ -129,11 +129,11 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 
 	// HTTP 200 OK — synchronous completion.
 	log.Info("database provisioned synchronously",
-		"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+		"microserviceName", dd.Spec.Classifier.MicroserviceName)
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 		"database provisioned synchronously (microserviceName=%s)",
-		dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+		dd.Spec.Classifier.MicroserviceName)
 	return ctrl.Result{}, nil
 }
 
@@ -173,7 +173,7 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1alpha1.DatabaseD
 		Metadata: aggregatorclient.DeclarativeMeta{
 			Name:             dd.Name,
 			Namespace:        dd.Namespace,
-			MicroserviceName: dd.Spec.ClassifierConfig.Classifier.MicroserviceName,
+			MicroserviceName: dd.Spec.Classifier.MicroserviceName,
 		},
 		Spec: dd.Spec,
 	}
@@ -224,14 +224,14 @@ func pollConditionText(resp *aggregatorclient.DeclarativeResponse, fallback stri
 }
 
 func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) string {
-	// CRD enforces: classifierConfig.required, classifier.microserviceName/scope required+minLength,
+	// CRD enforces: classifier.required, classifier.microserviceName/scope required+minLength,
 	// type required+minLength. Controller handles cross-field constraints only.
 
 	// If classifier.namespace is set it must match the CR's own namespace.
 	// A mismatch is a permanent misconfiguration — no retry.
-	if ns := dd.Spec.ClassifierConfig.Classifier.Namespace; ns != "" && ns != dd.Namespace {
+	if ns := dd.Spec.Classifier.Namespace; ns != "" && ns != dd.Namespace {
 		return fmt.Sprintf(
-			"spec.classifierConfig.classifier.namespace %q must match metadata.namespace %q",
+			"spec.classifier.namespace %q must match metadata.namespace %q",
 			ns, dd.Namespace)
 	}
 
@@ -250,9 +250,8 @@ func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) stri
 	if dd.Spec.InitialInstantiation != nil &&
 		dd.Spec.InitialInstantiation.SourceClassifier != nil &&
 		dd.Spec.InitialInstantiation.SourceClassifier.MicroserviceName !=
-			dd.Spec.ClassifierConfig.Classifier.MicroserviceName {
-		return "spec: initialInstantiation.sourceClassifier.microserviceName must match" +
-			" classifierConfig.classifier.microserviceName"
+			dd.Spec.Classifier.MicroserviceName {
+		return "spec: initialInstantiation.sourceClassifier.microserviceName must match classifier.microserviceName"
 	}
 
 	return ""
@@ -331,12 +330,12 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 	case aggregatorclient.TaskStateCompleted:
 		log.Info("database provisioned",
 			"trackingId", trackingID,
-			"microserviceName", dd.Spec.ClassifierConfig.Classifier.MicroserviceName)
+			"microserviceName", dd.Spec.Classifier.MicroserviceName)
 		clearPendingOperation(dd)
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 			"database provisioned (microserviceName=%s, trackingId=%s)",
-			dd.Spec.ClassifierConfig.Classifier.MicroserviceName, trackingID)
+			dd.Spec.Classifier.MicroserviceName, trackingID)
 		return ctrl.Result{}, nil
 
 	case aggregatorclient.TaskStateFailed:

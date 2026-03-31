@@ -50,14 +50,6 @@ type Classifier struct {
 	CustomKeys map[string]string `json:"customKeys,omitempty"`
 }
 
-// ClassifierConfig holds the classifier that uniquely identifies a database in dbaas.
-type ClassifierConfig struct {
-	// classifier is the set of keys that uniquely identify this database.
-	// Required keys: microserviceName, scope.
-	// +kubebuilder:validation:Required
-	Classifier Classifier `json:"classifier"`
-}
-
 // VersioningConfig defines the strategy for managing database versions during
 // blue-green deployments. Mirrors DatabaseDeclaration.VersioningConfig in the aggregator.
 type VersioningConfig struct {
@@ -78,7 +70,7 @@ type InitialInstantiation struct {
 
 	// sourceClassifier is the classifier of the database to clone from.
 	// Required when approach is "clone". Must reference an existing database in dbaas.
-	// microserviceName must match classifierConfig.classifier.microserviceName.
+	// microserviceName must match classifier.microserviceName.
 	// +optional
 	SourceClassifier *Classifier `json:"sourceClassifier,omitempty"`
 }
@@ -93,10 +85,11 @@ type InitialInstantiation struct {
 //
 // Field names and semantics match the DatabaseDeclaration Java DTO in the aggregator.
 type DatabaseDeclarationSpec struct {
-	// classifierConfig contains the classifier that uniquely identifies this database
-	// in dbaas. The aggregator uses it to look up or create the physical database.
+	// classifier uniquely identifies this database in dbaas.
+	// The aggregator uses it to look up or create the physical database.
+	// Required keys: microserviceName, scope.
 	// +kubebuilder:validation:Required
-	ClassifierConfig ClassifierConfig `json:"classifierConfig"`
+	Classifier Classifier `json:"classifier"`
 
 	// type is the database engine type. Must match a type known to dbaas-aggregator,
 	// e.g. "postgresql", "mongodb", "opensearch".

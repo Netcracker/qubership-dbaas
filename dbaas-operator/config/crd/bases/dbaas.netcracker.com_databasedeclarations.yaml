@@ -52,52 +52,45 @@ spec:
           spec:
             description: spec defines the desired state of DatabaseDeclaration.
             properties:
-              classifierConfig:
+              classifier:
                 description: |-
-                  classifierConfig contains the classifier that uniquely identifies this database
-                  in dbaas. The aggregator uses it to look up or create the physical database.
+                  classifier uniquely identifies this database in dbaas.
+                  The aggregator uses it to look up or create the physical database.
+                  Required keys: microserviceName, scope.
                 properties:
-                  classifier:
+                  customKeys:
+                    additionalProperties:
+                      type: string
                     description: |-
-                      classifier is the set of keys that uniquely identify this database.
-                      Required keys: microserviceName, scope.
-                    properties:
-                      customKeys:
-                        additionalProperties:
-                          type: string
-                        description: |-
-                          customKeys is an optional nested map for adapter-specific or
-                          application-specific identifiers (e.g. logicalDBName).
-                          Values are arbitrary strings; not validated by the aggregator.
-                        type: object
-                      microserviceName:
-                        description: |-
-                          microserviceName is the name of the microservice that owns the database.
-                          Must match metadata.microserviceName sent in the declarative payload.
-                        minLength: 1
-                        type: string
-                      namespace:
-                        description: |-
-                          namespace is the Kubernetes namespace of the owning service.
-                          If omitted, the aggregator uses metadata.namespace from the request.
-                        type: string
-                      scope:
-                        description: scope defines the logical scope of the database,
-                          e.g. "service" or "tenant".
-                        minLength: 1
-                        type: string
-                      tenantId:
-                        description: |-
-                          tenantId is the tenant identifier for multi-tenant deployments.
-                          Only relevant when scope="tenant". When absent, the aggregator applies
-                          the declaration for every tenant already registered in the namespace.
-                        type: string
-                    required:
-                    - microserviceName
-                    - scope
+                      customKeys is an optional nested map for adapter-specific or
+                      application-specific identifiers (e.g. logicalDBName).
+                      Values are arbitrary strings; not validated by the aggregator.
                     type: object
+                  microserviceName:
+                    description: |-
+                      microserviceName is the name of the microservice that owns the database.
+                      Must match metadata.microserviceName sent in the declarative payload.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: |-
+                      namespace is the Kubernetes namespace of the owning service.
+                      If omitted, the aggregator uses metadata.namespace from the request.
+                    type: string
+                  scope:
+                    description: scope defines the logical scope of the database,
+                      e.g. "service" or "tenant".
+                    minLength: 1
+                    type: string
+                  tenantId:
+                    description: |-
+                      tenantId is the tenant identifier for multi-tenant deployments.
+                      Only relevant when scope="tenant". When absent, the aggregator applies
+                      the declaration for every tenant already registered in the namespace.
+                    type: string
                 required:
-                - classifier
+                - microserviceName
+                - scope
                 type: object
               initialInstantiation:
                 description: |-
@@ -114,7 +107,7 @@ spec:
                     description: |-
                       sourceClassifier is the classifier of the database to clone from.
                       Required when approach is "clone". Must reference an existing database in dbaas.
-                      microserviceName must match classifierConfig.classifier.microserviceName.
+                      microserviceName must match classifier.microserviceName.
                     properties:
                       customKeys:
                         additionalProperties:
@@ -186,7 +179,7 @@ spec:
                     type: string
                 type: object
             required:
-            - classifierConfig
+            - classifier
             - type
             type: object
           status:
@@ -199,7 +192,7 @@ spec:
                     - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   False on any error; see Reason for the category.
-                                  ExternalDatabaseDeclaration: reason "Registered" on success.
+                                  ExternalDatabaseDeclaration: reason "DatabaseRegistered" on success.
                                   DbPolicy: reason "PolicyApplied" on success.
                                   DatabaseDeclaration: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
