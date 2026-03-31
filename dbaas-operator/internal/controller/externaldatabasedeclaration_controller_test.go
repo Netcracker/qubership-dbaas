@@ -229,7 +229,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
-			Expect(ready.Reason).To(Equal(EventReasonRegistered))
+			Expect(ready.Reason).To(Equal(EventReasonDatabaseRegistered))
 			Expect(ready.ObservedGeneration).To(Equal(edb.Generation))
 
 			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
@@ -237,7 +237,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonDatabaseRegistered)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -261,7 +261,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
-			Expect(ready.Reason).To(Equal(EventReasonRegistered))
+			Expect(ready.Reason).To(Equal(EventReasonDatabaseRegistered))
 			Expect(ready.ObservedGeneration).To(Equal(edb.Generation))
 
 			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
@@ -269,7 +269,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(stalled.Reason).To(Equal(ReasonSucceeded))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonDatabaseRegistered)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -711,13 +711,13 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
-			Expect(ready.Reason).To(Equal(EventReasonRegistered))
+			Expect(ready.Reason).To(Equal(EventReasonDatabaseRegistered))
 
 			stalled := findCondition(edb.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonRegistered)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonDatabaseRegistered)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})

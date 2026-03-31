@@ -109,8 +109,8 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 
 	log.Info("external database registered successfully",
 		"type", edb.Spec.Type, "dbName", edb.Spec.DbName)
-	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonRegistered)
-	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonRegistered,
+	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
+	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
 	return ctrl.Result{}, nil
 }

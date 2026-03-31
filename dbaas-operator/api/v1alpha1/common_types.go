@@ -83,7 +83,7 @@ type OperatorStatus struct {
 	//   - "Ready"   — True when the resource was successfully processed by
 	//                 dbaas-aggregator for the current generation.
 	//                 False on any error; see Reason for the category.
-	//                 ExternalDatabaseDeclaration: reason "Registered" on success.
+	//                 ExternalDatabaseDeclaration: reason "DatabaseRegistered" on success.
 	//                 DbPolicy: reason "PolicyApplied" on success.
 	//                 DatabaseDeclaration: reason "DatabaseProvisioned" on success;
 	//                   reason "ProvisioningStarted" while the async operation is in progress.
