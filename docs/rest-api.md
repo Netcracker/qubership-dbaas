@@ -18,6 +18,8 @@ such as type of database (service or tenant), microservice name and namespace, t
     * [Get databases by  dbName](#get-databases-by-dbname)
     * [Get database by classifier](#get-database-by-classifier)
     * [Delete database by classifier](#delete-database-by-classifier)
+    * [Get marked for drop databases](#get-marked-for-drop-databases)
+    * [Cleanup marked for drop databases](#cleanup-marked-for-drop-databases)
     * [List of ghosts and lost databases](#list-of-ghosts-and-lost-databases-deprecated)
     * [External database registration](#external-database-registration)
   * [Database operations](#database-operations)
@@ -617,6 +619,152 @@ Deletes database by classifier in the specific namespace.
   Response:
     ```text
     OK 200
+    ```
+
+### Get marked for drop databases
+Get list of marked for drop databases. 
+
+Returns list of databases with marked for drop state related to requested namespaces (orphan databases are also included).
+
+* **URI:**  `POST {dbaas_host}/api/v3/dbaas/databases/marked-for-drop`
+* **Headers:**  
+  `Content-Type: application/json`
+* **Authorization:**
+  Basic type with credentials with `namespace_cleaner` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
+  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password).
+* **Request body:**
+
+| Type     | Name                           | Description                                                               | Schema       |
+|----------|--------------------------------|---------------------------------------------------------------------------|--------------|
+| **Body** | **namespaces**  <br>*required* | List of namespaces by which marked for drop databases is needed to return | List<String> |
+
+* **Success Response:**
+
+| HTTP Code | Description       | Schema                                                   |
+|-----------|-------------------|----------------------------------------------------------|
+| **200**   | List of databases | List <[DatabaseResponseListCP](#databaseresponselistcp)> |
+
+* **Error Response:**
+
+| HTTP Code | Description               | Schema |
+|-----------|---------------------------|--------|
+| **400**   | Bad request               | String |
+| **401**   | Unauthorized              | String |
+| **500**   | Internal processing error | String |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl -X POST \
+     http://localhost:8080/api/v3/dbaas/databases/marked-for-drop \
+      -H "Authorization: Basic ..." \
+      -H 'Content-Type: application/json' \
+      -d '["namespace1","namespace2"]'
+    ```
+  Response:
+    ```text
+    OK 200
+    ```
+  Response body:
+    ```json
+    [
+        {
+            "id": "ec7e240d-f952-4949-9fd0-fc784238d582",
+            "classifier": {
+                "MARKED_FOR_DROP": "MARKED_FOR_DROP",
+                "microserviceName": "ms1",
+                "namespace": "namespace1",
+                "scope": "service"
+            },
+            "namespace": "namespace1",
+            "type": "postgresql",
+            "name": "ms1_namespace1_105915143310326",
+            "externallyManageable": false,
+            "timeDbCreation": "2026-03-31T10:59:16.303+00:00",
+            "settings": null,
+            "backupDisabled": false,
+            "physicalDatabaseId": "postgresql-dbaas",
+            "connectionProperties": [...]
+        },
+    ...
+    ]
+    ```
+
+### Cleanup marked for drop databases
+Cleanup marked for drop databases.
+
+Housekeeping operation which drops all databases with marked for drop state (orphan databases are also included).
+
+* **URI:**  `DELETE {dbaas_host}/api/v3/dbaas/databases/marked-for-drop`
+* **Headers:**  
+  `Content-Type: application/json`
+* **Authorization:**
+  Basic type with credentials with `namespace_cleaner` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
+  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password).
+* **Request body:**
+
+| Type     | Name                        | Description                             | Schema                                                      |
+|----------|-----------------------------|-----------------------------------------|-------------------------------------------------------------|
+| **Body** | **request**  <br>*required* | Body with extra parameters for deletion | [CleanupMarkedForDropRequest](#cleanupmarkedfordroprequest) |
+
+* **Success Response:**
+
+| HTTP Code | Description                                                                             | Schema                                                   |
+|-----------|-----------------------------------------------------------------------------------------|----------------------------------------------------------|
+| **200**   | If **delete**=false. List of marked for drop databases, no cleanup performed            | List <[DatabaseResponseListCP](#databaseresponselistcp)> |
+| **202**   | If **delete**=true. List of marked for drop databases, async cleanup process is started | List <[DatabaseResponseListCP](#databaseresponselistcp)> |
+
+* **Error Response:**
+
+| HTTP Code | Description                                                             | Schema |
+|-----------|-------------------------------------------------------------------------|--------|
+| **400**   | Bad request                                                             | String |
+| **401**   | Unauthorized                                                            | String |
+| **403**   | Dbaas is working in PROD mode. Deleting logical databases is prohibited | String |
+| **500**   | Internal processing error                                               | String |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl -X DELETE \
+     http://localhost:8080/api/v3/dbaas/databases/marked-for-drop \
+      -H "Authorization: Basic ..." \
+      -H 'Content-Type: application/json' \
+      -d '{
+            "namespaces": ["namespace1","namespace2"], 
+            "delete": false, 
+            "force": false
+          }'
+    ```
+  Response:
+    ```text
+    OK 200
+    ```
+  Response body:
+    ```json
+    [
+        {
+            "id": "ec7e240d-f952-4949-9fd0-fc784238d582",
+            "classifier": {
+                "MARKED_FOR_DROP": "MARKED_FOR_DROP",
+                "microserviceName": "ms1",
+                "namespace": "namespace1",
+                "scope": "service"
+            },
+            "namespace": "namespace1",
+            "type": "postgresql",
+            "name": "ms1_namespace1_105915143310326",
+            "externallyManageable": false,
+            "timeDbCreation": "2026-03-31T10:59:16.303+00:00",
+            "settings": null,
+            "backupDisabled": false,
+            "physicalDatabaseId": "postgresql-dbaas",
+            "connectionProperties": [...]
+        },
+    ...
+    ]
     ```
   
 ### List of ghosts and lost databases. Deprecated.
@@ -5792,5 +5940,12 @@ For restore requests, include is optional.
 | **completed**  <br>*required*   | Number of databases successfully restored | Map<String, Object>                                        |
 | **errorMessage** <br>*optional* | Error details if the restore failed       | String                                                     |
 
+### CleanupMarkedForDropRequest
+
+| Name                           | Description                                                                                                                                                                                                               | Schema       |
+|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------|
+| **namespaces**  <br>*required* | A list of namespaces where the marked for drop databases should be cleaned                                                                                                                                                | List<String> |
+| **delete**                     | Confirmation parameter. If this is not passed or 'false' then marked for drop databases will not be deleted and response will contain marked for drop databases that are registered in DBaaS for the specified namespaces | Boolean      |
+| **force**                      | If this parameter is 'true', then deletion errors from physical adapters will be ignored                                                                                                                                  | Boolean      |
 
 

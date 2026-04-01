@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.controller;
 
+import com.netcracker.cloud.dbaas.service.DeletionService;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,8 @@ class BlueGreenControllerV1Test {
     DbaaSHelper dbaaSHelper;
     @Mock
     ProcessService processService;
+    @Mock
+    DeletionService deletionService;
     @InjectMocks
     BlueGreenControllerV1 blueGreenControllerV1;
 
@@ -275,7 +278,7 @@ class BlueGreenControllerV1Test {
         databaseRegistry.setPhysicalDatabaseId("adapter");
         databaseRegistry.setTimeDbCreation(new Date());
         databaseRegistry.setClassifier(new TreeMap<>(Map.of("namespace", NAMESPACE)));
-        when(blueGreenService.getOrphanDatabases(eq(namespaces))).thenReturn(List.of(databaseRegistry));
+        when(deletionService.getOrphanRegistries(eq(namespaces))).thenReturn(List.of(databaseRegistry));
 
         Response orphanDatabasesResponseEntity = blueGreenControllerV1.getOrphans(namespaces);
 

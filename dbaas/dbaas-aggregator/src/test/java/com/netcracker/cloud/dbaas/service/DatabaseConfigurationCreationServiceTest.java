@@ -1,8 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
 
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
@@ -12,29 +9,30 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.core.scheduler.po.DataContext;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
 import static com.netcracker.cloud.dbaas.service.DatabaseRolesServiceTest.POSTGRESQL_TYPE;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class DatabaseConfigurationCreationServiceTest {
-    DBaaService dBaaService;
     DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     LogicalDbDbaasRepository logicalDbDbaasRepository;
     ProcessService processService;
     DatabaseConfigurationCreationService databaseConfigurationCreationService;
 
     public DatabaseConfigurationCreationServiceTest() {
-        dBaaService = Mockito.mock(DBaaService.class);
         logicalDbDbaasRepository = Mockito.mock(LogicalDbDbaasRepository.class);
         databaseRegistryDbaasRepository = Mockito.mock(DatabaseRegistryDbaasRepository.class);
         processService = Mockito.mock(ProcessService.class);
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        this.databaseConfigurationCreationService = new DatabaseConfigurationCreationService(dBaaService,
+        this.databaseConfigurationCreationService = new DatabaseConfigurationCreationService(
                 logicalDbDbaasRepository, processService);
     }
 
@@ -242,37 +240,6 @@ class DatabaseConfigurationCreationServiceTest {
         assertEquals(databaseDeclarativeConfig, databaseProcessObject.get(0).getConfig());
         assertTrue(databaseProcessObject.get(0) instanceof NewDatabaseProcessObject);
         assertEquals("1", databaseProcessObject.get(0).getVersion());
-    }
-
-    @Test
-    void commitDatabasesService() {
-        String namespace = "test_namespace";
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        SortedMap<String, Object> classifier = new TreeMap<>();
-        classifier.put("microserviceName", "microserviceName");
-        classifier.put("scope", "service");
-        classifier.put("namespace", "namespace");
-        String type = "postgresql";
-        databaseConfigurationCreationService.commitDatabases(classifier, type, namespace);
-        Mockito.verify(databaseRegistryDbaasRepository).getDatabaseByClassifierAndType(classifier, type);
-        Mockito.verify(dBaaService).markVersionedDatabasesAsOrphan(anyList());
-        Mockito.verify(dBaaService).dropDatabasesAsync(eq(namespace), anyList());
-    }
-
-    @Test
-    void commitDatabasesTenant() {
-        String namespace = "test_namespace";
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        SortedMap<String, Object> classifier = new TreeMap<>();
-        classifier.put("microserviceName", "microserviceName");
-        classifier.put("scope", "tenant");
-        classifier.put("tenantId", "123");
-        classifier.put("namespace", "namespace");
-        String type = "postgresql";
-        databaseConfigurationCreationService.commitDatabases(classifier, type, namespace);
-        Mockito.verify(databaseRegistryDbaasRepository).findAllTenantDatabasesInNamespace(namespace);
-        Mockito.verify(dBaaService).markVersionedDatabasesAsOrphan(anyList());
-        Mockito.verify(dBaaService).dropDatabasesAsync(eq(namespace), anyList());
     }
 
     @Test

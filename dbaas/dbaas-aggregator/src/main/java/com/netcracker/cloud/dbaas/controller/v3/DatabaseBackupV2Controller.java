@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.enums.BackupStatus;
@@ -43,16 +44,10 @@ import static com.netcracker.cloud.dbaas.DbaasApiPath.BACKUP_PATH_V1;
 @Produces(MediaType.APPLICATION_JSON)
 @Tag(name = "Backup & Restore", description = "Backup & Restore operations for DBaaS")
 @RolesAllowed(BACKUP_MANAGER)
-public class DatabaseBackupV2Controller {
-
-    private final DbBackupV2Service dbBackupV2Service;
-    private final DbaaSHelper dbaaSHelper;
+public class DatabaseBackupV2Controller extends AbstractController {
 
     @Inject
-    public DatabaseBackupV2Controller(DbBackupV2Service dbBackupV2Service, DbaaSHelper dbaaSHelper) {
-        this.dbBackupV2Service = dbBackupV2Service;
-        this.dbaaSHelper = dbaaSHelper;
-    }
+    DbBackupV2Service dbBackupV2Service;
 
     @Operation(summary = "Initiate database backup",
             description = "Starts an asynchronous backup operation for the specified databases."
@@ -280,9 +275,7 @@ public class DatabaseBackupV2Controller {
                                                @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
         log.info("Request to restore backup with parallel execution allowed," +
                 " backup name {}, restore request {}, dryRun mode {}", backupName, restoreRequest, dryRun);
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
+        assertNotProdMode();
         return restore(backupName, restoreRequest, dryRun, true);
     }
 
@@ -391,9 +384,7 @@ public class DatabaseBackupV2Controller {
                                               @PathParam("restoreName")
                                               @NotBlank String restoreName) {
         log.info("Request to retry restore with parallel execution alllowed, restore name {}", restoreName);
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
+        assertNotProdMode();
         return Response.accepted(dbBackupV2Service.retryRestore(restoreName, true)).build();
     }
 
@@ -408,9 +399,7 @@ public class DatabaseBackupV2Controller {
                                        @NotBlank String backupName
     ) {
         log.info("Request to delete backup from db, backup name {}", backupName);
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
+        assertNotProdMode();
         dbBackupV2Service.deleteBackupFromDb(backupName);
         return Response.noContent().build();
     }
@@ -422,7 +411,7 @@ public class DatabaseBackupV2Controller {
     @DELETE
     @Path("/backup/deleteAll")
     public Response deleteAllBackupByNames(@QueryParam("backupNames")
-                                                   @NotNull @Separator(",") Set<String> backupNames) {
+                                           @NotNull @Separator(",") Set<String> backupNames) {
         log.info("Request to delete backups by names={}", backupNames);
         if (dbaaSHelper.isProductionMode()) {
             throw new ForbiddenDeleteOperationException();
@@ -438,7 +427,7 @@ public class DatabaseBackupV2Controller {
     @DELETE
     @Path("/restore/deleteAll")
     public Response deleteAllRestoreByNames(@QueryParam("restoreNames")
-                                               @NotNull @Separator(",") Set<String> restoreNames) {
+                                            @NotNull @Separator(",") Set<String> restoreNames) {
         log.info("Request to delete restore by names={}", restoreNames);
         if (dbaaSHelper.isProductionMode()) {
             throw new ForbiddenDeleteOperationException();

@@ -11,7 +11,6 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -53,65 +52,6 @@ public class DatabaseDbaasRepositoryImplEmbeddedTest {
         dbClassifier.remove("key3");
         foundDb = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(dbClassifier, POSTGRESQL);
         assertTrue(foundDb.isEmpty());
-    }
-
-    @Test
-    void findDatabasesByMicroserviceNameAndNamespace() {
-        List<DatabaseRegistry> databases = new ArrayList<>();
-
-        SortedMap<String, Object> dbClassifier = new TreeMap<>();
-        String microserviceName = "serviceName-test-one";
-        String namespace = "test-namespace";
-        dbClassifier.put("microserviceName", microserviceName);
-        dbClassifier.put("namespace", namespace);
-        dbClassifier.put("scope", "service");
-        DatabaseRegistry database = createDatabase(dbClassifier);
-        databases.add(database);
-
-        dbClassifier = new TreeMap<>(dbClassifier);
-        dbClassifier.put("tenantId", 123);
-        dbClassifier.put("scope", "tenant");
-        database = createDatabase(dbClassifier);
-        database.setMarkedForDrop(false);
-        databases.add(database);
-
-        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.saveAll(databases));
-
-        List<DatabaseRegistry> actualDatabases = databaseRegistryDbaasRepository.findDatabasesByMicroserviceNameAndNamespace(microserviceName, namespace);
-        assertEquals(2, actualDatabases.size());
-    }
-
-    @Test
-    void findDatabasesByMicroserviceNameAndNamespaceOnlyOne() {
-        List<DatabaseRegistry> databases = new ArrayList<>();
-
-        SortedMap<String, Object> dbClassifier = new TreeMap<>();
-        String microserviceName = "serviceName-test-two";
-        String namespace = "test-namespace";
-        dbClassifier.put("microserviceName", microserviceName);
-        dbClassifier.put("namespace", namespace);
-        dbClassifier.put("scope", "service");
-        DatabaseRegistry database = createDatabase(dbClassifier);
-        databases.add(database);
-
-        dbClassifier = new TreeMap<>(dbClassifier);
-        dbClassifier.put("tenantId", 123);
-        dbClassifier.put("scope", "tenant");
-        database = createDatabase(dbClassifier);
-        database.setMarkedForDrop(true);
-        databases.add(database);
-
-        dbClassifier = new TreeMap<>(dbClassifier);
-        dbClassifier.put("microserviceName", "serviceName-test-three");
-        database = createDatabase(dbClassifier);
-        database.setMarkedForDrop(true);
-        databases.add(database);
-
-        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.saveAll(databases));
-
-        List<DatabaseRegistry> actualDatabases = databaseRegistryDbaasRepository.findDatabasesByMicroserviceNameAndNamespace(microserviceName, namespace);
-
-        assertEquals(1, actualDatabases.size());
     }
 
     @Test

@@ -109,7 +109,7 @@ class DbaasDatabaseStabilityTest {
 
         QuarkusTransaction.requiringNew().run(() -> {
             databaseRegistryDbaasRepository.saveAnyTypeLogDb(databaseRegistry2);
-            databaseRegistryDbaasRepository.deleteById(databaseRegistry.getId());
+            databaseRegistryDbaasRepository.delete(databaseRegistry);
         });
         Optional<DatabaseRegistry> founded_dbr1 = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(databaseRegistry.getClassifier(), POSTGRESQL);
         Assertions.assertTrue(founded_dbr1.isEmpty());
@@ -118,7 +118,7 @@ class DbaasDatabaseStabilityTest {
         assertEquals(database.getId(), founded_dbr2.get().getDatabase().getId());
 
         databasesRepository.getEntityManager().clear();
-        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.deleteById(databaseRegistry2.getId()));
+        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.delete(databaseRegistry2));
         founded_dbr2 = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(databaseRegistry2.getClassifier(), POSTGRESQL);
         Assertions.assertTrue(founded_dbr2.isEmpty());
         Optional<Database> db = databasesRepository.findByIdOptional(database.getId());
@@ -138,14 +138,14 @@ class DbaasDatabaseStabilityTest {
 
         log.info("pgdb = {}", pgDatabase);
         log.info("h2db = {}", h2Database);
-        assertEquals(pgDatabase.get().getId(), h2Database.get().getId());
-        assertEquals(pgDatabase.get().getClassifier(), h2Database.get().getClassifier());
-        assertEquals(pgDatabase.get().getId(), h2Database.get().getId());
-        final UUID pgDatabaseId = pgDatabase.get().getId();
+        DatabaseRegistry databaseRegistry = pgDatabase.get();
+        assertEquals(databaseRegistry.getId(), h2Database.get().getId());
+        assertEquals(databaseRegistry.getClassifier(), h2Database.get().getClassifier());
+        assertEquals(databaseRegistry.getId(), h2Database.get().getId());
         h2DatabaseRegistryRepository.getEntityManager().clear();
-        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.deleteById(pgDatabaseId));
+        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.delete(databaseRegistry));
         await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
-                .until(() -> h2DatabaseRegistryRepository.findByIdOptional(pgDatabaseId).isEmpty());
+                .until(() -> h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId()).isEmpty());
         pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
         h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
         log.info("pgdb = {}", pgDatabase);
@@ -170,26 +170,26 @@ class DbaasDatabaseStabilityTest {
 
     @Test
     void testSavingExternalDatabase() {
-        DatabaseRegistry database = getExternalDatabaseRequestObject().toDatabaseRegistry();
-        database.getClassifier().put("externalDatabase", "external");
+        DatabaseRegistry databaseRegistry = getExternalDatabaseRequestObject().toDatabaseRegistry();
+        databaseRegistry.getClassifier().put("externalDatabase", "external");
 
-        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(database));
+        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(databaseRegistry));
         await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
-                .until(() -> h2DatabaseRegistryRepository.findByIdOptional(database.getId()).isPresent());
+                .until(() -> h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId()).isPresent());
 
-        Optional<DatabaseRegistry> pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
-        Optional<com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry> h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
+        Optional<DatabaseRegistry> pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
+        Optional<com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry> h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
         log.info("pgdb = {}", pgDatabase);
         log.info("h2db = {}", h2Database);
         assertEquals(pgDatabase.get().getDatabase().getId(), h2Database.get().getDatabase().getId());
         assertEquals(pgDatabase.get().getClassifier(), h2Database.get().getClassifier());
         h2DatabaseRegistryRepository.getEntityManager().clear();
-        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.deleteById(database.getId()));
+        QuarkusTransaction.requiringNew().run(() -> databaseRegistryDbaasRepository.delete(databaseRegistry));
         await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
-                .until(() -> h2DatabaseRegistryRepository.findByIdOptional(database.getId()).isEmpty());
+                .until(() -> h2DatabaseRegistryRepository.findByIdOptional(databaseRegistry.getId()).isEmpty());
 
-        pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
-        h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(database.getClassifier(), database.getType());
+        pgDatabase = databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
+        h2Database = h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), databaseRegistry.getType());
         log.info("pgdb = {}", pgDatabase);
         log.info("h2db = {}", h2Database);
         assertTrue(pgDatabase.isEmpty());

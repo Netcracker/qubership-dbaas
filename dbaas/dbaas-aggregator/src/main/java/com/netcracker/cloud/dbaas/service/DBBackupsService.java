@@ -20,7 +20,6 @@ import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
 import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -53,30 +52,30 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 @Slf4j
 @ApplicationScoped
 public class DBBackupsService {
-    private final DBaaService dBaaService;
     private final PhysicalDatabasesService physicalDatabasesService;
     private final DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     private final BackupsDbaasRepository backupsDbaasRepository;
     private final PasswordEncryption encryption;
     private final EntityManager entityManager;
     private final DbaaSHelper dbaaSHelper;
+    private final DeletionService deletionService;
 
     private final ExecutorService asyncExecutorService = Executors.newSingleThreadExecutor();
 
-    public DBBackupsService(DBaaService dBaaService, PhysicalDatabasesService physicalDatabasesService,
+    public DBBackupsService(PhysicalDatabasesService physicalDatabasesService,
                             DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository, BackupsDbaasRepository backupsDbaasRepository,
-                            PasswordEncryption encryption, EntityManager entityManager, DbaaSHelper dbaaSHelper) {
-        this.dBaaService = dBaaService;
+                            PasswordEncryption encryption, EntityManager entityManager, DbaaSHelper dbaaSHelper, DeletionService deletionService) {
         this.physicalDatabasesService = physicalDatabasesService;
         this.databaseRegistryDbaasRepository = databaseRegistryDbaasRepository;
         this.backupsDbaasRepository = backupsDbaasRepository;
         this.encryption = encryption;
         this.entityManager = entityManager;
         this.dbaaSHelper = dbaaSHelper;
+        this.deletionService = deletionService;
     }
 
     private Predicate<DatabaseRegistry> notMarkedForDrop() {
-        return ((Predicate<DatabaseRegistry>) DatabaseRegistry::isMarkedForDrop).negate();
+        return Predicate.not(DeletionService::isMarkedForDrop);
     }
 
     @Transactional
@@ -90,7 +89,7 @@ public class DBBackupsService {
         List<DeleteResult> deleteResults = new ArrayList<>();
 
         var allDatabasesBackupsWithoutLocalId = backupToDelete.getBackups().stream()
-            .allMatch(databasesBackup -> databasesBackup.getLocalId() == null);
+                .allMatch(databasesBackup -> databasesBackup.getLocalId() == null);
 
         if (allDatabasesBackupsWithoutLocalId) {
             result.setStatus(Status.SUCCESS);
@@ -99,27 +98,27 @@ public class DBBackupsService {
             backupsDbaasRepository.save(backupToDelete);
 
             deleteResults = backupToDelete.getBackups().stream()
-                .filter(databasesBackup -> databasesBackup.getLocalId() != null)
-                .peek(this::backupValidation)
-                .map(backup -> {
-                    String adapterId = backup.getAdapterId();
-                    log.info("backup with adapter id {} has {} databases to delete", adapterId, backup.getDatabases().size());
-                    if (log.isDebugEnabled()) {
-                        log.debug("Backup contains adapter {}", physicalDatabasesService.getAdapterById(adapterId).toString());
-                    }
-                    return physicalDatabasesService.getAdapterById(adapterId).delete(backup);
-                }).collect(Collectors.toList());
+                    .filter(databasesBackup -> databasesBackup.getLocalId() != null)
+                    .peek(this::backupValidation)
+                    .map(backup -> {
+                        String adapterId = backup.getAdapterId();
+                        log.info("backup with adapter id {} has {} databases to delete", adapterId, backup.getDatabases().size());
+                        if (log.isDebugEnabled()) {
+                            log.debug("Backup contains adapter {}", physicalDatabasesService.getAdapterById(adapterId).toString());
+                        }
+                        return physicalDatabasesService.getAdapterById(adapterId).delete(backup);
+                    }).collect(Collectors.toList());
 
             if (log.isDebugEnabled()) {
                 log.debug("Backup deletion result is {}", deleteResults);
             }
 
             result.setStatus(deleteResults.stream()
-                .map(DeleteResult::getStatus)
-                .map(Status::ordinal)
-                .max(Integer::compareTo)
-                .map(it -> Status.values()[it])
-                .orElse(Status.FAIL));
+                    .map(DeleteResult::getStatus)
+                    .map(Status::ordinal)
+                    .max(Integer::compareTo)
+                    .map(it -> Status.values()[it])
+                    .orElse(Status.FAIL));
 
             if (log.isDebugEnabled()) {
                 log.debug("Backup deletion result is {}", result);
@@ -130,7 +129,7 @@ public class DBBackupsService {
 
         if (result.getStatus() == Status.FAIL) {
             log.error("Not all backups was deleted successfully {} in namespace {}",
-                backupToDelete.getBackups(), backupToDelete.getNamespace());
+                    backupToDelete.getBackups(), backupToDelete.getNamespace());
             backupToDelete.setStatus(NamespaceBackup.Status.DELETION_FAILED);
             String failReason = "Expected all backups deleted successful, but got: " + stringifyFailedDeletion(deleteResults);
             if (log.isDebugEnabled()) {
@@ -138,13 +137,13 @@ public class DBBackupsService {
             }
             result.getFailReasons().add(failReason);
             long failedNumber = deleteResults
-                .stream()
-                .map(DeleteResult::getStatus)
-                .filter(it -> Status.FAIL == it).count();
+                    .stream()
+                    .map(DeleteResult::getStatus)
+                    .filter(it -> Status.FAIL == it).count();
             log.error("During deletion of backup {} failed {} subdeletion and fail reason: {}",
-                backupToDelete.getId(),
-                failedNumber,
-                failReason);
+                    backupToDelete.getId(),
+                    failedNumber,
+                    failReason);
             backupsDbaasRepository.save(backupToDelete);
             throw new NamespaceBackupDeletionFailedException(backupToDelete.getId(), failedNumber, backupToDelete);
         }
@@ -188,7 +187,7 @@ public class DBBackupsService {
                 allSkippedDeletedNamespaceBackupIdsAmount = notDeletableNamespaceBackupIds.size();
 
                 log.warn("Skipped deletion of {} namespace backups with ids {} because its can not be deleted",
-                    notDeletableNamespaceBackupIds.size(), notDeletableNamespaceBackupIds
+                        notDeletableNamespaceBackupIds.size(), notDeletableNamespaceBackupIds
                 );
             }
         }
@@ -207,11 +206,11 @@ public class DBBackupsService {
                 portionNumber += 1;
 
                 var namespaceBackupsIds = namespaceBackups.stream()
-                    .map(NamespaceBackup::getId)
-                    .toList();
+                        .map(NamespaceBackup::getId)
+                        .toList();
 
                 log.info("Started deletion of {} namespace backups by portion with number {}, namespace backup ids {}",
-                    namespaceBackupsIds.size(), portionNumber, namespaceBackupsIds
+                        namespaceBackupsIds.size(), portionNumber, namespaceBackupsIds
                 );
 
                 var failedDeleteNamespaceBackups = new ArrayList<NamespaceBackup>();
@@ -229,42 +228,42 @@ public class DBBackupsService {
                         failedDeleteNamespaceBackups.add(namespaceBackup);
 
                         log.error("Error happened during deletion of namespace backup with id {}",
-                            namespaceBackupId, ex
+                                namespaceBackupId, ex
                         );
                     }
                 }
 
                 var failedDeleteNamespaceBackupsIds = failedDeleteNamespaceBackups.stream()
-                    .map(NamespaceBackup::getId)
-                    .toList();
+                        .map(NamespaceBackup::getId)
+                        .toList();
 
                 var successfullyDeletedNamespaceBackupsIds = namespaceBackups.stream()
-                    .map(NamespaceBackup::getId)
-                    .filter(Predicate.not(failedDeleteNamespaceBackupsIds::contains))
-                    .toList();
+                        .map(NamespaceBackup::getId)
+                        .filter(Predicate.not(failedDeleteNamespaceBackupsIds::contains))
+                        .toList();
 
                 allSuccessfullyDeletedNamespaceBackupIdsAmount += successfullyDeletedNamespaceBackupsIds.size();
                 allFailedDeletedNamespaceBackupIdsAmount += failedDeleteNamespaceBackupsIds.size();
 
                 log.info("""
-                        Finished deletion of {} namespace backups by portion with number {}, successfully deleted {} namespace backups with ids {}, \
-                        failed deleted {} ones with ids {}""",
+                                Finished deletion of {} namespace backups by portion with number {}, successfully deleted {} namespace backups with ids {}, \
+                                failed deleted {} ones with ids {}""",
 
-                    namespaceBackupsIds.size(), portionNumber, successfullyDeletedNamespaceBackupsIds.size(),
-                    successfullyDeletedNamespaceBackupsIds, failedDeleteNamespaceBackupsIds.size(), failedDeleteNamespaceBackupsIds
+                        namespaceBackupsIds.size(), portionNumber, successfullyDeletedNamespaceBackupsIds.size(),
+                        successfullyDeletedNamespaceBackupsIds, failedDeleteNamespaceBackupsIds.size(), failedDeleteNamespaceBackupsIds
                 );
             }
         } while (CollectionUtils.isNotEmpty(namespaceBackups));
 
         var allNamespaceBackupsAmount = allSuccessfullyDeletedNamespaceBackupIdsAmount
-            + allSkippedDeletedNamespaceBackupIdsAmount + allFailedDeletedNamespaceBackupIdsAmount;
+                + allSkippedDeletedNamespaceBackupIdsAmount + allFailedDeletedNamespaceBackupIdsAmount;
 
         log.info("""
-            Finished deletion of all {} namespace backups in {} namespaces {}, successfully deleted {} namespace backups, \
-            skipped deletion of {} ones, failed deleted {} ones""",
+                        Finished deletion of all {} namespace backups in {} namespaces {}, successfully deleted {} namespace backups, \
+                        skipped deletion of {} ones, failed deleted {} ones""",
 
-            allNamespaceBackupsAmount, namespaces.size(), namespaces, allSuccessfullyDeletedNamespaceBackupIdsAmount,
-            allSkippedDeletedNamespaceBackupIdsAmount, allFailedDeletedNamespaceBackupIdsAmount
+                allNamespaceBackupsAmount, namespaces.size(), namespaces, allSuccessfullyDeletedNamespaceBackupIdsAmount,
+                allSkippedDeletedNamespaceBackupIdsAmount, allFailedDeletedNamespaceBackupIdsAmount
         );
     }
 
@@ -300,7 +299,7 @@ public class DBBackupsService {
             List<DatabaseRegistry> databasesForBackup = getDatabasesForBackup(namespace);
             return getNamespaceBackup(namespace, id, allowEviction, databasesForBackup);
         } catch (Exception ex) {
-            log.error("Failed collecting backup for id {} in namespace {}",id, namespace, ex);
+            log.error("Failed collecting backup for id {} in namespace {}", id, namespace, ex);
             throw ex;
         }
     }
@@ -338,9 +337,9 @@ public class DBBackupsService {
                 log.info("Adapter with id {} has registered {} databases to collect backup from", adapterId, databaseRegistries.size());
 
                 var databases = databaseRegistries.stream()
-                    .filter(db -> db.getBackupDisabled() == null || !db.getBackupDisabled())
-                    .map(DbaasBackupUtils::getDatabaseName)
-                    .toList();
+                        .filter(db -> db.getBackupDisabled() == null || !db.getBackupDisabled())
+                        .map(DBaaService::getDatabaseName)
+                        .toList();
 
                 var databasesBackup = physicalDatabasesService.getAdapterById(adapterId).backup(databases, allowEviction);
 
@@ -503,8 +502,8 @@ public class DBBackupsService {
     private NamespaceRestoration restoreToSameNamespace(NamespaceBackup backup, UUID restorationId, boolean regenerateName, Map<String, String> prefixMap) throws NamespaceRestorationFailedException {
 
         var notMarkedForDropInBackup = backupsDbaasRepository.findById(backup.getId())
-            .map(NamespaceBackup::getDatabaseRegistries)
-            .orElse(Collections.emptyList()).stream()
+                .map(NamespaceBackup::getDatabaseRegistries)
+                .orElse(Collections.emptyList()).stream()
                 .filter(notMarkedForDrop())
                 .toList();
 
@@ -512,9 +511,9 @@ public class DBBackupsService {
 
         if (log.isDebugEnabled()) {
             log.debug("Current registered databases in namespace {}: {}", backup.getNamespace(),
-                currentRegisteredDatabases.stream()
-                    .map(DbaasBackupUtils::getDatabaseName)
-                    .toList()
+                    currentRegisteredDatabases.stream()
+                            .map(DBaaService::getDatabaseName)
+                            .toList()
             );
         }
 
@@ -528,11 +527,11 @@ public class DBBackupsService {
         setEnsuredResult(result, userEnsured);
 
         log.info("""
-            Databases registration restored of backup {} in namespace {}, {} current databases removed, \
-            {} databases recreated from backup, {} users successfully ensured, {} skipped""",
+                        Databases registration restored of backup {} in namespace {}, {} current databases removed, \
+                        {} databases recreated from backup, {} users successfully ensured, {} skipped""",
 
-            backup.getId(), backup.getNamespace(), cleanedDeltaDatabases.size(), recreatedDatabasesFromBackup.size(),
-            userEnsured.successful.size(), userEnsured.skipped
+                backup.getId(), backup.getNamespace(), cleanedDeltaDatabases.size(), recreatedDatabasesFromBackup.size(),
+                userEnsured.successful.size(), userEnsured.skipped
         );
 
         return result;
@@ -540,17 +539,17 @@ public class DBBackupsService {
 
     private List<DatabaseRegistry> recreateRemovedBackupedDatabases(NamespaceBackup backup, List<DatabaseRegistry> currentRegisteredDatabases, List<DatabaseRegistry> notMarkedForDropInBackup) {
         var recreatedDatabasesFromBackup = notMarkedForDropInBackup.stream()
-            .filter(Predicate.not(currentRegisteredDatabases::contains))
-            .toList();
+                .filter(Predicate.not(currentRegisteredDatabases::contains))
+                .toList();
 
         if (!recreatedDatabasesFromBackup.isEmpty()) {
             log.info("Start recreate databases registration of backup {} in namespace {}", backup.getId(), backup.getNamespace());
 
             if (log.isDebugEnabled()) {
                 log.debug("Saving the recreated databases with names: {}",
-                    notMarkedForDropInBackup.stream()
-                        .map(DbaasBackupUtils::getDatabaseName)
-                        .toList()
+                        notMarkedForDropInBackup.stream()
+                                .map(DBaaService::getDatabaseName)
+                                .toList()
                 );
             }
 
@@ -600,8 +599,8 @@ public class DBBackupsService {
                 deltaDatabases.size(), backup.getId(), backup.getNamespace()
         );
 
-        dBaaService.markForDrop(backup.getNamespace(), deltaDatabases);
-        dBaaService.dropDatabases(deltaDatabases, backup.getNamespace());
+        deletionService.markRegistriesForDrop(backup.getNamespace(), deltaDatabases);
+        deletionService.dropRegistriesSafe(backup.getNamespace(), deltaDatabases);
 
         log.info("Delta cleaned during restoration of backup {} in namespace {}", backup.getId(), backup.getNamespace());
 
@@ -625,7 +624,7 @@ public class DBBackupsService {
                 .append(System.lineSeparator());
         notMarkedForDropInBackup.forEach(database -> {
             DbaasAdapter adapter = physicalDatabasesService.getAdapterById(database.getAdapterId());
-            String dbName = DbaasBackupUtils.getDatabaseName(database);
+            String dbName = DBaaService.getDatabaseName(database);
             try {
                 Map<String, Object> metadata = buildMetadata(database.getClassifier());
                 adapter.changeMetaData(dbName, metadata);
@@ -664,8 +663,8 @@ public class DBBackupsService {
             log.info("Clean {} databases in target namespace {} during restoration of backup {}",
                     targetDatabasesToDrop.size(), targetNamespace, backup.getId());
             log.debug("databases to drop = {}", targetDatabasesToDrop);
-            dBaaService.markForDrop(targetNamespace, targetDatabasesToDrop);
-            dBaaService.dropDatabases(targetDatabasesToDrop, targetNamespace);
+            deletionService.markRegistriesForDrop(targetNamespace, targetDatabasesToDrop);
+            deletionService.dropRegistriesSafe(targetNamespace, targetDatabasesToDrop);
             saveRestoreDbWithAnotherName(targetNamespace, result, notMarkedForDropInBackup);
         }
         log.info("Saving databases in database collection");
@@ -688,7 +687,7 @@ public class DBBackupsService {
                 .peek(oldToNewDbName -> log.info("Map old name database to new name {}", oldToNewDbName))
                 .forEach(oldToNewDbName -> oldToNewDbName
                         .forEach((oldName, newName) -> notMarkedForDropInBackup.stream()
-                                .filter(currentDatabase -> DbaasBackupUtils.getDatabaseName(currentDatabase).equalsIgnoreCase(oldName))
+                                .filter(currentDatabase -> DBaaService.getDatabaseName(currentDatabase).equalsIgnoreCase(oldName))
                                 .forEach(currentDatabase -> {
                                     entityManager.detach(currentDatabase);
 
@@ -705,8 +704,8 @@ public class DBBackupsService {
                                     }
 
                                     var newDbResources = currentDatabase.getResources().stream()
-                                        .map(DbResource::new)
-                                        .toList();
+                                            .map(DbResource::new)
+                                            .toList();
 
                                     currentDatabase.setResources(newDbResources);
                                     currentDatabase.getClassifier().put("namespace", targetNamespace);
@@ -718,11 +717,11 @@ public class DBBackupsService {
                                         currentDatabase.setName(StringUtils.EMPTY);
 
                                         currentDatabase.getConnectionProperties()
-                                            .forEach(cp -> cp.put("resourcePrefix", newName));
+                                                .forEach(cp -> cp.put("resourcePrefix", newName));
 
                                         currentDatabase.getResources().stream()
-                                            .filter(dbResource -> "resourcePrefix".equals(dbResource.getKind()))
-                                            .forEach(dbResource -> dbResource.setName(newName));
+                                                .filter(dbResource -> "resourcePrefix".equals(dbResource.getKind()))
+                                                .forEach(dbResource -> dbResource.setName(newName));
                                     }
 
                                     // end of block
@@ -741,8 +740,8 @@ public class DBBackupsService {
         if (log.isDebugEnabled()) {
             log.debug("Restoring backup contains {} databases: {}", notMarkedForDropInBackup.size(),
                     notMarkedForDropInBackup.stream()
-                        .map(DbaasBackupUtils::getDatabaseName)
-                        .toList()
+                            .map(DBaaService::getDatabaseName)
+                            .toList()
             );
         }
 
@@ -769,10 +768,10 @@ public class DBBackupsService {
                     backup.getNamespace(), namespaceRestore);
         }
         List<RestoreResult> subrestorations = backup.getBackups().stream()
-            .map(dbBackup -> physicalDatabasesService.getAdapterById(dbBackup.getAdapterId())
-                .restore(namespaceRestore, dbBackup, regenerateNames, backup.getDatabaseRegistries(), prefixMap)
-            )
-            .toList();
+                .map(dbBackup -> physicalDatabasesService.getAdapterById(dbBackup.getAdapterId())
+                        .restore(namespaceRestore, dbBackup, regenerateNames, backup.getDatabaseRegistries(), prefixMap)
+                )
+                .toList();
 
         result.setRestoreResults(subrestorations);
 
@@ -869,7 +868,7 @@ public class DBBackupsService {
 
         List<Object> results = notMarkedForDropInBackup.stream().map(db -> {
             var adapter = physicalDatabasesService.getAdapterById(db.getAdapterId());
-            var dbName = DbaasBackupUtils.getDatabaseName(db);
+            var dbName = DBaaService.getDatabaseName(db);
 
             if (!adapter.isUsersSupported()) {
                 if (adapter.isDescribeDatabasesSupported()) {
@@ -930,10 +929,10 @@ public class DBBackupsService {
                 encryption.encryptPassword(db.getDatabase());
                 databaseRegistryDbaasRepository.saveInternalDatabase(db);
                 log.info("Users {} ensured access to db {}",
-                    users.stream()
-                        .map(EnsuredUser::getName)
-                        .toList(),
-                    dbName
+                        users.stream()
+                                .map(EnsuredUser::getName)
+                                .toList(),
+                        dbName
                 );
                 return users;
             } catch (Exception e) {
@@ -956,9 +955,9 @@ public class DBBackupsService {
                 .collect(Collectors.groupingBy(dbr -> dbr.getDatabase().getAdapterId()));
 
         Set<String> disabledDatabases = backup.getDatabases().stream()
-            .filter(Database::getBackupDisabled)
-            .map(DbaasBackupUtils::getDatabaseName)
-            .collect(Collectors.toSet());
+                .filter(Database::getBackupDisabled)
+                .map(DBaaService::getDatabaseName)
+                .collect(Collectors.toSet());
 
         return backup.getBackups().stream().map(databasesBackup -> {
             List<DatabaseRegistry> adapterCurrentDatabases = groupedCurrentDatabases.get(databasesBackup.getAdapterId());
@@ -968,17 +967,17 @@ public class DBBackupsService {
                 return Collections.<DatabaseRegistry>emptyList();
             } else {
                 List<DatabaseRegistry> adapterCurrentDatabasesDelta = adapterCurrentDatabases.stream()
-                        .filter(current -> !databasesBackup.getDatabases().contains(DbaasBackupUtils.getDatabaseName(current))
-                            && !disabledDatabases.contains(DbaasBackupUtils.getDatabaseName(current))
+                        .filter(current -> !databasesBackup.getDatabases().contains(DBaaService.getDatabaseName(current))
+                                && !disabledDatabases.contains(DBaaService.getDatabaseName(current))
                         )
                         .collect(Collectors.toList());
                 if (log.isDebugEnabled()) {
                     log.debug("For adapter {} during restoration of backup {} calculated databases delta to remove: {}",
-                        databasesBackup.getAdapterId(),
-                        backup.getId(),
-                        adapterCurrentDatabasesDelta.stream()
-                            .map(DbaasBackupUtils::getDatabaseName)
-                            .toList()
+                            databasesBackup.getAdapterId(),
+                            backup.getId(),
+                            adapterCurrentDatabasesDelta.stream()
+                                    .map(DBaaService::getDatabaseName)
+                                    .toList()
                     );
                 }
                 return adapterCurrentDatabasesDelta;

@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.cronutils.utils.Preconditions;
-import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.DatabaseType;
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
@@ -9,22 +9,18 @@ import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
-import com.netcracker.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
-import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.ws.rs.WebApplicationException;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.beanutils.PropertyUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -32,8 +28,7 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -42,13 +37,10 @@ import java.util.stream.Stream;
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_1;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
-import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @Slf4j
 @ApplicationScoped
 public class DBaaService {
-    public static final String MARKED_FOR_DROP = "MARKED_FOR_DROP";
-
     @Inject
     PhysicalDatabasesService physicalDatabasesService;
     @Inject
@@ -60,21 +52,11 @@ public class DBaaService {
     @Inject
     DatabaseHistoryDbaasRepository databaseHistoryDbaasRepository;
     @Inject
-    LogicalDbOperationErrorRepository logicalDbOperationErrorRepository;
-    @Inject
     EntityManager entityManager;
     @Inject
     UserService userService;
     @Inject
-    DatabaseDeclarativeConfigRepository declarativeConfigRepository;
-    @Inject
-    DbaaSHelper dbaaSHelper;
-    @Inject
     ProcessConnectionPropertiesService connectionPropertiesService;
-    @Inject
-    DatabaseRolesService databaseRolesService;
-
-    private ExecutorService asyncExecutorService = Executors.newSingleThreadExecutor();
 
     @PostConstruct
     public void init() {
@@ -129,7 +111,7 @@ public class DBaaService {
             return Optional.of(physicalDatabasesService.getAdapterById(adapterId));
         }
 
-        PhysicalDatabase physicalDatabase = balancingRulesService.applyBalancingRules(type, namespace, microserviceName );
+        PhysicalDatabase physicalDatabase = balancingRulesService.applyBalancingRules(type, namespace, microserviceName);
         log.info("Returning adapter of physical database {}", physicalDatabase.getPhysicalDatabaseIdentifier());
         return Optional.ofNullable(physicalDatabasesService.getAdapterById(physicalDatabase.getAdapter().getAdapterId()));
     }
@@ -156,49 +138,6 @@ public class DBaaService {
     public DatabaseRegistry findDatabaseByClassifierAndType(Map<String, Object> classifier, String type, boolean withId) {
         Optional<DatabaseRegistry> databaseRegistry = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().getDatabaseByClassifierAndType(classifier, type);
         return databaseRegistry.map(registry -> detachDatabaseRegistry(withId, registry)).orElse(null);
-    }
-
-    @Transactional
-    public void markVersionedDatabasesAsOrphan(List<DatabaseRegistry> databaseRegistries) {
-        databaseRegistries.forEach(dbr -> {
-            dbr.getClassifier().put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-            SortedMap<String, Object> forDropClassifier = new TreeMap<>(dbr.getClassifier());
-            dbr.getDatabase().setClassifier(forDropClassifier);
-            dbr.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
-        });
-        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(databaseRegistries);
-    }
-
-    public void markDatabasesAsOrphan(DatabaseRegistry databaseRegistry) {
-        markDatabasesAsOrphan(databaseRegistry.getDatabase());
-    }
-
-    public void markDatabasesAsOrphan(Database database) {
-        database.getDatabaseRegistry().forEach(registry -> {
-                    registry.getClassifier().put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-                }
-        );
-        database.setClassifier(database.getDatabaseRegistry().getFirst().getClassifier());
-        database.setMarkedForDrop(true);
-        database.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
-    }
-
-    public void saveDatabaseRegistry(DatabaseRegistry databaseRegistry) {
-        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
-    }
-
-    @Transactional
-    public void dropDatabasesAsync(String namespace, List<DatabaseRegistry> databaseRegistries) {
-        if (!dbaaSHelper.isProductionMode()) {
-            ExecutorService executorService = Executors.newSingleThreadExecutor();
-            var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
-            executorService.submit(() -> {
-                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-                log.info("Start async dropping versioned and transactional databases in {}", namespace);
-                dropDatabases(databaseRegistries, namespace);
-            });
-            executorService.shutdown();
-        }
     }
 
     public DatabaseRegistry findDatabaseByOldClassifierAndType(Map<String, Object> classifier, String type, boolean withId) {
@@ -241,242 +180,9 @@ public class DBaaService {
                         classifier.containsKey(MICROSERVICE_NAME) && classifier.containsKey(NAMESPACE));
     }
 
-    public void dropDatabase(DatabaseRegistry databaseRegistry) {
-        userService.deleteDatabaseUsers(databaseRegistry.getDatabase());
-        if (databaseRegistry.getType() != null) {
-            Optional<DbaasAdapter> adapter = getAdapter(databaseRegistry.getDatabase());
-            if (adapter.isPresent()) {
-                adapter.get().dropDatabase(databaseRegistry);
-            } else {
-                if (DbState.DatabaseStateStatus.PROCESSING.equals(databaseRegistry.getDbState().getDatabaseState())) {
-                    log.info("Deleting database with PROCESSING status");
-                } else {
-                    throw new RuntimeException("Failed to find appropriate adapter");
-                }
-            }
-        }
-    }
-
     private Optional<DbaasAdapter> getAdapter(Database database) {
         return getAdapter(database.getAdapterId());
     }
-
-    public boolean checkNamespaceAlreadyDropped(String namespace, List<DatabaseRegistry> namespaceDatabases) {
-        return namespaceDatabases.isEmpty() && !areRulesExistingInNamespace(namespace)
-                && areDeclarativeConfigurationByNamespaceEmpty(namespace);
-    }
-
-    private boolean areDeclarativeConfigurationByNamespaceEmpty(String namespace) {
-        List<DatabaseDeclarativeConfig> allByNamespace = declarativeConfigRepository.findAllByNamespace(namespace);
-        return allByNamespace == null || allByNamespace.isEmpty();
-    }
-
-    @Transactional
-    public void dropDatabases(List<DatabaseRegistry> databasesForDrop, String namespace) {
-        Long number = databasesForDrop.stream()
-                .filter(databaseRegistry -> databaseRegistry.getClassifier().containsKey(MARKED_FOR_DROP))
-                .map(dr -> {
-                    DatabaseRegistry databaseRegistry = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findDatabaseRegistryById(dr.getId()).get();
-                    try {
-                        log.info("Drop internal logical databaseRegistry {} in {} with classifier {}",
-                                databaseRegistry.getDatabase().getName(), namespace, databaseRegistry.getClassifier());
-                        if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
-                            dropDatabase(databaseRegistry);
-                            encryption.deletePassword(databaseRegistry.getDatabase());
-                        }
-                        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().deleteById(databaseRegistry.getId());
-                        log.info("Successfully dropped internal databaseRegistry with id {} and name {}", databaseRegistry.getDatabase().getId(),
-                                databaseRegistry.getDatabase().getName());
-                        return 1L;
-                    } catch (Exception ex) {
-                        log.error("Error happened during dropping internal databaseRegistry {} id {}, with message {}",
-                                databaseRegistry.getDatabase().getName(), databaseRegistry.getId(), ex.getMessage());
-                        registerDeletionError(ex, databaseRegistry);
-                        return 0L;
-                    }
-                }).mapToLong(Long::valueOf).sum();
-        log.info("Successfully dropped {} internal databases in {}", number, namespace);
-    }
-
-    @Transactional
-    public void dropExternalDatabases(List<DatabaseRegistry> externalDatabases) {
-        List<DatabaseRegistry> databasesForDrop = externalDatabases
-                .stream()
-                .filter(databaseRegistry -> databaseRegistry.getClassifier().containsKey(MARKED_FOR_DROP))
-                .collect(Collectors.toList());
-        databasesForDrop.forEach(this::dropExternalDatabase);
-    }
-
-    @Transactional
-    public void dropExternalDatabase(DatabaseRegistry databaseRegistry) {
-        encryption.deletePassword(databaseRegistry.getDatabase());
-        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().delete(databaseRegistry);
-    }
-
-    @Transactional
-    public void asyncDeleteAllLogicalDatabasesInNamespacesByPortions(@NotEmpty Set<String> namespaces) {
-        log.info("Scheduling async deletion of logical databases in namespaces {}", namespaces);
-
-        var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
-
-        asyncExecutorService.submit(() -> {
-            ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-
-            deleteAllLogicalDatabasesInNamespacesByPortions(namespaces);
-        });
-    }
-
-    @Transactional
-    public void deleteAllLogicalDatabasesInNamespacesByPortions(Set<String> namespaces) {
-        if (dbaaSHelper.isProductionMode()) {
-
-            log.warn("Skipped deletion of logical databases because it is not supported in production mode");
-            return;
-        }
-
-        var allSuccessfullyDeletedLogicalDatabaseIdsAmount = 0;
-        var allSkippedDeletedLogicalDatabaseIdsAmount = 0;
-        var allFailedDeletedLogicalDatabaseIdsAmount = 0;
-
-        log.info("Started deletion of all logical databases in {} namespaces {}", namespaces.size(), namespaces);
-
-        var portionNumber = 0;
-        List<Database> logicalDatabases;
-
-        do {
-            logicalDatabases = logicalDbDbaasRepository.getDatabaseDbaasRepository().findByNamespacesWithOffsetBasedPagination(
-                namespaces, allFailedDeletedLogicalDatabaseIdsAmount, 100 + allFailedDeletedLogicalDatabaseIdsAmount
-            );
-
-            if (CollectionUtils.isNotEmpty(logicalDatabases)) {
-                portionNumber += 1;
-
-                var logicalDatabasesIds = logicalDatabases.stream()
-                    .map(Database::getId)
-                    .toList();
-
-                log.info("Started deletion of {} logical databases by portion with number {}, logical databases ids {}",
-                    logicalDatabasesIds.size(), portionNumber, logicalDatabasesIds
-                );
-
-                var failedDeleteLogicalDatabases = new ArrayList<Database>();
-
-                for (var logicalDatabase : logicalDatabases) {
-                    var logicalDatabaseId = logicalDatabase.getId();
-
-                    try {
-                        log.info("Started deletion of logical database with id {}", logicalDatabaseId);
-
-                        for (var databaseRegistry : new ArrayList<>(CollectionUtils.emptyIfNull(logicalDatabase.getDatabaseRegistry()))) {
-                            if (!databaseRegistry.isExternallyManageable()) {
-                                dropDatabase(databaseRegistry);
-                            }
-                            encryption.deletePassword(databaseRegistry.getDatabase());
-                            logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().deleteById(databaseRegistry.getId());
-                        }
-
-                        log.info("Finished deletion of logical database with id {}", logicalDatabaseId);
-                    } catch (Exception ex) {
-                        failedDeleteLogicalDatabases.add(logicalDatabase);
-
-                        log.error("Error happened during deletion of logical database with id {}",
-                            logicalDatabaseId, ex
-                        );
-                    }
-                }
-
-                var failedDeleteLogicalDatabasesIds = failedDeleteLogicalDatabases.stream()
-                    .map(Database::getId)
-                    .toList();
-
-                var successfullyDeletedLogicalDatabasesIds = logicalDatabases.stream()
-                    .map(Database::getId)
-                    .filter(Predicate.not(failedDeleteLogicalDatabasesIds::contains))
-                    .toList();
-
-                allSuccessfullyDeletedLogicalDatabaseIdsAmount += successfullyDeletedLogicalDatabasesIds.size();
-                allFailedDeletedLogicalDatabaseIdsAmount += failedDeleteLogicalDatabasesIds.size();
-
-                log.info("""
-                        Finished deletion of {} logical databases by portion with number {}, successfully deleted {} logical databases with ids {}, \
-                        failed deleted {} ones with ids {}""",
-
-                    logicalDatabasesIds.size(), portionNumber, successfullyDeletedLogicalDatabasesIds.size(),
-                    successfullyDeletedLogicalDatabasesIds, failedDeleteLogicalDatabasesIds.size(), failedDeleteLogicalDatabasesIds
-                );
-            }
-        } while (CollectionUtils.isNotEmpty(logicalDatabases));
-
-        var allLogicalDatabasesAmount = allSuccessfullyDeletedLogicalDatabaseIdsAmount
-            + allSkippedDeletedLogicalDatabaseIdsAmount + allFailedDeletedLogicalDatabaseIdsAmount;
-
-        log.info("""
-            Finished deletion of all {} logical databases in {} namespaces {}, successfully deleted {} logical databases, \
-            skipped deletion of {} ones, failed deleted {} ones""",
-
-            allLogicalDatabasesAmount, namespaces.size(), namespaces, allSuccessfullyDeletedLogicalDatabaseIdsAmount,
-            allSkippedDeletedLogicalDatabaseIdsAmount, allFailedDeletedLogicalDatabaseIdsAmount
-        );
-    }
-
-    @Transactional
-    public Long deleteDatabasesAsync(String namespace, List<DatabaseRegistry> namespaceDatabases, boolean removeRules) {
-        log.info("Mark databases for drop in {} namespace", namespace);
-        Long number = markForDrop(namespace, namespaceDatabases);
-        if (!dbaaSHelper.isProductionMode()) {
-            log.info("Schedule async databases dropping in {} namespace", namespace);
-            dropDatabaseAsync(namespace);
-        }
-        log.info("Remove declarative configs in {} namespace", namespace);
-        declarativeConfigRepository.deleteByNamespace(namespace);
-        if (removeRules) {
-            log.info("Remove rules in {} namespace", namespace);
-            balancingRulesService.removeRulesByNamespace(namespace);
-            balancingRulesService.removePerMicroserviceRulesByNamespace(namespace);
-        }
-        log.info("Remove database role in {} namespace", namespace);
-        databaseRolesService.removeDatabaseRole(namespace);
-        return number;
-    }
-
-    public Long markForDrop(String namespace, List<DatabaseRegistry> namespaceDatabases) {
-        return namespaceDatabases.stream().map(databaseRegistry -> {
-            if (databaseRegistry.getDatabase().getDatabaseRegistry().size() > 1) {
-                databaseRegistry.getClassifier().put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-                logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
-            } else {
-                databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING);
-                databaseRegistry.getClassifier().put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-                databaseRegistry.getDatabase().setClassifier(databaseRegistry.getClassifier());
-                if (databaseRegistry.getDatabase().getOldClassifier() != null) {
-                    databaseRegistry.getDatabase().getOldClassifier().put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-                }
-                databaseRegistry.getDatabase().setMarkedForDrop(true);
-                logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
-            }
-            log.info("Marked for drop databaseRegistry in {} with classifier {}", namespace, databaseRegistry.getClassifier());
-            return 1L;
-        }).mapToLong(Long::valueOf).sum();
-    }
-
-    protected void dropDatabaseAsync(String namespace) {
-        List<DatabaseRegistry> internalDatabasesForDrop = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
-                .findInternalDatabaseRegistryByNamespace(namespace);
-        List<DatabaseRegistry> externalDatabasesForDrop = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
-                .findExternalDatabaseRegistryByNamespace(namespace);
-
-        log.info("Submit async task for databases dropping in {} namespace", namespace);
-        String requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
-        asyncExecutorService.submit(() -> {
-            ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-            log.info("Start async dropping databases in {}", namespace);
-            dropDatabases(internalDatabasesForDrop, namespace);
-            log.info("Start async dropping external databases in {}", namespace);
-            dropExternalDatabases(externalDatabasesForDrop);
-            log.info("Async databases dropping finished for {}", namespace);
-        });
-    }
-
 
     public Boolean isModifiedFields(AbstractDatabaseCreateRequest databaseRequest, Database currentDatabase) {
         if (currentDatabase.isExternallyManageable()) {
@@ -510,7 +216,7 @@ public class DBaaService {
             databasesForChangePassword = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findInternalDatabaseRegistryByNamespace(namespace)
                     .stream()
                     .filter(databaseRegistry -> databaseRegistry.getType().equals(dbType))
-                    .filter(database -> !database.isMarkedForDrop())
+                    .filter(Predicate.not(DeletionService::isMarkedForDrop))
                     .collect(Collectors.toList());
             log.info("The password will be change from {} databases which are located in {} namespace and have {} database type", databasesForChangePassword.size(), namespace, dbType);
             log.debug("List of databases {}", databasesForChangePassword);
@@ -861,19 +567,6 @@ public class DBaaService {
                 role);
     }
 
-    private void registerDeletionError(Exception ex, DatabaseRegistry databaseRegistry) {
-        log.info("Register deletion error: {} of database {} with classifier {}", ex.getMessage(), databaseRegistry.getDatabase().getName(), databaseRegistry.getClassifier());
-        int status = 0;
-        if (ex instanceof WebApplicationException) {
-            status = ((WebApplicationException) ex).getResponse().getStatus();
-        }
-        if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
-            databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING_FAILED);
-        }
-
-        logicalDbOperationErrorRepository.persist(new LogicalDbOperationError(UUID.randomUUID(), databaseRegistry.getDatabase(), new Date(), ex.getMessage(), status, LogicalDbOperationError.Operation.DELETE));
-    }
-
 
     public DatabaseRegistry recreateDatabase(DatabaseRegistry existedDb, String physDbId) {
         log.info("Start recreate logical db with classifier {}, type {}, adapterId {} in physical db with Id {}", existedDb.getClassifier(),
@@ -940,10 +633,6 @@ public class DBaaService {
         return this.connectionPropertiesService;
     }
 
-    public boolean areRulesExistingInNamespace(String namespace) {
-        return balancingRulesService.areRulesExistingInNamespace(namespace);
-    }
-
     @SneakyThrows
     public DatabaseRegistry makeCopy(DatabaseRegistry origin) {
         Database originDatabase = origin.getDatabase();
@@ -964,7 +653,7 @@ public class DBaaService {
         log.debug("Share static database to {} namespace with new classifier {}", targetNamespace, newRegistry.getClassifier());
         Optional<DatabaseRegistry> existingRegistry = sourceDatabase.getDatabaseRegistry().stream()
                 .filter(dbr -> dbr.getClassifier().equals(newRegistry.getClassifier())
-                               && dbr.getType().equals(newRegistry.getType()))
+                        && dbr.getType().equals(newRegistry.getType()))
                 .findFirst();
         if (existingRegistry.isEmpty()) {
             sourceDatabase.getDatabaseRegistry().add(newRegistry);
@@ -973,5 +662,49 @@ public class DBaaService {
         } else {
             return existingRegistry.get();
         }
+    }
+
+    public static String getDatabaseName(DatabaseRegistry databaseRegistry) {
+        if (databaseRegistry == null) {
+            return null;
+        }
+
+        return getDatabaseName(databaseRegistry.getDatabase());
+    }
+
+    public static String getDatabaseName(Database database) {
+        if (database == null) {
+            return null;
+        }
+
+        var databaseName = database.getName();
+
+        if (StringUtils.isBlank(databaseName)) {
+            var databaseRegistryType = extractStringValueFromFirstElementOfList(
+                    database.getDatabaseRegistry(), DatabaseRegistry::getType
+            );
+
+            if (DatabaseType.OPENSEARCH.name().equalsIgnoreCase(databaseRegistryType)) {
+
+                var resourcePrefix = extractStringValueFromFirstElementOfList(
+                        database.getConnectionProperties(),
+                        connectionProperty -> (String) connectionProperty.get("resourcePrefix")
+                );
+
+                if (StringUtils.isNotBlank(resourcePrefix)) {
+                    databaseName = resourcePrefix;
+                }
+            }
+        }
+
+        return databaseName;
+    }
+
+    private static <T> String extractStringValueFromFirstElementOfList(List<T> list, Function<T, String> extractStringValueFunction) {
+        return Optional.ofNullable(list)
+                .filter(databaseRegistries -> !databaseRegistries.isEmpty())
+                .map(List::getFirst)
+                .map(extractStringValueFunction)
+                .orElse(null);
     }
 }
