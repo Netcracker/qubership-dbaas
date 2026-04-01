@@ -235,7 +235,7 @@ public class DeletionService {
     }
 
     /**
-     * Called from Deployer during Clean Install
+     * Called during Clean Install
      */
     @Transactional
     public int cleanupNamespaceFullAsync(String namespace, boolean removeRules) {
@@ -390,6 +390,7 @@ public class DeletionService {
                 }
                 if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
                     databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING_FAILED);
+                    logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
                 }
 
                 logicalDbOperationErrorRepository.persist(new LogicalDbOperationError(UUID.randomUUID(), databaseRegistry.getDatabase(), new Date(), ex.getMessage(), status, LogicalDbOperationError.Operation.DELETE));

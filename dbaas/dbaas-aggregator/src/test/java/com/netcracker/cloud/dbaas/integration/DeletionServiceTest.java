@@ -250,11 +250,13 @@ class DeletionServiceTest {
             deletionService.dropRegistrySafe(database.getDatabaseRegistry().getFirst());
         });
 
+        assertTrue(databaseDbaasRepository.findById(database.getId()).isPresent());
         verify(logicalDbOperationErrorRepository).persist(any(LogicalDbOperationError.class));
         assertTrue(logicalDbOperationErrorRepository.findAll().stream().anyMatch(error -> error.getDatabase().getId().equals(database.getId())));
         verify(encryption, times(0)).deletePassword(any(Database.class));
         assertEquals(1, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
-        assertTrue(databaseDbaasRepository.findById(database.getId()).isPresent());
+        Database updatedDatabase = databaseDbaasRepository.findById(database.getId()).get();
+        assertEquals(AbstractDbState.DatabaseStateStatus.DELETING_FAILED, updatedDatabase.getDbState().getDatabaseState());
     }
 
     @Test
