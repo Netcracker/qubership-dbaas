@@ -1,0 +1,23 @@
+@startuml
+autonumber
+actor Client
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+
+Client -> DBaaS: GET /backup/{backupName}/metadata
+
+DBaaS -> DB: find backup by backupName
+alt backup not found
+  DB --> DBaaS: empty
+  DBaaS --> Client: HTTP 404 (TmfErrorResponse)
+else found
+  DB --> DBaaS: Backup
+
+  alt backup.status == COMPLETED
+    DBaaS -> DBaaS: calculate digest for BackupResponse
+    DBaaS --> Client: 200 HTTP OK\nBody: BackupResponse\nHeader: Digest=...
+  else
+    DBaaS --> Client: HTTP 422 (TmfErrorResponse)
+  end
+end
+@enduml

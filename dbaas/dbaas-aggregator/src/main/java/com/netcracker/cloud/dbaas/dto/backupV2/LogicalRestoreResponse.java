@@ -9,12 +9,19 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Logical restore details")
 public class LogicalRestoreResponse {
+    @Schema(
+            description = "Identifier of the logical restore",
+            examples = {"550e8400-e29b-41d4-a716-446655440000"},
+            required = true
+    )
+    private UUID id;
     @Schema(description = "Name of the logical restore in adapter", required = true)
     private String logicalRestoreName;
     @Schema(

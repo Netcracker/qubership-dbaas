@@ -1,0 +1,36 @@
+@startuml
+autonumber
+actor Client
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+
+Client -> DBaaS: POST /operation/uploadMetadata\n(Digest header, BackupResponse)
+DBaaS -> DBaaS: calculate digest
+
+alt digest mismatch (header and calculated)
+  DBaaS --> Client: HTTP 400
+else digest ok
+  DBaaS -> DB: find backup by name
+  alt backup not found
+    DB --> DBaaS: empty
+    DBaaS -> DB: save incoming backup (set imported=true)
+    DBaaS --> Client: HTTP 200 OK
+  else backup found
+    DB --> DBaaS: existingBackup
+    alt existingBackup.status == DELETED
+      alt existingBackup.imported == true
+        alt digest matches (header and from existingBackup)
+          DBaaS -> DB: save (existingBackup.status=COMPLETED)
+          DBaaS --> Client: HTTP 200 OK
+        else digest mismatch
+          DBaaS --> Client: HTTP 400 (TmfErrorResponse)
+        end
+      else not imported
+        DBaaS --> Client: HTTP 409 (TmfErrorResponse)
+      end
+    else status != DELETED
+      DBaaS --> Client: HTTP 409 (TmfErrorResponse)
+    end
+  end
+end
+@enduml

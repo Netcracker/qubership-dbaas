@@ -4,18 +4,15 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.util.List;
-import java.util.SortedMap;
 import java.util.UUID;
 
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity
@@ -23,7 +20,6 @@ import java.util.UUID;
 public class RestoreExternalDatabase {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @ManyToOne
@@ -40,5 +36,5 @@ public class RestoreExternalDatabase {
     @NotNull
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private List<SortedMap<String, Object>> classifiers;
+    private List<ClassifierDetails> classifiers;
 }

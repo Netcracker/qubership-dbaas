@@ -1,0 +1,15 @@
+postgresPassword: ${POSTGRES_PASSWORD}
+
+backupDaemon:
+  install: false
+  storage:
+    storageClass: ${STORAGE_CLASS}
+    type: pv
+    size: 2Gi
+
+dbaas:
+  install: true
+  aggregator:
+    registrationAddress: http://${DBAAS_SERVICE_NAME}.${DBAAS_NAMESPACE}.svc.cluster.local:8080
+    registrationUsername: cluster-dba
+    registrationPassword: password

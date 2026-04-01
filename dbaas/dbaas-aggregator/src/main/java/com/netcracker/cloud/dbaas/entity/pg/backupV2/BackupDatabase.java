@@ -5,7 +5,6 @@ import com.netcracker.cloud.dbaas.enums.BackupTaskStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -18,7 +17,6 @@ import java.util.SortedMap;
 import java.util.UUID;
 
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity
@@ -26,7 +24,6 @@ import java.util.UUID;
 public class BackupDatabase {
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @ManyToOne
@@ -69,11 +66,20 @@ public class BackupDatabase {
     private Instant creationTime;
 
     @Data
-    @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class User {
         String name;
         String role;
+    }
+
+    public BackupDatabase(UUID id, LogicalBackup logicalBackup, String name, List<SortedMap<String, Object>> classifiers, Map<String, Object> settings, List<User> users, boolean configurational) {
+        this.id = id;
+        this.logicalBackup = logicalBackup;
+        this.name = name;
+        this.classifiers = classifiers;
+        this.settings = settings;
+        this.users = users;
+        this.configurational = configurational;
     }
 }

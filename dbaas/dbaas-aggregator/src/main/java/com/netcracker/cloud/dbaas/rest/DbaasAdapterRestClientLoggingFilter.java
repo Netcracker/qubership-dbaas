@@ -10,6 +10,7 @@ import org.apache.commons.io.IOUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @Slf4j
 public class DbaasAdapterRestClientLoggingFilter implements ClientRequestFilter, ClientResponseFilter {
@@ -19,7 +20,11 @@ public class DbaasAdapterRestClientLoggingFilter implements ClientRequestFilter,
     @Override
     public void filter(ClientRequestContext requestContext) throws IOException {
         if (log.isDebugEnabled()) {
-
+            var authScheme = requestContext.getHeaders()
+                    .getOrDefault("Authorization", List.of(""))
+                    .toString()
+                    .toLowerCase()
+                    .contains("bearer") ? "M2M" : "Basic";
             if (requestContext.hasEntity()) {
                 try {
                     var entity = requestContext.getEntity();
@@ -31,12 +36,12 @@ public class DbaasAdapterRestClientLoggingFilter implements ClientRequestFilter,
                         bodyStr = objectMapper.writeValueAsString(entity);
                     }
 
-                    log.debug("Request: {} {}, body: {}", requestContext.getMethod(), requestContext.getUri(), bodyStr);
+                    log.debug("Request: {} {}, auth: {}, body: {}", requestContext.getMethod(), requestContext.getUri(), authScheme, bodyStr);
                 } catch (Exception ex) {
-                    log.debug("Request: {} {}, body: error during parsing body: {}", requestContext.getMethod(), requestContext.getUri(), ex.getMessage());
+                    log.debug("Request: {} {}, auth: {}, body: error during parsing body: {}", requestContext.getMethod(), requestContext.getUri(), authScheme, ex.getMessage());
                 }
             } else {
-                log.debug("Request: {} {}, body: empty", requestContext.getMethod(), requestContext.getUri());
+                log.debug("Request: {} {}, auth: {}, body: empty", requestContext.getMethod(), requestContext.getUri(), authScheme);
             }
         }
     }

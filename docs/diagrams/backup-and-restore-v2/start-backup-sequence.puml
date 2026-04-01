@@ -1,0 +1,44 @@
+@startuml
+autonumber
+actor Client
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+participant "DBaaS Adapter" as Adapter
+
+Client -> DBaaS: POST /backup (BackupRequest, dryRun)
+
+DBaaS -> DB: find Backup by backupName
+alt backup exists
+  DB --> DBaaS: present
+  DBaaS --> Client: HTTP 409 (TmfErrorResponse)
+else not exists
+  DB --> DBaaS: empty
+  DBaaS -> DB: find all classifiers (registries) by filterCriteria
+  DB --> DBaaS: classifiers (registries)
+  DBaaS -> DBaaS: validate and filter databases for backup
+  DBaaS -> DBaaS: initialize full Backup structure
+
+  alt not dryRun
+    DBaaS -> DB: save Backup
+
+    loop for each LogicalBackup (asynchronously)
+      DBaaS -> Adapter: send request to initiate logical backup
+      Adapter --> DBaaS: recieve response
+      DBaaS -> DBaaS: refresh LogicalBackup state
+    end
+  end
+
+  DBaaS -> DBaaS: update aggregated status for Backup
+
+  alt not dryRun
+    DBaaS -> DB: save Backup
+  end
+
+  DBaaS --> Client: BackupResponse(status)
+  alt status COMPLETED or FAILED
+    DBaaS --> Client: HTTP 200 OK (BackupResponse)
+  else
+    DBaaS --> Client: HTTP 202 Accepted (BackupResponse)
+  end
+end
+@enduml

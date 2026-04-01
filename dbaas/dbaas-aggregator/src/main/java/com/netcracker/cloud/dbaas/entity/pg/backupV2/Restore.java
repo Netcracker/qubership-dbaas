@@ -5,7 +5,10 @@ import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -14,7 +17,6 @@ import java.util.Map;
 import java.util.Objects;
 
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor(force = true)
 @Entity
@@ -25,7 +27,7 @@ public class Restore {
     @NotNull
     private String name;
 
-    @OneToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     @JoinColumn(name = "backup_name")
     private Backup backup;
 
@@ -45,6 +47,7 @@ public class Restore {
     private MappingEntity mapping;
 
     @ToString.Exclude
+    @JsonManagedReference
     @OneToMany(mappedBy = "restore", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LogicalRestore> logicalRestores;
     @NotNull
@@ -65,8 +68,6 @@ public class Restore {
 
     private Integer completed;
 
-    private Long duration;
-
     @Column(name = "error_message")
     private String errorMessage;
 
@@ -74,7 +75,6 @@ public class Restore {
     private int attemptCount = 0;
 
     @Data
-    @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class MappingEntity {
@@ -84,6 +84,10 @@ public class Restore {
 
     public void incrementAttempt() {
         this.attemptCount++;
+    }
+
+    public void resetAttempt() {
+        this.attemptCount = 0;
     }
 
     @Override

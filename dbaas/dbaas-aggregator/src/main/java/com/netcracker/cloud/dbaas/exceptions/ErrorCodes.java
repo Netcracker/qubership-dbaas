@@ -103,11 +103,11 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4023(
             "CORE-DBAAS-4023",
             "Requested role is not allowed by service",
-            "Requested role '%s' from '%s' service cannot be accessed by '%s' service"),
+            "Requested role %s from '%s' service cannot be accessed by '%s' service"),
     CORE_DBAAS_4024(
             "CORE-DBAAS-4024",
             "Connection properties doesn't contain field 'role'",
-            "Database with calssifier == %s. Connection properties of this database doesn't contain field 'role'."),
+            "Database with classifier == %s. Connection properties of this database doesn't contain field 'role'."),
     CORE_DBAAS_4025(
             "CORE-DBAAS-4025",
             "Connection properties must not be null or empty",
@@ -214,8 +214,8 @@ public enum ErrorCodes implements ErrorCode {
             "Resource with name '%s' already exists"),
     CORE_DBAAS_4047(
             "CORE-DBAAS-4047",
-            "Backup not allowed",
-            "The backup/restore request can`t be processed. %s"
+            "Operation not allowed",
+            "The backup/restore request can't be processed. %s"
     ),
     CORE_DBAAS_4048(
             "CORE-DBAAS-4048",
@@ -225,7 +225,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4049(
             "CORE-DBAAS-4049",
             "Unprocessable resource",
-            "Resource '%s' can`t be processed: %s"
+            "Resource '%s' can't be processed: %s"
     ),
     CORE_DBAAS_4050(
             "CORE-DBAAS-4050",
@@ -244,6 +244,19 @@ public enum ErrorCodes implements ErrorCode {
     ),
     CORE_DBAAS_4053(
             "CORE-DBAAS-4053",
+            "Operation already running",
+            "Operation '%s' is already in progress.%s"
+    ),
+    CORE_DBAAS_4054(
+            "CORE-DBAAS-4054",
+            "Invalid tenantId in classifier",
+            "tenantId from classifier '%s' and tenantId from request '%s' don't match"),
+    CORE_DBAAS_4055(
+            "CORE-DBAAS-4055",
+            "Failed namespace isolation check",
+            "Namespace from path '%s' and namespace from jwt token '%s' doesn't not match or aren't in the same composite structure"),
+    CORE_DBAAS_4056(
+            "CORE-DBAAS-4056",
             "Failed request to physical adapter",
             "An error occurred during the request to adapter: %s"
     ),

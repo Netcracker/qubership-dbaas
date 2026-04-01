@@ -18,6 +18,14 @@
         + [PRODUCTION_MODE](#production_mode)
         + [INTERNAL_TLS_ENABLED](#internal_tls_enabled)
         + [READONLY_CONTAINER_FILE_SYSTEM_ENABLED](#readonly_container_file_system_enabled)
+        + [DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT](#dbaas_backup_restore_check_lock_timeout)
+        + [DBAAS_BACKUP_RESTORE_CHECK_INTERVAL](#dbaas_backup_restore_check_interval)
+        + [DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS](#dbaas_backup_restore_check_attempts)
+        + [DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS](#dbaas_backup_restore_retry_delay_seconds)
+        + [DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS](#dbaas_backup_restore_retry_attempts)
+        + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
+        + [KUBERNETES_JWT_ENABLED](#kubernetes_jwt_enabled)
+        + [KUBERNETES_JWT_AUDIENCE](#kubernetes_jwt_audience)
         + [priorityClassName](#priorityClassName)
     * [CREDENTIALS](#credentials)
         + [DBAAS_DB_EDITOR_CREDENTIALS_USERNAME / DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD](#dbaas_db_editor_credentials_username--dbaas_db_editor_credentials_password)
@@ -269,6 +277,71 @@ Note: Only valid for deployments in Kubernetes.
 | Default | Recommended                                         |
 |---------|-----------------------------------------------------|
 | false   | Set to true if need to enable read-only file system |
+
+### DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
+
+Specifies the amount of time the lock should be kept in case the executing node dies for the backup restore operation.
+Set the duration according to the ISO 8601 standard
+
+| Default | Recommended                                                                                                              |
+|---------|--------------------------------------------------------------------------------------------------------------------------|
+| PT10M   | Increasing this value will result in the backup/restore lock being held for a longer time if the node crashes or freezes |
+
+### DBAAS_BACKUP_RESTORE_CHECK_INTERVAL
+
+Specifies the interval between requests to adapters for backup or restore status during an asynchronous process.
+
+| Default | Recommended                                                                                                  |
+|---------|--------------------------------------------------------------------------------------------------------------|
+| 1m      | Decrease the default value if you're creating a big count of small backups and want to decrease waiting time |
+
+### DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS
+
+Specifies the max number of attempts to request adapters for backup or restore status during an asynchronous process.
+
+| Default | Recommended                                                                                                                      |
+|---------|----------------------------------------------------------------------------------------------------------------------------------|
+| 20      | Increase if the adapters are working correctly, but slowly, and do not have time to finish backups/restores in the allotted time |
+
+### DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS
+
+Specifies the delay between retries of requesting adapter in seconds if the previous attempt was failed.
+
+| Default | Recommended                                       |
+|---------|---------------------------------------------------|
+| 3       | Increase it if there are serious network problems |
+
+### DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS
+
+Specifies the max number of retries to request adapter for backup or restore if the previous attempt failed.
+
+| Default | Recommended                                       |
+|---------|---------------------------------------------------|
+| 3       | Increase it if there are serious network problems |
+
+#### DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
+
+If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator will reject requests with invalid namespace.
+
+| Default | Recommended                                              |
+|---------|----------------------------------------------------------|
+| true    | Set to true if need to enable namespace isolation |
+
+#### KUBERNETES_JWT_ENABLED
+
+If KUBERNETES_JWT_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens M2M.
+
+| Default | Recommended                                              |
+|---------|----------------------------------------------------------|
+| true    | Set to true if need to enable kubernetes M2M      |
+
+#### KUBERNETES_JWT_AUDIENCE
+
+KUBERNETES_JWT_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected.
+
+| Default | Recommended                                                               |
+|---------|---------------------------------------------------------------------------|
+| "dbaas" | Only change for test purposes because other services expect value 'dbaas' |
 
 #### priorityClassName
 

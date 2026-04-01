@@ -1,5 +1,7 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
@@ -12,13 +14,20 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
+import com.netcracker.cloud.dbaas.security.validators.NamespaceValidator;
 import com.netcracker.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.utils.JwtUtils;
+import com.netcracker.cloud.framework.contexts.tenant.BaseTenantProvider;
+import com.netcracker.cloud.framework.contexts.tenant.TenantContextObject;
+import com.netcracker.cloud.framework.contexts.tenant.TenantNotFoundException;
+import io.smallrye.jwt.auth.principal.DefaultJWTCallerPrincipal;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.SecurityContext;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
@@ -37,6 +46,7 @@ import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
 import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.*;
+import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect;
 
 @Slf4j
 @Path(DATABASES_PATH_V3)
@@ -64,6 +74,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     PasswordEncryption encryption;
     @Inject
     BlueGreenService blueGreenService;
+    @Inject
+    NamespaceValidator namespaceValidator;
+    @Inject
+    SecurityContext securityContext;
 
     @Operation(summary = "V3. Creates new database V3",
             description = "Creates new database and returns it with connection information, " +
@@ -85,11 +99,11 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                    @PathParam(NAMESPACE_PARAMETER) String namespace,
                                    @Parameter(description = "Determines if database should be created asynchronously")
                                    @QueryParam(ASYNC_PARAMETER) Boolean async) {
-        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(createRequest.getClassifier())) {
-            throw new InvalidClassifierException("Classifier doesn't contain all mandatory fields. " +
-                    "Check that classifier has `microserviceName`, `scope`. If `scope` = `tenant`, classifier must contain `tenantId` property",
-                    createRequest.getClassifier(), Source.builder().pointer("/classifier").build());
+        if (!isClassifierCorrect(createRequest.getClassifier()) ||
+                !namespaceValidator.isNamespaceFromClassifierValid(securityContext, createRequest.getClassifier())) {
+            throw InvalidClassifierException.withDefaultMsg(createRequest.getClassifier());
         }
+        checkTenantId(createRequest.getClassifier());
         checkOriginService(createRequest);
 
         namespace = (String) createRequest.getClassifier().get(NAMESPACE);
@@ -198,10 +212,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                             @PathParam(NAMESPACE_PARAMETER) String namespace,
                                             @Parameter(description = "The type of base in which the database was created. For example PostgreSQL  or MongoDB", required = true)
                                             @PathParam("type") String type) {
-        checkOriginService(classifierRequest);
-        if (!dBaaService.isValidClassifierV3(classifierRequest.getClassifier())) {
+        if (!dBaaService.isValidClassifierV3(classifierRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, classifierRequest.getClassifier())) {
             throw new InvalidClassifierException("Invalid V3 classifier", classifierRequest.getClassifier(), Source.builder().pointer("").build());
         }
+        checkTenantId(classifierRequest.getClassifier());
         checkOriginService(classifierRequest);
         namespace = (String) classifierRequest.getClassifier().get(NAMESPACE);
 
@@ -266,16 +280,13 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     @Operation(summary = "V3. External database registration",
             description = "This API supports registration in DBaaS for any external logical database.")
     @APIResponses({
-            @APIResponse(responseCode = "500", description = "Internal error"),
-            @APIResponse(responseCode = "200",
-                    description = "Successfully found database",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "201",
-                    description = "The database was added or updated successfully",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "401", description = ROLE_IS_NOT_ALLOWED, content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "403", description = "Namespace in classifier and path variable are not equal", content = @Content(schema = @Schema(implementation = String.class)))
+            @APIResponse(responseCode = "200", description = "Successfully found database", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "201", description = "The database was added or updated successfully", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
+            @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
+            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "Internal error", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/registration/externally_manageable")
     @PUT
@@ -285,11 +296,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                         @Parameter(description = "Namespace with which new database will be connected", required = true)
                                         @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Get request on adding external database with classifier {} and type {} in namespace {}", externalDatabaseRequest.getClassifier(), externalDatabaseRequest.getType(), namespace);
-        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(externalDatabaseRequest.getClassifier())) {
-            throw new InvalidClassifierException("Classifier doesn't contain all mandatory fields. " +
-                    "Check that classifier has `microserviceName`, `scope`. If `scope` = `tenant`, classifier must contain `tenantId` property",
-                    externalDatabaseRequest.getClassifier(), Source.builder().pointer("/classifier").build());
+        if (!isClassifierCorrect(externalDatabaseRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, externalDatabaseRequest.getClassifier())) {
+            throw InvalidClassifierException.withDefaultMsg(externalDatabaseRequest.getClassifier());
         }
+        checkTenantId(externalDatabaseRequest.getClassifier());
         DatabaseRegistry databaseRegistry = externalDatabaseRequest.toDatabaseRegistry();
         Optional<BgDomain> bgDomainOpt = aggregatedDatabaseAdministrationService.getBgDomain(namespace);
         if (bgDomainOpt.isPresent()) {
@@ -312,7 +322,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                 return Response.ok(new ExternalDatabaseResponseV3(processedDb)).build();
             } else {
                 if (externalDatabaseRequest.getConnectionProperties().isEmpty()) {
-                    throw new EmptyConnectionPropertiesException();
+                    throw new ExternalDbEmptyConnectionPropertiesException();
                 }
                 existingDatabaseRegistry.setConnectionProperties(databaseRegistry.getConnectionProperties());
             }
@@ -403,9 +413,32 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     }
 
     private void checkOriginService(UserRolesServices rolesServices) {
+        if (securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal principal) {
+            rolesServices.setOriginService(JwtUtils.getServiceAccountName(principal));
+        }
         if (rolesServices.getOriginService() == null || rolesServices.getOriginService().isEmpty()) {
             log.error("Request body={} must contain originService", rolesServices);
             throw new InvalidOriginServiceException();
+        }
+    }
+
+    private void checkTenantId(Map<String, Object> classifier) {
+        if (!(securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal)) {
+            return;
+        }
+        if (!Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT)) {
+            return;
+        }
+
+        String idFromClassifier = classifier.get(TENANT_ID).toString();
+        try {
+            TenantContextObject tenantContext = ContextManager.get(BaseTenantProvider.TENANT_CONTEXT_NAME);
+            String idFromRequest = tenantContext == null ? "" : tenantContext.getTenant();
+            if (!Objects.equals(idFromClassifier, idFromRequest)) {
+                throw new ForbiddenTenantIdException(idFromClassifier, idFromRequest);
+            }
+        } catch (TenantNotFoundException e) {
+            throw new ForbiddenTenantIdException(idFromClassifier, "");
         }
     }
 }

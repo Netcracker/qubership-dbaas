@@ -1,0 +1,9 @@
+postgresPassword: ${POSTGRES_PASSWORD}
+
+patroni:
+  affinity:
+    podAntiAffinity: {}
+  replicas: ${PATRONI_REPLICAS_NUMBER}
+  storage:
+    storageClass: ${STORAGE_CLASS}
+    size: 2Gi

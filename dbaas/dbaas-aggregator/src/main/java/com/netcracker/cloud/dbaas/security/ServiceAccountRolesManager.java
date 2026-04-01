@@ -1,0 +1,50 @@
+package com.netcracker.cloud.dbaas.security;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.quarkus.runtime.StartupEvent;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
+import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+
+@ApplicationScoped
+@NoArgsConstructor
+@Slf4j
+public class ServiceAccountRolesManager {
+    private final Map<String, Set<String>> serviceAccountsWithRoles = new HashMap<>();
+
+    public Set<String> getRolesByServiceAccountName(String serviceAccountName) {
+        return serviceAccountsWithRoles.get(serviceAccountName);
+    }
+
+    void onStart(@Observes StartupEvent ev, @ConfigProperty(name = "dbaas.security.k8s.service.account.roles.path") String rolesConfigPath) {
+        try {
+            log.info("Start kubernetes service account roles loading from {}", rolesConfigPath);
+            ObjectMapper yamlReader = new ObjectMapper(new YAMLFactory());
+
+            InputStream rolesStream = getClass().getResourceAsStream(rolesConfigPath);
+            if (rolesStream == null) {
+                rolesStream = FileUtils.openInputStream(FileUtils.getFile(rolesConfigPath));
+            }
+
+            Map<String, Object> rawServiceAccountsWithRoles = yamlReader.readValue(rolesStream, Map.class);
+            for (Map.Entry<String, Object> serviceAccount : rawServiceAccountsWithRoles.entrySet()) {
+                List<String> roles = (List<String>) serviceAccount.getValue();
+                serviceAccountsWithRoles.put(serviceAccount.getKey(), new HashSet<>(roles));
+            }
+
+            rolesStream.close();
+            log.info("Roles for kubernetes service accounts loaded");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse user roles secret YAML", e);
+        }
+    }
+}
