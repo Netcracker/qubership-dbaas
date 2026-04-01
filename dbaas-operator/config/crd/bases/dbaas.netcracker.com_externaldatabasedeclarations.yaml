@@ -72,40 +72,61 @@ spec:
                   At least one entry is required. Each entry must have a "role" field; the
                   aggregator rejects requests where any entry is missing "role".
                 items:
-                  description: "ConnectionProperty describes how to connect to the
-                    external database for a specific role.\nThe controller assembles
-                    a flat map from role, credentialsSecretRef, and extraProperties\nbefore
-                    sending the request to dbaas-aggregator.\n\nAssembled flat map
-                    sent to dbaas-aggregator per entry:\n\n\t{ \"role\": role, \"username\":
-                    <from Secret>, \"password\": <from Secret>, <extraProperties...>
-                    }\n\nThe \"role\" key always takes precedence over the same key
-                    in extraProperties.\n\"username\" and \"password\" resolved from
-                    the Secret always take precedence over\nthe same keys in extraProperties.\nAll
-                    other connection parameters (host, port, url, authDbName, etc.)
-                    must be supplied\nvia extraProperties."
+                  description: |-
+                    ConnectionProperty describes how to connect to the external database for a specific role.
+                    The controller assembles a flat map from role, credentialsSecretRef, and extraProperties
+                    before sending the request to dbaas-aggregator.
+
+                    Merge order (later sources win on key collision):
+
+                     1. extraProperties — lowest priority
+                     2. role            — overrides extraProperties["role"]
+                     3. credentialsSecretRef.keys — highest priority, override matching extraProperties keys
+
+                    All other connection parameters (host, port, url, authDbName, sslMode, etc.) must be
+                    supplied via extraProperties.
                   properties:
                     credentialsSecretRef:
                       description: |-
-                        credentialsSecretRef points to a Kubernetes Secret containing the username and
-                        password for this connection. The Secret must exist in the same namespace as the CR.
-                        The resolved username and password take precedence over the same keys in extraProperties.
+                        credentialsSecretRef points to a Kubernetes Secret and maps its keys into the
+                        aggregator request flat map. The Secret must exist in the same namespace as the CR.
+                        Resolved Secret values take precedence over matching keys in extraProperties.
                       properties:
+                        keys:
+                          description: |-
+                            keys is the list of mappings from Secret.data keys to aggregator request keys.
+                            Each entry reads Secret.data[key] and inserts it into the aggregator flat map
+                            under name. Secret credentials always take precedence over the same keys in
+                            extraProperties. At least one mapping is required.
+                          items:
+                            description: |-
+                              SecretKeyMapping maps a single key from a Kubernetes Secret to a key
+                              in the aggregator request flat map.
+                            properties:
+                              key:
+                                description: key is the key inside Secret.data whose
+                                  value will be read.
+                                minLength: 1
+                                type: string
+                              name:
+                                description: |-
+                                  name is the key to use in the aggregator request flat map.
+                                  Secret credentials take precedence over the same key in extraProperties.
+                                minLength: 1
+                                type: string
+                            required:
+                            - key
+                            - name
+                            type: object
+                          minItems: 1
+                          type: array
                         name:
                           description: name is the name of the Kubernetes Secret containing
                             the credentials.
                           minLength: 1
                           type: string
-                        passwordKey:
-                          description: |-
-                            passwordKey is the key inside the Secret whose value is the database password.
-                            Defaults to "password" if omitted.
-                          type: string
-                        usernameKey:
-                          description: |-
-                            usernameKey is the key inside the Secret whose value is the database username.
-                            Defaults to "username" if omitted.
-                          type: string
                       required:
+                      - keys
                       - name
                       type: object
                     extraProperties:
@@ -116,8 +137,7 @@ spec:
                         Use this to supply host, port, url, authDbName, sslMode, and any other parameters
                         required by the dbaas-aggregator adapter.
                         All keys are merged into the flat map sent to the aggregator.
-                        The "role" key and Secret credentials ("username", "password") always override
-                        any values set here for those keys.
+                        The "role" key and Secret credentials always override any values set here for those keys.
                       type: object
                     role:
                       description: |-
@@ -145,14 +165,6 @@ spec:
                   Must match a type registered in dbaas-aggregator.
                 minLength: 1
                 type: string
-              updateConnectionProperties:
-                description: |-
-                  updateConnectionProperties controls what happens when dbaas-aggregator already
-                  has a record for this classifier+type combination:
-                    false (default) — return the existing record unchanged.
-                    true            — replace the stored connectionProperties with those in this spec.
-                  Has no effect when the external database is being registered for the first time.
-                type: boolean
             required:
             - classifier
             - connectionProperties
@@ -169,7 +181,7 @@ spec:
                     - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   False on any error; see Reason for the category.
-                                  ExternalDatabaseDeclaration: reason "Registered" on success.
+                                  ExternalDatabaseDeclaration: reason "DatabaseRegistered" on success.
                                   DbPolicy: reason "PolicyApplied" on success.
                                   DatabaseDeclaration: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
@@ -236,6 +248,10 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastRequestId:
+                description: |-
+                  lastRequestId is the X-Request-Id of the most recent reconcile attempt.
+                type: string
               observedGeneration:
                 description: |-
                   observedGeneration reflects the .metadata.generation that was last processed

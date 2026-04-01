@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	corev1 "k8s.io/api/core/v1"
@@ -28,8 +30,25 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var log = logging.GetLogger("dbaas-operator")
+
+const (
+	apiVersionV1 = "core.netcracker.com/v1"
+	xRequestID   = "X-Request-Id"
+)
+
+// requestIDFromContext extracts the X-Request-Id string from ctx.
+// Raising a panic if it can't fetch it
+func requestIDFromContext(ctx context.Context) string {
+	xrid, err := xrequestid.Of(ctx)
+	if err != nil {
+		log.ErrorC(ctx, "failed to retrieve request ID from context: %v", err)
+		panic(err)
+	}
+	return xrid.GetRequestId()
+}
 
 // setCondition upserts a metav1.Condition in the given slice.
 // LastTransitionTime is preserved when Status is unchanged, per Kubernetes API
@@ -104,7 +123,7 @@ func invalidSpec(
 	obj runtime.Object,
 	msg string,
 ) (ctrl.Result, error) {
-	logf.FromContext(ctx).Info("invalid spec", "reason", msg)
+	log.InfoC(ctx, "invalid spec reason=%v", msg)
 	markPermanentFailure(phase, conditions, generation, EventReasonInvalidSpec, msg)
 	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
 	return ctrl.Result{}, nil
@@ -124,6 +143,7 @@ func handleAggregatorError(
 	recorder record.EventRecorder,
 	obj runtime.Object,
 	err error,
+	requestID string,
 ) (ctrl.Result, error) {
 	var aggErr *aggregatorclient.AggregatorError
 	if errors.As(err, &aggErr) {
@@ -133,7 +153,8 @@ func handleAggregatorError(
 			markTransientFailure(phase, conditions, generation,
 				EventReasonUnauthorized, aggErr.UserMessage())
 			recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonUnauthorized,
-				"dbaas-aggregator rejected operator credentials (HTTP 401): %s", aggErr.UserMessage())
+				"dbaas-aggregator rejected operator credentials (HTTP 401): %s (requestId=%s)",
+				aggErr.UserMessage(), requestID)
 			return ctrl.Result{}, err
 
 		case aggErr.IsSpecRejection():
@@ -142,7 +163,8 @@ func handleAggregatorError(
 			markPermanentFailure(phase, conditions, generation,
 				EventReasonAggregatorRejected, aggErr.UserMessage())
 			recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-				"dbaas-aggregator rejected request: %s", aggErr.UserMessage())
+				"dbaas-aggregator rejected request: %s (requestId=%s)",
+				aggErr.UserMessage(), requestID)
 			return ctrl.Result{}, nil
 		}
 	}
@@ -155,7 +177,7 @@ func handleAggregatorError(
 	markTransientFailure(phase, conditions, generation,
 		EventReasonAggregatorError, errMsg)
 	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonAggregatorError,
-		"dbaas-aggregator error: %s", errMsg)
+		"dbaas-aggregator error: %s (requestId=%s)", errMsg, requestID)
 	return ctrl.Result{}, err
 }
 
@@ -189,7 +211,7 @@ func patchStatusOnExit[T interface {
 	}
 
 	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
-		logf.FromContext(ctx).Error(patchErr, "patch "+objectType+" status")
+		log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
 		*retErr = errors.Join(*retErr, patchErr)
 	}
 }

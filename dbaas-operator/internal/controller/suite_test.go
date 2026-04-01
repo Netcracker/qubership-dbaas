@@ -23,9 +23,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,7 +60,14 @@ func TestControllers(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
-	ctx, cancel = context.WithCancel(context.TODO())
+	ctxmanager.Register([]ctxmanager.ContextProvider{
+		xrequestid.XRequestIdProvider{},
+	})
+
+	baseCtx := ctxmanager.InitContext(context.Background(), map[string]interface{}{
+		xRequestID: uuid.New().String(),
+	})
+	ctx, cancel = context.WithCancel(baseCtx)
 
 	var err error
 	err = dbaasv1alpha1.AddToScheme(scheme.Scheme)
@@ -72,8 +82,8 @@ var _ = BeforeSuite(func() {
 	}
 
 	// Retrieve the first found binary directory to allow running tests from IDEs
-	if getFirstFoundEnvTestBinaryDir() != "" {
-		testEnv.BinaryAssetsDirectory = getFirstFoundEnvTestBinaryDir()
+	if dir := getFirstFoundEnvTestBinaryDir(); dir != "" {
+		testEnv.BinaryAssetsDirectory = dir
 	}
 
 	// cfg is defined in this file globally.

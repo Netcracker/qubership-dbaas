@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-logr/logr"
+	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 )
 
 // ── test helpers ──────────────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ func TestLoadAggregatorCredentials(t *testing.T) {
 			tc.setup(dir)
 			t.Setenv("DBAAS_AGGREGATOR_PASSWORD", tc.envPassword)
 
-			gotPass := loadAggregatorCredentials(logr.Discard(), dir, tc.username)
+			gotPass := loadAggregatorCredentials(logging.GetLogger("dbaas-operator"), dir, tc.username)
 
 			if gotPass != tc.wantPass {
 				t.Errorf("password = %q, want %q", gotPass, tc.wantPass)
@@ -176,7 +176,7 @@ func TestReadCredentialsFromFile(t *testing.T) {
 		dir := t.TempDir()
 		writeUsersJSON(t, dir, map[string]string{"cluster-dba": "s3cr3t"})
 
-		pass, ok := readCredentialsFromFile(logr.Discard(), dir, "cluster-dba")
+		pass, ok := readCredentialsFromFile(logging.GetLogger("dbaas-operator"), dir, "cluster-dba")
 
 		if !ok {
 			t.Fatal("expected ok=true")
@@ -190,7 +190,7 @@ func TestReadCredentialsFromFile(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir() // no users.json
 
-		_, ok := readCredentialsFromFile(logr.Discard(), dir, "cluster-dba")
+		_, ok := readCredentialsFromFile(logging.GetLogger("dbaas-operator"), dir, "cluster-dba")
 
 		if ok {
 			t.Fatal("expected ok=false for missing file")
@@ -212,7 +212,7 @@ func TestWatchCredentials_ReloadsOnFileChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func() { _ = watchCredentials(ctx, logr.Discard(), dir, "cluster-dba", mock) }()
+	go func() { _ = watchCredentials(ctx, logging.GetLogger("dbaas-operator"), dir, "cluster-dba", mock) }()
 
 	time.Sleep(100 * time.Millisecond) // allow watcher to register inotify watches
 
@@ -268,7 +268,7 @@ func TestWatchCredentials_ReloadsOnKubernetesSymlinkSwap(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func() { _ = watchCredentials(ctx, logr.Discard(), dir, "cluster-dba", mock) }()
+	go func() { _ = watchCredentials(ctx, logging.GetLogger("dbaas-operator"), dir, "cluster-dba", mock) }()
 
 	time.Sleep(100 * time.Millisecond) // allow watcher to start
 
@@ -318,7 +318,7 @@ func TestWatchCredentials_StopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- watchCredentials(ctx, logr.Discard(), dir, "cluster-dba", newMockSetter())
+		done <- watchCredentials(ctx, logging.GetLogger("dbaas-operator"), dir, "cluster-dba", newMockSetter())
 	}()
 
 	time.Sleep(50 * time.Millisecond)
@@ -342,7 +342,7 @@ func TestWatchCredentials_GracefulDegradationWhenDirMissing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := watchCredentials(ctx, logr.Discard(), "/nonexistent/path/xyz", "cluster-dba", newMockSetter())
+	err := watchCredentials(ctx, logging.GetLogger("dbaas-operator"), "/nonexistent/path/xyz", "cluster-dba", newMockSetter())
 	if err != nil {
 		t.Errorf("expected nil error for missing dir, got %v", err)
 	}

@@ -25,7 +25,7 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/go-logr/logr"
+	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 )
 
 // credentialsSetter is the narrow interface required by watchCredentials.
@@ -69,29 +69,28 @@ func parseUsersFile(securityDir, username string) (string, error) {
 //     guaranteed to exist in production.
 //  2. DBAAS_AGGREGATOR_PASSWORD env var — local development fallback when
 //     running outside Kubernetes without a mounted Secret.
-func loadAggregatorCredentials(log logr.Logger, securityDir, username string) string {
+func loadAggregatorCredentials(log logging.Logger, securityDir, username string) string {
 	password, err := parseUsersFile(securityDir, username)
 	if err == nil {
-		log.Info("loaded aggregator credentials from users.json", "username", username)
+		log.Infof("loaded aggregator credentials from users.json username=%v", username)
 		return password
 	}
 
 	if !errors.Is(err, os.ErrNotExist) {
 		// File exists but is malformed or the user entry is missing — fatal.
-		log.Error(err, "failed to load aggregator credentials from users.json")
+		log.Errorf("failed to load aggregator credentials from users.json: %v", err)
 		os.Exit(1)
 	}
 
 	// File absent — fall back to env var (local development without a Secret mount).
 	password = os.Getenv("DBAAS_AGGREGATOR_PASSWORD")
 	if password != "" {
-		log.Info("loaded aggregator credentials from env var", "username", username)
+		log.Infof("loaded aggregator credentials from env var username=%v", username)
 		return password
 	}
 
-	log.Error(nil,
-		"aggregator credentials not found: mount dbaas-security-configuration-secret at "+
-			"DBAAS_SECURITY_CONFIGURATION_LOCATION or set DBAAS_AGGREGATOR_PASSWORD env var")
+	log.Error("aggregator credentials not found: mount dbaas-security-configuration-secret at " +
+		"DBAAS_SECURITY_CONFIGURATION_LOCATION or set DBAAS_AGGREGATOR_PASSWORD env var")
 	os.Exit(1)
 	return ""
 }
@@ -99,10 +98,10 @@ func loadAggregatorCredentials(log logr.Logger, securityDir, username string) st
 // readCredentialsFromFile parses users.json and returns the password for username.
 // Returns ("", false) on any error — the existing credentials remain in use.
 // Unlike loadAggregatorCredentials this function never calls os.Exit.
-func readCredentialsFromFile(log logr.Logger, securityDir, username string) (string, bool) {
+func readCredentialsFromFile(log logging.Logger, securityDir, username string) (string, bool) {
 	password, err := parseUsersFile(securityDir, username)
 	if err != nil {
-		log.Error(err, "failed to read credentials from users.json")
+		log.Errorf("failed to read credentials from users.json: %v", err)
 		return "", false
 	}
 	return password, true
@@ -118,26 +117,25 @@ func readCredentialsFromFile(log logr.Logger, securityDir, username string) (str
 //
 // The function blocks until ctx is cancelled.  Errors starting the watcher are
 // logged and treated as non-fatal (credential auto-reload is simply disabled).
-func watchCredentials(ctx context.Context, log logr.Logger, securityDir, username string, client credentialsSetter) error {
+func watchCredentials(ctx context.Context, log logging.Logger, securityDir, username string, client credentialsSetter) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Error(err, "failed to create fsnotify watcher — credential auto-reload disabled")
+		log.Errorf("failed to create fsnotify watcher — credential auto-reload disabled: %v", err)
 		return nil
 	}
 	defer watcher.Close()
 
 	if err := watcher.Add(securityDir); err != nil {
-		log.Error(err, "failed to watch security dir — credential auto-reload disabled",
-			"dir", securityDir)
+		log.Errorf("failed to watch security dir — credential auto-reload disabled dir=%v: %v", securityDir, err)
 		return nil
 	}
-	log.Info("credential watcher started", "dir", securityDir)
+	log.Infof("credential watcher started dir=%v", securityDir)
 
 	reload := func(trigger string) {
 		password, ok := readCredentialsFromFile(log, securityDir, username)
 		if ok {
 			client.SetCredentials(username, password)
-			log.Info("aggregator credentials reloaded", "trigger", trigger, "username", username)
+			log.Infof("aggregator credentials reloaded trigger=%v username=%v", trigger, username)
 		}
 	}
 
@@ -148,6 +146,7 @@ func watchCredentials(ctx context.Context, log logr.Logger, securityDir, usernam
 			return nil
 		case event, ok := <-watcher.Events:
 			if !ok {
+				log.Warn("fsnotify events channel closed — credential auto-reload disabled")
 				return nil
 			}
 			base := filepath.Base(event.Name)
@@ -157,14 +156,15 @@ func watchCredentials(ctx context.Context, log logr.Logger, securityDir, usernam
 				continue
 			}
 			if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {
-				log.Info("credential file changed", "event", event.String())
+				log.Infof("credential file changed event=%v", event.String())
 				reload(event.String())
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
+				log.Warn("fsnotify errors channel closed — credential auto-reload disabled")
 				return nil
 			}
-			log.Error(err, "fsnotify watcher error")
+			log.Errorf("fsnotify watcher error: %v", err)
 		}
 	}
 }
