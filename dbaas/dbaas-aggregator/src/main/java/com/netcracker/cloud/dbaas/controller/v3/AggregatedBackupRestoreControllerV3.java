@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
@@ -42,19 +43,14 @@ import static com.netcracker.cloud.dbaas.DbaasApiPath.BACKUPS_BULK_PATH_V3;
         "backup collector and restore some specific backup. All backup management is per namespace.")
 @Produces(MediaType.APPLICATION_JSON)
 @RolesAllowed(BACKUP_MANAGER)
-public class AggregatedBackupRestoreControllerV3 {
+public class AggregatedBackupRestoreControllerV3 extends AbstractController {
 
     @Inject
     BackupsDbaasRepository backupsDbaasRepository;
-
     @Inject
     AggregatedBackupAdministrationControllerV3 backupAdministrationControllerV3;
-
     @Inject
     DBBackupsService dbBackupsService;
-
-    @Inject
-    DbaaSHelper dbaaSHelper;
 
     @Operation(summary = "V3. Restore database",
             description = "Restores backup for a specific backup ID")
@@ -147,9 +143,7 @@ public class AggregatedBackupRestoreControllerV3 {
 
         log.info("Received request to drop all namespace backups in {} namespaces {}", namespaces.size(), namespaces);
 
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
+        assertNotProdMode();
 
         var namespaceBackupsAmount = backupsDbaasRepository.countByNamespaces(namespaces);
 

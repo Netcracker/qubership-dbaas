@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
 
-import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
 import com.netcracker.cloud.dbaas.dto.backup.Status;
 import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
@@ -18,7 +17,6 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgDomainRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
-import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import com.netcracker.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -31,8 +29,6 @@ import org.apache.commons.lang3.StringUtils;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -40,40 +36,27 @@ import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.controller.v3.AggregatedBackupAdministrationControllerV3.DBAAS_PATH;
-import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
-import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @ApplicationScoped
 @Slf4j
 public class BlueGreenService {
 
     final DeclarativeDbaasCreationService declarativeDbaasCreationService;
-
     final DBBackupsService backupsService;
-
     final LogicalDbDbaasRepository logicalDbDbaasRepository;
-
     final AggregatedDatabaseAdministrationService aggregatedDatabaseAdministrationService;
-
     final BgNamespaceRepository bgNamespaceRepository;
-
     final BgDomainRepository bgDomainRepository;
-
     final BalancingRulesService balancingRulesService;
-
     final DatabaseRolesService databaseRolesService;
-
     final DBaaService dBaaService;
-
     final BgTrackRepository bgTrackRepository;
-
     final ProcessService processService;
-
     final BackupsDbaasRepository backupsDbaasRepository;
-
-    final
-    DatabaseConfigurationCreationService databaseConfigurationCreationService;
+    final DatabaseConfigurationCreationService databaseConfigurationCreationService;
+    final DeletionService deletionService;
+    final DbaaSHelper dbaaSHelper;
 
     private final Random random = new Random();
 
@@ -93,8 +76,11 @@ public class BlueGreenService {
             DBaaService dBaaService,
             BgTrackRepository bgTrackRepository,
             ProcessService processService,
-            DeclarativeDbaasCreationService declarativeDbaasCreationService, BackupsDbaasRepository backupsDbaasRepository,
-            DatabaseConfigurationCreationService databaseConfigurationCreationService) {
+            DeclarativeDbaasCreationService declarativeDbaasCreationService,
+            BackupsDbaasRepository backupsDbaasRepository,
+            DatabaseConfigurationCreationService databaseConfigurationCreationService,
+            DeletionService deletionService,
+            DbaaSHelper dbaaSHelper) {
         this.backupsService = backupsService;
         this.logicalDbDbaasRepository = logicalDbDbaasRepository;
         this.aggregatedDatabaseAdministrationService = aggregatedDatabaseAdministrationService;
@@ -108,6 +94,8 @@ public class BlueGreenService {
         this.declarativeDbaasCreationService = declarativeDbaasCreationService;
         this.backupsDbaasRepository = backupsDbaasRepository;
         this.databaseConfigurationCreationService = databaseConfigurationCreationService;
+        this.deletionService = deletionService;
+        this.dbaaSHelper = dbaaSHelper;
     }
 
 
@@ -189,7 +177,7 @@ public class BlueGreenService {
     private void shareStaticDatabases(String activeNamespace, String candidateNamespace) {
         log.debug("Share static databases from {} to {} namespace", activeNamespace, candidateNamespace);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(activeNamespace)
-                .stream().filter(dbr -> dbr.getBgVersion() == null && !dbr.getClassifier().containsKey(MARKED_FOR_DROP))
+                .stream().filter(dbr -> dbr.getBgVersion() == null && !DeletionService.isMarkedForDrop(dbr))
                 .forEach(staticDatabaseRegistry -> dBaaService.shareDbToNamespace(staticDatabaseRegistry, candidateNamespace));
     }
 
@@ -276,7 +264,7 @@ public class BlueGreenService {
         }
         List<DatabaseRegistry> peerDbRegistries = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
                 .findAnyLogDbRegistryTypeByNamespace(bgStateRequest.getBGState().getBgNamespaceWithState(IDLE_STATE).orElseThrow().getName());
-        if (peerDbRegistries.stream().anyMatch(Predicate.not(DatabaseRegistry::isMarkedForDrop))) {
+        if (peerDbRegistries.stream().anyMatch(Predicate.not(DeletionService::isMarkedForDrop))) {
             throw new BgRequestValidationException("Peer namespace contains DBs");
         }
 
@@ -453,7 +441,7 @@ public class BlueGreenService {
                     String namespace = bgNamespace.getNamespace();
                     List<DatabaseRegistry> namespaceDatabaseRegistries = logicalDbDbaasRepository
                             .getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(namespace)
-                            .stream().filter(Predicate.not(DatabaseRegistry::isMarkedForDrop)).toList();
+                            .stream().filter(Predicate.not(DeletionService::isMarkedForDrop)).toList();
                     if (!namespaceDatabaseRegistries.isEmpty()) {
                         log.error("namespace = {} still have databases", namespace);
                         throw new BgNamespaceNotEmptyException("namespace = " + namespace + " still have databases");
@@ -474,7 +462,7 @@ public class BlueGreenService {
     }
 
     @Transactional
-    public List<DatabaseRegistry> commit(BgStateRequest bgStateRequest) {
+    public int commit(BgStateRequest bgStateRequest) {
         Optional<BgStateRequest.BGStateNamespace> optionalBgStateNamespaceIdle = bgStateRequest.getBGState().getBgNamespaceWithState(IDLE_STATE);
         BgStateRequest.BGStateNamespace bgStateNamespaceIdle = optionalBgStateNamespaceIdle.orElseThrow();
         Optional<BgStateRequest.BGStateNamespace> optionalBgStateNamespaceActive = bgStateRequest.getBGState().getBgNamespaceWithState(ACTIVE_STATE);
@@ -491,11 +479,8 @@ public class BlueGreenService {
             throw new BgRequestValidationException("Only Active + Candidate/Legacy/Idle namespaces are allowed for commit");
         }
 
-        List<DatabaseRegistry> markedDatabaseAsOrphan = commitDatabasesByNamespace(bgStateNamespaceIdle.getName());
-
-        deleteNamespaceRules(bgStateNamespaceIdle.getName());
-        deleteMicroserviceRules(bgStateNamespaceIdle.getName());
-        deleteDatabaseRoles(bgStateNamespaceIdle.getName());
+        int orphanDatabasesCount = commitDatabasesByNamespace(bgStateNamespaceIdle.getName());
+        deletionService.cleanupNamespaceResources(bgStateNamespaceIdle.getName(), true);
         bgTrackRepository.deleteByNamespaceAndOperation(bgStateNamespaceIdle.getName(), WARMUP_OPERATION);
 
         Optional<BgNamespace> optionalOriginBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateRequest.getBGState().getOriginNamespace().getName());
@@ -515,38 +500,26 @@ public class BlueGreenService {
         bgNamespaceRepository.persist(peerBgNamespace);
         log.info("New BG state for {} namespace: {}", peerBgNamespace.getNamespace(), peerBgNamespace);
 
-        return markedDatabaseAsOrphan;
+        return orphanDatabasesCount;
     }
 
     @Transactional
-    public List<DatabaseRegistry> commitDatabasesByNamespace(String namespace) {
+    public int commitDatabasesByNamespace(String namespace) {
         declarativeDbaasCreationService.deleteDeclarativeConfigurationByNamespace(namespace);
 
         log.debug("mark versioned databases for drop in namespace = {}", namespace);
         List<DatabaseRegistry> versionedDatabases = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllVersionedDatabaseRegistries(namespace);
-        dBaaService.markVersionedDatabasesAsOrphan(versionedDatabases);
+        deletionService.markDatabasesAsOrphan(versionedDatabases);
 
         log.debug("mark obsolete transactional databases for drop in namespace = {}", namespace);
         List<DatabaseRegistry> transactionalDatabases = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllTransactionalDatabaseRegistries(namespace)
                 .stream().filter(trDb -> trDb.getDatabaseRegistry().size() == 1).toList();
-        transactionalDatabases.forEach(dBaaService::markDatabasesAsOrphan);
+        deletionService.markDatabasesAsOrphan(transactionalDatabases);
 
-        List<DatabaseRegistry> databasesForDrop = new ArrayList<>(versionedDatabases);
-        databasesForDrop.addAll(transactionalDatabases);
-        dBaaService.dropDatabasesAsync(namespace, databasesForDrop);
-        return versionedDatabases;
-    }
-
-    private void deleteDatabaseRoles(String namespace) {
-        databaseRolesService.removeDatabaseRole(namespace);
-    }
-
-    private void deleteNamespaceRules(String namespace) {
-        balancingRulesService.removeRulesByNamespace(namespace);
-    }
-
-    private void deleteMicroserviceRules(String namespace) {
-        balancingRulesService.removePerMicroserviceRulesByNamespace(namespace);
+        if (!dbaaSHelper.isProductionMode()) {
+            deletionService.cleanupMarkedForDropRegistries(namespace);
+        }
+        return versionedDatabases.size() + transactionalDatabases.size();
     }
 
     public TaskState getGeneralStatus(ProcessInstanceImpl process) {
@@ -612,28 +585,11 @@ public class BlueGreenService {
     }
 
     public List<DatabaseRegistry> dropOrphanDatabases(List<String> namespaces, Boolean delete) {
-        List<DatabaseRegistry> orphanDatabases = getOrphanDatabases(namespaces);
+        List<DatabaseRegistry> orphanDatabases = deletionService.getOrphanRegistries(namespaces);
         if (delete) {
             log.info("{} databases are going to be deleted", orphanDatabases.size());
-            ExecutorService executorService = Executors.newSingleThreadExecutor();
-            var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
-            executorService.submit(() -> {
-                ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
-                log.info("Start async dropping orphan databases");
-                dBaaService.dropDatabases(orphanDatabases, null);
-            });
-            executorService.shutdown();
+            namespaces.forEach(deletionService::cleanupOrphanRegistriesAsync);
         }
-
         return orphanDatabases;
-    }
-
-    public List<DatabaseRegistry> getOrphanDatabases(List<String> namespaces) {
-        List<Database> orphanDatabases = logicalDbDbaasRepository.getDatabaseDbaasRepository().findByDbState(DbState.DatabaseStateStatus.ORPHAN);
-        Set<DatabaseRegistry> orphanDbsRegistries = new HashSet<>();
-        orphanDatabases.forEach(db -> {
-            orphanDbsRegistries.addAll(db.getDatabaseRegistry());
-        });
-        return orphanDbsRegistries.stream().filter(dbr -> namespaces.contains(dbr.getNamespace())).collect(Collectors.toList());
     }
 }

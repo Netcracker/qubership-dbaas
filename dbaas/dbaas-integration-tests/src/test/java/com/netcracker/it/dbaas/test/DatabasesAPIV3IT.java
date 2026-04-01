@@ -24,6 +24,7 @@ import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -257,6 +258,28 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.deleteDatabases(URL, clusterDbaAuthorization, TEST_NAMESPACE, HttpStatus.SC_OK);
         databasesInNamespace = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
         assertThat(databasesInNamespace, hasSize(0));
+    }
+
+    @Test
+    public void testDeleteAllDatabasesInNamespaceAsync_ButOpensearchSync() throws Exception {
+        assumeTrue(helperV3.hasAdapterOfType(OPENSEARCH_TYPE));
+        String clusterDbaAuthorization = helperV3.getClusterDbaAuthorization();
+        Map<String, Object> settingsMap = Collections.singletonMap("resourcePrefix", true);
+        helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null);
+        helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_2", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null);
+        helperV3.createDatabase(clusterDbaAuthorization, "opensearch1", 201, OPENSEARCH_TYPE, null, TEST_NAMESPACE, false, null, "test-prefix", settingsMap);
+        helperV3.createDatabase(clusterDbaAuthorization, "opensearch2", 500, OPENSEARCH_TYPE, null, TEST_NAMESPACE, false, null, "test-prefix", settingsMap);
+        List<DatabaseV3> databasesInNamespace = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
+        assertThat(databasesInNamespace, hasSize(3));
+
+        helperV3.deleteDatabasesAsync(DATABASES_DELETE_V3, clusterDbaAuthorization, TEST_NAMESPACE, HttpStatus.SC_OK);
+
+        DatabaseResponse ops2 = helperV3.createDatabase(clusterDbaAuthorization, "opensearch2", 201, OPENSEARCH_TYPE, null, TEST_NAMESPACE, false, null, "test-prefix", settingsMap);
+        Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(2)).withDelay(Duration.ofSeconds(1))).run(() -> {
+            List<DatabaseV3> databases = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
+            assertEquals(1, databases.size());
+            assertEquals(ops2.getId(), databases.getFirst().getId());
+        });
     }
 
     @Test

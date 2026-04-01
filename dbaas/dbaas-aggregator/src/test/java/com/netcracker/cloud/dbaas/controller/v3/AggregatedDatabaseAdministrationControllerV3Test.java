@@ -3,7 +3,6 @@ package com.netcracker.cloud.dbaas.controller.v3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
-import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
@@ -40,11 +39,6 @@ import static com.netcracker.cloud.dbaas.DatabaseType.CASSANDRA;
 import static com.netcracker.cloud.dbaas.DatabaseType.POSTGRESQL;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
 import static com.netcracker.cloud.dbaas.dto.role.Role.ADMIN;
-import static com.netcracker.cloud.dbaas.Constants.*;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.ASYNC_PARAMETER;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.LIST_DATABASES_PATH;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
-import static com.netcracker.cloud.framework.contexts.tenant.TenantContextObject.TENANT_HEADER;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static java.util.Collections.singletonList;
@@ -90,6 +84,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     BlueGreenService blueGreenService;
     @InjectMock
     CompositeNamespaceService compositeNamespaceService;
+    @InjectMock
+    DeletionService deletionService;
 
     @Inject
     ProcessConnectionPropertiesService processConnectionPropertiesService;
@@ -753,10 +749,9 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(databaseRegistryDbaasRepository).findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE);
-        verify(dBaaService, times(1)).deleteDatabasesAsync(TEST_NAMESPACE, listOfDbRegistry, true);
-        verify(dBaaService).checkNamespaceAlreadyDropped(TEST_NAMESPACE, listOfDbRegistry);
-        verifyNoMoreInteractions(dBaaService, databaseRegistryDbaasRepository);
+        verify(deletionService).checkNamespaceAlreadyDropped(TEST_NAMESPACE);
+        verify(deletionService).cleanupNamespaceFullAsync(TEST_NAMESPACE, true);
+        verifyNoMoreInteractions(deletionService);
     }
 
     @Test
@@ -796,14 +791,11 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(databaseRegistryDbaasRepository).findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE_IDLE);
-        verify(dBaaService, times(1)).deleteDatabasesAsync(TEST_NAMESPACE_IDLE, listDbrIdle, true);
-        verify(dBaaService).checkNamespaceAlreadyDropped(TEST_NAMESPACE_IDLE, listDbrIdle);
-
-        verify(databaseRegistryDbaasRepository).findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE);
-        verify(dBaaService, times(1)).deleteDatabasesAsync(TEST_NAMESPACE, listOfDbRegistryActive, true);
-        verify(dBaaService).checkNamespaceAlreadyDropped(TEST_NAMESPACE, listOfDbRegistryActive);
-        verifyNoMoreInteractions(dBaaService, databaseRegistryDbaasRepository);
+        verify(deletionService).checkNamespaceAlreadyDropped(TEST_NAMESPACE_IDLE);
+        verify(deletionService).cleanupNamespaceFullAsync(TEST_NAMESPACE_IDLE, true);
+        verify(deletionService).checkNamespaceAlreadyDropped(TEST_NAMESPACE);
+        verify(deletionService).cleanupNamespaceFullAsync(TEST_NAMESPACE, true);
+        verifyNoMoreInteractions(deletionService);
     }
 
     @Test
@@ -848,12 +840,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        database.setMarkedForDrop(false);
-
-        verify(dBaaService, times(1)).dropDatabase(database);
-        verify(databaseRegistryDbaasRepository, times(1)).deleteById(database.getDatabaseRegistry().getFirst().getId());
-        verify(databaseRegistryDbaasRepository, times(3)).getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString());
-        verifyNoMoreInteractions(dBaaService, databaseRegistryDbaasRepository);
+        verify(deletionService).dropRegistrySafe(database);
+        verifyNoMoreInteractions(deletionService);
     }
 
     @Test
@@ -876,6 +864,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .when().delete("/{type}", POSTGRESQL.toString())
                 .then()
                 .statusCode(OK.getStatusCode());
+
         final DatabaseRegistry database = getDatabaseSample();
         database.setId(id);
         database.setType(POSTGRESQL.toString());
@@ -901,10 +890,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(dBaaService, times(1)).dropDatabase(database);
-        verify(databaseRegistryDbaasRepository, times(1)).deleteById(database.getDatabaseRegistry().getFirst().getId());
-        verify(databaseRegistryDbaasRepository, times(3)).getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString());
-        verifyNoMoreInteractions(dBaaService, databaseRegistryDbaasRepository);
+        verify(deletionService).dropRegistrySafe(database);
+        verifyNoMoreInteractions(deletionService);
     }
 
     @Test
@@ -979,12 +966,11 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(dBaaService, times(1)).dropDatabase(database);
-        verify(databaseRegistryDbaasRepository, times(1)).deleteById(database.getDatabaseRegistry().getFirst().getId());
+        verify(deletionService).dropRegistrySafe(database);
         verify(databaseRegistryDbaasRepository, times(3)).getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString());
         verify(databaseRegistryDbaasRepository, times(1)).getDatabaseByClassifierAndType(classifier, anotherType);
         verify(databaseRegistryDbaasRepository, times(1)).getDatabaseByClassifierAndType(anotherClassifier, POSTGRESQL.toString());
-        verifyNoMoreInteractions(dBaaService, databaseRegistryDbaasRepository);
+        verifyNoMoreInteractions(deletionService, dBaaService, databaseRegistryDbaasRepository);
     }
 
     @Test
@@ -1017,15 +1003,14 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(FORBIDDEN.getStatusCode());
-        verify(databaseRegistryDbaasRepository).findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE);
-        verify(dBaaService).checkNamespaceAlreadyDropped(TEST_NAMESPACE, databaseRegistryList);
-        verifyNoMoreInteractions(dBaaService, databaseRegistryDbaasRepository);
+        verify(deletionService).checkNamespaceAlreadyDropped(TEST_NAMESPACE);
+        verifyNoMoreInteractions(deletionService, databaseRegistryDbaasRepository);
     }
 
     @Test
     void testDeleteAllWhenProfileIsProdAndListIsEmpty() {
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(Collections.emptyList());
-        when(dBaaService.checkNamespaceAlreadyDropped(TEST_NAMESPACE, Collections.emptyList())).thenReturn(true);
+        when(deletionService.checkNamespaceAlreadyDropped(TEST_NAMESPACE)).thenReturn(true);
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()
@@ -1037,7 +1022,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     @Test
     void testDeleteAllV3WhenProfileIsProdAndListIsEmpty() {
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(Collections.emptyList());
-        when(dBaaService.checkNamespaceAlreadyDropped(TEST_NAMESPACE, Collections.emptyList())).thenReturn(true);
+        when(deletionService.checkNamespaceAlreadyDropped(TEST_NAMESPACE)).thenReturn(true);
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete("/deleteall")
@@ -1048,7 +1033,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
 
     @Test
     void testDeleteAllV3WhenProfileIsProdAndConfigListIsEmpty() {
-        when(dBaaService.checkNamespaceAlreadyDropped(TEST_NAMESPACE, Collections.emptyList())).thenReturn(true);
+        when(deletionService.checkNamespaceAlreadyDropped(TEST_NAMESPACE)).thenReturn(true);
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete("/deleteall")
@@ -1061,7 +1046,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     void testDeleteNothingInComposite() {
         when(compositeNamespaceService.isNamespaceInComposite(TEST_NAMESPACE)).thenReturn(false);
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(Collections.emptyList());
-        when(dBaaService.checkNamespaceAlreadyDropped(TEST_NAMESPACE, Collections.emptyList())).thenReturn(true);
+        when(deletionService.checkNamespaceAlreadyDropped(TEST_NAMESPACE)).thenReturn(true);
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()
@@ -1088,7 +1073,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         final DatabaseRegistry database = getDatabaseSample();
         List<DatabaseRegistry> dbForDeletion = singletonList(database.getDatabaseRegistry().getFirst());
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(dbForDeletion);
-        when(dBaaService.deleteDatabasesAsync(eq(TEST_NAMESPACE), eq(dbForDeletion), anyBoolean())).thenReturn(1L);
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(1);
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()
@@ -1099,7 +1084,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
 
     @Test
     void testDeleteV3WhenProfileIsProdAndConfigListIsEmpty() {
-        when(dBaaService.checkNamespaceAlreadyDropped(TEST_NAMESPACE, Collections.emptyList())).thenReturn(true);
+        when(deletionService.checkNamespaceAlreadyDropped(TEST_NAMESPACE)).thenReturn(true);
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()

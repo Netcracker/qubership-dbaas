@@ -5,8 +5,10 @@ import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObjec
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jspecify.annotations.NonNull;
 
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
@@ -17,42 +19,35 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 @Slf4j
 @ApplicationScoped
 public class AsyncOperations {
-
-    private final ThreadPoolExecutor backupExecutor;
-    private final ExecutorService debugExecutorService;
+    @Getter
+    private final ExecutorService backupExecutor;
+    @Getter
+    private final ExecutorService debugExecutor;
+    @Getter
+    private final ExecutorService cleanupExecutor;
 
     @Inject
     public AsyncOperations(
-            @ConfigProperty(
-                    name = "backup.aggregator.async.thread.pool.size",
-                    defaultValue = "10"
-            ) int poolSize
+            @ConfigProperty(name = "backup.aggregator.async.thread.pool.size", defaultValue = "10") int backupPoolSize
     ) {
-        this.backupExecutor = new ThreadPoolExecutor(
-                poolSize, poolSize, 0L, TimeUnit.MILLISECONDS,
+        backupExecutor = new ThreadPoolExecutor(
+                backupPoolSize, backupPoolSize, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<>(),
                 new NamedThreadFactory("backups-")
         );
-        this.debugExecutorService = Executors.newVirtualThreadPerTaskExecutor();
+        debugExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        cleanupExecutor = Executors.newSingleThreadExecutor(new NamedThreadFactory("cleanup-"));
     }
 
-    public ThreadPoolExecutor getBackupPool() {
-        return backupExecutor;
-    }
-
-    public ExecutorService getDebugExecutor() {
-        return debugExecutorService;
-    }
-
-    class NamedThreadFactory implements ThreadFactory {
-        private ThreadFactory defaultWrapped = Executors.defaultThreadFactory();
+    private static class NamedThreadFactory implements ThreadFactory {
+        private final ThreadFactory defaultWrapped = Executors.defaultThreadFactory();
         private final String namePrefix;
 
         NamedThreadFactory(String namePrefix) {
             this.namePrefix = namePrefix;
         }
 
-        public Thread newThread(Runnable run) {
+        public Thread newThread(@NonNull Runnable run) {
             Thread thread = defaultWrapped.newThread(run);
             thread.setName(namePrefix + thread.getName());
             return thread;
@@ -86,30 +81,31 @@ public class AsyncOperations {
     @PreDestroy
     void cleanUp() {
         shutdown("backupExecutor", backupExecutor);
-        shutdown("debugExecutorService", debugExecutorService);
+        shutdown("debugExecutor", debugExecutor);
+        shutdown("cleanupExecutor", cleanupExecutor);
     }
 
-    private void shutdown(String serviceName,ExecutorService executorService) {
-        log.info("Start shutting down '{}' service", serviceName);
+    private void shutdown(String serviceName, ExecutorService executorService) {
+        log.info("Shutting down '{}' executor", serviceName);
         executorService.shutdown();
 
         try {
             if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                log.info("'{}' service is still not terminated", serviceName);
+                log.info("'{}' executor is still not terminated", serviceName);
 
                 executorService.shutdownNow();
 
                 if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                    log.error("'{}' service was not terminated even after await", serviceName);
+                    log.error("'{}' executor was not terminated even after await", serviceName);
                 }
             }
         } catch (InterruptedException ex) {
-            log.error("Error happened during shutting down '{}' service: ", serviceName, ex);
+            log.error("Error happened during shutting down '{}' executor: ", serviceName, ex);
 
             executorService.shutdownNow();
             Thread.currentThread().interrupt();
         }
 
-        log.info("Finish shutting down '{}' service", serviceName);
+        log.info("Finish shutting down '{}' executor", serviceName);
     }
 }

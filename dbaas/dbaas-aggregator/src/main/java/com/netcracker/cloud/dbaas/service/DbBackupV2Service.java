@@ -14,7 +14,6 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
-import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -45,7 +44,6 @@ import java.util.stream.Stream;
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
 import static com.netcracker.cloud.dbaas.enums.RestoreTaskStatus.NOT_STARTED;
-import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 
 @Slf4j
@@ -73,10 +71,10 @@ public class DbBackupV2Service {
     private final BackupV2Mapper mapper;
     private final BalancingRulesService balancingRulesService;
     private final AsyncOperations asyncOperations;
-    private final DBaaService dBaaService;
     private final PasswordEncryption encryption;
     private final BgNamespaceRepository bgNamespaceRepository;
     private final LockProvider lockProvider;
+    private final DeletionService deletionService;
 
     private final Duration retryDelay;
     private final int retryAttempts;
@@ -90,10 +88,10 @@ public class DbBackupV2Service {
                              BackupV2Mapper mapper,
                              BalancingRulesService balancingRulesService,
                              AsyncOperations asyncOperations,
-                             DBaaService dBaaService,
                              PasswordEncryption encryption,
                              BgNamespaceRepository bgNamespaceRepository,
                              LockProvider lockProvider,
+                             DeletionService deletionService,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.attempts") int retryAttempts,
                              @ConfigProperty(name = "dbaas.backup-restore.check.attempts") int retryCount
@@ -105,10 +103,10 @@ public class DbBackupV2Service {
         this.mapper = mapper;
         this.balancingRulesService = balancingRulesService;
         this.asyncOperations = asyncOperations;
-        this.dBaaService = dBaaService;
         this.encryption = encryption;
         this.bgNamespaceRepository = bgNamespaceRepository;
         this.lockProvider = lockProvider;
+        this.deletionService = deletionService;
         this.retryDelay = retryDelay;
         this.retryAttempts = retryAttempts;
         this.retryCount = retryCount;
@@ -211,7 +209,7 @@ public class DbBackupV2Service {
                     return new BackupDatabase(
                             UUID.randomUUID(),
                             logicalBackup,
-                            DbaasBackupUtils.getDatabaseName(db),
+                            DBaaService.getDatabaseName(db),
                             databaseRegistries.stream().map(DatabaseRegistry::getClassifier).toList(),
                             db.getSettings(),
                             getBackupDatabaseUsers(db.getConnectionProperties()),
@@ -235,7 +233,7 @@ public class DbBackupV2Service {
         List<CompletableFuture<Void>> futures = backup.getLogicalBackups().stream()
                 .map(logicalBackup ->
                         CompletableFuture.supplyAsync(asyncOperations.wrapWithContext(() ->
-                                        startLogicalBackup(logicalBackup)), asyncOperations.getBackupPool())
+                                        startLogicalBackup(logicalBackup)), asyncOperations.getBackupExecutor())
                                 .thenAccept(response ->
                                         refreshLogicalBackupState(logicalBackup, response)
                                 )
@@ -359,7 +357,7 @@ public class DbBackupV2Service {
         return CompletableFuture.supplyAsync(
                         asyncOperations.wrapWithContext(() -> Failsafe.with(retryPolicy)
                                 .get(() -> executeTrackBackup(logicalBackup))),
-                        asyncOperations.getBackupPool()
+                        asyncOperations.getBackupExecutor()
                 )
                 .thenAccept(response -> refreshLogicalBackupState(logicalBackup, response))
                 .exceptionally(throwable -> {
@@ -464,8 +462,7 @@ public class DbBackupV2Service {
     }
 
     private boolean isValidRegistry(DatabaseRegistry registry) {
-        if (registry.isMarkedForDrop()
-                || registry.getClassifier().containsKey(MARKED_FOR_DROP))
+        if (DeletionService.isMarkedForDrop(registry))
             return false;
 
         return registry.isExternallyManageable()
@@ -628,7 +625,7 @@ public class DbBackupV2Service {
                                             adapter.deleteBackupV2(logicalBackup.getLogicalBackupName(), blobPath);
                                         }
                                 )),
-                        asyncOperations.getBackupPool()
+                        asyncOperations.getBackupExecutor()
                 )
                 .exceptionally(throwable -> {
                     if (is4xxError(throwable))
@@ -1071,7 +1068,7 @@ public class DbBackupV2Service {
                                         dryRun
                                 )
                         ),
-                        asyncOperations.getBackupPool()
+                        asyncOperations.getBackupExecutor()
                 )
                 .thenAccept(response ->
                         refreshLogicalRestoreState(logicalRestore, response))
@@ -1332,7 +1329,7 @@ public class DbBackupV2Service {
                                                         return adapter.trackRestoreV2(logicalRestore.getLogicalRestoreName(), restore.getStorageName(), restore.getBlobPath());
                                                     }
                                             )
-                                    ), asyncOperations.getBackupPool())
+                                    ), asyncOperations.getBackupExecutor())
                             .thenAccept(response ->
                                     refreshLogicalRestoreState(logicalRestore, response))
                             .exceptionally(throwable -> {
@@ -1499,8 +1496,7 @@ public class DbBackupV2Service {
                     databaseRegistryDbaasRepository
                             .getDatabaseByClassifierAndType(currClassifier, type)
                             .ifPresentOrElse(dbRegistry -> {
-                                        dBaaService.markDatabasesAsOrphan(dbRegistry);
-                                        databaseRegistryDbaasRepository.saveAnyTypeLogDb(dbRegistry);
+                                        deletionService.markDatabaseAsOrphan(dbRegistry);
                                         log.info(
                                                 "Database marked as orphan: dbId={}, dbType={}, classifier={}",
                                                 dbRegistry.getDatabase().getId(),
