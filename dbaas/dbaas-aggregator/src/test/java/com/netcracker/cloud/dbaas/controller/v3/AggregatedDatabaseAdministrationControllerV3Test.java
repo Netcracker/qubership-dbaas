@@ -5,11 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
-import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import com.netcracker.cloud.dbaas.integration.config.WireMockResource;
 import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
 import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfoSegment;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -25,7 +23,6 @@ import io.quarkus.test.junit.mockito.MockitoConfig;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -51,7 +48,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @QuarkusTest
-@QuarkusTestResource(WireMockResource.class)
 @QuarkusTestResource(PostgresqlContainerResource.class)
 @TestHTTPEndpoint(AggregatedDatabaseAdministrationControllerV3.class)
 @Slf4j
@@ -69,7 +65,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
 
     @InjectMock
     DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
-    @Inject
+    @InjectMock
     DBaaService dBaaService;
     @InjectMock
     @MockitoConfig(convertScopes = true)
@@ -90,15 +86,6 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     CompositeNamespaceService compositeNamespaceService;
     @InjectMock
     DeletionService deletionService;
-    @Inject
-    AdapterActionTrackerClient adapterActionTrackerClient;
-
-    @Inject
-    DbaasAdapterRESTClientFactory factory;
-
-    @ConfigProperty(name = "wiremock.url")
-    String adapterAddress;
-
 
     @Inject
     ProcessConnectionPropertiesService processConnectionPropertiesService;
@@ -136,61 +123,6 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .statusCode(OK.getStatusCode())
                 .body("name", is(database.getName()))
                 .body("connectionProperties.roHost", is(TEST_RO_HOST));
-    }
-
-    @Test
-    void testCreateDatabase_WhenAdapterException_ThenReturns500WithMappedError() throws JsonProcessingException {
-//        when(dBaaService.getConnectionPropertiesService()).thenReturn(processConnectionPropertiesService);
-        DbaasAdapter adapter = factory.createDbaasAdapterClient(
-                "u",
-                "p",
-                adapterAddress,
-                "postgres",
-                "id",
-                adapterActionTrackerClient
-        );
-
-        ExternalAdapterRegistrationEntry adapterRegistrationEntry = new ExternalAdapterRegistrationEntry();
-        adapterRegistrationEntry.setAdapterId(adapter.identifier());
-
-        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
-        physicalDatabase.setPhysicalDatabaseIdentifier(PHYSICAL_DATABASE_ID);
-        physicalDatabase.setRoHost(TEST_RO_HOST);
-        physicalDatabase.setAdapter(adapterRegistrationEntry);
-        when(physicalDatabasesService.searchInPhysicalDatabaseCache(any())).thenReturn(physicalDatabase);
-
-        final DatabaseCreateRequestV3 databaseCreateRequest = getDatabaseCreateRequestSample();
-        when(declarativeConfigRepository.findFirstByClassifierAndType(any(), any())).thenReturn(Optional.empty());
-        Mockito.when(databaseRolesService.getSupportedRoleFromRequest(any(DatabaseCreateRequestV3.class), any(), any())).thenReturn(ADMIN.toString());
-
-        final DatabaseRegistry database = getDatabaseSample();
-        database.setPhysicalDatabaseId(PHYSICAL_DATABASE_ID);
-//        when(dBaaService.findDatabaseByClassifierAndType(any(), any(), anyBoolean())).thenReturn(database.getDatabaseRegistry().getFirst());
-//        when(dBaaService.isModifiedFields(any(), any())).thenReturn(true);
-//        when(dBaaService.detach(database)).thenReturn(database);
-//        when(dBaaService.isModifiedFields(any(), any())).thenReturn(false);
-        DatabaseResponseV3 response = new DatabaseResponseV3SingleCP(database.getDatabaseRegistry().getFirst(), PHYSICAL_DATABASE_ID, ADMIN.toString());
-//        when(dBaaService.processConnectionPropertiesV3(any(DatabaseRegistry.class), any())).thenReturn(response);
-        when(databaseRegistryDbaasRepository.findDatabaseRegistryById(any())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
-//        when(dBaaService.isAdapterExists(any(), any(), any())).thenReturn(true);
-
-        when(physicalDatabasesService.getPhysicalDatabaseContainsLabel(any(), any(), any()))
-                .thenReturn(List.of(physicalDatabase));
-        when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(any()))
-                .thenReturn(physicalDatabase);
-        when(physicalDatabasesService.getAdapterById(any()))
-                .thenReturn(adapter);
-
-
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(databaseCreateRequest))
-                .when().put()
-                .then()
-                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
-                .body("reason", is("Failed request to physical adapter"))
-                .body("message", is("An error occurred during the request to adapter: Internal Exception"));
     }
 
     @Test

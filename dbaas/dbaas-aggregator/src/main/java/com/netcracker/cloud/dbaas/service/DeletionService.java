@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.DatabaseType;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
@@ -12,7 +13,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.ws.rs.WebApplicationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.ListUtils;
@@ -385,8 +385,8 @@ public class DeletionService {
             log.warn("Register deletion error: '{}' of database {} with classifier {}", ex.getMessage(), DBaaService.getDatabaseName(databaseRegistry.getDatabase()), databaseRegistry.getClassifier());
             try {
                 int status = 0;
-                if (ex instanceof WebApplicationException) {
-                    status = ((WebApplicationException) ex).getResponse().getStatus();
+                if (ex instanceof AdapterException) {
+                    status = ((AdapterException) ex).getHttpCode();
                 }
                 if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
                     databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING_FAILED);

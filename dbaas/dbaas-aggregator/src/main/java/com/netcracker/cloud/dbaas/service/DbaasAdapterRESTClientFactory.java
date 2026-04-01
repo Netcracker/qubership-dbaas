@@ -1,19 +1,14 @@
 package com.netcracker.cloud.dbaas.service;
 
-import com.netcracker.cloud.dbaas.rest.AdapterResponseExceptionMapper;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
-import com.netcracker.cloud.dbaas.rest.SecureDbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.rest.*;
 import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
-import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
-import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientLoggingFilter;
-import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.security.filters.DynamicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-
 import jakarta.ws.rs.Priorities;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;

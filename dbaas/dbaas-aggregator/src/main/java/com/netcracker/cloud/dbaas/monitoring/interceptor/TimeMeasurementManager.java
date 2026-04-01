@@ -109,7 +109,8 @@ public class TimeMeasurementManager {
                 }
             } catch (InvocationTargetException exception) {
                 if (exception.getCause() instanceof ProcessingException processingException) {
-                    throw new AdapterException(processingException.getMessage());
+                    // In case there is no response from adapter
+                    throw new AdapterException(0, processingException.getMessage());
                 }
                 throw exception.getCause() != null ? exception.getCause() : exception;
             }

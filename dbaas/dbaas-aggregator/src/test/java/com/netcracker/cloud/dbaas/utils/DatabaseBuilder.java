@@ -41,6 +41,8 @@ public class DatabaseBuilder {
         DbResource dbResource = new DbResource();
         database.setNamespace(TEST_NS);
         dbResource.setId(UUID.randomUUID());
+        dbResource.setKind("someKind");
+        dbResource.setName("someName");
         database.setResources(new ArrayList<>(List.of(dbResource)));
         database.setConnectionProperties(new ArrayList<>(List.of(Map.of(
                 "username", "username",

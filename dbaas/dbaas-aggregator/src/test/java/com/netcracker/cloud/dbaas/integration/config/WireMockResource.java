@@ -5,31 +5,13 @@ import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 
 import java.util.Map;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.*;
-
 public class WireMockResource implements QuarkusTestResourceLifecycleManager {
-
-    private WireMockServer wireMockServer;
+    private static WireMockServer wireMockServer;
 
     @Override
     public Map<String, String> start() {
-        wireMockServer = new WireMockServer(9090);
+        wireMockServer = new WireMockServer(0);
         wireMockServer.start();
-
-        wireMockServer.stubFor(
-                post(urlPathMatching("/api/v1/dbaas/adapter/.*/databases"))
-                        .willReturn(aResponse()
-                                .withStatus(500)
-                                .withHeader("Content-Type", "application/json")
-                                .withBody("""
-                        {
-                          "error": "INTERNAL_ERROR",
-                          "message": "Adapter failure"
-                        }
-                        """))
-        );
-
-
         return Map.of(
                 "wiremock.url", wireMockServer.baseUrl()
         );
@@ -40,5 +22,9 @@ public class WireMockResource implements QuarkusTestResourceLifecycleManager {
         if (wireMockServer != null) {
             wireMockServer.stop();
         }
+    }
+
+    public static WireMockServer getServer() {
+        return wireMockServer;
     }
 }
