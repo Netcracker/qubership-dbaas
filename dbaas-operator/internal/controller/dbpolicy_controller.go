@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 
+	"github.com/google/uuid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -26,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
@@ -51,7 +52,10 @@ type DbPolicyReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	log := logf.FromContext(ctx)
+	requestID := uuid.New().String()
+	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+		xRequestID: requestID,
+	})
 
 	dp := &dbaasv1alpha1.DbPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, dp); err != nil {
@@ -82,15 +86,17 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	// ── Call aggregator ───────────────────────────────────────────────────────
 
 	payload := r.buildPayload(dp)
+	dp.Status.LastRequestID = requestID
 	if _, err := r.Aggregator.ApplyConfig(ctx, payload); err != nil {
-		log.Error(err, "failed to apply DbPolicy to dbaas-aggregator")
-		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, err)
+		log.ErrorC(ctx, "failed to apply DbPolicy to dbaas-aggregator: %v", err)
+		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, err, requestID)
 	}
 
-	log.Info("DbPolicy applied successfully", "microserviceName", dp.Spec.MicroserviceName)
+	log.InfoC(ctx, "DbPolicy applied successfully microserviceName=%v", dp.Spec.MicroserviceName)
 	markSucceeded(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, EventReasonPolicyApplied)
 	r.Recorder.Eventf(dp, corev1.EventTypeNormal, EventReasonPolicyApplied,
-		"policy applied to dbaas-aggregator (microserviceName=%s)", dp.Spec.MicroserviceName)
+		"policy applied to dbaas-aggregator (microserviceName=%s, requestId=%s)",
+		dp.Spec.MicroserviceName, requestID)
 	return ctrl.Result{}, nil
 }
 
@@ -110,7 +116,7 @@ type dbPolicyAggregatorSpec struct {
 // MicroserviceName goes into metadata (not into the spec that is forwarded to the aggregator).
 func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1alpha1.DbPolicy) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
-		APIVersion: "core.netcracker.com/v1",
+		APIVersion: apiVersionV1,
 		Kind:       "DBaaS",
 		SubKind:    "DbPolicy",
 		Metadata: aggregatorclient.DeclarativeMeta{

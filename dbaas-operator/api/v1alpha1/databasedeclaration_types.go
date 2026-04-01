@@ -142,6 +142,11 @@ type DatabaseDeclarationStatus struct {
 	// Zero means no pending async operation.
 	// +optional
 	PendingOperationGeneration int64 `json:"pendingOperationGeneration,omitempty"`
+
+	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
+	// Use this to correlate operator logs with dbaas-aggregator logs for debugging.
+	// +optional
+	LastRequestID string `json:"lastRequestId,omitempty"`
 }
 
 // +kubebuilder:object:root=true

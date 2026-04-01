@@ -203,6 +203,10 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastRequestId:
+                description: |-
+                  lastRequestId is the X-Request-Id of the most recent reconcile attempt.
+                type: string
               observedGeneration:
                 description: |-
                   observedGeneration reflects the .metadata.generation that was last processed

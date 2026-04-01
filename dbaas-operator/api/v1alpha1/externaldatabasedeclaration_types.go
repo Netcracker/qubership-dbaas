@@ -151,6 +151,11 @@ type ExternalDatabaseDeclarationSpec struct {
 // ExternalDatabaseDeclarationStatus defines the observed state of ExternalDatabaseDeclaration.
 type ExternalDatabaseDeclarationStatus struct {
 	OperatorStatus `json:",inline"`
+
+	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
+	// Use this to correlate operator logs with dbaas-aggregator logs for debugging.
+	// +optional
+	LastRequestID string `json:"lastRequestId,omitempty"`
 }
 
 // +kubebuilder:object:root=true
