@@ -26,7 +26,6 @@ public class NamespaceValidationRequestFilter implements ContainerRequestFilter 
         if (namespaceFromPath == null || !(requestContext.getSecurityContext().getUserPrincipal() instanceof JWTCallerPrincipal)) {
             return;
         }
-        // CLUSTER_OPERATOR is allowed to work across namespaces
         if (requestContext.getSecurityContext().isUserInRole(Constants.CLUSTER_OPERATOR)) {
             return;
         }
