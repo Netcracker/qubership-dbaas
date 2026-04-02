@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
+import com.netcracker.cloud.dbaas.Constants;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.exceptions.FailedNamespaceIsolationCheckException;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
@@ -101,5 +102,20 @@ class NamespaceValidationRequestFilterTest {
 
             verify(namespaceValidator, times(1)).isNamespaceFromPathValid("ns1", "other-ns");
         }
+    }
+
+    @Test
+    void testFilter_skipNamespaceIsolationForClusterOperator() throws IOException {
+        String nsFromPath = "ns1";
+        when(pathParams.getFirst(DbaasApiPath.NAMESPACE_PARAMETER)).thenReturn(nsFromPath);
+
+        JWTCallerPrincipal jwtPrincipal = mock(JWTCallerPrincipal.class);
+        when(securityContext.getUserPrincipal()).thenReturn(jwtPrincipal);
+        when(securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)).thenReturn(true);
+
+        filter.filter(requestContext);
+
+        verify(securityContext, times(1)).isUserInRole(Constants.CLUSTER_OPERATOR);
+        verify(namespaceValidator, times(0)).isNamespaceFromPathValid(any(), any());
     }
 }
