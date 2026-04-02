@@ -5,13 +5,12 @@ metadata:
     labels:
         name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-        app.kubernetes.io/instance: '{{ cat (coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME) "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+        app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
         app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
         app.kubernetes.io/part-of: 'dbaas'
         app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
-        app.kubernetes.io/component: 'backend'
-        app.kubernetes.io/technology: 'java-quarkus'
-        netcracker.cloud/disaster-recovery.manageable: 'true'
+        app.kubernetes.io/component: 'operator'
+        app.kubernetes.io/technology: 'go'
         deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
     replicas: {{ .Values.REPLICAS | default 1 }}
@@ -42,14 +41,14 @@ spec:
     template:
         metadata:
             labels:
+                app: '{{ .Values.SERVICE_NAME }}'
                 name: '{{ .Values.SERVICE_NAME }}'
                 app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-                app.kubernetes.io/instance: '{{ cat (coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME) "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+                app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
                 app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
-                app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
-                app.kubernetes.io/component: 'backend'
-                app.kubernetes.io/technology: 'java-quarkus'
-                netcracker.cloud/disaster-recovery.manageable: 'true'
+                app.kubernetes.io/component: 'operator'
+                app.kubernetes.io/part-of: 'dbaas'
+                app.kubernetes.io/technology: 'go'
         spec:
             nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
@@ -75,6 +74,12 @@ spec:
                             value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
                         -   name: DBAAS_AGGREGATOR_USERNAME
                             value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
+                        -   name: CLOUD_NAMESPACE
+                            valueFrom:
+                                fieldRef:
+                                    fieldPath: metadata.namespace
+                        -   name: LOG_LEVEL
+                            value: '{{ lower .Values.LOG_LEVEL }}'
                     ports:
                         -   name: web
                             containerPort: 8081
@@ -92,7 +97,13 @@ spec:
                         initialDelaySeconds: 5
                         periodSeconds: 10
                     securityContext:
-                        readOnlyRootFilesystem: {{ .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
+                    {{- if eq .Values.PAAS_PLATFORM "KUBERNETES" }}
+                        runAsGroup: 10001
+                    {{- end }}
+                        readOnlyRootFilesystem: {{ and .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED (eq .Values.PAAS_PLATFORM "KUBERNETES") }}
+                        runAsNonRoot: true
+                        seccompProfile:
+                            type: RuntimeDefault
                         allowPrivilegeEscalation: false
                         capabilities:
                             drop:
