@@ -80,22 +80,6 @@ spec:
                                     fieldPath: metadata.namespace
                         -   name: LOG_LEVEL
                             value: '{{ lower .Values.LOG_LEVEL }}'
-                        -   name: PAAS_PLATFORM
-                            value: '{{ .Values.PAAS_PLATFORM }}'
-                        -   name: PAAS_VERSION
-                            value: '{{ .Values.PAAS_VERSION }}'
-                        -   name: CLOUD_TOPOLOGY_KEY
-                            value: '{{ .Values.CLOUD_TOPOLOGY_KEY }}'
-                        -   name: MONITORING_ENABLED
-                            value: '{{ .Values.MONITORING_ENABLED }}'
-                        -   name: TRACING_ENABLED
-                            value: '{{ .Values.TRACING_ENABLED }}'
-                        -   name: TRACING_HOST
-                            value: '{{ .Values.TRACING_HOST }}'
-                        -   name: TRACING_SAMPLER_RATELIMITING
-                            value: '{{ .Values.TRACING_SAMPLER_RATELIMITING }}'
-                        -   name: READONLY_CONTAINER_FILE_SYSTEM_ENABLED
-                            value: '{{ and .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED (eq .Values.PAAS_PLATFORM "KUBERNETES") }}'
                     ports:
                         -   name: web
                             containerPort: 8081

@@ -5,23 +5,14 @@ REGION_DBAAS: database
 READONLY_CONTAINER_FILE_SYSTEM_ENABLED: true
 MANAGED_BY: saasDeployer
 LIVENESS_PROBE_INITIAL_DELAY_SECONDS: 15
-CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
-MONITORING_ENABLED: false
-IMAGE_REPOSITORY: docker pull ghcr.io/netcracker/qubership-dbaas-operator
-TAG: latest
+IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-operator
+TAG: feat-dbaas-operator-snapshot
+NAMESPACE: default
+PAAS_PLATFORM: KUBERNETES
+PAAS_VERSION: '1.25'
 
 # ============== SERVICE VARIABLES ============================
 DBAAS_SECURITY_CONFIGURATION_LOCATION: '/etc/dbaas/security'
 DBAAS_AGGREGATOR_USERNAME: cluster-dba
 WATCH_NAMESPACES: ''
 LOG_LEVEL: "info"
-
-TRACING_ENABLED: false
-TRACING_HOST: 'nc-diagnostic-agent'
-TRACING_SAMPLER_RATELIMITING: 10
-
-CPU_REQUEST: "10m"
-MEMORY_REQUEST: "64Mi"
-MEMORY_LIMIT: "128Mi"
-CPU_LIMIT: "500m"
-REPLICAS: 1
