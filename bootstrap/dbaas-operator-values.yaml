@@ -1,0 +1,19 @@
+
+# ============== Node Selector label ============================
+NODE_SELECTOR_DBAAS_KEY: ${NODE_SELECTOR_DBAAS_KEY}
+REGION_DBAAS: ${REGION_DBAAS}
+
+# ============== Images ============================
+IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-operator
+TAG: ${TAG}
+
+# ============== Namespace ============================
+NAMESPACE: ${DBAAS_NAMESPACE}
+
+# ============== Service ============================
+WATCH_NAMESPACES: ${DBAAS_NAMESPACE}
+DBAAS_AGGREGATOR_USERNAME: cluster-dba
+
+# ============== RBAC ============================
+CREATE_OPERATOR_CLUSTER_ROLE: true
+CREATE_OPERATOR_CLUSTER_ROLE_BINDING: true

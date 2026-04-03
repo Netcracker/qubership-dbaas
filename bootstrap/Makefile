@@ -230,6 +230,67 @@ wait-dbaas-aggregator:
 	@echo "$(GREEN)--- Stage 5 END: DBaaS Aggregator service is ready$(NC)"
 	@echo ""
 
+# Build and load DBaaS Operator image into kind
+.PHONY: build-dbaas-operator
+build-dbaas-operator:
+	@echo "$(BLUE)=== DBaaS Operator Image Build ===$(NC)"
+	@echo "$(CYAN)--- BEGIN: Building DBaaS Operator image...$(NC)"
+	@docker build -t dbaas-operator:local $(REPOS_DIR)/qubership-dbaas/dbaas-operator || \
+		(echo "$(RED)Error: DBaaS Operator image build failed$(NC)" && exit 1)
+	@echo "$(CYAN)--- Loading image into kind...$(NC)"
+	@docker save dbaas-operator:local | docker exec -i kind-control-plane ctr --namespace=k8s.io images import --snapshotter=overlayfs - || \
+		(echo "$(RED)Error: Failed to load image into kind$(NC)" && exit 1)
+	@echo "$(GREEN)--- END: DBaaS Operator image ready$(NC)"
+	@echo ""
+
+# Install DBaaS Operator CRDs
+.PHONY: install-dbaas-operator-crds
+install-dbaas-operator-crds:
+	@echo "$(BLUE)=== DBaaS Operator CRDs Installation ===$(NC)"
+	@echo "$(CYAN)--- BEGIN: Installing DBaaS Operator CRDs...$(NC)"
+	@kubectl apply -f $(REPOS_DIR)/qubership-dbaas/dbaas-operator/config/crd/bases/ || \
+		(echo "$(RED)Error: DBaaS Operator CRDs installation failed$(NC)" && exit 1)
+	@echo "$(GREEN)--- END: DBaaS Operator CRDs installation completed$(NC)"
+	@echo ""
+
+# Install DBaaS Operator
+.PHONY: install-dbaas-operator
+install-dbaas-operator:
+	@echo "$(BLUE)=== DBaaS Operator Installation ===$(NC)"
+	@echo "$(CYAN)--- BEGIN: Installing DBaaS Operator...$(NC)"
+	@envsubst < $(DBAAS_OPERATOR_VALUES_FILE) | helm upgrade --install -n $(DBAAS_NAMESPACE) $(CREATE_NAMESPACE_OPTION) \
+		dbaas-operator $(REPOS_DIR)/qubership-dbaas/dbaas-operator/helm-templates/dbaas-operator -f - || \
+		(echo "$(RED)Error: DBaaS Operator installation failed$(NC)" && echo "$(CYAN)Please check the helm output above for details$(NC)" && exit 1)
+	@echo "$(GREEN)--- END: DBaaS Operator installation completed$(NC)"
+	@echo ""
+
+# Wait for DBaaS Operator
+.PHONY: wait-dbaas-operator
+wait-dbaas-operator:
+	@echo "$(BLUE)=== Wait for DBaaS Operator ===$(NC)"
+	@echo "$(CYAN)--- BEGIN: Waiting for dbaas-operator to be ready (timeout: 5 minutes)...$(NC)"
+	@TIMEOUT=300; START_TIME=$$(date +%s); \
+	while true; do \
+		CURRENT_TIME=$$(date +%s); \
+		ELAPSED_TIME=$$((CURRENT_TIME - START_TIME)); \
+		if [ $$ELAPSED_TIME -ge $$TIMEOUT ]; then \
+			echo "$(RED)Error: Timeout reached after 5 minutes. Operator is not ready.$(NC)"; \
+			exit 1; \
+		fi; \
+		if kubectl -n $(DBAAS_NAMESPACE) get deployment dbaas-operator >/dev/null 2>&1; then \
+			READY_REPLICAS=$$(kubectl -n $(DBAAS_NAMESPACE) get deployment dbaas-operator -o jsonpath='{.status.readyReplicas}' 2>/dev/null); \
+			DESIRED_REPLICAS=$$(kubectl -n $(DBAAS_NAMESPACE) get deployment dbaas-operator -o jsonpath='{.spec.replicas}' 2>/dev/null); \
+			if [ "$$READY_REPLICAS" = "$$DESIRED_REPLICAS" ] && [ ! -z "$$READY_REPLICAS" ]; then \
+				echo "DBaaS Operator deployment is ready! ($$READY_REPLICAS/$$DESIRED_REPLICAS replicas)"; \
+				break; \
+			fi; \
+		fi; \
+		echo "Waiting for DBaaS Operator to be ready... - $$((TIMEOUT - ELAPSED_TIME))s remaining"; \
+		sleep 10; \
+	done
+	@echo "$(GREEN)--- END: DBaaS Operator is ready$(NC)"
+	@echo ""
+
 # Install Patroni Services
 .PHONY: install-patroni-services
 install-patroni-services:
@@ -293,7 +354,7 @@ install: install-without-test smoke-test
 
 # Install without smoke test
 .PHONY: install-without-test
-install-without-test: validate show-config setup-repos install-patroni-core wait-patroni-pods install-dbaas-aggregator wait-dbaas-aggregator install-patroni-services wait-patroni-services-registration
+install-without-test: validate show-config setup-repos install-patroni-core wait-patroni-pods install-dbaas-aggregator wait-dbaas-aggregator install-dbaas-operator-crds install-dbaas-operator wait-dbaas-operator install-patroni-services wait-patroni-services-registration
 	@echo "$(GREEN)=== ALL STAGES COMPLETED SUCCESSFULLY ===$(NC)"
 	@echo ""
 

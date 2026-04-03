@@ -156,9 +156,6 @@ jobs:
             -n postgres \
             --timeout=300s
 
-      - name: Deploy DBaaS operator
-        run: chmod +x .github/scripts/deploy-dbaas-operator.sh && .github/scripts/deploy-dbaas-operator.sh
-
       - name: Run tests
         id: tests
         run: mvn --batch-mode -Dmaven.test.failure.ignore=true -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
