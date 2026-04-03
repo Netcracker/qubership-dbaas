@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -36,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -156,15 +154,8 @@ func main() {
 	if aggregatorURL == "" {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
-	tokenPath := os.Getenv("SERVICE_ACCOUNT_TOKEN_PATH")
-	if tokenPath == "" {
-		tokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	}
-	aggregator := aggregatorclient.NewAggregatorClient(
-		aggregatorURL,
-		loadToken(setupLog, tokenPath),
-	)
-	setupLog.Infof("dbaas-aggregator client configured url=%v token-path=%v", aggregatorURL, tokenPath)
+	aggregator := aggregatorclient.NewAggregatorClient(aggregatorURL)
+	setupLog.Infof("dbaas-aggregator client configured url=%v", aggregatorURL)
 
 	// Build the cache options: restrict to specific namespaces if requested.
 	var cacheOpts cache.Options
@@ -240,16 +231,6 @@ func main() {
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
-
-	// Register the token watcher so it shares the manager's lifecycle.
-	// Kubernetes rotates projected service account tokens roughly every hour;
-	// the watcher reloads the token without requiring a pod restart.
-	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		return watchToken(ctx, logging.GetLogger("dbaas-operator"), tokenPath, aggregator)
-	})); err != nil {
-		setupLog.Errorf("Failed to register token watcher: %v", err)
-		os.Exit(1)
-	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Errorf("Failed to set up health check: %v", err)
