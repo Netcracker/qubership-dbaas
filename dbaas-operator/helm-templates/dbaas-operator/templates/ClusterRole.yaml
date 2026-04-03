@@ -11,20 +11,14 @@ rules:
   # dbaas CRs
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
-      - databasedeclarations
-      - dbpolicies
       - externaldatabasedeclarations
     verbs: [ get, list, watch, create, update, patch, delete ]
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
-      - databasedeclarations/status
-      - dbpolicies/status
       - externaldatabasedeclarations/status
     verbs: [ get, update, patch ]
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
-      - databasedeclarations/finalizers
-      - dbpolicies/finalizers
       - externaldatabasedeclarations/finalizers
     verbs: [ update ]
   # Secrets (for credentials in ExternalDatabaseDeclaration)
