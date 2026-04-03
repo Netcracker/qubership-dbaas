@@ -66,6 +66,12 @@ func writeJSON(t *testing.T, w http.ResponseWriter, status int, v any) {
 	_, _ = w.Write(b)
 }
 
+// bearerToken extracts the Bearer token from the Authorization header.
+func bearerToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	return strings.TrimPrefix(h, "Bearer ")
+}
+
 // ── RegisterExternalDatabase ──────────────────────────────────────────────────
 
 func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
@@ -79,7 +85,7 @@ func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if err := c.RegisterExternalDatabase(context.Background(), "my-namespace", minimalExtDBRequest()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,21 +99,21 @@ func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
 	}
 }
 
-func TestRegisterExternalDatabase_SendsBasicAuth(t *testing.T) {
+func TestRegisterExternalDatabase_SendsBearerToken(t *testing.T) {
 	t.Parallel()
 
-	var gotUser, gotPass string
+	var gotToken string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotUser, gotPass, _ = r.BasicAuth()
+		gotToken = bearerToken(r)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "alice", "secret")
+	c := NewAggregatorClient(srv.URL, "my-sa-token")
 	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
 
-	if gotUser != "alice" || gotPass != "secret" {
-		t.Errorf("basic auth: got %q/%q, want alice/secret", gotUser, gotPass)
+	if gotToken != "my-sa-token" {
+		t.Errorf("Authorization: got Bearer %q, want Bearer my-sa-token", gotToken)
 	}
 }
 
@@ -129,7 +135,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 		ConnectionProperties:       []map[string]string{{"role": "admin", "host": "pg:5432"}},
 		UpdateConnectionProperties: true,
 	}
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if err := c.RegisterExternalDatabase(context.Background(), "ns", req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,7 +156,7 @@ func TestRegisterExternalDatabase_HTTP200IsSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest()); err != nil {
 		t.Errorf("HTTP 200 should be success, got: %v", err)
 	}
@@ -163,7 +169,7 @@ func TestRegisterExternalDatabase_HTTP201IsSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest()); err != nil {
 		t.Errorf("HTTP 201 should be success, got: %v", err)
 	}
@@ -188,7 +194,7 @@ func TestRegisterExternalDatabase_NonSuccessReturnsAggregatorError(t *testing.T)
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := NewAggregatorClient(srv.URL, "test-token")
 			err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -215,7 +221,7 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	err := c.RegisterExternalDatabase(ctx, "ns", minimalExtDBRequest())
 	if err == nil {
 		t.Error("expected error on cancelled context, got nil")
@@ -235,7 +241,7 @@ func TestApplyConfig_UsesCorrectURLAndMethod(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if _, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -262,7 +268,7 @@ func TestApplyConfig_HTTP200SyncResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	got, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -290,7 +296,7 @@ func TestApplyConfig_HTTP202AsyncResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	got, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -320,7 +326,7 @@ func TestApplyConfig_NonSuccessReturnsAggregatorError(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := NewAggregatorClient(srv.URL, "test-token")
 			_, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -350,7 +356,7 @@ func TestApplyConfig_SerializesDeclarationVersion(t *testing.T) {
 	payload := minimalDeclarativePayload()
 	payload.DeclarationVersion = "v2"
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if _, err := c.ApplyConfig(context.Background(), payload); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -371,7 +377,7 @@ func TestApplyConfig_OmitsDeclarationVersionWhenEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if _, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -394,7 +400,7 @@ func TestGetOperationStatus_UsesCorrectURLAndMethod(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	if _, err := c.GetOperationStatus(context.Background(), "track-99"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -420,7 +426,7 @@ func TestGetOperationStatus_InProgressResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	got, err := c.GetOperationStatus(context.Background(), "track-99")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -448,7 +454,7 @@ func TestGetOperationStatus_AllTerminalStates(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := NewAggregatorClient(srv.URL, "test-token")
 			got, err := c.GetOperationStatus(context.Background(), "tid")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -477,7 +483,7 @@ func TestGetOperationStatus_NonSuccessReturnsAggregatorError(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := NewAggregatorClient(srv.URL, "test-token")
 			_, err := c.GetOperationStatus(context.Background(), "tid")
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -506,7 +512,7 @@ func TestGetOperationStatus_ParsesTmfMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	_, err := c.GetOperationStatus(context.Background(), "tid")
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -599,56 +605,56 @@ func TestAggregatorError_ErrorMessage(t *testing.T) {
 	}
 }
 
-// ── SetCredentials ────────────────────────────────────────────────────────────
+// ── SetToken ──────────────────────────────────────────────────────────────────
 
-// TestSetCredentials_ChangesAuthHeader verifies that SetCredentials causes
-// subsequent requests to carry the updated Basic Auth header.
-func TestSetCredentials_ChangesAuthHeader(t *testing.T) {
+// TestSetToken_ChangesAuthHeader verifies that SetToken causes subsequent
+// requests to carry the updated Bearer token.
+func TestSetToken_ChangesAuthHeader(t *testing.T) {
 	t.Parallel()
 
 	var mu sync.Mutex
-	var capturedUser, capturedPass string
+	var capturedToken string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, p, _ := r.BasicAuth()
+		tok := bearerToken(r)
 		mu.Lock()
-		capturedUser, capturedPass = u, p
+		capturedToken = tok
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	client := NewAggregatorClient(srv.URL, "user-v1", "pass-v1")
+	client := NewAggregatorClient(srv.URL, "token-v1")
 	req := minimalExtDBRequest()
 
-	// ── first request: original credentials ──────────────────────────────────
+	// first request: original token
 	if err := client.RegisterExternalDatabase(context.Background(), "test", req); err != nil {
 		t.Fatalf("first request: %v", err)
 	}
 	mu.Lock()
-	u1, p1 := capturedUser, capturedPass
+	t1 := capturedToken
 	mu.Unlock()
-	if u1 != "user-v1" || p1 != "pass-v1" {
-		t.Errorf("before SetCredentials: got %q/%q, want user-v1/pass-v1", u1, p1)
+	if t1 != "token-v1" {
+		t.Errorf("before SetToken: got %q, want token-v1", t1)
 	}
 
-	// ── second request: updated credentials ──────────────────────────────────
-	client.SetCredentials("user-v2", "pass-v2")
+	// second request: updated token
+	client.SetToken("token-v2")
 
 	if err := client.RegisterExternalDatabase(context.Background(), "test", req); err != nil {
 		t.Fatalf("second request: %v", err)
 	}
 	mu.Lock()
-	u2, p2 := capturedUser, capturedPass
+	t2 := capturedToken
 	mu.Unlock()
-	if u2 != "user-v2" || p2 != "pass-v2" {
-		t.Errorf("after SetCredentials: got %q/%q, want user-v2/pass-v2", u2, p2)
+	if t2 != "token-v2" {
+		t.Errorf("after SetToken: got %q, want token-v2", t2)
 	}
 }
 
-// TestSetCredentials_Concurrent runs concurrent reads (HTTP requests) and
-// writes (SetCredentials) to detect data races. Run with -race flag.
-func TestSetCredentials_Concurrent(t *testing.T) {
+// TestSetToken_Concurrent runs concurrent reads (HTTP requests) and
+// writes (SetToken) to detect data races. Run with -race flag.
+func TestSetToken_Concurrent(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -656,7 +662,7 @@ func TestSetCredentials_Concurrent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewAggregatorClient(srv.URL, "user", "pass")
+	client := NewAggregatorClient(srv.URL, "initial-token")
 	req := minimalExtDBRequest()
 
 	const readers = 8
@@ -681,15 +687,17 @@ func TestSetCredentials_Concurrent(t *testing.T) {
 		defer wg.Done()
 		for i := range readers * iterations {
 			if i%2 == 0 {
-				client.SetCredentials("user-a", "pass-a")
+				client.SetToken("token-a")
 			} else {
-				client.SetCredentials("user-b", "pass-b")
+				client.SetToken("token-b")
 			}
 		}
 	}()
 
 	wg.Wait()
 }
+
+// ── TMF error parsing ─────────────────────────────────────────────────────────
 
 // TestRegisterExternalDatabase_ParsesTmfMessage verifies that when dbaas-aggregator
 // returns a TmfErrorResponse JSON body, the client populates AggregatorError.TmfMessage
@@ -707,7 +715,7 @@ func TestRegisterExternalDatabase_ParsesTmfMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -744,7 +752,7 @@ func TestRegisterExternalDatabase_NonTmfBodyFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -777,7 +785,7 @@ func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := NewAggregatorClient(srv.URL, "test-token")
 	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")

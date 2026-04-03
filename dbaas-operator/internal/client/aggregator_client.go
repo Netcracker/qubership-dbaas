@@ -31,46 +31,40 @@ import (
 
 const defaultTimeout = 30 * time.Second
 
-// credentials holds the Basic Auth pair as an immutable value.
-// The pair is always replaced atomically — never partially updated.
-type credentials struct {
-	username, password string
-}
-
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
-// It is safe for concurrent use, including concurrent credential updates.
+// It authenticates using a Kubernetes service account token (Bearer auth).
+// It is safe for concurrent use, including concurrent token updates.
 type AggregatorClient struct {
 	rc    *resty.Client
-	creds atomic.Pointer[credentials]
+	token atomic.Pointer[string]
 }
 
 // NewAggregatorClient creates a new AggregatorClient.
 //
-//   - baseURL  — base URL of dbaas-aggregator without a trailing slash
+//   - baseURL — base URL of dbaas-aggregator without a trailing slash
 //     (e.g. "http://dbaas-aggregator:8080").
-//   - username / password — credentials for HTTP Basic authentication.
-//     The account must have the DB_CLIENT role in dbaas-aggregator.
-func NewAggregatorClient(baseURL, username, password string) *AggregatorClient {
+//   - token   — Kubernetes service account token for Bearer authentication.
+//     The associated service account must have the DB_CLIENT role in dbaas-aggregator.
+func NewAggregatorClient(baseURL, token string) *AggregatorClient {
 	c := &AggregatorClient{}
-	c.creds.Store(&credentials{username: username, password: password})
+	c.token.Store(&token)
 
 	c.rc = resty.New().
 		SetBaseURL(baseURL).
 		SetTimeout(defaultTimeout).
 		SetHeader("Accept", "application/json").
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
-			cr := c.creds.Load()
-			r.SetBasicAuth(cr.username, cr.password)
+			r.SetAuthToken(*c.token.Load())
 			return nil
 		})
 
 	return c
 }
 
-// SetCredentials atomically replaces the Basic Auth credentials used for all
-// subsequent requests. Safe to call concurrently with in-flight requests.
-func (c *AggregatorClient) SetCredentials(username, password string) {
-	c.creds.Store(&credentials{username: username, password: password})
+// SetToken atomically replaces the Bearer token used for all subsequent requests.
+// Safe to call concurrently with in-flight requests.
+func (c *AggregatorClient) SetToken(token string) {
+	c.token.Store(&token)
 }
 
 // ApplyConfig posts a declarative payload to POST /api/declarations/v1/apply.

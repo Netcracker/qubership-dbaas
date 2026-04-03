@@ -53,27 +53,15 @@ spec:
       nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
       serviceAccountName: '{{ .Values.SERVICE_NAME }}'
-      volumes:
-        - name: dbaas-security-volume
-          secret:
-            secretName: dbaas-security-configuration-secret
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
-          volumeMounts:
-            - name: dbaas-security-volume
-              mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-              readOnly: true
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=0
             - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
             - --leader-elect
           env:
-            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
-              value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-            - name: DBAAS_AGGREGATOR_USERNAME
-              value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
             - name: CLOUD_NAMESPACE
               valueFrom:
                 fieldRef:

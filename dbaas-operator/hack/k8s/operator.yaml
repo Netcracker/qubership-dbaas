@@ -84,19 +84,6 @@ spec:
             - --metrics-bind-address=0
             - --watch-namespaces=test-ns
             - --leader-elect
-          env:
-            # Directory containing users.json — mirrors DBAAS_SECURITY_CONFIGURATION_LOCATION
-            # used by the real dbaas-aggregator. The pod will not start until the Secret exists.
-            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
-              value: /etc/dbaas/security
-            # Which user from users.json the operator authenticates as.
-            # Must have DB_CLIENT role in dbaas-aggregator.
-            - name: DBAAS_AGGREGATOR_USERNAME
-              value: cluster-dba
-          volumeMounts:
-            - name: security
-              mountPath: /etc/dbaas/security
-              readOnly: true
           livenessProbe:
             httpGet:
               path: /healthz
@@ -121,7 +108,3 @@ spec:
             limits:
               cpu: 500m
               memory: 128Mi
-      volumes:
-        - name: security
-          secret:
-            secretName: dbaas-security-configuration-secret

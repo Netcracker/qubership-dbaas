@@ -156,21 +156,15 @@ func main() {
 	if aggregatorURL == "" {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
-	securityDir := os.Getenv("DBAAS_SECURITY_CONFIGURATION_LOCATION")
-	if securityDir == "" {
-		securityDir = "/etc/dbaas/security"
+	tokenPath := os.Getenv("SERVICE_ACCOUNT_TOKEN_PATH")
+	if tokenPath == "" {
+		tokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	}
-	aggregatorUsername := os.Getenv("DBAAS_AGGREGATOR_USERNAME")
-	if aggregatorUsername == "" {
-		aggregatorUsername = "cluster-dba"
-	}
-	aggregatorPassword := loadAggregatorCredentials(setupLog, securityDir, aggregatorUsername)
 	aggregator := aggregatorclient.NewAggregatorClient(
 		aggregatorURL,
-		aggregatorUsername,
-		aggregatorPassword,
+		loadToken(setupLog, tokenPath),
 	)
-	setupLog.Infof("dbaas-aggregator client configured url=%v username=%v", aggregatorURL, aggregatorUsername)
+	setupLog.Infof("dbaas-aggregator client configured url=%v token-path=%v", aggregatorURL, tokenPath)
 
 	// Build the cache options: restrict to specific namespaces if requested.
 	var cacheOpts cache.Options
@@ -247,13 +241,13 @@ func main() {
 	}
 	// +kubebuilder:scaffold:builder
 
-	// Register the credential watcher so it shares the manager's lifecycle.
-	// When Kubernetes updates the mounted Secret, the watcher reloads credentials
-	// without requiring a pod restart.
+	// Register the token watcher so it shares the manager's lifecycle.
+	// Kubernetes rotates projected service account tokens roughly every hour;
+	// the watcher reloads the token without requiring a pod restart.
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregatorUsername, aggregator)
+		return watchToken(ctx, logging.GetLogger("dbaas-operator"), tokenPath, aggregator)
 	})); err != nil {
-		setupLog.Errorf("Failed to register credential watcher: %v", err)
+		setupLog.Errorf("Failed to register token watcher: %v", err)
 		os.Exit(1)
 	}
 
