@@ -230,19 +230,6 @@ wait-dbaas-aggregator:
 	@echo "$(GREEN)--- Stage 5 END: DBaaS Aggregator service is ready$(NC)"
 	@echo ""
 
-# Build and load DBaaS Operator image into kind
-.PHONY: build-dbaas-operator
-build-dbaas-operator:
-	@echo "$(BLUE)=== DBaaS Operator Image Build ===$(NC)"
-	@echo "$(CYAN)--- BEGIN: Building DBaaS Operator image...$(NC)"
-	@docker build -t dbaas-operator:local $(REPOS_DIR)/qubership-dbaas/dbaas-operator || \
-		(echo "$(RED)Error: DBaaS Operator image build failed$(NC)" && exit 1)
-	@echo "$(CYAN)--- Loading image into kind...$(NC)"
-	@docker save dbaas-operator:local | docker exec -i kind-control-plane ctr --namespace=k8s.io images import --snapshotter=overlayfs - || \
-		(echo "$(RED)Error: Failed to load image into kind$(NC)" && exit 1)
-	@echo "$(GREEN)--- END: DBaaS Operator image ready$(NC)"
-	@echo ""
-
 # Install DBaaS Operator CRDs
 .PHONY: install-dbaas-operator-crds
 install-dbaas-operator-crds:

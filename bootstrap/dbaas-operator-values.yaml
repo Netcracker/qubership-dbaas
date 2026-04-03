@@ -5,7 +5,7 @@ REGION_DBAAS: ${REGION_DBAAS}
 
 # ============== Images ============================
 IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-operator
-TAG: ${TAG}
+TAG: ${DBAAS_OPERATOR_TAG}
 
 # ============== Namespace ============================
 NAMESPACE: ${DBAAS_NAMESPACE}

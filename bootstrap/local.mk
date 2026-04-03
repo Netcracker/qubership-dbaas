@@ -19,7 +19,8 @@ DBAAS_SERVICE_NAME ?= dbaas-aggregator
 NODE_SELECTOR_DBAAS_KEY ?= region
 REGION_DBAAS ?= database
 # Validation image tag
-TAG ?= feat-dbaas-operator-snapshot
+TAG ?= latest
+DBAAS_OPERATOR_TAG ?= feat-dbaas-operator-snapshot
 
 # Export all variables for use in shell commands
 export PG_NAMESPACE
@@ -31,6 +32,7 @@ export PATRONI_REPLICAS_NUMBER
 export NODE_SELECTOR_DBAAS_KEY
 export REGION_DBAAS
 export TAG
+export DBAAS_OPERATOR_TAG
 export PATRONI_CORE_VALUES_FILE
 export DBAAS_VALUES_FILE
 export DBAAS_OPERATOR_VALUES_FILE
