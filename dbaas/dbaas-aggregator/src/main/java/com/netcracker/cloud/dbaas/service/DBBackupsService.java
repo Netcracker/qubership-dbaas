@@ -553,7 +553,7 @@ public class DBBackupsService {
                 );
             }
 
-            databaseRegistryDbaasRepository.saveAll(recreatedDatabasesFromBackup);
+            recreatedDatabasesFromBackup = databaseRegistryDbaasRepository.saveAll(recreatedDatabasesFromBackup);
         }
 
         return recreatedDatabasesFromBackup;
@@ -599,7 +599,7 @@ public class DBBackupsService {
                 deltaDatabases.size(), backup.getId(), backup.getNamespace()
         );
 
-        deletionService.markRegistriesForDrop(backup.getNamespace(), deltaDatabases);
+        deltaDatabases = deletionService.markRegistriesForDrop(backup.getNamespace(), deltaDatabases);
         deletionService.dropRegistriesSafe(backup.getNamespace(), deltaDatabases);
 
         log.info("Delta cleaned during restoration of backup {} in namespace {}", backup.getId(), backup.getNamespace());
@@ -663,7 +663,7 @@ public class DBBackupsService {
             log.info("Clean {} databases in target namespace {} during restoration of backup {}",
                     targetDatabasesToDrop.size(), targetNamespace, backup.getId());
             log.debug("databases to drop = {}", targetDatabasesToDrop);
-            deletionService.markRegistriesForDrop(targetNamespace, targetDatabasesToDrop);
+            targetDatabasesToDrop = deletionService.markRegistriesForDrop(targetNamespace, targetDatabasesToDrop);
             deletionService.dropRegistriesSafe(targetNamespace, targetDatabasesToDrop);
             saveRestoreDbWithAnotherName(targetNamespace, result, notMarkedForDropInBackup);
         }
