@@ -10,6 +10,8 @@ TAG: feat-dbaas-operator-snapshot
 NAMESPACE: default
 PAAS_PLATFORM: KUBERNETES
 PAAS_VERSION: '1.25'
+CREATE_OPERATOR_CLUSTER_ROLE: false
+CREATE_OPERATOR_CLUSTER_ROLE_BINDING: false
 
 # ============== SERVICE VARIABLES ============================
 DBAAS_SECURITY_CONFIGURATION_LOCATION: '/etc/dbaas/security'
