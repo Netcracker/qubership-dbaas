@@ -1,138 +1,138 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  labels:
     name: '{{ .Values.SERVICE_NAME }}'
-    labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+    app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
+    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/component: 'operator'
+    app.kubernetes.io/technology: 'go'
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+spec:
+  replicas: {{ .Values.REPLICAS | default 1 }}
+  strategy:
+        {{- if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "recreate" }}
+    type: Recreate
+        {{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "best_effort_controlled_rollout" }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 80%
+        {{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "ramped_slow_rollout" }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+        {{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "custom_rollout" }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.DEPLOYMENT_STRATEGY_MAXSURGE | default "25%" }}
+      maxUnavailable: {{ .Values.DEPLOYMENT_STRATEGY_MAXUNAVAILABLE | default "25%" }}
+        {{- else }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+        {{- end }}
+  template:
+    metadata:
+      labels:
+        app: '{{ .Values.SERVICE_NAME }}'
         name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
         app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
-        app.kubernetes.io/part-of: 'dbaas'
-        app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
         app.kubernetes.io/component: 'operator'
+        app.kubernetes.io/part-of: 'dbaas'
         app.kubernetes.io/technology: 'go'
-        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
-spec:
-    replicas: {{ .Values.REPLICAS | default 1 }}
-    strategy:
-        {{- if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "recreate" }}
-        type: Recreate
-        {{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "best_effort_controlled_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: 0
-            maxUnavailable: 80%
-        {{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "ramped_slow_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: 1
-            maxUnavailable: 0
-        {{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "custom_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: {{ .Values.DEPLOYMENT_STRATEGY_MAXSURGE | default "25%" }}
-            maxUnavailable: {{ .Values.DEPLOYMENT_STRATEGY_MAXUNAVAILABLE | default "25%" }}
-        {{- else }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: 25%
-            maxUnavailable: 25%
-        {{- end }}
-    template:
-        metadata:
-            labels:
-                app: '{{ .Values.SERVICE_NAME }}'
-                name: '{{ .Values.SERVICE_NAME }}'
-                app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-                app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
-                app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
-                app.kubernetes.io/component: 'operator'
-                app.kubernetes.io/part-of: 'dbaas'
-                app.kubernetes.io/technology: 'go'
-        spec:
-            nodeSelector:
+    spec:
+      nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
-            serviceAccountName: '{{ .Values.SERVICE_NAME }}'
-            volumes:
-                -   name: dbaas-security-volume
-                    secret:
-                        secretName: dbaas-security-configuration-secret
-            containers:
-                -   name: '{{ .Values.SERVICE_NAME }}'
-                    image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
-                    volumeMounts:
-                        -   name: dbaas-security-volume
-                            mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-                            readOnly: true
-                    args:
-                        - --health-probe-bind-address=:8081
-                        - --metrics-bind-address=0
-                        - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
-                        - --leader-elect
-                    env:
-                        -   name: DBAAS_SECURITY_CONFIGURATION_LOCATION
-                            value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-                        -   name: DBAAS_AGGREGATOR_USERNAME
-                            value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
-                        -   name: CLOUD_NAMESPACE
-                            valueFrom:
-                                fieldRef:
-                                    fieldPath: metadata.namespace
-                        -   name: LOG_LEVEL
-                            value: '{{ lower .Values.LOG_LEVEL }}'
-                    ports:
-                        -   name: web
-                            containerPort: 8081
-                            protocol: TCP
-                    livenessProbe:
-                        httpGet:
-                            path: /healthz
-                            port: web
-                        initialDelaySeconds: {{ .Values.LIVENESS_PROBE_INITIAL_DELAY_SECONDS }}
-                        periodSeconds: 20
-                    readinessProbe:
-                        httpGet:
-                            path: /readyz
-                            port: web
-                        initialDelaySeconds: 5
-                        periodSeconds: 10
-                    securityContext:
+      serviceAccountName: '{{ .Values.SERVICE_NAME }}'
+      volumes:
+        - name: dbaas-security-volume
+          secret:
+            secretName: dbaas-security-configuration-secret
+      containers:
+        - name: '{{ .Values.SERVICE_NAME }}'
+          image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
+          volumeMounts:
+            - name: dbaas-security-volume
+              mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+              readOnly: true
+          args:
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=0
+            - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
+            - --leader-elect
+          env:
+            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
+              value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+            - name: DBAAS_AGGREGATOR_USERNAME
+              value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
+            - name: CLOUD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: LOG_LEVEL
+              value: '{{ lower .Values.LOG_LEVEL }}'
+          ports:
+            - name: web
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: web
+            initialDelaySeconds: {{ .Values.LIVENESS_PROBE_INITIAL_DELAY_SECONDS }}
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: web
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
                     {{- if eq .Values.PAAS_PLATFORM "KUBERNETES" }}
-                        runAsGroup: 10001
+            runAsGroup: 10001
                     {{- end }}
-                        readOnlyRootFilesystem: {{ and .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED (eq .Values.PAAS_PLATFORM "KUBERNETES") }}
-                        runAsNonRoot: true
-                        seccompProfile:
-                            type: RuntimeDefault
-                        allowPrivilegeEscalation: false
-                        capabilities:
-                            drop:
-                                - ALL
-                    resources:
-                        requests:
-                            cpu: '{{ .Values.CPU_REQUEST }}'
-                            memory: '{{ .Values.MEMORY_REQUEST }}'
-                        limits:
-                            cpu: '{{ .Values.CPU_LIMIT }}'
-                            memory: '{{ .Values.MEMORY_LIMIT }}'
-            topologySpreadConstraints:
+            readOnlyRootFilesystem: {{ and .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED (eq .Values.PAAS_PLATFORM "KUBERNETES") }}
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: '{{ .Values.CPU_REQUEST }}'
+              memory: '{{ .Values.MEMORY_REQUEST }}'
+            limits:
+              cpu: '{{ .Values.CPU_LIMIT }}'
+              memory: '{{ .Values.MEMORY_LIMIT }}'
+      topologySpreadConstraints:
                 {{- if .Values.CLOUD_TOPOLOGIES }}
                 {{- range $v := .Values.CLOUD_TOPOLOGIES }}
-                -   topologyKey: {{ $v.topologyKey }}
-                    maxSkew: {{ $v.maxSkew | default 1 }}
-                    whenUnsatisfiable: {{ $v.whenUnsatisfiable | default "ScheduleAnyway" }}
-                    labelSelector:
-                        matchLabels:
-                            name: "{{ coalesce $.Values.DEPLOYMENT_RESOURCE_NAME $.Values.SERVICE_NAME }}"
+        - topologyKey: {{ $v.topologyKey }}
+          maxSkew: {{ $v.maxSkew | default 1 }}
+          whenUnsatisfiable: {{ $v.whenUnsatisfiable | default "ScheduleAnyway" }}
+          labelSelector:
+            matchLabels:
+              name: "{{ coalesce $.Values.DEPLOYMENT_RESOURCE_NAME $.Values.SERVICE_NAME }}"
                 {{- end }}
                 {{- else }}
-                -   maxSkew: 1
-                    topologyKey: "{{ .Values.CLOUD_TOPOLOGY_KEY }}"
-                    whenUnsatisfiable: ScheduleAnyway
-                    labelSelector:
-                        matchLabels:
-                            name: "{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}"
+        - maxSkew: 1
+          topologyKey: "{{ .Values.CLOUD_TOPOLOGY_KEY }}"
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              name: "{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}"
                 {{- end }}
-    selector:
-        matchLabels:
-            name: '{{ .Values.SERVICE_NAME }}'
+  selector:
+    matchLabels:
+      name: '{{ .Values.SERVICE_NAME }}'
