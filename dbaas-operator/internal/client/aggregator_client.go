@@ -55,8 +55,14 @@ func NewAggregatorClient(baseURL string) *AggregatorClient {
 	})
 }
 
-// newClient is the internal constructor used in tests to inject a custom token
-// function without touching the global tokensource state.
+// NewClientWithTokenFunc creates an AggregatorClient that uses the given function
+// to obtain a Bearer token on every request. Intended for use in tests where the
+// global tokensource state (projected volume file) is not available.
+func NewClientWithTokenFunc(baseURL string, getToken func(ctx context.Context) (string, error)) *AggregatorClient {
+	return newClient(baseURL, getToken)
+}
+
+// newClient is the internal constructor used in package-level tests.
 func newClient(baseURL string, getToken func(ctx context.Context) (string, error)) *AggregatorClient {
 	c := &AggregatorClient{getToken: getToken}
 
