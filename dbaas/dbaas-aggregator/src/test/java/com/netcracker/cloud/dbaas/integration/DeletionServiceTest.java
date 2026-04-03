@@ -268,17 +268,13 @@ class DeletionServiceTest {
         assertFalse(DeletionService.isOrphan(database.getDatabaseRegistry().getFirst()));
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
 
-        QuarkusTransaction.requiringNew().run(() -> {
-            deletionService.markRegistryForDrop(database.getDatabaseRegistry().getFirst());
+        deletionService.markRegistryForDrop(database.getDatabaseRegistry().getFirst());
 
-            QuarkusTransaction.requiringNew().run(() -> {
-                Database reloadedDatabase = databaseDbaasRepository.findById(database.getId()).orElseThrow();
-                assertTrue(DeletionService.isMarkedForDrop(reloadedDatabase.getDatabaseRegistry().getFirst()));
-                Assertions.assertEquals(MARKED_FOR_DROP, reloadedDatabase.getDatabaseRegistry().getFirst().getClassifier().get(MARKED_FOR_DROP));
-                assertTrue(reloadedDatabase.isMarkedForDrop());
-                assertEquals(DbState.DatabaseStateStatus.DELETING, reloadedDatabase.getDbState().getDatabaseState());
-            });
-        });
+        Database reloadedDatabase = databaseDbaasRepository.findById(database.getId()).orElseThrow();
+        assertTrue(DeletionService.isMarkedForDrop(reloadedDatabase.getDatabaseRegistry().getFirst()));
+        Assertions.assertEquals(MARKED_FOR_DROP, reloadedDatabase.getDatabaseRegistry().getFirst().getClassifier().get(MARKED_FOR_DROP));
+        assertTrue(reloadedDatabase.isMarkedForDrop());
+        assertEquals(DbState.DatabaseStateStatus.DELETING, reloadedDatabase.getDbState().getDatabaseState());
     }
 
     @Test
@@ -290,21 +286,17 @@ class DeletionServiceTest {
         assertEquals(DbState.DatabaseStateStatus.CREATED, database.getDbState().getDatabaseState());
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
 
-        QuarkusTransaction.requiringNew().run(() -> {
-            deletionService.markRegistriesForDrop(TEST_NS, database.getDatabaseRegistry());
+        deletionService.markRegistriesForDrop(TEST_NS, database.getDatabaseRegistry());
 
-            QuarkusTransaction.requiringNew().run(() -> {
-                Database reloadedDatabase = databaseDbaasRepository.findById(database.getId()).orElseThrow();
-                reloadedDatabase.getDatabaseRegistry().forEach(registry -> {
-                    assertTrue(DeletionService.isMarkedForDrop(registry));
-                });
-                assertEquals(DbState.DatabaseStateStatus.DELETING, reloadedDatabase.getDbState().getDatabaseState());
-                assertTrue(reloadedDatabase.isMarkedForDrop());
-                reloadedDatabase.getDatabaseRegistry().forEach(registry ->
-                        Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP))
-                );
-            });
+        Database reloadedDatabase = databaseDbaasRepository.findById(database.getId()).orElseThrow();
+        reloadedDatabase.getDatabaseRegistry().forEach(registry -> {
+            assertTrue(DeletionService.isMarkedForDrop(registry));
         });
+        assertEquals(DbState.DatabaseStateStatus.DELETING, reloadedDatabase.getDbState().getDatabaseState());
+        assertTrue(reloadedDatabase.isMarkedForDrop());
+        reloadedDatabase.getDatabaseRegistry().forEach(registry ->
+                Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP))
+        );
     }
 
     @Test
@@ -341,23 +333,50 @@ class DeletionServiceTest {
         assertEquals(DbState.DatabaseStateStatus.CREATED, database1.getDbState().getDatabaseState());
         assertEquals(DbState.DatabaseStateStatus.CREATED, database2.getDbState().getDatabaseState());
 
-        QuarkusTransaction.requiringNew().run(() -> {
-            deletionService.markNamespaceRegistriesForDrop(TEST_NS);
+        deletionService.markNamespaceRegistriesForDrop(TEST_NS);
 
-            QuarkusTransaction.requiringNew().run(() -> {
-                Database reloadedDatabase1 = databaseDbaasRepository.findById(database1.getId()).get();
-                Database reloadedDatabase2 = databaseDbaasRepository.findById(database2.getId()).get();
-                assertTrue(DeletionService.isMarkedForDrop(reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> TEST_NS.equals(r.getNamespace())).findFirst().get()));
-                assertTrue(DeletionService.isMarkedForDrop(reloadedDatabase2.getDatabaseRegistry().getFirst()));
-                assertFalse(DeletionService.isMarkedForDrop(reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> !TEST_NS.equals(r.getNamespace())).findFirst().get()));
-                assertEquals(MARKED_FOR_DROP, reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> TEST_NS.equals(r.getNamespace())).findFirst().get().getClassifier().get(MARKED_FOR_DROP));
-                assertEquals(MARKED_FOR_DROP, reloadedDatabase2.getDatabaseRegistry().getFirst().getClassifier().get(MARKED_FOR_DROP));
-                assertNull(reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> !TEST_NS.equals(r.getNamespace())).findFirst().get().getClassifier().get(MARKED_FOR_DROP));
-                assertEquals(DbState.DatabaseStateStatus.DELETING, reloadedDatabase2.getDbState().getDatabaseState());
-                assertEquals(DbState.DatabaseStateStatus.CREATED, reloadedDatabase1.getDbState().getDatabaseState());
-                assertTrue(reloadedDatabase2.isMarkedForDrop());
-                assertFalse(reloadedDatabase1.isMarkedForDrop());
-            });
+        Database reloadedDatabase1 = databaseDbaasRepository.findById(database1.getId()).get();
+        Database reloadedDatabase2 = databaseDbaasRepository.findById(database2.getId()).get();
+        assertTrue(DeletionService.isMarkedForDrop(reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> TEST_NS.equals(r.getNamespace())).findFirst().get()));
+        assertTrue(DeletionService.isMarkedForDrop(reloadedDatabase2.getDatabaseRegistry().getFirst()));
+        assertFalse(DeletionService.isMarkedForDrop(reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> !TEST_NS.equals(r.getNamespace())).findFirst().get()));
+        assertEquals(MARKED_FOR_DROP, reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> TEST_NS.equals(r.getNamespace())).findFirst().get().getClassifier().get(MARKED_FOR_DROP));
+        assertEquals(MARKED_FOR_DROP, reloadedDatabase2.getDatabaseRegistry().getFirst().getClassifier().get(MARKED_FOR_DROP));
+        assertNull(reloadedDatabase1.getDatabaseRegistry().stream().filter(r -> !TEST_NS.equals(r.getNamespace())).findFirst().get().getClassifier().get(MARKED_FOR_DROP));
+        assertEquals(DbState.DatabaseStateStatus.DELETING, reloadedDatabase2.getDbState().getDatabaseState());
+        assertEquals(DbState.DatabaseStateStatus.CREATED, reloadedDatabase1.getDbState().getDatabaseState());
+        assertTrue(reloadedDatabase2.isMarkedForDrop());
+        assertFalse(reloadedDatabase1.isMarkedForDrop());
+    }
+
+    @Test
+    void testMarkForDrop_deleteAndCreate() {
+        Database database = new DatabaseBuilder()
+                .classifier(Map.of(
+                        "scope", "service",
+                        "namespace", TEST_NS,
+                        "microserviceName", TEST_MS
+                ))
+                .registry()
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
+        assertEquals(DbState.DatabaseStateStatus.CREATED, database.getDbState().getDatabaseState());
+
+        QuarkusTransaction.requiringNew().run(() -> {
+            var currentRegisteredDatabases = databaseRegistryDbaasRepository.findInternalDatabaseRegistryByNamespace(TEST_NS);
+            currentRegisteredDatabases = deletionService.markRegistriesForDrop(TEST_NS, currentRegisteredDatabases);
+            deletionService.dropRegistriesSafe(TEST_NS, currentRegisteredDatabases);
+
+            Database newDatabase = new DatabaseBuilder()
+                    .classifier(Map.of(
+                            "scope", "service",
+                            "namespace", TEST_NS,
+                            "microserviceName", TEST_MS
+                    ))
+                    .registry()
+                    .build();
+            databaseRegistryDbaasRepository.saveAll(newDatabase.getDatabaseRegistry());
+            assertEquals(DbState.DatabaseStateStatus.CREATED, newDatabase.getDbState().getDatabaseState());
         });
     }
 
@@ -371,19 +390,15 @@ class DeletionServiceTest {
         assertFalse(DeletionService.isOrphan(database.getDatabaseRegistry().getFirst()));
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
 
-        QuarkusTransaction.requiringNew().run(() -> {
-            deletionService.markDatabaseAsOrphan(database.getDatabaseRegistry().getFirst());
+        deletionService.markDatabaseAsOrphan(database.getDatabaseRegistry().getFirst());
 
-            QuarkusTransaction.requiringNew().run(() -> {
-                Database reloadedDatabase = databaseDbaasRepository.findById(database.getId()).orElseThrow();
-                reloadedDatabase.getDatabaseRegistry().forEach(registry -> {
-                    assertTrue(DeletionService.isOrphan(registry));
-                    Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP));
-                });
-                assertTrue(reloadedDatabase.isMarkedForDrop());
-                assertEquals(DbState.DatabaseStateStatus.ORPHAN, reloadedDatabase.getDbState().getDatabaseState());
-            });
+        Database reloadedDatabase = databaseDbaasRepository.findById(database.getId()).orElseThrow();
+        reloadedDatabase.getDatabaseRegistry().forEach(registry -> {
+            assertTrue(DeletionService.isOrphan(registry));
+            Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP));
         });
+        assertTrue(reloadedDatabase.isMarkedForDrop());
+        assertEquals(DbState.DatabaseStateStatus.ORPHAN, reloadedDatabase.getDbState().getDatabaseState());
     }
 
     @Test
@@ -403,26 +418,22 @@ class DeletionServiceTest {
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database1.getDatabaseRegistry().getFirst());
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database2.getDatabaseRegistry().getFirst());
 
-        QuarkusTransaction.requiringNew().run(() -> {
-            deletionService.markDatabasesAsOrphan(List.of(database1.getDatabaseRegistry().getFirst(), database2.getDatabaseRegistry().getFirst()));
+        deletionService.markDatabasesAsOrphan(List.of(database1.getDatabaseRegistry().getFirst(), database2.getDatabaseRegistry().getFirst()));
 
-            QuarkusTransaction.requiringNew().run(() -> {
-                Database reloadedDatabase1 = databaseDbaasRepository.findById(database1.getId()).orElseThrow();
-                Database reloadedDatabase2 = databaseDbaasRepository.findById(database2.getId()).orElseThrow();
-                reloadedDatabase1.getDatabaseRegistry().forEach(registry -> {
-                    assertTrue(DeletionService.isOrphan(registry));
-                    Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP));
-                });
-                reloadedDatabase2.getDatabaseRegistry().forEach(registry -> {
-                    assertTrue(DeletionService.isOrphan(registry));
-                    Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP));
-                });
-                assertTrue(reloadedDatabase1.isMarkedForDrop());
-                assertTrue(reloadedDatabase2.isMarkedForDrop());
-                assertEquals(DbState.DatabaseStateStatus.ORPHAN, reloadedDatabase1.getDbState().getDatabaseState());
-                assertEquals(DbState.DatabaseStateStatus.ORPHAN, reloadedDatabase2.getDbState().getDatabaseState());
-            });
+        Database reloadedDatabase1 = databaseDbaasRepository.findById(database1.getId()).orElseThrow();
+        Database reloadedDatabase2 = databaseDbaasRepository.findById(database2.getId()).orElseThrow();
+        reloadedDatabase1.getDatabaseRegistry().forEach(registry -> {
+            assertTrue(DeletionService.isOrphan(registry));
+            Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP));
         });
+        reloadedDatabase2.getDatabaseRegistry().forEach(registry -> {
+            assertTrue(DeletionService.isOrphan(registry));
+            Assertions.assertEquals(MARKED_FOR_DROP, registry.getClassifier().get(MARKED_FOR_DROP));
+        });
+        assertTrue(reloadedDatabase1.isMarkedForDrop());
+        assertTrue(reloadedDatabase2.isMarkedForDrop());
+        assertEquals(DbState.DatabaseStateStatus.ORPHAN, reloadedDatabase1.getDbState().getDatabaseState());
+        assertEquals(DbState.DatabaseStateStatus.ORPHAN, reloadedDatabase2.getDbState().getDatabaseState());
     }
 
     @Test

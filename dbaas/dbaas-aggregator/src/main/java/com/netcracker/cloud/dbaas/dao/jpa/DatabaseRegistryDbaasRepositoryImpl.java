@@ -253,11 +253,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
 
     @Override
     public List<DatabaseRegistry> saveAll(List<DatabaseRegistry> databaseList) {
-        List<DatabaseRegistry> savedDatabases = new ArrayList<>();
-        for (DatabaseRegistry dr : databaseList) {
-            save(dr);
-        }
-        return savedDatabases;
+        return databaseList.stream().map(this::save).toList();
     }
 
     @Override
@@ -308,7 +304,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
                 databasesRepository.persistAndFlush(savedDatabase);
             } else {
                 EntityManager entityManager = databasesRepository.getEntityManager();
-                entityManager.merge(savedDatabase);
+                savedDatabase = entityManager.merge(savedDatabase);
                 entityManager.flush();
             }
             Optional<DatabaseRegistry> savedDatabaseRegistry = savedDatabase.getDatabaseRegistry().stream()

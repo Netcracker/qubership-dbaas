@@ -72,19 +72,20 @@ public class DeletionService {
         }
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void markRegistryForDrop(DatabaseRegistry registry) {
+    @Transactional
+    public DatabaseRegistry markRegistryForDrop(DatabaseRegistry registry) {
         markRegistryForDropWithoutTransaction(registry);
-        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(registry);
+        return logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(registry);
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void markRegistriesForDrop(String namespace, List<DatabaseRegistry> registries) {
+    @Transactional
+    public List<DatabaseRegistry> markRegistriesForDrop(String namespace, List<DatabaseRegistry> registries) {
         log.info("Mark {} registries for drop in '{}' namespace", registries.size(), namespace);
         registries.forEach(this::markRegistryForDropWithoutTransaction);
-        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(registries);
+        return logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(registries);
     }
 
+    @Transactional
     public int markNamespaceRegistriesForDrop(String namespace) {
         List<DatabaseRegistry> registries = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(namespace);
         markRegistriesForDrop(namespace, registries);
@@ -104,13 +105,13 @@ public class DeletionService {
         database.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    @Transactional
     public void markDatabaseAsOrphan(DatabaseRegistry registry) {
         markDatabaseAsOrphanWithoutTransaction(registry);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(registry);
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    @Transactional
     public void markDatabasesAsOrphan(List<DatabaseRegistry> registries) {
         log.info("Mark {} databases as orphan", registries.size());
         registries.forEach(this::markDatabaseAsOrphanWithoutTransaction);
