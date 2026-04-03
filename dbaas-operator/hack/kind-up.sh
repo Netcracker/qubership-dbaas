@@ -84,7 +84,7 @@ kubectl apply -f "${REPO_ROOT}/hack/test-resources/secret.yaml"
 
 # ── 7. Wait for rollouts ──────────────────────────────────────────────────────
 info "Waiting for aggregator-mock to be ready..."
-kubectl rollout status deployment/aggregator-mock -n dbaas-system --timeout=120s
+kubectl rollout status deployment/dbaas-aggregator -n dbaas-system --timeout=120s
 
 info "Waiting for dbaas-operator to be ready..."
 kubectl rollout status deployment/dbaas-operator  -n dbaas-system --timeout=120s

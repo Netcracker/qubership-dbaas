@@ -22,55 +22,64 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
+	"github.com/netcracker/qubership-core-lib-go/v3/security/tokensource"
 )
 
 const defaultTimeout = 30 * time.Second
 
-// credentials holds the Basic Auth pair as an immutable value.
-// The pair is always replaced atomically — never partially updated.
-type credentials struct {
-	username, password string
-}
-
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
-// It is safe for concurrent use, including concurrent credential updates.
+// It authenticates using a Kubernetes projected service account token with
+// audience "dbaas", fetched fresh on every request via the tokensource library.
+// It is safe for concurrent use.
 type AggregatorClient struct {
-	rc    *resty.Client
-	creds atomic.Pointer[credentials]
+	rc       *resty.Client
+	getToken func(ctx context.Context) (string, error)
 }
 
 // NewAggregatorClient creates a new AggregatorClient.
 //
-//   - baseURL  — base URL of dbaas-aggregator without a trailing slash
+//   - baseURL — base URL of dbaas-aggregator without a trailing slash
 //     (e.g. "http://dbaas-aggregator:8080").
-//   - username / password — credentials for HTTP Basic authentication.
-//     The account must have the DB_CLIENT role in dbaas-aggregator.
-func NewAggregatorClient(baseURL, username, password string) *AggregatorClient {
-	c := &AggregatorClient{}
-	c.creds.Store(&credentials{username: username, password: password})
+//
+// The client fetches a fresh Kubernetes service account token with audience
+// "dbaas" on every outgoing request from the projected volume mounted at
+// /var/run/secrets/tokens/dbaas/token. The pod deployment must include a
+// projected volume with serviceAccountToken.audience=dbaas at that path.
+func NewAggregatorClient(baseURL string) *AggregatorClient {
+	return newClient(baseURL, func(ctx context.Context) (string, error) {
+		return tokensource.GetAudienceToken(ctx, tokensource.AudienceDBaaS)
+	})
+}
+
+// NewClientWithTokenFunc creates an AggregatorClient that uses the given function
+// to obtain a Bearer token on every request. Intended for use in tests where the
+// global tokensource state (projected volume file) is not available.
+func NewClientWithTokenFunc(baseURL string, getToken func(ctx context.Context) (string, error)) *AggregatorClient {
+	return newClient(baseURL, getToken)
+}
+
+// newClient is the internal constructor used in package-level tests.
+func newClient(baseURL string, getToken func(ctx context.Context) (string, error)) *AggregatorClient {
+	c := &AggregatorClient{getToken: getToken}
 
 	c.rc = resty.New().
 		SetBaseURL(baseURL).
 		SetTimeout(defaultTimeout).
 		SetHeader("Accept", "application/json").
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
-			cr := c.creds.Load()
-			r.SetBasicAuth(cr.username, cr.password)
+			token, err := c.getToken(r.Context())
+			if err != nil {
+				return fmt.Errorf("get dbaas audience token: %w", err)
+			}
+			r.SetAuthToken(token)
 			return nil
 		})
 
 	return c
-}
-
-// SetCredentials atomically replaces the Basic Auth credentials used for all
-// subsequent requests. Safe to call concurrently with in-flight requests.
-func (c *AggregatorClient) SetCredentials(username, password string) {
-	c.creds.Store(&credentials{username: username, password: password})
 }
 
 // ApplyConfig posts a declarative payload to POST /api/declarations/v1/apply.

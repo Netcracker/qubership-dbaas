@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -36,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -156,21 +154,8 @@ func main() {
 	if aggregatorURL == "" {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
-	securityDir := os.Getenv("DBAAS_SECURITY_CONFIGURATION_LOCATION")
-	if securityDir == "" {
-		securityDir = "/etc/dbaas/security"
-	}
-	aggregatorUsername := os.Getenv("DBAAS_AGGREGATOR_USERNAME")
-	if aggregatorUsername == "" {
-		aggregatorUsername = "cluster-dba"
-	}
-	aggregatorPassword := loadAggregatorCredentials(setupLog, securityDir, aggregatorUsername)
-	aggregator := aggregatorclient.NewAggregatorClient(
-		aggregatorURL,
-		aggregatorUsername,
-		aggregatorPassword,
-	)
-	setupLog.Infof("dbaas-aggregator client configured url=%v username=%v", aggregatorURL, aggregatorUsername)
+	aggregator := aggregatorclient.NewAggregatorClient(aggregatorURL)
+	setupLog.Infof("dbaas-aggregator client configured url=%v", aggregatorURL)
 
 	// Build the cache options: restrict to specific namespaces if requested.
 	var cacheOpts cache.Options
@@ -246,16 +231,6 @@ func main() {
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
-
-	// Register the credential watcher so it shares the manager's lifecycle.
-	// When Kubernetes updates the mounted Secret, the watcher reloads credentials
-	// without requiring a pod restart.
-	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregatorUsername, aggregator)
-	})); err != nil {
-		setupLog.Errorf("Failed to register credential watcher: %v", err)
-		os.Exit(1)
-	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Errorf("Failed to set up health check: %v", err)
