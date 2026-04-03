@@ -81,10 +81,6 @@ spec:
             defaultMode: 292
             sources:
               - serviceAccountToken:
-                  path: netcracker/token
-                  audience: netcracker
-                  expirationSeconds: 600
-              - serviceAccountToken:
                   path: dbaas/token
                   audience: dbaas
                   expirationSeconds: 600
