@@ -1,4 +1,4 @@
-{{- if .Values.INSTALL_DBAAS_OPERATOR }}
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -72,10 +72,12 @@ spec:
               readOnly: true
           args:
             - --health-probe-bind-address=:8081
-            - --metrics-bind-address=0
+            - --metrics-bind-address=:8080
             - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
             - --leader-elect
           env:
+            - name: ENABLE_ALPHA_APIS
+              value: "false"
             - name: CLOUD_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -85,6 +87,9 @@ spec:
           ports:
             - name: web
               containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: 8080
               protocol: TCP
           livenessProbe:
             httpGet:
@@ -125,7 +130,7 @@ spec:
           whenUnsatisfiable: {{ $v.whenUnsatisfiable | default "ScheduleAnyway" }}
           labelSelector:
             matchLabels:
-              name: "{{ coalesce $.Values.DEPLOYMENT_RESOURCE_NAME $.Values.SERVICE_NAME }}"
+              name: "{{ $.Values.SERVICE_NAME }}"
                 {{- end }}
                 {{- else }}
         - maxSkew: 1
@@ -133,7 +138,7 @@ spec:
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
-              name: "{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}"
+              name: "{{ .Values.SERVICE_NAME }}"
                 {{- end }}
   selector:
     matchLabels:

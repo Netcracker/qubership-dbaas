@@ -1,4 +1,4 @@
-{{- if and .Values.INSTALL_DBAAS_OPERATOR (not .Values.RESTRICTED_ENVIRONMENT) }}
+{{- if and .Values.DBAAS_OPERATOR_ENABLED (not .Values.RESTRICTED_ENVIRONMENT) }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:

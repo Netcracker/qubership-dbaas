@@ -16,7 +16,7 @@
 #
 # After the script completes:
 #   kubectl apply -f hack/test-resources/edb-with-secret.yaml
-#   kubectl get externaldatabasedeclaration -n test-ns my-postgres -w
+#   kubectl get externaldatabase -n test-ns my-postgres -w
 #
 # To tear down: ./hack/kind-down.sh
 
@@ -101,11 +101,11 @@ echo ""
 echo "Next steps:"
 echo "  # Test 1 — happy path (secret exists, mock returns 200):"
 echo "  kubectl apply -f hack/test-resources/edb-with-secret.yaml"
-echo "  kubectl get externaldatabasedeclaration -n test-ns my-postgres -w"
+echo "  kubectl get externaldatabase -n test-ns my-postgres -w"
 echo ""
 echo "  # Test 2 — BackingOff (secret missing):"
 echo "  kubectl apply -f hack/test-resources/edb-missing-secret.yaml"
-echo "  kubectl get externaldatabasedeclaration -n test-ns missing-secret-test -w"
+echo "  kubectl get externaldatabase -n test-ns missing-secret-test -w"
 echo ""
 echo "  # Operator logs:"
 echo "  kubectl logs -n dbaas-system deployment/dbaas-operator -f"

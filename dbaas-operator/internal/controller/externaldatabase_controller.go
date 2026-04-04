@@ -32,35 +32,35 @@ import (
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-// ExternalDatabaseDeclarationReconciler reconciles ExternalDatabaseDeclaration objects.
+// ExternalDatabaseReconciler reconciles ExternalDatabase objects.
 //
 // On every reconcile it assembles the registration request (reading credentials
 // from Kubernetes Secrets), calls the dbaas-aggregator, and updates the CR status.
 // Key outcomes are also emitted as Kubernetes Events so they appear in
-// `kubectl describe externaldatabasedeclaration <name>`.
-type ExternalDatabaseDeclarationReconciler struct {
+// `kubectl describe externaldatabase <name>`.
+type ExternalDatabaseReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Aggregator *aggregatorclient.AggregatorClient
 	Recorder   record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabasedeclarations,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabasedeclarations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
+func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	requestID := uuid.New().String()
 	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
 		xRequestID: requestID,
 	})
 
-	edb := &dbaasv1alpha1.ExternalDatabaseDeclaration{}
+	edb := &dbaasv1.ExternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -72,15 +72,15 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 	// This ensures the CR reflects the actual outcome.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), edb, original, &retErr,
-			func(_ *dbaasv1alpha1.ExternalDatabaseDeclaration, retErr error) bool { return retErr == nil },
-			"ExternalDatabaseDeclaration")
+			func(_ *dbaasv1.ExternalDatabase, retErr error) bool { return retErr == nil },
+			"ExternalDatabase")
 	}()
 
 	// Mark as Processing while we work.
 	// Conditions are NOT cleared here — setCondition upserts each type in place,
 	// preserving LastTransitionTime when Status has not changed.
 	// This makes conditions durable API state across reconcile cycles.
-	edb.Status.Phase = dbaasv1alpha1.PhaseProcessing
+	edb.Status.Phase = dbaasv1.PhaseProcessing
 
 	// Validate that classifier.namespace, if set, matches the CR's own namespace.
 	// A mismatch is a permanent misconfiguration — no retry.
@@ -122,9 +122,9 @@ func (r *ExternalDatabaseDeclarationReconciler) Reconcile(ctx context.Context, r
 // buildRequest assembles an ExternalDatabaseRequest from the CR spec.
 // For each ConnectionProperty that has a credentialsSecretRef it reads the
 // referenced Secret and injects the mapped keys into the flat map.
-func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
+func (r *ExternalDatabaseReconciler) buildRequest(
 	ctx context.Context,
-	edb *dbaasv1alpha1.ExternalDatabaseDeclaration,
+	edb *dbaasv1.ExternalDatabase,
 ) (*aggregatorclient.ExternalDatabaseRequest, error) {
 	connProps, err := r.buildConnectionProperties(ctx, edb)
 	if err != nil {
@@ -140,16 +140,16 @@ func (r *ExternalDatabaseDeclarationReconciler) buildRequest(
 	}, nil
 }
 
-func resolveAggregatorNamespace(edb *dbaasv1alpha1.ExternalDatabaseDeclaration) string {
+func resolveAggregatorNamespace(edb *dbaasv1.ExternalDatabase) string {
 	if namespace := edb.Spec.Classifier["namespace"]; namespace != "" {
 		return namespace
 	}
 	return edb.Namespace
 }
 
-func (r *ExternalDatabaseDeclarationReconciler) buildConnectionProperties(
+func (r *ExternalDatabaseReconciler) buildConnectionProperties(
 	ctx context.Context,
-	edb *dbaasv1alpha1.ExternalDatabaseDeclaration,
+	edb *dbaasv1.ExternalDatabase,
 ) ([]map[string]string, error) {
 	connProps := make([]map[string]string, 0, len(edb.Spec.ConnectionProperties))
 
@@ -174,11 +174,11 @@ func (r *ExternalDatabaseDeclarationReconciler) buildConnectionProperties(
 	return connProps, nil
 }
 
-func (r *ExternalDatabaseDeclarationReconciler) applySecretCredentials(
+func (r *ExternalDatabaseReconciler) applySecretCredentials(
 	ctx context.Context,
 	namespace string,
 	index int,
-	cp dbaasv1alpha1.ConnectionProperty,
+	cp dbaasv1.ConnectionProperty,
 	flat map[string]string,
 ) error {
 	if cp.CredentialsSecretRef == nil {
@@ -228,11 +228,11 @@ func (r *ExternalDatabaseDeclarationReconciler) applySecretCredentials(
 // the RateLimiter, which controls the exponential backoff applied when
 // Reconcile returns an error (BackingOff phase).  Pass
 // ctrlcontroller.Options{} to keep the controller-runtime defaults.
-func (r *ExternalDatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dbaasv1alpha1.ExternalDatabaseDeclaration{},
+		For(&dbaasv1.ExternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
-		Named("externaldatabasedeclaration").
+		Named("externaldatabase").
 		Complete(r)
 }

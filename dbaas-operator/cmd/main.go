@@ -35,13 +35,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
@@ -56,6 +56,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(dbaasv1.AddToScheme(scheme))
 	utilruntime.Must(dbaasv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -82,7 +83,7 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", true,
+	flag.BoolVar(&secureMetrics, "metrics-secure", false,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
@@ -122,14 +123,6 @@ func main() {
 		BindAddress:   metricsAddr,
 		SecureServing: secureMetrics,
 		TLSOpts:       tlsOpts,
-	}
-
-	if secureMetrics {
-		// FilterProvider is used to protect the metrics endpoint with authn/authz.
-		// These configurations ensure that only authorized users and service accounts
-		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
-		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/metrics/filters#WithAuthenticationAndAuthorization
-		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
 
 	// If the certificate is not specified, controller-runtime will automatically
@@ -203,32 +196,40 @@ func main() {
 		),
 	}
 	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
-	if err := (&controller.DatabaseDeclarationReconciler{
+	if err := (&controller.ExternalDatabaseReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
-		Recorder:   mgr.GetEventRecorderFor("databasedeclaration"),
+		Recorder:   mgr.GetEventRecorderFor("externaldatabase"),
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
+		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
 		os.Exit(1)
 	}
-	if err := (&controller.DbPolicyReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Aggregator: aggregator,
-		Recorder:   mgr.GetEventRecorderFor("dbpolicy"),
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
-		os.Exit(1)
-	}
-	if err := (&controller.ExternalDatabaseDeclarationReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Aggregator: aggregator,
-		Recorder:   mgr.GetEventRecorderFor("externaldatabasedeclaration"),
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=ExternalDatabaseDeclaration: %v", err)
-		os.Exit(1)
+
+	enableAlphaAPIs := strings.EqualFold(os.Getenv("ENABLE_ALPHA_APIS"), "true")
+	if enableAlphaAPIs {
+		setupLog.Info("Alpha APIs are enabled")
+
+		if err := (&controller.DatabaseDeclarationReconciler{
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Aggregator: aggregator,
+			Recorder:   mgr.GetEventRecorderFor("databasedeclaration"),
+		}).SetupWithManager(mgr, ctrlOpts); err != nil {
+			setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
+			os.Exit(1)
+		}
+		if err := (&controller.DbPolicyReconciler{
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Aggregator: aggregator,
+			Recorder:   mgr.GetEventRecorderFor("dbpolicy"),
+		}).SetupWithManager(mgr, ctrlOpts); err != nil {
+			setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Alpha APIs are disabled")
 	}
 	// +kubebuilder:scaffold:builder
 

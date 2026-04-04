@@ -43,7 +43,12 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role paths="./cmd;./internal/controller" output:artifacts:config=config/rbac
+	"$(CONTROLLER_GEN)" crd webhook paths="./api/v1/..." output:crd:artifacts:config=config/crd/bases
+
+.PHONY: manifests-dev
+manifests-dev: controller-gen ## Generate internal dev manifests, including alpha APIs.
+	"$(CONTROLLER_GEN)" crd webhook paths="./api/v1/...;./api/v1alpha1/..." output:crd:artifacts:config=config-dev/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -182,6 +187,25 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: install-dev
+install-dev: manifests-dev kustomize ## Install dev CRDs, including alpha APIs.
+	@out="$$( "$(KUSTOMIZE)" build config-dev/crd 2>/dev/null || true )"; \
+	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" apply -f -; else echo "No CRDs to install; skipping."; fi
+
+.PHONY: uninstall-dev
+uninstall-dev: manifests-dev kustomize ## Uninstall dev CRDs, including alpha APIs.
+	@out="$$( "$(KUSTOMIZE)" build config-dev/crd 2>/dev/null || true )"; \
+	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -; else echo "No CRDs to delete; skipping."; fi
+
+.PHONY: deploy-dev
+deploy-dev: manifests-dev kustomize ## Deploy dev controller surface, including alpha APIs.
+	cd config-dev/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build config-dev/default | "$(KUBECTL)" apply -f -
+
+.PHONY: undeploy-dev
+undeploy-dev: kustomize ## Undeploy the dev controller surface.
+	"$(KUSTOMIZE)" build config-dev/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Dependencies
 

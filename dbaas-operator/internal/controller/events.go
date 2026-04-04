@@ -27,7 +27,7 @@ package controller
 //   - Tense: past for one-off successes ("DatabaseRegistered", "PolicyApplied"), present
 //     participle for ongoing problems that repeat on each reconcile ("Unauthorized")
 const (
-	// EventReasonDatabaseRegistered is emitted when an ExternalDatabaseDeclaration is
+	// EventReasonDatabaseRegistered is emitted when an ExternalDatabase is
 	// successfully registered with dbaas-aggregator. Type: Normal.
 	EventReasonDatabaseRegistered = "DatabaseRegistered"
 

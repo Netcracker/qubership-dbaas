@@ -1,7 +1,7 @@
-apiVersion: dbaas.netcracker.com/v1alpha1
-kind: ExternalDatabaseDeclaration
+apiVersion: dbaas.netcracker.com/v1
+kind: ExternalDatabase
 metadata:
-  name: externaldatabasedeclaration-sample
+  name: externaldatabase-sample
 spec:
   classifier:
     namespace: dbaas-system
@@ -15,4 +15,3 @@ spec:
         host: postgres-host
         port: "5432"
         url: "jdbc:postgresql://postgres-host:5432/sample-db"
-  updateConnectionProperties: false
