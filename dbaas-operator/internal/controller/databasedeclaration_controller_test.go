@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -106,7 +107,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		reconciler = &DatabaseDeclarationReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewAggregatorClient(mockServer.URL, "user", "pass"),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
 			Recorder:   fakeRecorder,
 		}
 	})
@@ -961,7 +962,7 @@ var _ = Describe("DatabaseDeclaration Controller — rate limiter", func() {
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"),
-			Aggregator: aggregatorclient.NewAggregatorClient("http://localhost:9999", "u", "p"),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 

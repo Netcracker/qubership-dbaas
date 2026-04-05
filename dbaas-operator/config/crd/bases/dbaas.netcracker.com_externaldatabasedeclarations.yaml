@@ -251,6 +251,7 @@ spec:
               lastRequestId:
                 description: |-
                   lastRequestId is the X-Request-Id of the most recent reconcile attempt.
+                  Use this to correlate operator logs with dbaas-aggregator logs for debugging.
                 type: string
               observedGeneration:
                 description: |-

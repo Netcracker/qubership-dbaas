@@ -17,36 +17,30 @@ limitations under the License.
 // aggregator-mock is a minimal HTTP server that emulates the dbaas-aggregator
 // endpoints used by dbaas-operator, for local development and kind-based testing.
 //
-// Authentication behaviour mirrors the real dbaas-aggregator:
-//   - Credentials are loaded from users.json at DBAAS_SECURITY_CONFIGURATION_LOCATION
-//     (default: /etc/dbaas/security), which is the same path used by dbaas-aggregator.
-//   - Every request is validated with HTTP Basic Auth.
-//   - Wrong credentials → 401 Unauthorized.
-//   - Valid credentials but insufficient role → 403 Forbidden.
+// Authentication: every request must carry a non-empty Bearer token in the
+// Authorization header (any non-empty token is accepted — the mock does not
+// validate the token value, it only checks that one is present).
+// Missing or empty token → 401 Unauthorized.
 //
 // Error responses are returned in full TmfErrorResponse format (NC.TMFErrorResponse.v1.0),
 // matching what the real dbaas-aggregator returns for each HTTP error code.
 //
 // Environment variables:
 //
-//	PORT                              – listen port (default: 8080)
-//	DBAAS_SECURITY_CONFIGURATION_LOCATION – directory containing users.json
-//	                                    (default: /etc/dbaas/security).
-//	                                    Falls back to DBAAS_USERNAME / DBAAS_PASSWORD
-//	                                    env vars for local development without a Secret.
-//	MOCK_RESPONSE_CODE                – default HTTP status code for PUT registration
-//	                                    when no per-dbName rule matches (default: 200).
-//	MOCK_RULES_FILE                   – path to a JSON file mapping dbName → MockRule
-//	                                    (default: /config/rules.json). Missing = not an error.
-//	MOCK_APPLY_RULES_FILE             – path to a JSON file mapping microserviceName → MockRule
-//	                                    for POST /api/declarations/v1/apply (default: /config/apply-rules.json).
-//	                                    Missing = not an error.
-//	                                    For DbPolicy: no rule → 200 COMPLETED.
-//	                                    For DatabaseDeclaration: no rule → 202 IN_PROGRESS with trackingId.
-//	MOCK_POLL_RULES_FILE              – path to a JSON file mapping trackingId → MockPollRule
-//	                                    for GET /api/declarations/v1/operation/{id}/status
-//	                                    (default: /config/poll-rules.json). Missing = not an error.
-//	                                    No rule → 200 COMPLETED.
+//	PORT                – listen port (default: 8080)
+//	MOCK_RESPONSE_CODE  – default HTTP status code for PUT registration
+//	                      when no per-dbName rule matches (default: 200).
+//	MOCK_RULES_FILE     – path to a JSON file mapping dbName → MockRule
+//	                      (default: /config/rules.json). Missing = not an error.
+//	MOCK_APPLY_RULES_FILE – path to a JSON file mapping microserviceName → MockRule
+//	                      for POST /api/declarations/v1/apply (default: /config/apply-rules.json).
+//	                      Missing = not an error.
+//	                      For DbPolicy: no rule → 200 COMPLETED.
+//	                      For DatabaseDeclaration: no rule → 202 IN_PROGRESS with trackingId.
+//	MOCK_POLL_RULES_FILE – path to a JSON file mapping trackingId → MockPollRule
+//	                      for GET /api/declarations/v1/operation/{id}/status
+//	                      (default: /config/poll-rules.json). Missing = not an error.
+//	                      No rule → 200 COMPLETED.
 package main
 
 import (
@@ -55,19 +49,13 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 )
-
-// UserConfig mirrors the per-user entry in dbaas-aggregator's users.json.
-type UserConfig struct {
-	Password string   `json:"password"`
-	Roles    []string `json:"roles"`
-}
 
 // MockRule fully describes the response for a specific dbName or microserviceName.
 // All TmfErrorResponse fields are specified here — the mock contains no hardcoded
@@ -95,24 +83,11 @@ type MockPollRule struct {
 	FailReason string `json:"failReason,omitempty"`
 }
 
-// authRuleUnauthorized is the fixed response for missing/wrong credentials (401).
+// authRuleUnauthorized is the fixed response for a missing/empty Bearer token (401).
 var authRuleUnauthorized = MockRule{
 	HTTPCode: http.StatusUnauthorized,
 	Message:  "Requested role is not allowed",
 }
-
-// authRuleForbidden is the fixed response when the authenticated user lacks the
-// required role (403 at the auth layer, before any dbName is resolved).
-var authRuleForbidden = MockRule{
-	HTTPCode: http.StatusForbidden,
-	Message:  "Access forbidden",
-}
-
-// Role constants mirror dbaas-aggregator's Constants.java.
-const (
-	roleDBClient         = "DB_CLIENT"
-	roleNamespaceCleaner = "NAMESPACE_CLEANER"
-)
 
 var (
 	// PUT /api/v3/dbaas/{namespace}/databases/registration/externally_manageable
@@ -137,49 +112,16 @@ func main() {
 	pollRulesFile := envOr("MOCK_POLL_RULES_FILE", "/config/poll-rules.json")
 	pollRules := loadPollRules(pollRulesFile)
 
-	// Load users from users.json — same path as the real dbaas-aggregator.
-	securityDir := envOr("DBAAS_SECURITY_CONFIGURATION_LOCATION", "/etc/dbaas/security")
-	users := loadUsers(securityDir)
-
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
 		defaultRule.HTTPCode, len(rules))
 	log.Printf("  POST .../apply                 → DbPolicy:200 / DatabaseDeclaration:202  (%d per-microserviceName rules loaded)", len(applyRules))
 	log.Printf("  GET  .../operation/.../status  → default COMPLETED  (%d per-trackingId poll rules loaded)", len(pollRules))
+	log.Printf("  auth: Bearer token required (any non-empty token accepted)")
 
-	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, pollRules, users)); err != nil {
+	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, pollRules)); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-}
-
-// loadUsers reads users.json from the given directory.
-// Format matches dbaas-aggregator: { "username": { "password": "...", "roles": [...] } }.
-// Falls back to DBAAS_USERNAME / DBAAS_PASSWORD env vars for local development.
-func loadUsers(dir string) map[string]UserConfig {
-	path := filepath.Join(dir, "users.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		// Local development fallback: build a single-user map from env vars.
-		u := os.Getenv("DBAAS_USERNAME")
-		p := os.Getenv("DBAAS_PASSWORD")
-		if u != "" {
-			log.Printf("users.json not found at %q, using env vars DBAAS_USERNAME/DBAAS_PASSWORD", path)
-			return map[string]UserConfig{
-				u: {Password: p, Roles: []string{roleDBClient, roleNamespaceCleaner}},
-			}
-		}
-		log.Fatalf("cannot read users.json at %q and DBAAS_USERNAME env var is not set: %v", path, err)
-	}
-
-	var users map[string]UserConfig
-	if err := json.Unmarshal(data, &users); err != nil {
-		log.Fatalf("parse users.json at %q: %v", path, err)
-	}
-	log.Printf("loaded %d users from %q", len(users), path)
-	for u, cfg := range users {
-		log.Printf("  user: %q  roles: %v", u, cfg.Roles)
-	}
-	return users
 }
 
 // loadRules reads a JSON file that maps a string key → MockRule.
@@ -222,29 +164,23 @@ func loadPollRules(path string) map[string]MockPollRule {
 	return rules
 }
 
-func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[string]MockRule, pollRules map[string]MockPollRule, users map[string]UserConfig) http.Handler {
+func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[string]MockRule, pollRules map[string]MockPollRule) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		body := logRequest(r)
 
+		if !checkAuth(w, r) {
+			return
+		}
+
 		switch {
 		case reExternalDB.MatchString(r.URL.Path) && r.Method == http.MethodPut:
-			// Mirrors @RolesAllowed(DB_CLIENT) on addExternalDatabase.
-			if !checkAuth(w, r, users, roleDBClient) {
-				return
-			}
 			handleExternalDB(w, r, body, defaultRule, rules)
 
 		case reApply.MatchString(r.URL.Path) && r.Method == http.MethodPost:
-			if !checkAuth(w, r, users, roleDBClient) {
-				return
-			}
 			handleApply(w, body, applyRules)
 
 		case reOpStatus.MatchString(r.URL.Path) && r.Method == http.MethodGet:
-			if !checkAuth(w, r, users, roleDBClient) {
-				return
-			}
 			handleOpStatus(w, r, pollRules)
 
 		default:
@@ -255,40 +191,17 @@ func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[str
 	return mux
 }
 
-// checkAuth validates HTTP Basic Auth and role, mirroring dbaas-aggregator behaviour:
-//   - missing / wrong credentials → 401 Unauthorized
-//   - valid credentials but missing required role → 403 Forbidden
-func checkAuth(w http.ResponseWriter, r *http.Request, users map[string]UserConfig, requiredRole string) bool {
-	u, p, ok := r.BasicAuth()
-	if !ok {
-		log.Printf("  → 401 no Basic Auth header")
+// checkAuth validates the Bearer token from the Authorization header.
+// Any non-empty token is accepted — the mock does not validate the token value.
+// Missing or empty token → 401 Unauthorized.
+func checkAuth(w http.ResponseWriter, r *http.Request) bool {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == "" {
+		log.Printf("  → 401 missing or empty Bearer token")
 		writeTmfError(w, authRuleUnauthorized)
 		return false
 	}
-
-	cfg, exists := users[u]
-	if !exists || cfg.Password != p {
-		log.Printf("  → 401 invalid credentials (user=%q)", u)
-		writeTmfError(w, authRuleUnauthorized)
-		return false
-	}
-
-	if requiredRole != "" && !hasRole(cfg.Roles, requiredRole) {
-		log.Printf("  → 403 user=%q does not have role %q (has: %v)", u, requiredRole, cfg.Roles)
-		writeTmfError(w, authRuleForbidden)
-		return false
-	}
-
 	return true
-}
-
-func hasRole(roles []string, role string) bool {
-	for _, r := range roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
@@ -452,8 +365,14 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 // logRequest logs the incoming request and returns the body bytes.
 // The caller is responsible for passing the body to any handler that needs it.
 func logRequest(r *http.Request) []byte {
-	username, _, _ := r.BasicAuth()
-	log.Printf("← %s %s  auth-user=%q", r.Method, r.URL.Path, username)
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	tokenPreview := ""
+	if len(token) > 8 {
+		tokenPreview = token[:8] + "..."
+	} else {
+		tokenPreview = token
+	}
+	log.Printf("← %s %s  bearer=%q", r.Method, r.URL.Path, tokenPreview)
 
 	body, _ := io.ReadAll(r.Body)
 
@@ -473,9 +392,6 @@ func logRequest(r *http.Request) []byte {
 // writeTmfError writes a complete error response using the fields from rule.
 func writeTmfError(w http.ResponseWriter, rule MockRule) {
 	w.Header().Set("Content-Type", "application/json")
-	if rule.HTTPCode == http.StatusUnauthorized {
-		w.Header().Set("WWW-Authenticate", `Basic realm="dbaas-aggregator"`)
-	}
 	w.WriteHeader(rule.HTTPCode)
 	status := strconv.Itoa(rule.HTTPCode)
 	resp := tmf.Response{

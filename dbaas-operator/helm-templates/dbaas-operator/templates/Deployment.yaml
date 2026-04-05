@@ -1,3 +1,4 @@
+{{- if .Values.INSTALL_DBAAS_OPERATOR }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,15 +55,20 @@ spec:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
       serviceAccountName: '{{ .Values.SERVICE_NAME }}'
       volumes:
-        - name: dbaas-security-volume
-          secret:
-            secretName: dbaas-security-configuration-secret
+        - name: projected-tokens
+          projected:
+            defaultMode: 292
+            sources:
+              - serviceAccountToken:
+                  path: dbaas/token
+                  audience: dbaas
+                  expirationSeconds: 600
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
           volumeMounts:
-            - name: dbaas-security-volume
-              mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+            - name: projected-tokens
+              mountPath: /var/run/secrets/tokens
               readOnly: true
           args:
             - --health-probe-bind-address=:8081
@@ -70,10 +76,6 @@ spec:
             - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
             - --leader-elect
           env:
-            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
-              value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-            - name: DBAAS_AGGREGATOR_USERNAME
-              value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
             - name: CLOUD_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -136,3 +138,4 @@ spec:
   selector:
     matchLabels:
       name: '{{ .Values.SERVICE_NAME }}'
+{{- end }}

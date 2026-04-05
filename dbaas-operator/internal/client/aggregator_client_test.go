@@ -23,11 +23,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// staticToken returns a TokenSource function that always returns the given token.
+// Used in tests to avoid touching the global tokensource state.
+func staticToken(token string) func(context.Context) (string, error) {
+	return func(context.Context) (string, error) { return token, nil }
+}
 
 // minimalExtDBRequest returns the smallest valid ExternalDatabaseRequest.
 func minimalExtDBRequest() *ExternalDatabaseRequest {
@@ -66,6 +71,12 @@ func writeJSON(t *testing.T, w http.ResponseWriter, status int, v any) {
 	_, _ = w.Write(b)
 }
 
+// bearerToken extracts the Bearer token from the Authorization header.
+func bearerToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	return strings.TrimPrefix(h, "Bearer ")
+}
+
 // ── RegisterExternalDatabase ──────────────────────────────────────────────────
 
 func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
@@ -79,7 +90,7 @@ func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if err := c.RegisterExternalDatabase(context.Background(), "my-namespace", minimalExtDBRequest()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,21 +104,57 @@ func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
 	}
 }
 
-func TestRegisterExternalDatabase_SendsBasicAuth(t *testing.T) {
+func TestRegisterExternalDatabase_SendsBearerToken(t *testing.T) {
 	t.Parallel()
 
-	var gotUser, gotPass string
+	var gotToken string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotUser, gotPass, _ = r.BasicAuth()
+		gotToken = bearerToken(r)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "alice", "secret")
+	c := newClient(srv.URL, staticToken("my-dbaas-token"))
 	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
 
-	if gotUser != "alice" || gotPass != "secret" {
-		t.Errorf("basic auth: got %q/%q, want alice/secret", gotUser, gotPass)
+	if gotToken != "my-dbaas-token" {
+		t.Errorf("Authorization: got Bearer %q, want Bearer my-dbaas-token", gotToken)
+	}
+}
+
+// TestRegisterExternalDatabase_TokenFetchedPerRequest verifies that the token
+// function is called on every request, not cached by the client.
+func TestRegisterExternalDatabase_TokenFetchedPerRequest(t *testing.T) {
+	t.Parallel()
+
+	var tokens []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokens = append(tokens, bearerToken(r))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	call := 0
+	tokenFn := func(context.Context) (string, error) {
+		call++
+		if call == 1 {
+			return "token-first", nil
+		}
+		return "token-second", nil
+	}
+
+	c := newClient(srv.URL, tokenFn)
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+
+	if len(tokens) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(tokens))
+	}
+	if tokens[0] != "token-first" {
+		t.Errorf("first request: got %q, want token-first", tokens[0])
+	}
+	if tokens[1] != "token-second" {
+		t.Errorf("second request: got %q, want token-second", tokens[1])
 	}
 }
 
@@ -129,7 +176,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 		ConnectionProperties:       []map[string]string{{"role": "admin", "host": "pg:5432"}},
 		UpdateConnectionProperties: true,
 	}
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if err := c.RegisterExternalDatabase(context.Background(), "ns", req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,7 +197,7 @@ func TestRegisterExternalDatabase_HTTP200IsSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest()); err != nil {
 		t.Errorf("HTTP 200 should be success, got: %v", err)
 	}
@@ -163,7 +210,7 @@ func TestRegisterExternalDatabase_HTTP201IsSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest()); err != nil {
 		t.Errorf("HTTP 201 should be success, got: %v", err)
 	}
@@ -188,7 +235,7 @@ func TestRegisterExternalDatabase_NonSuccessReturnsAggregatorError(t *testing.T)
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := newClient(srv.URL, staticToken("test-token"))
 			err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -215,7 +262,7 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.RegisterExternalDatabase(ctx, "ns", minimalExtDBRequest())
 	if err == nil {
 		t.Error("expected error on cancelled context, got nil")
@@ -235,7 +282,7 @@ func TestApplyConfig_UsesCorrectURLAndMethod(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if _, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -262,7 +309,7 @@ func TestApplyConfig_HTTP200SyncResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	got, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -290,7 +337,7 @@ func TestApplyConfig_HTTP202AsyncResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	got, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -320,7 +367,7 @@ func TestApplyConfig_NonSuccessReturnsAggregatorError(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := newClient(srv.URL, staticToken("test-token"))
 			_, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -350,7 +397,7 @@ func TestApplyConfig_SerializesDeclarationVersion(t *testing.T) {
 	payload := minimalDeclarativePayload()
 	payload.DeclarationVersion = "v2"
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if _, err := c.ApplyConfig(context.Background(), payload); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -371,7 +418,7 @@ func TestApplyConfig_OmitsDeclarationVersionWhenEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if _, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -394,7 +441,7 @@ func TestGetOperationStatus_UsesCorrectURLAndMethod(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	if _, err := c.GetOperationStatus(context.Background(), "track-99"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -420,7 +467,7 @@ func TestGetOperationStatus_InProgressResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "u", "p")
+	c := newClient(srv.URL, staticToken("test-token"))
 	got, err := c.GetOperationStatus(context.Background(), "track-99")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -448,7 +495,7 @@ func TestGetOperationStatus_AllTerminalStates(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := newClient(srv.URL, staticToken("test-token"))
 			got, err := c.GetOperationStatus(context.Background(), "tid")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -477,7 +524,7 @@ func TestGetOperationStatus_NonSuccessReturnsAggregatorError(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewAggregatorClient(srv.URL, "u", "p")
+			c := newClient(srv.URL, staticToken("test-token"))
 			_, err := c.GetOperationStatus(context.Background(), "tid")
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -506,7 +553,7 @@ func TestGetOperationStatus_ParsesTmfMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := newClient(srv.URL, staticToken("test-token"))
 	_, err := c.GetOperationStatus(context.Background(), "tid")
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -561,19 +608,16 @@ func TestAggregatorError_IsSpecRejection(t *testing.T) {
 		code int
 		want bool
 	}{
-		// Permanent spec rejections — aggregator explicitly rejects the payload.
-		{http.StatusBadRequest, true},          // 400 — validation failure
-		{http.StatusForbidden, true},           // 403 — namespace/policy violation
-		{http.StatusConflict, true},            // 409 — resource already exists
-		{http.StatusGone, true},                // 410 — resource permanently removed
-		{http.StatusUnprocessableEntity, true}, // 422 — semantic validation failure
-		// Infrastructure / proxy 4xx — transient, must NOT be spec rejections.
-		{http.StatusUnauthorized, false},     // 401 — handled by IsAuthError
-		{http.StatusNotFound, false},         // 404 — routing/proxy issue
-		{http.StatusMethodNotAllowed, false}, // 405 — wrong HTTP method
-		{http.StatusRequestTimeout, false},   // 408 — transient timeout
-		{http.StatusTooManyRequests, false},  // 429 — rate limit
-		// Server errors — transient.
+		{http.StatusBadRequest, true},
+		{http.StatusForbidden, true},
+		{http.StatusConflict, true},
+		{http.StatusGone, true},
+		{http.StatusUnprocessableEntity, true},
+		{http.StatusUnauthorized, false},
+		{http.StatusNotFound, false},
+		{http.StatusMethodNotAllowed, false},
+		{http.StatusRequestTimeout, false},
+		{http.StatusTooManyRequests, false},
 		{http.StatusInternalServerError, false},
 		{http.StatusBadGateway, false},
 		{http.StatusServiceUnavailable, false},
@@ -599,101 +643,8 @@ func TestAggregatorError_ErrorMessage(t *testing.T) {
 	}
 }
 
-// ── SetCredentials ────────────────────────────────────────────────────────────
+// ── TMF error parsing ─────────────────────────────────────────────────────────
 
-// TestSetCredentials_ChangesAuthHeader verifies that SetCredentials causes
-// subsequent requests to carry the updated Basic Auth header.
-func TestSetCredentials_ChangesAuthHeader(t *testing.T) {
-	t.Parallel()
-
-	var mu sync.Mutex
-	var capturedUser, capturedPass string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, p, _ := r.BasicAuth()
-		mu.Lock()
-		capturedUser, capturedPass = u, p
-		mu.Unlock()
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	client := NewAggregatorClient(srv.URL, "user-v1", "pass-v1")
-	req := minimalExtDBRequest()
-
-	// ── first request: original credentials ──────────────────────────────────
-	if err := client.RegisterExternalDatabase(context.Background(), "test", req); err != nil {
-		t.Fatalf("first request: %v", err)
-	}
-	mu.Lock()
-	u1, p1 := capturedUser, capturedPass
-	mu.Unlock()
-	if u1 != "user-v1" || p1 != "pass-v1" {
-		t.Errorf("before SetCredentials: got %q/%q, want user-v1/pass-v1", u1, p1)
-	}
-
-	// ── second request: updated credentials ──────────────────────────────────
-	client.SetCredentials("user-v2", "pass-v2")
-
-	if err := client.RegisterExternalDatabase(context.Background(), "test", req); err != nil {
-		t.Fatalf("second request: %v", err)
-	}
-	mu.Lock()
-	u2, p2 := capturedUser, capturedPass
-	mu.Unlock()
-	if u2 != "user-v2" || p2 != "pass-v2" {
-		t.Errorf("after SetCredentials: got %q/%q, want user-v2/pass-v2", u2, p2)
-	}
-}
-
-// TestSetCredentials_Concurrent runs concurrent reads (HTTP requests) and
-// writes (SetCredentials) to detect data races. Run with -race flag.
-func TestSetCredentials_Concurrent(t *testing.T) {
-	t.Parallel()
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	client := NewAggregatorClient(srv.URL, "user", "pass")
-	req := minimalExtDBRequest()
-
-	const readers = 8
-	const iterations = 50
-
-	var wg sync.WaitGroup
-
-	// concurrent readers
-	for range readers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for range iterations {
-				_ = client.RegisterExternalDatabase(context.Background(), "test", req)
-			}
-		}()
-	}
-
-	// concurrent writer
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := range readers * iterations {
-			if i%2 == 0 {
-				client.SetCredentials("user-a", "pass-a")
-			} else {
-				client.SetCredentials("user-b", "pass-b")
-			}
-		}
-	}()
-
-	wg.Wait()
-}
-
-// TestRegisterExternalDatabase_ParsesTmfMessage verifies that when dbaas-aggregator
-// returns a TmfErrorResponse JSON body, the client populates AggregatorError.TmfMessage
-// and UserMessage() returns the TMF message rather than the raw body.
 func TestRegisterExternalDatabase_ParsesTmfMessage(t *testing.T) {
 	t.Parallel()
 
@@ -707,7 +658,7 @@ func TestRegisterExternalDatabase_ParsesTmfMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -731,8 +682,6 @@ func TestRegisterExternalDatabase_ParsesTmfMessage(t *testing.T) {
 	}
 }
 
-// TestRegisterExternalDatabase_NonTmfBodyFallback verifies that when the response
-// body is not valid TMF JSON, UserMessage() falls back to the raw body.
 func TestRegisterExternalDatabase_NonTmfBodyFallback(t *testing.T) {
 	t.Parallel()
 
@@ -744,7 +693,7 @@ func TestRegisterExternalDatabase_NonTmfBodyFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -762,12 +711,9 @@ func TestRegisterExternalDatabase_NonTmfBodyFallback(t *testing.T) {
 	}
 }
 
-// TestRegisterExternalDatabase_TmfEmptyMessageFallback verifies that a valid TMF JSON
-// body with an empty "message" field falls back to the raw body in UserMessage().
 func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
 	t.Parallel()
 
-	// Valid TMF JSON but message field is absent/empty.
 	const tmfBody = `{"code":"CORE-DBAAS-4002","reason":"Conflict database request","status":"409","@type":"NC.TMFErrorResponse.v1.0"}`
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -777,7 +723,7 @@ func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewAggregatorClient(srv.URL, "user", "pass")
+	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -790,7 +736,6 @@ func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
 	if aggErr.TmfMessage != "" {
 		t.Errorf("TmfMessage: got %q, want empty (no message field in TMF body)", aggErr.TmfMessage)
 	}
-	// UserMessage() must fall back to the raw body.
 	if aggErr.UserMessage() != tmfBody {
 		t.Errorf("UserMessage(): got %q, want raw TMF body", aggErr.UserMessage())
 	}
