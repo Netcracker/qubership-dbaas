@@ -26,6 +26,3 @@ MEMORY_LIMIT: "128Mi"
 REPLICAS: 1
 HPA_ENABLED: false
 HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT: 75
-
-# ============== Topology ============================
-CLOUD_TOPOLOGY_KEY: "kubernetes.io/hostname"

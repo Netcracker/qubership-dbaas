@@ -230,16 +230,6 @@ wait-dbaas-aggregator:
 	@echo "$(GREEN)--- Stage 5 END: DBaaS Aggregator service is ready$(NC)"
 	@echo ""
 
-# Install DBaaS Operator CRDs
-.PHONY: install-dbaas-operator-crds
-install-dbaas-operator-crds:
-	@echo "$(BLUE)=== DBaaS Operator CRDs Installation ===$(NC)"
-	@echo "$(CYAN)--- BEGIN: Installing DBaaS Operator CRDs...$(NC)"
-	@kubectl apply -f $(REPOS_DIR)/qubership-dbaas/dbaas-operator/config/crd/bases/ || \
-		(echo "$(RED)Error: DBaaS Operator CRDs installation failed$(NC)" && exit 1)
-	@echo "$(GREEN)--- END: DBaaS Operator CRDs installation completed$(NC)"
-	@echo ""
-
 # Install DBaaS Operator
 .PHONY: install-dbaas-operator
 install-dbaas-operator:
@@ -341,7 +331,7 @@ install: install-without-test smoke-test
 
 # Install without smoke test
 .PHONY: install-without-test
-install-without-test: validate show-config setup-repos install-patroni-core wait-patroni-pods install-dbaas-aggregator wait-dbaas-aggregator install-dbaas-operator-crds install-dbaas-operator wait-dbaas-operator install-patroni-services wait-patroni-services-registration
+install-without-test: validate show-config setup-repos install-patroni-core wait-patroni-pods install-dbaas-aggregator wait-dbaas-aggregator install-dbaas-operator wait-dbaas-operator install-patroni-services wait-patroni-services-registration
 	@echo "$(GREEN)=== ALL STAGES COMPLETED SUCCESSFULLY ===$(NC)"
 	@echo ""
 
