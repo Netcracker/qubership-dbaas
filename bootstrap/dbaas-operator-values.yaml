@@ -12,7 +12,6 @@ NAMESPACE: ${DBAAS_NAMESPACE}
 
 # ============== Service ============================
 WATCH_NAMESPACES: ${DBAAS_NAMESPACE}
-DBAAS_AGGREGATOR_USERNAME: cluster-dba
 
 # ============== RBAC ============================
 RESTRICTED_ENVIRONMENT: false
