@@ -22,9 +22,7 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations
-  - dbpolicies
-  - externaldatabasedeclarations
+  - externaldatabases
   verbs:
   - create
   - delete
@@ -36,16 +34,7 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations/finalizers
-  - dbpolicies/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - dbaas.netcracker.com
-  resources:
-  - databasedeclarations/status
-  - dbpolicies/status
-  - externaldatabasedeclarations/status
+  - externaldatabases/status
   verbs:
   - get
   - patch

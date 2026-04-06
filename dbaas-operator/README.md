@@ -3,23 +3,23 @@
 
 ## Description
 
-`dbaas-operator` is a Kubernetes operator that reconciles three custom resource kinds:
+`dbaas-operator` is a Kubernetes operator that reconciles one public custom resource kind in the first release:
 
 | Kind | Purpose |
 |---|---|
-| `ExternalDatabaseDeclaration` | Registers a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
-| `DatabaseDeclaration` | Requests provisioning of a new database via the dbaas-aggregator declarative API. |
-| `DbPolicy` | Applies a database policy via the dbaas-aggregator declarative API. |
+| `ExternalDatabase` | Registers a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
 
 ---
 
-## ExternalDatabaseDeclaration
+Alpha resources (`DatabaseDeclaration`, `DbPolicy`) remain under active development in the repository, but are not installed by `make install` / `make deploy`.
+
+## ExternalDatabase
 
 ### Minimal example (no Secret)
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1alpha1
-kind: ExternalDatabaseDeclaration
+kind: ExternalDatabase
 metadata:
   name: my-postgres
   namespace: my-ns
@@ -105,7 +105,7 @@ make docker-build docker-push IMG=<some-registry>/dbaas-operator:tag
 And it is required to have access to pull the image from the working environment.
 Make sure you have the proper permission to the registry if the above commands don’t work.
 
-**Install the CRDs into the cluster:**
+**Install the public CRD into the cluster:**
 
 ```sh
 make install
@@ -115,6 +115,13 @@ make install
 
 ```sh
 make deploy IMG=<some-registry>/dbaas-operator:tag
+```
+
+For internal development with alpha APIs enabled:
+
+```sh
+make install-dev
+make deploy-dev IMG=<some-registry>/dbaas-operator:tag
 ```
 
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
@@ -214,4 +221,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-

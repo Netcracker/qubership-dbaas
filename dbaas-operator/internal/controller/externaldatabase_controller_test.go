@@ -34,11 +34,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
+var _ = Describe("ExternalDatabase Controller", func() {
 	const (
 		ns           = "default"
 		resourceName = "test-edb"
@@ -47,14 +47,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 	var (
 		fixture        *aggregatorSyncFixture
-		reconciler     *ExternalDatabaseDeclarationReconciler
+		reconciler     *ExternalDatabaseReconciler
 		namespacedName types.NamespacedName
 	)
 
 	// baseSpec builds a minimal valid spec without any credentialsSecretRef.
 	// Suitable for tests that only care about the aggregator response.
-	baseSpec := func() dbaasv1alpha1.ExternalDatabaseDeclarationSpec {
-		return dbaasv1alpha1.ExternalDatabaseDeclarationSpec{
+	baseSpec := func() dbaasv1.ExternalDatabaseSpec {
+		return dbaasv1.ExternalDatabaseSpec{
 			Classifier: map[string]string{
 				"microserviceName": "test-service",
 				"namespace":        ns,
@@ -62,7 +62,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			},
 			Type:   "postgresql",
 			DbName: "testdb",
-			ConnectionProperties: []dbaasv1alpha1.ConnectionProperty{
+			ConnectionProperties: []dbaasv1.ConnectionProperty{
 				{
 					Role: "admin",
 					ExtraProperties: map[string]string{
@@ -76,7 +76,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	BeforeEach(func() {
 		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
-		reconciler = &ExternalDatabaseDeclarationReconciler{
+		reconciler = &ExternalDatabaseReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
@@ -86,15 +86,15 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 	AfterEach(func() {
 		fixture.close()
-		deleteIfExists(&dbaasv1alpha1.ExternalDatabaseDeclaration{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+		deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 		deleteIfExists(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}})
 	})
 
 	// reconcileAndFetch calls Reconcile and re-fetches the CR from the API server.
 	// The CR must be created before calling this helper.
-	reconcileAndFetch := func() (*dbaasv1alpha1.ExternalDatabaseDeclaration, reconcile.Result, error) {
-		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1alpha1.ExternalDatabaseDeclaration {
-			return &dbaasv1alpha1.ExternalDatabaseDeclaration{}
+	reconcileAndFetch := func() (*dbaasv1.ExternalDatabase, reconcile.Result, error) {
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1.ExternalDatabase {
+			return &dbaasv1.ExternalDatabase{}
 		})
 	}
 
@@ -103,7 +103,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	Context("buildRequest — ExtraProperties vs typed fields priority", func() {
 		It("typed fields take precedence over ExtraProperties with the same key", func() {
 			spec := baseSpec()
-			spec.ConnectionProperties = []dbaasv1alpha1.ConnectionProperty{
+			spec.ConnectionProperties = []dbaasv1.ConnectionProperty{
 				{
 					Role: "primary",
 					// "role" in ExtraProperties must NOT win over the typed Role field.
@@ -113,7 +113,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 				},
 			}
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -144,7 +144,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			spec := baseSpec()
 			delete(spec.Classifier, "namespace")
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -152,7 +152,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fixture.capturedPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 		})
 	})
 
@@ -161,7 +161,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			spec := baseSpec()
 			spec.Classifier["namespace"] = ns // same as metadata.namespace
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -169,7 +169,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 		})
 	})
 
@@ -177,7 +177,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue, never calls aggregator", func() {
 			spec := baseSpec()
 			spec.Classifier["namespace"] = "other-namespace"
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -190,7 +190,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			// Aggregator must not be called.
 			Expect(fixture.capturedBody).To(BeEmpty())
 
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -214,7 +214,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	Context("HTTP 200 — database already registered (no update)", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -224,7 +224,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -246,7 +246,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	Context("HTTP 201 — database successfully created or updated", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/Registered event, does not requeue", func() {
 			fixture.statusCode = http.StatusCreated
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -256,7 +256,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -280,14 +280,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	Context("Secret referenced in credentialsSecretRef does not exist", func() {
 		It("sets Phase=BackingOff, Ready=False/SecretError, Stalled=False, emits Warning/SecretError event, requeues", func() {
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: "non-existent-secret",
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "username", Name: "username"},
 					{Key: "password", Name: "password"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -295,7 +295,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			// Transient error: observedGeneration must NOT be stamped so that
 			// consumers can tell the controller has not finished this generation.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
@@ -325,14 +325,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			})).To(Succeed())
 
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -340,7 +340,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -369,14 +369,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			})).To(Succeed())
 
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -384,7 +384,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -414,14 +414,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			})).To(Succeed())
 
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -429,7 +429,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
 			Expect(ready.Reason).To(Equal(EventReasonSecretError))
@@ -451,14 +451,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			})).To(Succeed())
 
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-user2", Name: "username"}, // duplicate name
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -466,7 +466,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
 			Expect(ready.Reason).To(Equal(EventReasonSecretError))
@@ -494,16 +494,16 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 				"port":     "5432",
 				"username": "should-be-overridden", // will be overridden by Secret
 			}
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 					{Key: "ssl-ca", Name: "sslCA"},
 				},
 			}
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -539,14 +539,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 	Context("credentialsSecretRef — Secret does not exist", func() {
 		It("returns error, sets Phase=BackingOff / SecretError, never calls aggregator", func() {
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: "ghost-secret",
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -558,7 +558,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			// Aggregator must not be called.
 			Expect(fixture.capturedBody).To(BeEmpty())
 
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -584,14 +584,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			})).To(Succeed())
 
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -601,7 +601,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(fixture.capturedBody).To(BeEmpty())
 
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -631,14 +631,14 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			})).To(Succeed())
 
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -648,7 +648,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(fixture.capturedBody).To(BeEmpty())
 
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -677,15 +677,15 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			})).To(Succeed())
 
 			spec := baseSpec()
-			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1alpha1.CredentialsSecretRef{
+			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
-				Keys: []dbaasv1alpha1.SecretKeyMapping{
+				Keys: []dbaasv1.SecretKeyMapping{
 					{Key: "db-user", Name: "username"},
 					{Key: "db-pass", Name: "password"},
 				},
 			}
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -706,7 +706,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(props["username"]).To(Equal("app_user"))
 			Expect(props["password"]).To(Equal("s3cr3t"))
 
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -729,7 +729,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
 			fixture.statusCode = http.StatusBadRequest
 			fixture.body = `{"code":"CORE-DBAAS-4010","reason":"Invalid classifier","message":"Invalid classifier. Classifier does not meet required conditions.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -739,7 +739,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -763,7 +763,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, emits Warning/Unauthorized, requeues", func() {
 			fixture.statusCode = http.StatusUnauthorized
 			fixture.body = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -771,7 +771,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			// Transient error: observedGeneration must NOT be stamped.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
@@ -795,7 +795,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
 			fixture.statusCode = http.StatusForbidden
 			fixture.body = `{"code":"CORE-DBAAS-4004","reason":"Namespace from request is not equal to one from database classifier","message":"Namespace from request is not equal to one from database classifier.","status":"403","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -805,7 +805,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -829,7 +829,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, emits Warning/AggregatorRejected, does not requeue", func() {
 			fixture.statusCode = http.StatusConflict
 			fixture.body = `{"code":"CORE-DBAAS-4002","reason":"Conflict database request","message":"Conflict database request. Logical database already exists and is not externally manageable.","status":"409","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -839,7 +839,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -865,7 +865,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, emits Warning/AggregatorError, requeues", func() {
 			fixture.statusCode = http.StatusInternalServerError
 			fixture.body = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -873,7 +873,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			// Transient error: observedGeneration must NOT be stamped.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
@@ -896,7 +896,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 		It("treats the response as transient and requeues instead of marking the spec invalid", func() {
 			fixture.statusCode = http.StatusNotFound
 			fixture.body = `{"message":"endpoint not found"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -904,7 +904,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
@@ -929,7 +929,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			// connection-refused / EOF error (no AggregatorError wrapping).
 			fixture.server.Close()
 
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.ExternalDatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -937,7 +937,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 			edb, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred()) // requeue with backoff
-			Expect(edb.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			// Transient error: observedGeneration must NOT be stamped.
 			Expect(edb.Status.ObservedGeneration).To(BeZero())
 
@@ -958,7 +958,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller", func() {
 
 // ── Rate limiter / SetupWithManager ───────────────────────────────────────────
 
-var _ = Describe("ExternalDatabaseDeclaration Controller — rate limiter", func() {
+var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 	// SetupWithManager is not exercised in the reconcile-focused tests above
 	// (those call Reconcile directly, bypassing the controller machinery).
 	// This suite verifies two things:
@@ -986,7 +986,7 @@ var _ = Describe("ExternalDatabaseDeclaration Controller — rate limiter", func
 
 		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
 
-		err = (&ExternalDatabaseDeclarationReconciler{
+		err = (&ExternalDatabaseReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"),

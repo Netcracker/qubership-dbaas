@@ -22,7 +22,6 @@ import (
 
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -85,26 +84,26 @@ func setCondition(
 	*conditions = append(*conditions, cond)
 }
 
-func markSucceeded(
-	phase *dbaasv1alpha1.Phase,
+func markSucceeded[P ~string](
+	phase *P,
 	conditions *[]metav1.Condition,
 	generation int64,
 	readyReason string,
 ) {
-	*phase = dbaasv1alpha1.PhaseSucceeded
+	*phase = P("Succeeded")
 	setCondition(conditions, generation,
 		conditionTypeReady, metav1.ConditionTrue, readyReason, "")
 	setCondition(conditions, generation,
 		conditionTypeStalled, metav1.ConditionFalse, ReasonSucceeded, "")
 }
 
-func markTransientFailure(
-	phase *dbaasv1alpha1.Phase,
+func markTransientFailure[P ~string](
+	phase *P,
 	conditions *[]metav1.Condition,
 	generation int64,
 	readyReason, readyMessage string,
 ) {
-	*phase = dbaasv1alpha1.PhaseBackingOff
+	*phase = P("BackingOff")
 	setCondition(conditions, generation,
 		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
 	setCondition(conditions, generation,
@@ -114,9 +113,9 @@ func markTransientFailure(
 // invalidSpec sets InvalidConfiguration phase + conditions, emits a Warning event,
 // and returns (no requeue) so the CR waits for a spec change.
 // Shared by all controllers that perform pre-flight spec validation.
-func invalidSpec(
+func invalidSpec[P ~string](
 	ctx context.Context,
-	phase *dbaasv1alpha1.Phase,
+	phase *P,
 	conditions *[]metav1.Condition,
 	generation int64,
 	recorder record.EventRecorder,
@@ -136,8 +135,8 @@ func invalidSpec(
 //   - 401                   → BackingOff  (transient, requeue)
 //   - 400/403/409/410/422   → InvalidConfiguration (permanent, no requeue)
 //   - 5xx / network         → BackingOff  (transient, requeue)
-func handleAggregatorError(
-	phase *dbaasv1alpha1.Phase,
+func handleAggregatorError[P ~string](
+	phase *P,
 	conditions *[]metav1.Condition,
 	generation int64,
 	recorder record.EventRecorder,
@@ -181,13 +180,13 @@ func handleAggregatorError(
 	return ctrl.Result{}, err
 }
 
-func markPermanentFailure(
-	phase *dbaasv1alpha1.Phase,
+func markPermanentFailure[P ~string](
+	phase *P,
 	conditions *[]metav1.Condition,
 	generation int64,
 	readyReason, readyMessage string,
 ) {
-	*phase = dbaasv1alpha1.PhaseInvalidConfiguration
+	*phase = P("InvalidConfiguration")
 	setCondition(conditions, generation,
 		conditionTypeReady, metav1.ConditionFalse, readyReason, readyMessage)
 	setCondition(conditions, generation,
@@ -196,7 +195,7 @@ func markPermanentFailure(
 
 func patchStatusOnExit[T interface {
 	client.Object
-	dbaasv1alpha1.ObservedGenerationSetter
+	interface{ SetObservedGeneration(int64) }
 }](
 	ctx context.Context,
 	statusWriter client.StatusWriter,
@@ -218,7 +217,7 @@ func patchStatusOnExit[T interface {
 
 func setObservedGeneration[T interface {
 	client.Object
-	dbaasv1alpha1.ObservedGenerationSetter
+	interface{ SetObservedGeneration(int64) }
 }](obj T) {
 	obj.SetObservedGeneration(obj.GetGeneration())
 }

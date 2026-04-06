@@ -4,25 +4,19 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: externaldatabasedeclarations.dbaas.netcracker.com
+  name: dbpolicies.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: ExternalDatabaseDeclaration
-    listKind: ExternalDatabaseDeclarationList
-    plural: externaldatabasedeclarations
-    singular: externaldatabasedeclaration
+    kind: DbPolicy
+    listKind: DbPolicyList
+    plural: dbpolicies
+    singular: dbpolicy
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
-      type: string
-    - jsonPath: .spec.type
-      name: Type
-      type: string
-    - jsonPath: .spec.dbName
-      name: DbName
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -31,11 +25,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ExternalDatabaseDeclaration is the Schema for the externaldatabasedeclarations API.
-          It registers a pre-existing (externally managed) database in dbaas so that
-          microservices can discover its connection details through the standard dbaas API.
-          Unlike DatabaseDeclaration, the physical database is not created or destroyed by dbaas;
-          dbaas only stores and serves its connection properties.
+          DbPolicy is the Schema for the dbpolicies API.
+          It declares the database role assignments for microservices in a namespace,
+          applied by dbaas-aggregator when provisioning or connecting to databases.
         properties:
           apiVersion:
             description: |-
@@ -55,133 +47,96 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of ExternalDatabaseDeclaration.
+            description: spec defines the desired state of DbPolicy.
             properties:
-              classifier:
-                additionalProperties:
-                  type: string
+              disableGlobalPermissions:
                 description: |-
-                  classifier is a key-value map that uniquely identifies the external database in dbaas.
-                  Typical keys: namespace, microserviceName, scope, tenantId.
-                  The aggregator requires at minimum: microserviceName, scope.
-                  If scope is "tenant", tenantId must also be present.
-                type: object
-              connectionProperties:
+                  disableGlobalPermissions disables the default global permission grants that
+                  dbaas-aggregator would otherwise apply to all databases of the service.
+                  Set to true to opt out of global defaults and rely solely on explicit entries.
+                type: boolean
+              microserviceName:
                 description: |-
-                  connectionProperties lists the connection details for each access role.
-                  At least one entry is required. Each entry must have a "role" field; the
-                  aggregator rejects requests where any entry is missing "role".
+                  microserviceName is the microservice that owns this policy.
+                  Mapped to metadata.microserviceName in the DBaaS declarative payload.
+                minLength: 1
+                type: string
+              policy:
+                description: |-
+                  policy defines default and additional role rules per database type. Entries here
+                  act as a fallback for services not explicitly listed in the services field.
                 items:
                   description: |-
-                    ConnectionProperty describes how to connect to the external database for a specific role.
-                    The controller assembles a flat map from role, credentialsSecretRef, and extraProperties
-                    before sending the request to dbaas-aggregator.
-
-                    Merge order (later sources win on key collision):
-
-                     1. extraProperties — lowest priority
-                     2. role            — overrides extraProperties["role"]
-                     3. credentialsSecretRef.keys — highest priority, override matching extraProperties keys
-
-                    All other connection parameters (host, port, url, authDbName, sslMode, etc.) must be
-                    supplied via extraProperties.
+                    PolicyRole defines default and additional database role rules for a specific database type.
+                    Mirrors the PolicyRole Java class in the dbaas-aggregator.
                   properties:
-                    credentialsSecretRef:
+                    additionalRole:
                       description: |-
-                        credentialsSecretRef points to a Kubernetes Secret and maps its keys into the
-                        aggregator request flat map. The Secret must exist in the same namespace as the CR.
-                        Resolved Secret values take precedence over matching keys in extraProperties.
-                      properties:
-                        keys:
-                          description: |-
-                            keys is the list of mappings from Secret.data keys to aggregator request keys.
-                            Each entry reads Secret.data[key] and inserts it into the aggregator flat map
-                            under name. Secret credentials always take precedence over the same keys in
-                            extraProperties. At least one mapping is required.
-                          items:
-                            description: |-
-                              SecretKeyMapping maps a single key from a Kubernetes Secret to a key
-                              in the aggregator request flat map.
-                            properties:
-                              key:
-                                description: key is the key inside Secret.data whose
-                                  value will be read.
-                                minLength: 1
-                                type: string
-                              name:
-                                description: |-
-                                  name is the key to use in the aggregator request flat map.
-                                  Secret credentials take precedence over the same key in extraProperties.
-                                minLength: 1
-                                type: string
-                            required:
-                            - key
-                            - name
-                            type: object
-                          minItems: 1
-                          type: array
-                        name:
-                          description: name is the name of the Kubernetes Secret containing
-                            the credentials.
-                          minLength: 1
-                          type: string
-                      required:
-                      - keys
-                      - name
-                      type: object
-                    extraProperties:
-                      additionalProperties:
+                        additionalRole lists extra roles that may be granted beyond the defaultRole.
+                        Interpretation is adapter-specific.
+                      items:
                         type: string
+                      type: array
+                    defaultRole:
                       description: |-
-                        extraProperties holds all adapter-specific connection parameters as string key-value pairs.
-                        Use this to supply host, port, url, authDbName, sslMode, and any other parameters
-                        required by the dbaas-aggregator adapter.
-                        All keys are merged into the flat map sent to the aggregator.
-                        The "role" key and Secret credentials always override any values set here for those keys.
-                      type: object
-                    role:
+                        defaultRole is the database role assigned to any microservice that is not
+                        explicitly listed in the services section. Allows a baseline access level
+                        for all services without individual entries.
+                      minLength: 1
+                      type: string
+                    type:
                       description: |-
-                        role identifies the access level for this connection entry.
-                        The value is adapter-specific, e.g. "admin", "readonly", "readwrite".
-                        Required by dbaas-aggregator: every connectionProperties entry must contain a "role" key.
-                        Takes precedence over the same key in extraProperties.
+                        type is the database engine type this policy applies to, e.g. "postgresql", "mongodb".
+                        Must match a type known to dbaas-aggregator.
                       minLength: 1
                       type: string
                   required:
-                  - role
+                  - defaultRole
+                  - type
                   type: object
-                minItems: 1
                 type: array
-              dbName:
+              services:
                 description: |-
-                  dbName is the name of the logical database as it exists in the external DBMS.
-                  Unlike DatabaseDeclaration (where the name is auto-generated), this field is
-                  required because the external database already exists with a known name.
-                minLength: 1
-                type: string
-              type:
-                description: |-
-                  type is the database engine type, e.g. "postgresql", "mongodb".
-                  Must match a type registered in dbaas-aggregator.
-                minLength: 1
-                type: string
+                  services defines per-microservice database role assignments. Each entry grants
+                  a named microservice a specific set of database roles in this namespace.
+                items:
+                  description: |-
+                    ServiceRole defines the database roles granted to a specific microservice.
+                    Mirrors the ServiceRole Java class in the dbaas-aggregator.
+                  properties:
+                    name:
+                      description: |-
+                        name is the microservice name (must match the service's app.kubernetes.io/name label).
+                        The aggregator uses this to associate role grants with the correct service identity.
+                      minLength: 1
+                      type: string
+                    roles:
+                      description: |-
+                        roles is the list of database roles granted to this microservice.
+                        Role names are adapter-specific, e.g. "admin", "readonly", "readwrite".
+                      items:
+                        type: string
+                      minItems: 1
+                      type: array
+                  required:
+                  - name
+                  - roles
+                  type: object
+                type: array
             required:
-            - classifier
-            - connectionProperties
-            - dbName
-            - type
+            - microserviceName
             type: object
           status:
-            description: status defines the observed state of ExternalDatabaseDeclaration.
+            description: status defines the observed state of DbPolicy.
             properties:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by all dbaas operator resources (ExternalDatabaseDeclaration, DbPolicy, DatabaseDeclaration):
+                  Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, DatabaseDeclaration):
                     - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   False on any error; see Reason for the category.
-                                  ExternalDatabaseDeclaration: reason "DatabaseRegistered" on success.
+                                  ExternalDatabase: reason "DatabaseRegistered" on success.
                                   DbPolicy: reason "PolicyApplied" on success.
                                   DatabaseDeclaration: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.

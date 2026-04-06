@@ -1,4 +1,4 @@
-{{- if .Values.INSTALL_DBAAS_OPERATOR }}
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
 {{- if or (and (eq .Values.PAAS_PLATFORM "KUBERNETES") (ne (semver .Values.PAAS_VERSION | (semver "1.25").Compare) 1)) (and (eq .Values.PAAS_PLATFORM "OPENSHIFT") (ne (semver .Values.PAAS_VERSION | (semver "4.10").Compare) 1)) }} # k8s older than 1.25 or os older than 4.10 (both included)
 apiVersion: autoscaling/v2
 {{- else }}
@@ -6,7 +6,7 @@ apiVersion: autoscaling/v2beta2
 {{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: '{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}'
+  name: '{{ .Values.SERVICE_NAME }}'
   labels:
     app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
     app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
@@ -16,7 +16,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: '{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}'
+    name: '{{ .Values.SERVICE_NAME }}'
     {{- if .Values.HPA_ENABLED }}
   minReplicas: {{ coalesce .Values.HPA_MIN_REPLICAS .Values.REPLICAS }}
   maxReplicas: {{ .Values.HPA_MAX_REPLICAS }}

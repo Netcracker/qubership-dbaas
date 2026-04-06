@@ -1,6 +1,4 @@
 ## Append samples of your project ##
 resources:
-- dbaas_v1alpha1_databasedeclaration.yaml
-- dbaas_v1alpha1_dbpolicy.yaml
-- dbaas_v1alpha1_externaldatabasedeclaration.yaml
+- dbaas_v1_externaldatabase.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
