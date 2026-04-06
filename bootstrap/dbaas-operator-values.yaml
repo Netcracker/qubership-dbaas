@@ -15,3 +15,5 @@ WATCH_NAMESPACES: ${DBAAS_NAMESPACE}
 
 # ============== RBAC ============================
 RESTRICTED_ENVIRONMENT: false
+
+MONITORING_ENABLED: false
