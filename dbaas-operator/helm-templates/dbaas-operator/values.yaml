@@ -17,3 +17,4 @@ RESTRICTED_ENVIRONMENT: false
 
 # ============== SERVICE VARIABLES ============================
 LOG_LEVEL: "info"
+

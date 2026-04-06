@@ -129,7 +129,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 
 	if resp.TrackingID != "" {
 		// HTTP 202 Accepted — async operation started.
-		log.Info("database provisioning started asynchronously. trackingId = %v, microserviceName = %v", resp.TrackingID, dd.Spec.Classifier.MicroserviceName)
+		log.Infof("database provisioning started asynchronously. trackingId = %v, microserviceName = %v", resp.TrackingID, dd.Spec.Classifier.MicroserviceName)
 		markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s, requestId=%s)",
@@ -138,7 +138,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	}
 
 	// HTTP 200 OK — synchronous completion.
-	log.Info("database provisioned synchronously. microserviceName = %v", dd.Spec.Classifier.MicroserviceName)
+	log.Infof("database provisioned synchronously. microserviceName = %v", dd.Spec.Classifier.MicroserviceName)
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 		"database provisioned synchronously (microserviceName=%s)",
@@ -332,7 +332,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 ) (ctrl.Result, error) {
 	switch resp.Status {
 	case aggregatorclient.TaskStateCompleted:
-		log.Infof("database provisioned. trackingId = %v, microserviceName = %v",
+		log.InfoC(ctx, "database provisioned. trackingId = %v, microserviceName = %v",
 			trackingID, dd.Spec.Classifier.MicroserviceName)
 		clearPendingOperation(dd)
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
