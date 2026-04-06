@@ -1,4 +1,4 @@
-{{- if and .Values.INSTALL_DBAAS_OPERATOR (not .Values.RESTRICTED_ENVIRONMENT) }}
+{{- if and .Values.DBAAS_OPERATOR_ENABLED (not .Values.RESTRICTED_ENVIRONMENT) }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -11,17 +11,17 @@ rules:
   # dbaas CRs
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
-      - externaldatabasedeclarations
+      - externaldatabases
     verbs: [ get, list, watch, create, update, patch, delete ]
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
-      - externaldatabasedeclarations/status
+      - externaldatabases/status
     verbs: [ get, update, patch ]
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
-      - externaldatabasedeclarations/finalizers
+      - externaldatabases/finalizers
     verbs: [ update ]
-  # Secrets (for credentials in ExternalDatabaseDeclaration)
+  # Secrets (for credentials in ExternalDatabase)
   - apiGroups: [ "" ]
     resources: [ secrets ]
     verbs: [ get, list, watch ]

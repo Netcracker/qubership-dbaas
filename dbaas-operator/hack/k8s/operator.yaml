@@ -14,21 +14,21 @@ rules:
     resources:
       - databasedeclarations
       - dbpolicies
-      - externaldatabasedeclarations
+      - externaldatabases
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - databasedeclarations/status
       - dbpolicies/status
-      - externaldatabasedeclarations/status
+      - externaldatabases/status
     verbs: [get, update, patch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - databasedeclarations/finalizers
       - dbpolicies/finalizers
-      - externaldatabasedeclarations/finalizers
+      - externaldatabases/finalizers
     verbs: [update]
-  # Secrets (for credentials in ExternalDatabaseDeclaration)
+  # Secrets (for credentials in ExternalDatabase)
   - apiGroups: [""]
     resources: [secrets]
     verbs: [get, list, watch]
@@ -88,9 +88,12 @@ spec:
         - name: manager
           image: dbaas-operator:dev
           imagePullPolicy: Never   # image is loaded into kind locally
+          env:
+            - name: ALPHA_APIS_ENABLED
+              value: "true"
           args:
             - --health-probe-bind-address=:8081
-            - --metrics-bind-address=0
+            - --metrics-bind-address=:8080
             - --watch-namespaces=test-ns
             - --leader-elect
           volumeMounts:

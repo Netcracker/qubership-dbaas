@@ -11,7 +11,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DbPolicy/DatabaseDeclaration by `microserviceName`), `poll-rules.json` (DatabaseDeclaration async poll by `trackingId`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC |
 | Namespace `test-ns` | — | Working namespace for CRs |
-| Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabaseDeclaration |
+| Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabase |
 
 ## Prerequisites
 
@@ -50,12 +50,12 @@ Apply all test CRs at once and observe their phases:
 
 ```bash
 kubectl apply -f hack/test-resources/ -n test-ns
-kubectl get externaldatabasedeclaration -n test-ns
+kubectl get externaldatabase -n test-ns
 kubectl get dbpolicy -n test-ns
 kubectl get databasedeclaration -n test-ns
 ```
 
-### ExternalDatabaseDeclaration
+### ExternalDatabase
 
 The mock routes `PUT .../externally_manageable` requests by `dbName` from the request body.
 Rules are defined in `rules.json` inside the `aggregator-mock-rules` ConfigMap.
@@ -177,8 +177,8 @@ kubectl logs -n dbaas-system deployment/dbaas-operator -f
 # aggregator-mock logs (shows incoming requests and rule matches)
 kubectl logs -n dbaas-system deployment/aggregator-mock -f
 
-# Full CR status — ExternalDatabaseDeclaration
-kubectl get externaldatabasedeclaration -n test-ns edb-401 -o yaml
+# Full CR status — ExternalDatabase
+kubectl get externaldatabase -n test-ns edb-401 -o yaml
 
 # Full CR status — DbPolicy
 kubectl get dbpolicy -n test-ns dp-401 -o yaml
@@ -191,7 +191,7 @@ kubectl get events -n test-ns --field-selector involvedObject.name=dp-401
 kubectl get events -n test-ns --field-selector involvedObject.name=dd-poll-failed
 
 # Reset a CR — delete and reapply
-kubectl delete externaldatabasedeclaration -n test-ns edb-401
+kubectl delete externaldatabase -n test-ns edb-401
 kubectl apply -f hack/test-resources/edb-401-unauthorized.yaml -n test-ns
 
 kubectl delete dbpolicy -n test-ns dp-401
@@ -201,7 +201,7 @@ kubectl delete databasedeclaration -n test-ns dd-401-unauthorized
 kubectl apply -f hack/test-resources/dd-401-unauthorized.yaml -n test-ns
 
 # Redeploy all test resources at once
-kubectl delete externaldatabasedeclaration,dbpolicy,databasedeclaration -n test-ns --all
+kubectl delete externaldatabase,dbpolicy,databasedeclaration -n test-ns --all
 kubectl apply -f hack/test-resources/ -n test-ns
 ```
 
@@ -233,7 +233,7 @@ hack/
     ├── namespace.yaml               # namespace test-ns
     ├── secret.yaml                  # Secret pg-credentials (and pg-credentials-incomplete)
     │
-    │   # ExternalDatabaseDeclaration test CRs
+    │   # ExternalDatabase test CRs
     ├── edb-with-secret.yaml         # EDB — 200 OK (happy path, uses secret)
     ├── edb-201-created.yaml         # EDB — 201 Created → Succeeded
     ├── edb-400-bad-request.yaml     # EDB — 400 → InvalidConfiguration

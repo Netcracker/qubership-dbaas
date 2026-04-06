@@ -36,6 +36,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
@@ -70,6 +71,8 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(baseCtx)
 
 	var err error
+	err = dbaasv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 	err = dbaasv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -77,7 +80,10 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "config-dev", "crd", "bases"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 

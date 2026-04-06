@@ -1,5 +1,5 @@
-apiVersion: dbaas.netcracker.com/v1alpha1
-kind: ExternalDatabaseDeclaration
+apiVersion: dbaas.netcracker.com/v1
+kind: ExternalDatabase
 metadata:
   name: edb-401
   namespace: test-ns

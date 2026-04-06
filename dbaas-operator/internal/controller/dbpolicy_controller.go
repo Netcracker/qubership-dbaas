@@ -46,11 +46,6 @@ type DbPolicyReconciler struct {
 	Recorder   record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
-
 func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	requestID := uuid.New().String()
 	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
