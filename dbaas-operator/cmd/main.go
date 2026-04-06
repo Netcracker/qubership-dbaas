@@ -206,8 +206,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	enableAlphaAPIs := strings.EqualFold(os.Getenv("ENABLE_ALPHA_APIS"), "true")
-	if enableAlphaAPIs {
+	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
+	if alphaAPIsEnabled {
 		setupLog.Info("Alpha APIs are enabled")
 
 		if err := (&controller.DatabaseDeclarationReconciler{

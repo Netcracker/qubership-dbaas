@@ -64,7 +64,7 @@ spec:
           - --leader-elect
           - --health-probe-bind-address=:8081
         env:
-          - name: ENABLE_ALPHA_APIS
+          - name: ALPHA_APIS_ENABLED
             value: "true"
         image: controller:latest
         name: manager

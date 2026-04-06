@@ -89,7 +89,7 @@ spec:
           image: dbaas-operator:dev
           imagePullPolicy: Never   # image is loaded into kind locally
           env:
-            - name: ENABLE_ALPHA_APIS
+            - name: ALPHA_APIS_ENABLED
               value: "true"
           args:
             - --health-probe-bind-address=:8081
