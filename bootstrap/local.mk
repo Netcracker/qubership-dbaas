@@ -2,6 +2,7 @@
 PATRONI_CORE_VALUES_FILE ?= ./patroni-core-values-local.yaml
 DBAAS_VALUES_FILE ?= ./dbaas-values.yaml
 DBAAS_OPERATOR_VALUES_FILE ?= ./dbaas-operator-values.yaml
+DBAAS_OPERATOR_RESOURCE_PROFILE ?= $(REPOS_DIR)/qubership-dbaas/dbaas-operator/helm-templates/dbaas-operator/resource-profiles/dev.yaml
 PATRONI_SERVICES_VALUES_FILE ?= ./patroni-services-values.yaml
 
 # namespace parameters
@@ -36,6 +37,7 @@ export DBAAS_OPERATOR_TAG
 export PATRONI_CORE_VALUES_FILE
 export DBAAS_VALUES_FILE
 export DBAAS_OPERATOR_VALUES_FILE
+export DBAAS_OPERATOR_RESOURCE_PROFILE
 export PATRONI_SERVICES_VALUES_FILE 
 
 

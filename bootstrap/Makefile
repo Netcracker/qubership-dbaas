@@ -236,7 +236,7 @@ install-dbaas-operator:
 	@echo "$(BLUE)=== DBaaS Operator Installation ===$(NC)"
 	@echo "$(CYAN)--- BEGIN: Installing DBaaS Operator...$(NC)"
 	@envsubst < $(DBAAS_OPERATOR_VALUES_FILE) | helm upgrade --install -n $(DBAAS_NAMESPACE) $(CREATE_NAMESPACE_OPTION) \
-		dbaas-operator $(REPOS_DIR)/qubership-dbaas/dbaas-operator/helm-templates/dbaas-operator -f - || \
+		dbaas-operator $(REPOS_DIR)/qubership-dbaas/dbaas-operator/helm-templates/dbaas-operator -f - -f $(DBAAS_OPERATOR_RESOURCE_PROFILE) || \
 		(echo "$(RED)Error: DBaaS Operator installation failed$(NC)" && echo "$(CYAN)Please check the helm output above for details$(NC)" && exit 1)
 	@echo "$(GREEN)--- END: DBaaS Operator installation completed$(NC)"
 	@echo ""
