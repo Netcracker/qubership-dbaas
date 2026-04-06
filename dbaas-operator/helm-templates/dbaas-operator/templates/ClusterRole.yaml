@@ -12,6 +12,7 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
       - externaldatabases
+      - operatorbindings
     verbs: [ get, list, watch, create, update, patch, delete ]
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
@@ -20,6 +21,7 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources:
       - externaldatabases/finalizers
+      - operatorbindings/finalizers
     verbs: [ update ]
   # Secrets (for credentials in ExternalDatabase)
   - apiGroups: [ "" ]

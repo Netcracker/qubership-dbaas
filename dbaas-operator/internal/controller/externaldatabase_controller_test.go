@@ -81,6 +81,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			Scheme:     k8sClient.Scheme(),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
 			Recorder:   fixture.recorder,
+			Ownership:  mineOwnershipResolver(ns),
 		}
 	})
 

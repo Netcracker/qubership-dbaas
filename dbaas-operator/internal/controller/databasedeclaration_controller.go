@@ -33,10 +33,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 // pollRequeueAfter is the interval between polls of an in-progress async operation.
@@ -54,6 +58,7 @@ type DatabaseDeclarationReconciler struct {
 	Scheme     *runtime.Scheme
 	Aggregator *aggregatorclient.AggregatorClient
 	Recorder   record.EventRecorder
+	Ownership  *ownership.OwnershipResolver
 }
 
 func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -65,6 +70,14 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	dd := &dbaasv1alpha1.DatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// ── Ownership check ───────────────────────────────────────────────────────
+	if mine, err := r.Ownership.IsMyNamespace(ctx, dd.Namespace); err != nil {
+		return ctrl.Result{}, err
+	} else if !mine {
+		log.InfoC(ctx, "skipping DatabaseDeclaration %s/%s: namespace not owned by this operator", dd.Namespace, dd.Name)
+		return ctrl.Result{}, nil
 	}
 
 	original := dd.DeepCopy()
@@ -380,7 +393,27 @@ func (r *DatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1alpha1.DatabaseDeclaration{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// Re-enqueue all DatabaseDeclarations in a namespace when its OperatorBinding
+		// is created or updated, so existing CRs are reconciled without waiting for
+		// a spec change.
+		Watches(&dbaasv1.OperatorBinding{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		WithOptions(opts).
 		Named("databasedeclaration").
 		Complete(r)
+}
+
+// enqueueForBinding maps an OperatorBinding event to reconcile requests for
+// all DatabaseDeclarations that live in the same namespace.
+func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &dbaasv1alpha1.DatabaseDeclarationList{}
+	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.ErrorC(ctx, "enqueueForBinding: list DatabaseDeclarations in %s: %v", obj.GetNamespace(), err)
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return reqs
 }

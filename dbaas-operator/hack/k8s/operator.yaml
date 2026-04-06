@@ -15,6 +15,7 @@ rules:
       - databasedeclarations
       - dbpolicies
       - externaldatabases
+      - operatorbindings
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [dbaas.netcracker.com]
     resources:
@@ -27,6 +28,7 @@ rules:
       - databasedeclarations/finalizers
       - dbpolicies/finalizers
       - externaldatabases/finalizers
+      - operatorbindings/finalizers
     verbs: [update]
   # Secrets (for credentials in ExternalDatabase)
   - apiGroups: [""]
@@ -91,10 +93,13 @@ spec:
           env:
             - name: ALPHA_APIS_ENABLED
               value: "true"
+            - name: CLOUD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
-            - --watch-namespaces=test-ns
             - --leader-elect
           volumeMounts:
             - name: projected-tokens

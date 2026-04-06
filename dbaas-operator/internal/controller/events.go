@@ -79,4 +79,13 @@ const (
 	// reconcile. It signals that the controller is not stalled because the
 	// last operation completed successfully.
 	ReasonSucceeded = "Succeeded"
+
+	// EventReasonBindingRegistered is emitted when an OperatorBinding is
+	// successfully registered (finalizer added). Type: Normal.
+	EventReasonBindingRegistered = "BindingRegistered"
+
+	// EventReasonBindingBlocked is emitted when an OperatorBinding deletion is
+	// deferred because the namespace still contains dbaas workload resources
+	// (ExternalDatabase, DatabaseDeclaration, or DbPolicy). Type: Warning.
+	EventReasonBindingBlocked = "BindingBlocked"
 )

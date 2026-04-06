@@ -109,6 +109,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Scheme:     k8sClient.Scheme(),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
 			Recorder:   fakeRecorder,
+			Ownership:  mineOwnershipResolver(ns),
 		}
 	})
 
@@ -963,6 +964,7 @@ var _ = Describe("DatabaseDeclaration Controller — rate limiter", func() {
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
+			Ownership:  mineOwnershipResolver("ns"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 

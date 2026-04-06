@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/dbaas.netcracker.com_externaldatabases.yaml
+- bases/dbaas.netcracker.com_operatorbindings.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
