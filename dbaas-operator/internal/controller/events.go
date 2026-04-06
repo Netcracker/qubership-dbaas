@@ -80,11 +80,11 @@ const (
 	// last operation completed successfully.
 	ReasonSucceeded = "Succeeded"
 
-	// EventReasonBindingRegistered is emitted when an OperatorBinding is
+	// EventReasonBindingRegistered is emitted when an NamespaceBinding is
 	// successfully registered (finalizer added). Type: Normal.
 	EventReasonBindingRegistered = "BindingRegistered"
 
-	// EventReasonBindingBlocked is emitted when an OperatorBinding deletion is
+	// EventReasonBindingBlocked is emitted when an NamespaceBinding deletion is
 	// deferred because the namespace still contains dbaas workload resources
 	// (ExternalDatabase, DatabaseDeclaration, or DbPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"

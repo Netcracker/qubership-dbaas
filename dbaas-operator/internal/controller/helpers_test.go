@@ -72,10 +72,12 @@ func TestSetCondition_LastTransitionTime(t *testing.T) {
 	t.Run("Status changes — time updated", func(t *testing.T) {
 		t.Parallel()
 		conds := seed()
-		before := time.Now()
+		before := metav1.Now()
 		setCondition(&conds, 1, conditionTypeReady, metav1.ConditionTrue, "Registered", "")
-		if !conds[0].LastTransitionTime.After(before) {
-			t.Errorf("expected time to be updated on Status change, got %v", conds[0].LastTransitionTime)
+		// Use !Before (i.e. >=) rather than After (>) to avoid a spurious failure
+		// when both time.Now() calls land on the same nanosecond on a fast machine.
+		if conds[0].LastTransitionTime.Before(&before) {
+			t.Errorf("expected LastTransitionTime >= %v on Status change, got %v", before, conds[0].LastTransitionTime)
 		}
 	})
 }

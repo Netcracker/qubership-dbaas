@@ -11,7 +11,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DbPolicy/DatabaseDeclaration by `microserviceName`), `poll-rules.json` (DatabaseDeclaration async poll by `trackingId`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC — watches all namespaces cluster-wide |
 | Namespace `test-ns` | — | Working namespace for CRs |
-| `OperatorBinding/registration` | `test-ns` | Claims `test-ns` for this operator (location=`dbaas-system`) |
+| `NamespaceBinding/binding` | `test-ns` | Claims `test-ns` for this operator (operatorNamespace=`dbaas-system`) |
 | Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabase |
 
 ## Prerequisites
@@ -47,19 +47,19 @@ The script runs these steps in order:
 
 ## Test scenarios
 
-**Namespace ownership** is now declared through `OperatorBinding` rather than a
+**Namespace ownership** is now declared through `NamespaceBinding` rather than a
 `--watch-namespaces` flag.  The operator runs cluster-wide but only reconciles
-resources in namespaces where an `OperatorBinding` named `registration` exists
-and its `spec.location` matches the operator's own namespace (`CLOUD_NAMESPACE`).
+resources in namespaces where a `NamespaceBinding` named `binding` exists
+and its `spec.operatorNamespace` matches the operator's own namespace (`CLOUD_NAMESPACE`).
 
-`hack/test-resources/operatorbinding.yaml` (included in the directory) creates
+`hack/test-resources/namespacebinding.yaml` (included in the directory) creates
 the binding for `test-ns` automatically when you apply the full directory.
 
 Apply all test CRs at once and observe their phases:
 
 ```bash
 kubectl apply -f hack/test-resources/ -n test-ns
-kubectl get operatorbinding -n test-ns       # registration   dbaas-system
+kubectl get namespacebinding -n test-ns       # binding   dbaas-system
 kubectl get externaldatabase -n test-ns
 kubectl get dbpolicy -n test-ns
 kubectl get databasedeclaration -n test-ns
@@ -210,7 +210,7 @@ kubectl apply -f hack/test-resources/dbpolicy-401.yaml -n test-ns
 kubectl delete databasedeclaration -n test-ns dd-401-unauthorized
 kubectl apply -f hack/test-resources/dd-401-unauthorized.yaml -n test-ns
 
-# Redeploy all test resources at once (OperatorBinding is preserved — it has a deletion-protection finalizer)
+# Redeploy all test resources at once (NamespaceBinding is preserved — it has a deletion-protection finalizer)
 kubectl delete externaldatabase,dbpolicy,databasedeclaration -n test-ns --all
 kubectl apply -f hack/test-resources/ -n test-ns
 ```
@@ -241,7 +241,7 @@ hack/
 │   └── operator.yaml           # ServiceAccount + RBAC + Deployment for the operator
 └── test-resources/
     ├── namespace.yaml               # namespace test-ns
-    ├── operatorbinding.yaml         # OperatorBinding/registration — claims test-ns (location=dbaas-system)
+    ├── namespacebinding.yaml        # NamespaceBinding/binding — claims test-ns (operatorNamespace=dbaas-system)
     ├── secret.yaml                  # Secret pg-credentials (and pg-credentials-incomplete)
     │
     │   # ExternalDatabase test CRs
@@ -272,5 +272,5 @@ hack/
     ├── dd-poll-failed.yaml                  # DD — 202 → poll FAILED → InvalidConfiguration
     ├── dd-poll-terminated.yaml              # DD — 202 → poll TERMINATED → BackingOff (resubmits automatically)
     ├── dd-invalid-lazy-clone.yaml           # DD — pre-flight: lazy=true + clone → InvalidConfiguration
-    └── dd-invalid-no-source.yaml            # DD — pre-flight: clone without sourceClassifier → InvalidConfiguration
+    └── dd-invalid-no-source.yaml           # DD — pre-flight: clone without sourceClassifier → InvalidConfiguration
 ```

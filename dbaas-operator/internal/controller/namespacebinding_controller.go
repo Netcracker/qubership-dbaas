@@ -38,19 +38,19 @@ import (
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
-// OperatorBindingReconciler reconciles OperatorBinding objects.
+// NamespaceBindingReconciler reconciles NamespaceBinding objects.
 //
 // Responsibilities:
 //  1. Keep the ownership cache (OwnershipResolver) up-to-date on every
 //     create/update/delete.
-//  2. Manage the OperatorBindingProtectionFinalizer: add it when the namespace
+//  2. Manage the NamespaceBindingProtectionFinalizer: add it when the namespace
 //     contains blocking dbaas resources; remove it (allowing deletion) only once
 //     those resources are gone.
 //  3. Watch workload resources (ExternalDatabase, and optionally
 //     DatabaseDeclaration + DbPolicy when alpha APIs are enabled) so that any
 //     create/delete of a workload in a bound namespace triggers a re-evaluation
 //     of the finalizer.
-type OperatorBindingReconciler struct {
+type NamespaceBindingReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
@@ -59,17 +59,17 @@ type OperatorBindingReconciler struct {
 	Checker     ownership.BlockingResourceChecker
 }
 
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=operatorbindings,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=operatorbindings/finalizers,verbs=update
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
 
-func (r *OperatorBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	requestID := uuid.New().String()
 	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
 		xRequestID: requestID,
 	})
 
-	ob := &dbaasv1.OperatorBinding{}
-	if err := r.Get(ctx, req.NamespacedName, ob); err != nil {
+	nb := &dbaasv1.NamespaceBinding{}
+	if err := r.Get(ctx, req.NamespacedName, nb); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			// Binding was deleted — evict from cache.
 			r.Ownership.Forget(req.Namespace)
@@ -79,82 +79,93 @@ func (r *OperatorBindingReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// ── Keep ownership cache current ─────────────────────────────────────────
-	r.Ownership.SetOwner(ob.Namespace, ob.Spec.Location)
+	r.Ownership.SetOwner(nb.Namespace, nb.Spec.OperatorNamespace)
+
+	// ── Foreign binding — cache update only, no mutations ────────────────────
+	// Only the operator instance whose CLOUD_NAMESPACE matches spec.operatorNamespace
+	// owns this binding.  A foreign operator must update its cache (so workload
+	// reconcilers know the namespace is Foreign / not theirs) but must not touch
+	// the finalizer or emit events — that is the owning instance's responsibility.
+	if nb.Spec.OperatorNamespace != r.MyNamespace {
+		log.InfoC(ctx, "NamespaceBinding %s/%s belongs to operatorNamespace=%s (mine=%s) — skipping mutations",
+			nb.Namespace, nb.Name, nb.Spec.OperatorNamespace, r.MyNamespace)
+		return ctrl.Result{}, nil
+	}
 
 	// ── Deletion path ────────────────────────────────────────────────────────
-	if !ob.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(ob, dbaasv1.OperatorBindingProtectionFinalizer) {
+	if !nb.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer) {
 			// Finalizer already removed; nothing left to do.
 			return ctrl.Result{}, nil
 		}
 
-		blocking, err := r.Checker.HasBlockingResources(ctx, ob.Namespace)
+		blocking, err := r.Checker.HasBlockingResources(ctx, nb.Namespace)
 		if err != nil {
-			log.ErrorC(ctx, "checking blocking resources for OperatorBinding %s/%s: %v", ob.Namespace, ob.Name, err)
+			log.ErrorC(ctx, "checking blocking resources for NamespaceBinding %s/%s: %v", nb.Namespace, nb.Name, err)
 			return ctrl.Result{}, err
 		}
 
 		if blocking {
-			log.InfoC(ctx, "OperatorBinding %s/%s blocked by dbaas resources — deletion deferred", ob.Namespace, ob.Name)
-			r.Recorder.Eventf(ob, corev1.EventTypeWarning, EventReasonBindingBlocked,
+			log.InfoC(ctx, "NamespaceBinding %s/%s blocked by dbaas resources — deletion deferred", nb.Namespace, nb.Name)
+			r.Recorder.Eventf(nb, corev1.EventTypeWarning, EventReasonBindingBlocked,
 				"deletion deferred: namespace still contains dbaas workload resources (requestId=%s)", requestID)
 			return ctrl.Result{}, nil
 		}
 
 		// No blocking resources — remove finalizer to allow deletion.
-		patch := client.MergeFrom(ob.DeepCopy())
-		controllerutil.RemoveFinalizer(ob, dbaasv1.OperatorBindingProtectionFinalizer)
-		if err := r.Patch(ctx, ob, patch); err != nil {
+		patch := client.MergeFrom(nb.DeepCopy())
+		controllerutil.RemoveFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer)
+		if err := r.Patch(ctx, nb, patch); err != nil {
 			return ctrl.Result{}, err
 		}
-		r.Ownership.Forget(ob.Namespace)
-		log.InfoC(ctx, "OperatorBinding %s/%s finalizer removed, deletion unblocked", ob.Namespace, ob.Name)
+		r.Ownership.Forget(nb.Namespace)
+		log.InfoC(ctx, "NamespaceBinding %s/%s finalizer removed, deletion unblocked", nb.Namespace, nb.Name)
 		return ctrl.Result{}, nil
 	}
 
 	// ── Creation / update path ───────────────────────────────────────────────
-	if !controllerutil.ContainsFinalizer(ob, dbaasv1.OperatorBindingProtectionFinalizer) {
-		patch := client.MergeFrom(ob.DeepCopy())
-		controllerutil.AddFinalizer(ob, dbaasv1.OperatorBindingProtectionFinalizer)
-		if err := r.Patch(ctx, ob, patch); err != nil {
+	if !controllerutil.ContainsFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer) {
+		patch := client.MergeFrom(nb.DeepCopy())
+		controllerutil.AddFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer)
+		if err := r.Patch(ctx, nb, patch); err != nil {
 			return ctrl.Result{}, err
 		}
-		log.InfoC(ctx, "OperatorBinding %s/%s registered location=%s", ob.Namespace, ob.Name, ob.Spec.Location)
-		r.Recorder.Eventf(ob, corev1.EventTypeNormal, EventReasonBindingRegistered,
-			"namespace %s bound to location %s (requestId=%s)", ob.Namespace, ob.Spec.Location, requestID)
+		log.InfoC(ctx, "NamespaceBinding %s/%s registered operatorNamespace=%s", nb.Namespace, nb.Name, nb.Spec.OperatorNamespace)
+		r.Recorder.Eventf(nb, corev1.EventTypeNormal, EventReasonBindingRegistered,
+			"namespace %s bound to operatorNamespace %s (requestId=%s)", nb.Namespace, nb.Spec.OperatorNamespace, requestID)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// enqueueBindingForWorkload maps any workload object to the OperatorBinding
-// named "registration" in the same namespace.  This ensures that when a workload
+// enqueueBindingForWorkload maps any workload object to the NamespaceBinding
+// named "binding" in the same namespace.  This ensures that when a workload
 // is created or deleted the controller re-evaluates the finalizer.
 func enqueueBindingForWorkload(_ context.Context, obj client.Object) []reconcile.Request {
 	return []reconcile.Request{
 		{NamespacedName: client.ObjectKey{
 			Namespace: obj.GetNamespace(),
-			Name:      dbaasv1.OperatorBindingName,
+			Name:      dbaasv1.NamespaceBindingName,
 		}},
 	}
 }
 
 // SetupWithManager registers the controller and configures watches.
 // alphaEnabled controls whether DatabaseDeclaration and DbPolicy watches are added.
-func (r *OperatorBindingReconciler) SetupWithManager(
+func (r *NamespaceBindingReconciler) SetupWithManager(
 	mgr ctrl.Manager,
 	opts ctrlcontroller.Options,
 	alphaEnabled bool,
 ) error {
 	b := ctrl.NewControllerManagedBy(mgr).
-		For(&dbaasv1.OperatorBinding{},
+		For(&dbaasv1.NamespaceBinding{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			&dbaasv1.ExternalDatabase{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		WithOptions(opts).
-		Named("operatorbinding")
+		Named("namespacebinding")
 
 	if alphaEnabled {
 		b = b.
@@ -173,9 +184,9 @@ func (r *OperatorBindingReconciler) SetupWithManager(
 
 // SetupWithManagerOpts is an alias that passes zero controller options.
 // Useful in tests where custom rate limiters are not needed.
-func (r *OperatorBindingReconciler) SetupWithManagerOpts(mgr ctrl.Manager, alphaEnabled bool) error {
+func (r *NamespaceBindingReconciler) SetupWithManagerOpts(mgr ctrl.Manager, alphaEnabled bool) error {
 	return r.SetupWithManager(mgr, ctrlcontroller.Options{}, alphaEnabled)
 }
 
 // Ensure runtime.Object is satisfied (required for recorder.Eventf).
-var _ runtime.Object = &dbaasv1.OperatorBinding{}
+var _ runtime.Object = &dbaasv1.NamespaceBinding{}

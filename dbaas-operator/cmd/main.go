@@ -197,7 +197,7 @@ func main() {
 
 	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
 
-	// ── OperatorBinding controller (always enabled) ───────────────────────────
+	// ── NamespaceBinding controller (always enabled) ───────────────────────────
 	edbChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
 		func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} },
@@ -218,15 +218,15 @@ func main() {
 		blockingChecker.Add(ddChecker)
 		blockingChecker.Add(dpChecker)
 	}
-	if err := (&controller.OperatorBindingReconciler{
+	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("operatorbinding"),
+		Recorder:    mgr.GetEventRecorderFor("namespacebinding"),
 		MyNamespace: cloudNamespace,
 		Ownership:   ownershipResolver,
 		Checker:     blockingChecker,
 	}).SetupWithManager(mgr, ctrlOpts, alphaAPIsEnabled); err != nil {
-		setupLog.Errorf("Failed to create controller controller=OperatorBinding: %v", err)
+		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
 		os.Exit(1)
 	}
 

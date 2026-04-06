@@ -5,7 +5,7 @@ resources:
 - bases/dbaas.netcracker.com_databasedeclarations.yaml
 - bases/dbaas.netcracker.com_dbpolicies.yaml
 - bases/dbaas.netcracker.com_externaldatabases.yaml
-- bases/dbaas.netcracker.com_operatorbindings.yaml
+- bases/dbaas.netcracker.com_namespacebindings.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

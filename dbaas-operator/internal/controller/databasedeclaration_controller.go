@@ -76,8 +76,17 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	if mine, err := r.Ownership.IsMyNamespace(ctx, dd.Namespace); err != nil {
 		return ctrl.Result{}, err
 	} else if !mine {
-		log.InfoC(ctx, "skipping DatabaseDeclaration %s/%s: namespace not owned by this operator", dd.Namespace, dd.Name)
-		return ctrl.Result{}, nil
+		switch r.Ownership.GetState(dd.Namespace) {
+		case ownership.Unknown:
+			log.InfoC(ctx, "no NamespaceBinding for DatabaseDeclaration %s/%s yet, will retry in %s", dd.Namespace, dd.Name, ownershipPollInterval)
+			return ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
+		case ownership.Unbound:
+			log.InfoC(ctx, "namespace %s unbound for DatabaseDeclaration %s, will retry in %s", dd.Namespace, dd.Name, ownershipUnboundRetryInterval)
+			return ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
+		default:
+			log.InfoC(ctx, "skipping DatabaseDeclaration %s/%s: namespace not owned by this operator", dd.Namespace, dd.Name)
+			return ctrl.Result{}, nil
+		}
 	}
 
 	original := dd.DeepCopy()
@@ -393,17 +402,17 @@ func (r *DatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1alpha1.DatabaseDeclaration{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all DatabaseDeclarations in a namespace when its OperatorBinding
+		// Re-enqueue all DatabaseDeclarations in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
-		Watches(&dbaasv1.OperatorBinding{},
+		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		WithOptions(opts).
 		Named("databasedeclaration").
 		Complete(r)
 }
 
-// enqueueForBinding maps an OperatorBinding event to reconcile requests for
+// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
 // all DatabaseDeclarations that live in the same namespace.
 func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	list := &dbaasv1alpha1.DatabaseDeclarationList{}

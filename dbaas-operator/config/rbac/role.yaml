@@ -23,7 +23,7 @@ rules:
   - dbaas.netcracker.com
   resources:
   - externaldatabases
-  - operatorbindings
+  - namespacebindings
   verbs:
   - create
   - delete
@@ -43,6 +43,6 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - operatorbindings/finalizers
+  - namespacebindings/finalizers
   verbs:
   - update

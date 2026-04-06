@@ -125,3 +125,21 @@ func mineOwnershipResolver(namespaces ...string) *ownership.OwnershipResolver {
 	}
 	return r
 }
+
+// foreignOwnershipResolver returns an OwnershipResolver whose cache is
+// pre-seeded with Foreign state for each supplied namespace.
+func foreignOwnershipResolver(namespaces ...string) *ownership.OwnershipResolver {
+	const testLocation = "test-namespace"
+	r := ownership.NewOwnershipResolver(testLocation, k8sClient)
+	for _, ns := range namespaces {
+		r.SetOwner(ns, "other-operator-ns") // different from testLocation → Foreign
+	}
+	return r
+}
+
+// emptyOwnershipResolver returns an OwnershipResolver with an empty cache and
+// no NamespaceBinding objects in the API server.  IsMyNamespace will perform a
+// live GET, find nothing, and return (false, nil) — leaving the state Unknown.
+func emptyOwnershipResolver() *ownership.OwnershipResolver {
+	return ownership.NewOwnershipResolver("test-namespace", k8sClient)
+}

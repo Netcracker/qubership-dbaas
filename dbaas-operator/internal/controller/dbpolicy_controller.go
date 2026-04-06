@@ -66,8 +66,17 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	if mine, err := r.Ownership.IsMyNamespace(ctx, dp.Namespace); err != nil {
 		return ctrl.Result{}, err
 	} else if !mine {
-		log.InfoC(ctx, "skipping DbPolicy %s/%s: namespace not owned by this operator", dp.Namespace, dp.Name)
-		return ctrl.Result{}, nil
+		switch r.Ownership.GetState(dp.Namespace) {
+		case ownership.Unknown:
+			log.InfoC(ctx, "no NamespaceBinding for DbPolicy %s/%s yet, will retry in %s", dp.Namespace, dp.Name, ownershipPollInterval)
+			return ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
+		case ownership.Unbound:
+			log.InfoC(ctx, "namespace %s unbound for DbPolicy %s, will retry in %s", dp.Namespace, dp.Name, ownershipUnboundRetryInterval)
+			return ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
+		default:
+			log.InfoC(ctx, "skipping DbPolicy %s/%s: namespace not owned by this operator", dp.Namespace, dp.Name)
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Snapshot for the status patch at the end of reconcile.
@@ -147,17 +156,17 @@ func (r *DbPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontrol
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1alpha1.DbPolicy{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all DbPolicies in a namespace when its OperatorBinding
+		// Re-enqueue all DbPolicies in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
-		Watches(&dbaasv1.OperatorBinding{},
+		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		WithOptions(opts).
 		Named("dbpolicy").
 		Complete(r)
 }
 
-// enqueueForBinding maps an OperatorBinding event to reconcile requests for
+// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
 // all DbPolicies that live in the same namespace.
 func (r *DbPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	list := &dbaasv1alpha1.DbPolicyList{}

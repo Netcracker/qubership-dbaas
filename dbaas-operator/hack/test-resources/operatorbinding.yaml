@@ -1,8 +1,0 @@
-apiVersion: dbaas.netcracker.com/v1
-kind: OperatorBinding
-metadata:
-  name: registration   # must always be "registration"
-  namespace: test-ns
-spec:
-  # location must match the operator's own namespace (CLOUD_NAMESPACE = dbaas-system)
-  location: dbaas-system

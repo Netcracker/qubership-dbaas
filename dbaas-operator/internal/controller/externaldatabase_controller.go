@@ -70,12 +70,31 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// ── Ownership check ───────────────────────────────────────────────────────
-	// Skip namespaces that are not owned by this operator instance.
+	// Skip namespaces not owned by this operator instance.
+	//
+	// State semantics and requeue strategy:
+	//   Unknown  — transient; no cache entry (startup race or post-Forget).
+	//              Requeue quickly so the CR is retried once the cache settles.
+	//   Unbound  — live GET confirmed no NamespaceBinding exists.  Requeue at a
+	//              long interval as a safety net: if the NamespaceBinding →
+	//              workloads fan-out loses its trigger due to a transient LIST
+	//              error, the periodic requeue here ensures the CR is eventually
+	//              reconciled after the binding is created and SetOwner is called.
+	//   Foreign  — binding belongs to another operator instance; no requeue.
 	if mine, err := r.Ownership.IsMyNamespace(ctx, edb.Namespace); err != nil {
 		return ctrl.Result{}, err
 	} else if !mine {
-		log.InfoC(ctx, "skipping ExternalDatabase %s/%s: namespace not owned by this operator", edb.Namespace, edb.Name)
-		return ctrl.Result{}, nil
+		switch r.Ownership.GetState(edb.Namespace) {
+		case ownership.Unknown:
+			log.InfoC(ctx, "no NamespaceBinding for ExternalDatabase %s/%s yet, will retry in %s", edb.Namespace, edb.Name, ownershipPollInterval)
+			return ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
+		case ownership.Unbound:
+			log.InfoC(ctx, "namespace %s unbound for ExternalDatabase %s, will retry in %s", edb.Namespace, edb.Name, ownershipUnboundRetryInterval)
+			return ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
+		default:
+			log.InfoC(ctx, "skipping ExternalDatabase %s/%s: namespace not owned by this operator", edb.Namespace, edb.Name)
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Snapshot for the status patch at the end of reconcile.
@@ -245,17 +264,17 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.ExternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all ExternalDatabases in a namespace when its OperatorBinding
+		// Re-enqueue all ExternalDatabases in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
-		Watches(&dbaasv1.OperatorBinding{},
+		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		WithOptions(opts).
 		Named("externaldatabase").
 		Complete(r)
 }
 
-// enqueueForBinding maps an OperatorBinding event to reconcile requests for
+// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
 // all ExternalDatabases that live in the same namespace.
 func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	list := &dbaasv1.ExternalDatabaseList{}

@@ -43,13 +43,13 @@ func newScheme() *runtime.Scheme {
 	return s
 }
 
-func makeBinding(namespace, location string) *dbaasv1.OperatorBinding {
-	return &dbaasv1.OperatorBinding{
+func makeBinding(namespace, location string) *dbaasv1.NamespaceBinding {
+	return &dbaasv1.NamespaceBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      dbaasv1.OperatorBindingName,
+			Name:      dbaasv1.NamespaceBindingName,
 			Namespace: namespace,
 		},
-		Spec: dbaasv1.OperatorBindingSpec{Location: location},
+		Spec: dbaasv1.NamespaceBindingSpec{OperatorNamespace: location},
 	}
 }
 
@@ -125,15 +125,43 @@ var _ = Describe("OwnershipResolver", func() {
 			Expect(r.GetState(ns1)).To(Equal(ownership.Mine))
 		})
 
-		It("returns false and does not cache when no binding exists", func() {
+		It("returns false and caches Unbound when no binding exists", func() {
 			cl := fake.NewClientBuilder().WithScheme(newScheme()).Build()
 			r := ownership.NewOwnershipResolver(myNS, cl)
 
 			mine, err := r.IsMyNamespace(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(mine).To(BeFalse())
-			// Not cached — a binding may appear later.
-			Expect(r.GetState(ns1)).To(Equal(ownership.Unknown))
+			// Cached as Unbound — subsequent calls use the fast path (no API call).
+			Expect(r.GetState(ns1)).To(Equal(ownership.Unbound))
+		})
+
+		It("uses the fast path on subsequent calls after Unbound is cached", func() {
+			cl := fake.NewClientBuilder().WithScheme(newScheme()).Build()
+			r := ownership.NewOwnershipResolver(myNS, cl)
+
+			// First call: slow path → caches Unbound.
+			_, _ = r.IsMyNamespace(ctx, ns1)
+			Expect(r.GetState(ns1)).To(Equal(ownership.Unbound))
+
+			// Second call: fast path, no API round-trip needed.
+			mine, err := r.IsMyNamespace(ctx, ns1)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(mine).To(BeFalse())
+			Expect(r.GetState(ns1)).To(Equal(ownership.Unbound))
+		})
+
+		It("overwrites Unbound with Mine when SetOwner is called after a binding is created", func() {
+			cl := fake.NewClientBuilder().WithScheme(newScheme()).Build()
+			r := ownership.NewOwnershipResolver(myNS, cl)
+
+			// Simulate: first reconcile → Unbound.
+			_, _ = r.IsMyNamespace(ctx, ns1)
+			Expect(r.GetState(ns1)).To(Equal(ownership.Unbound))
+
+			// Simulate: NamespaceBinding created → NamespaceBindingReconciler calls SetOwner.
+			r.SetOwner(ns1, myNS)
+			Expect(r.GetState(ns1)).To(Equal(ownership.Mine))
 		})
 
 		It("returns false when binding belongs to a different operator", func() {
@@ -180,6 +208,7 @@ var _ = Describe("OwnershipResolver", func() {
 			Expect(ownership.Mine.String()).To(Equal("Mine"))
 			Expect(ownership.Foreign.String()).To(Equal("Foreign"))
 			Expect(ownership.Unknown.String()).To(Equal("Unknown"))
+			Expect(ownership.Unbound.String()).To(Equal("Unbound"))
 		})
 	})
 
@@ -188,8 +217,8 @@ var _ = Describe("OwnershipResolver", func() {
 			cl := fake.NewClientBuilder().WithScheme(newScheme()).Build()
 			checker := ownership.NewKindChecker(
 				cl,
-				func() *dbaasv1.OperatorBindingList { return &dbaasv1.OperatorBindingList{} },
-				func(l *dbaasv1.OperatorBindingList) int { return len(l.Items) },
+				func() *dbaasv1.NamespaceBindingList { return &dbaasv1.NamespaceBindingList{} },
+				func(l *dbaasv1.NamespaceBindingList) int { return len(l.Items) },
 			)
 			blocking, err := checker.HasBlockingResources(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
@@ -203,8 +232,8 @@ var _ = Describe("OwnershipResolver", func() {
 				Build()
 			checker := ownership.NewKindChecker(
 				cl,
-				func() *dbaasv1.OperatorBindingList { return &dbaasv1.OperatorBindingList{} },
-				func(l *dbaasv1.OperatorBindingList) int { return len(l.Items) },
+				func() *dbaasv1.NamespaceBindingList { return &dbaasv1.NamespaceBindingList{} },
+				func(l *dbaasv1.NamespaceBindingList) int { return len(l.Items) },
 			)
 			blocking, err := checker.HasBlockingResources(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())

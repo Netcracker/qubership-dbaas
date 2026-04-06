@@ -24,7 +24,7 @@ import (
 )
 
 // BlockingResourceChecker reports whether a namespace contains resources that
-// must be removed before an OperatorBinding can be safely deleted.
+// must be removed before an NamespaceBinding can be safely deleted.
 type BlockingResourceChecker interface {
 	HasBlockingResources(ctx context.Context, namespace string) (bool, error)
 }
