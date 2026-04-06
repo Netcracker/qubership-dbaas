@@ -18,3 +18,4 @@ RESTRICTED_ENVIRONMENT: false
 # ============== SERVICE VARIABLES ============================
 WATCH_NAMESPACES: ''
 LOG_LEVEL: "info"
+

@@ -1,6 +1,8 @@
 # values files for helm packages
 PATRONI_CORE_VALUES_FILE ?= ./patroni-core-values-local.yaml
 DBAAS_VALUES_FILE ?= ./dbaas-values.yaml
+DBAAS_OPERATOR_VALUES_FILE ?= ./dbaas-operator-values.yaml
+DBAAS_OPERATOR_RESOURCE_PROFILE ?= $(REPOS_DIR)/qubership-dbaas/dbaas-operator/helm-templates/dbaas-operator/resource-profiles/dev.yaml
 PATRONI_SERVICES_VALUES_FILE ?= ./patroni-services-values.yaml
 
 # namespace parameters
@@ -19,6 +21,7 @@ NODE_SELECTOR_DBAAS_KEY ?= region
 REGION_DBAAS ?= database
 # Validation image tag
 TAG ?= latest
+DBAAS_OPERATOR_TAG ?= feat-dbaas-operator-snapshot
 
 # Export all variables for use in shell commands
 export PG_NAMESPACE
@@ -30,8 +33,11 @@ export PATRONI_REPLICAS_NUMBER
 export NODE_SELECTOR_DBAAS_KEY
 export REGION_DBAAS
 export TAG
+export DBAAS_OPERATOR_TAG
 export PATRONI_CORE_VALUES_FILE
 export DBAAS_VALUES_FILE
+export DBAAS_OPERATOR_VALUES_FILE
+export DBAAS_OPERATOR_RESOURCE_PROFILE
 export PATRONI_SERVICES_VALUES_FILE 
 
 
