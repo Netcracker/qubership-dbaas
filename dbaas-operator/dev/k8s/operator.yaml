@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dbaas-operator
+rules:
+  # dbaas CRs
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - databasedeclarations
+      - dbpolicies
+      - externaldatabases
+      - namespacebindings
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - databasedeclarations/status
+      - dbpolicies/status
+      - externaldatabases/status
+    verbs: [get, update, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - databasedeclarations/finalizers
+      - dbpolicies/finalizers
+      - externaldatabases/finalizers
+      - namespacebindings/finalizers
+    verbs: [update]
+  # Secrets (for credentials in ExternalDatabase)
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  # Leader election
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dbaas-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dbaas-operator
+subjects:
+  - kind: ServiceAccount
+    name: dbaas-operator
+    namespace: dbaas-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+  labels:
+    app: dbaas-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbaas-operator
+  template:
+    metadata:
+      labels:
+        app: dbaas-operator
+    spec:
+      serviceAccountName: dbaas-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: projected-tokens
+          projected:
+            defaultMode: 292
+            sources:
+              - serviceAccountToken:
+                  path: dbaas/token
+                  audience: dbaas
+                  expirationSeconds: 600
+      containers:
+        - name: manager
+          image: dbaas-operator:dev
+          imagePullPolicy: Never   # image is loaded into kind locally
+          env:
+            - name: ALPHA_APIS_ENABLED
+              value: "true"
+            - name: CLOUD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          args:
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8080
+            - --leader-elect
+          volumeMounts:
+            - name: projected-tokens
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
