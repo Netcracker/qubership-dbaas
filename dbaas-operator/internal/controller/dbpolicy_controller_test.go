@@ -68,6 +68,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			Scheme:     k8sClient.Scheme(),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
 			Recorder:   fixture.recorder,
+			Ownership:  mineOwnershipResolver(ns),
 		}
 	})
 
@@ -458,6 +459,7 @@ var _ = Describe("DbPolicy Controller — rate limiter", func() {
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("dp-rate-limiter-test"),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
+			Ownership:  mineOwnershipResolver("ns"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 

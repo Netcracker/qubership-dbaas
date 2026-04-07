@@ -30,10 +30,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 // ExternalDatabaseReconciler reconciles ExternalDatabase objects.
@@ -47,6 +50,7 @@ type ExternalDatabaseReconciler struct {
 	Scheme     *runtime.Scheme
 	Aggregator *aggregatorclient.AggregatorClient
 	Recorder   record.EventRecorder
+	Ownership  *ownership.OwnershipResolver
 }
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases,verbs=get;list;watch;create;update;patch;delete
@@ -63,6 +67,34 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	edb := &dbaasv1.ExternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// ── Ownership check ───────────────────────────────────────────────────────
+	// Skip namespaces not owned by this operator instance.
+	//
+	// State semantics and requeue strategy:
+	//   Unknown  — transient; no cache entry (startup race or post-Forget).
+	//              Requeue quickly so the CR is retried once the cache settles.
+	//   Unbound  — live GET confirmed no NamespaceBinding exists.  Requeue at a
+	//              long interval as a safety net: if the NamespaceBinding →
+	//              workloads fan-out loses its trigger due to a transient LIST
+	//              error, the periodic requeue here ensures the CR is eventually
+	//              reconciled after the binding is created and SetOwner is called.
+	//   Foreign  — binding belongs to another operator instance; no requeue.
+	if mine, err := r.Ownership.IsMyNamespace(ctx, edb.Namespace); err != nil {
+		return ctrl.Result{}, err
+	} else if !mine {
+		switch r.Ownership.GetState(edb.Namespace) {
+		case ownership.Unknown:
+			log.InfoC(ctx, "no NamespaceBinding for ExternalDatabase %s/%s yet, will retry in %s", edb.Namespace, edb.Name, ownershipPollInterval)
+			return ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
+		case ownership.Unbound:
+			log.InfoC(ctx, "namespace %s unbound for ExternalDatabase %s, will retry in %s", edb.Namespace, edb.Name, ownershipUnboundRetryInterval)
+			return ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
+		default:
+			log.InfoC(ctx, "skipping ExternalDatabase %s/%s: namespace not owned by this operator", edb.Namespace, edb.Name)
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Snapshot for the status patch at the end of reconcile.
@@ -232,7 +264,27 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.ExternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// Re-enqueue all ExternalDatabases in a namespace when its NamespaceBinding
+		// is created or updated, so existing CRs are reconciled without waiting for
+		// a spec change.
+		Watches(&dbaasv1.NamespaceBinding{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		WithOptions(opts).
 		Named("externaldatabase").
 		Complete(r)
+}
+
+// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
+// all ExternalDatabases that live in the same namespace.
+func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &dbaasv1.ExternalDatabaseList{}
+	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.ErrorC(ctx, "enqueueForBinding: list ExternalDatabases in %s: %v", obj.GetNamespace(), err)
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return reqs
 }

@@ -27,28 +27,66 @@ type ObservedGenerationSetter interface {
 }
 
 // Phase represents the processing phase of a dbaas operator resource.
+// The controller drives resources through a state machine:
+//
+//	Unknown → Processing → Succeeded
+//	                     ↘ BackingOff (transient error, will retry)
+//	                     ↘ InvalidConfiguration (permanent error, no retry)
 //
 // +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
 type Phase string
 
 const (
-	PhaseUnknown              Phase = "Unknown"
-	PhaseProcessing           Phase = "Processing"
+	// PhaseUnknown is the initial phase assigned to a newly created resource.
+	// The controller will immediately transition to Processing.
+	PhaseUnknown Phase = "Unknown"
+
+	// PhaseProcessing indicates the controller is actively registering the
+	// resource with dbaas-aggregator.
+	PhaseProcessing Phase = "Processing"
+
+	// PhaseWaitingForDependency is reserved for future use by resources that
+	// have asynchronous provisioning dependencies.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
-	PhaseSucceeded            Phase = "Succeeded"
-	PhaseBackingOff           Phase = "BackingOff"
+
+	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.
+	PhaseSucceeded Phase = "Succeeded"
+
+	// PhaseBackingOff indicates a transient error occurred. The controller will
+	// retry with exponential back-off.
+	PhaseBackingOff Phase = "BackingOff"
+
+	// PhaseInvalidConfiguration indicates a permanent validation error. The resource
+	// will not be re-processed until the spec is changed.
 	PhaseInvalidConfiguration Phase = "InvalidConfiguration"
 )
 
 // OperatorStatus contains common status fields shared by all dbaas operator resources.
 type OperatorStatus struct {
+	// phase represents the current processing phase of the resource.
 	// +kubebuilder:default=Unknown
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
 
+	// observedGeneration reflects the .metadata.generation that was last processed
+	// by the controller. When the current generation differs from this value, the
+	// controller clears all conditions and starts a fresh reconciliation cycle.
+	// Zero (or less than metadata.generation) means the current generation has not
+	// yet been fully reconciled — for example, the controller is in BackingOff
+	// waiting for a transient error to clear.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	// conditions represent the current state of the resource.
+	// Condition types used by ExternalDatabase:
+	//   - "Ready"   — True when the resource was successfully registered with
+	//                 dbaas-aggregator for the current generation (reason "DatabaseRegistered").
+	//                 False on any error; see Reason for the error category.
+	//   - "Stalled" — True when the error is permanent and the controller will
+	//                 not retry until the spec is changed (e.g. InvalidSpec,
+	//                 AggregatorRejected). False for transient errors that are
+	//                 retried automatically (e.g. SecretError, AggregatorError,
+	//                 Unauthorized).
 	// +optional
 	// +listType=map
 	// +listMapKey=type

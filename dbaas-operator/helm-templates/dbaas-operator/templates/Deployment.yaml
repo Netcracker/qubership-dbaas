@@ -73,7 +73,6 @@ spec:
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
-            - --watch-namespaces={{ .Values.WATCH_NAMESPACES | trim | replace " " "" }}
             - --leader-elect
           env:
             - name: ALPHA_APIS_ENABLED

@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -32,7 +33,6 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -45,6 +45,7 @@ import (
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -73,7 +74,6 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var watchNamespaces string
 	var backoffBaseDelay time.Duration
 	var backoffMaxDelay time.Duration
 	var tlsOpts []func(*tls.Config)
@@ -91,8 +91,6 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics server")
-	flag.StringVar(&watchNamespaces, "watch-namespaces", "",
-		"Comma-separated list of namespaces to watch. Empty string means all namespaces (cluster-scoped).")
 	flag.DurationVar(&backoffBaseDelay, "backoff-base-delay", 1*time.Second,
 		"Initial delay for exponential backoff when a reconcile error occurs. "+
 			"Doubles on each consecutive failure up to --backoff-max-delay.")
@@ -142,6 +140,14 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	// ── Operator namespace ────────────────────────────────────────────────────
+	cloudNamespace := os.Getenv("CLOUD_NAMESPACE")
+	if cloudNamespace == "" {
+		setupLog.Errorf("CLOUD_NAMESPACE env var is not set — ownership checks will not work correctly")
+		os.Exit(1)
+	}
+	setupLog.Infof("operator namespace cloud-namespace=%v", cloudNamespace)
+
 	// ── dbaas-aggregator client ───────────────────────────────────────────────
 	aggregatorURL := os.Getenv("DBAAS_AGGREGATOR_URL")
 	if aggregatorURL == "" {
@@ -150,21 +156,7 @@ func main() {
 	aggregator := aggregatorclient.NewAggregatorClient(aggregatorURL)
 	setupLog.Infof("dbaas-aggregator client configured url=%v", aggregatorURL)
 
-	// Build the cache options: restrict to specific namespaces if requested.
-	var cacheOpts cache.Options
-	if watchNamespaces != "" {
-		nsMap := make(map[string]cache.Config)
-		for _, ns := range strings.Split(watchNamespaces, ",") {
-			ns = strings.TrimSpace(ns)
-			if ns != "" {
-				nsMap[ns] = cache.Config{}
-			}
-		}
-		cacheOpts.DefaultNamespaces = nsMap
-		setupLog.Infof("watching specific namespaces namespaces=%v", watchNamespaces)
-	} else {
-		setupLog.Info("watching all namespaces (cluster-scoped)")
-	}
+	setupLog.Info("watching all namespaces (cluster-scoped)")
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -172,7 +164,6 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
-		Cache:                  cacheOpts,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -196,17 +187,60 @@ func main() {
 		),
 	}
 	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
+
+	// ── Ownership resolver ────────────────────────────────────────────────────
+	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
+	if err := mgr.Add(&ownershipWarmupRunnable{resolver: ownershipResolver}); err != nil {
+		setupLog.Errorf("Failed to register ownership warmup runnable: %v", err)
+		os.Exit(1)
+	}
+
+	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
+
+	// ── NamespaceBinding controller (always enabled) ───────────────────────────
+	edbChecker := ownership.NewKindChecker(
+		mgr.GetClient(),
+		func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} },
+		func(l *dbaasv1.ExternalDatabaseList) int { return len(l.Items) },
+	)
+	blockingChecker := ownership.NewCompositeChecker(edbChecker)
+	if alphaAPIsEnabled {
+		ddChecker := ownership.NewKindChecker(
+			mgr.GetClient(),
+			func() *dbaasv1alpha1.DatabaseDeclarationList { return &dbaasv1alpha1.DatabaseDeclarationList{} },
+			func(l *dbaasv1alpha1.DatabaseDeclarationList) int { return len(l.Items) },
+		)
+		dpChecker := ownership.NewKindChecker(
+			mgr.GetClient(),
+			func() *dbaasv1alpha1.DbPolicyList { return &dbaasv1alpha1.DbPolicyList{} },
+			func(l *dbaasv1alpha1.DbPolicyList) int { return len(l.Items) },
+		)
+		blockingChecker.Add(ddChecker)
+		blockingChecker.Add(dpChecker)
+	}
+	if err := (&controller.NamespaceBindingReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("namespacebinding"),
+		MyNamespace: cloudNamespace,
+		Ownership:   ownershipResolver,
+		Checker:     blockingChecker,
+	}).SetupWithManager(mgr, ctrlOpts, alphaAPIsEnabled); err != nil {
+		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
+		os.Exit(1)
+	}
+
 	if err := (&controller.ExternalDatabaseReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
 		Recorder:   mgr.GetEventRecorderFor("externaldatabase"),
+		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
 		os.Exit(1)
 	}
 
-	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
 	if alphaAPIsEnabled {
 		setupLog.Info("Alpha APIs are enabled")
 
@@ -215,6 +249,7 @@ func main() {
 			Scheme:     mgr.GetScheme(),
 			Aggregator: aggregator,
 			Recorder:   mgr.GetEventRecorderFor("databasedeclaration"),
+			Ownership:  ownershipResolver,
 		}).SetupWithManager(mgr, ctrlOpts); err != nil {
 			setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
 			os.Exit(1)
@@ -224,6 +259,7 @@ func main() {
 			Scheme:     mgr.GetScheme(),
 			Aggregator: aggregator,
 			Recorder:   mgr.GetEventRecorderFor("dbpolicy"),
+			Ownership:  ownershipResolver,
 		}).SetupWithManager(mgr, ctrlOpts); err != nil {
 			setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
 			os.Exit(1)
@@ -247,4 +283,22 @@ func main() {
 		setupLog.Errorf("Failed to run manager: %v", err)
 		os.Exit(1)
 	}
+}
+
+// ownershipWarmupRunnable pre-populates the ownership cache before the
+// controller loops start.  It runs on every pod (no leader election) so that
+// workload reconcilers can make ownership decisions immediately after startup
+// without incurring per-object API round-trips.
+type ownershipWarmupRunnable struct {
+	resolver *ownership.OwnershipResolver
+}
+
+func (r *ownershipWarmupRunnable) NeedLeaderElection() bool { return false }
+
+func (r *ownershipWarmupRunnable) Start(ctx context.Context) error {
+	if err := r.resolver.WarmupOwnershipCache(ctx); err != nil {
+		// Non-fatal: the resolver falls back to per-namespace API calls.
+		setupLog.Infof("Ownership cache warmup failed (non-fatal, will fall back to live lookups): %v", err)
+	}
+	return nil
 }

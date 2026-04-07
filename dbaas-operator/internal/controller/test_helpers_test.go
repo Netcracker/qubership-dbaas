@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
@@ -110,4 +112,34 @@ func deleteIfExists(obj client.Object) {
 	if err == nil {
 		Expect(k8sClient.Delete(ctx, obj)).To(Succeed())
 	}
+}
+
+// mineOwnershipResolver returns an OwnershipResolver whose cache is pre-seeded
+// with Mine state for each supplied namespace.  Tests use this so that the
+// ownership check fast-path always succeeds without hitting the API server.
+func mineOwnershipResolver(namespaces ...string) *ownership.OwnershipResolver {
+	const testLocation = "test-namespace"
+	r := ownership.NewOwnershipResolver(testLocation, k8sClient)
+	for _, ns := range namespaces {
+		r.SetOwner(ns, testLocation)
+	}
+	return r
+}
+
+// foreignOwnershipResolver returns an OwnershipResolver whose cache is
+// pre-seeded with Foreign state for each supplied namespace.
+func foreignOwnershipResolver(namespaces ...string) *ownership.OwnershipResolver {
+	const testLocation = "test-namespace"
+	r := ownership.NewOwnershipResolver(testLocation, k8sClient)
+	for _, ns := range namespaces {
+		r.SetOwner(ns, "other-operator-ns") // different from testLocation → Foreign
+	}
+	return r
+}
+
+// emptyOwnershipResolver returns an OwnershipResolver with an empty cache and
+// no NamespaceBinding objects in the API server.  IsMyNamespace will perform a
+// live GET, find nothing, and return (false, nil) — leaving the state Unknown.
+func emptyOwnershipResolver() *ownership.OwnershipResolver {
+	return ownership.NewOwnershipResolver("test-namespace", k8sClient)
 }
