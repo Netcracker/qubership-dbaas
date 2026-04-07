@@ -82,19 +82,25 @@ type ExternalDatabaseSpec struct {
 	// classifier is a map of key-value pairs that uniquely identifies the database
 	// in dbaas-aggregator. All keys are sorted alphabetically by the aggregator
 	// for identity comparison. Typical keys: microserviceName, scope, namespace.
+	// Immutable after creation.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.classifier is immutable after creation"
 	Classifier map[string]string `json:"classifier"`
 
 	// type is the database engine type, e.g. "postgresql", "mongodb", "opensearch".
 	// Must match a type known to dbaas-aggregator.
+	// Immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.type is immutable after creation"
 	Type string `json:"type"`
 
 	// dbName is the logical database name used by dbaas-aggregator to identify
 	// this registration. Included in the request URL path.
+	// Immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.dbName is immutable after creation"
 	DbName string `json:"dbName"`
 
 	// connectionProperties is the list of connection entries, one per access role.
