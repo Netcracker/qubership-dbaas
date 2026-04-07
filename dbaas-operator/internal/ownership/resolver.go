@@ -20,23 +20,23 @@ limitations under the License.
 // that maps Kubernetes namespace names to one of four states:
 //
 //   - Mine    — an NamespaceBinding in this namespace points to the operator's
-//               own location (CLOUD_NAMESPACE), so the operator owns it.
+//     own location (CLOUD_NAMESPACE), so the operator owns it.
 //   - Foreign — an NamespaceBinding exists but belongs to a different operator
-//               instance; workload resources in this namespace must be ignored
-//               and must not be requeued (the watch re-triggers on binding changes).
+//     instance; workload resources in this namespace must be ignored
+//     and must not be requeued (the watch re-triggers on binding changes).
 //   - Unbound — a live API lookup confirmed that no NamespaceBinding exists yet.
-//               Workload reconcilers requeue at a long interval (ownershipUnboundRetryInterval)
-//               as a safety net: if the NamespaceBinding → workloads watch fan-out
-//               loses its trigger due to a transient LIST error, the periodic
-//               requeue guarantees the CR is eventually reconciled once a binding
-//               is created.  The interval is intentionally much longer than the
-//               Unknown requeue to avoid background churn on permanently-unbound
-//               namespaces.
+//     Workload reconcilers requeue at a long interval (ownershipUnboundRetryInterval)
+//     as a safety net: if the NamespaceBinding → workloads watch fan-out
+//     loses its trigger due to a transient LIST error, the periodic
+//     requeue guarantees the CR is eventually reconciled once a binding
+//     is created.  The interval is intentionally much longer than the
+//     Unknown requeue to avoid background churn on permanently-unbound
+//     namespaces.
 //   - Unknown — no cached information is available; a live lookup is needed.
-//               This is a transient state that occurs only at startup (before
-//               warmup) or immediately after Forget (binding just deleted).
-//               Workload reconcilers requeue quickly (ownershipPollInterval) so
-//               the CR is retried once the cache settles.
+//     This is a transient state that occurs only at startup (before
+//     warmup) or immediately after Forget (binding just deleted).
+//     Workload reconcilers requeue quickly (ownershipPollInterval) so
+//     the CR is retried once the cache settles.
 //
 // The cache is populated eagerly at startup (WarmupOwnershipCache) and kept
 // current by the NamespaceBindingReconciler, which calls SetOwner/Forget on
