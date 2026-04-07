@@ -239,12 +239,12 @@ public class DeletionService {
      * Called during Clean Install
      */
     @Transactional
-    public int cleanupNamespaceFullAsync(String namespace, boolean removeRules) {
+    public CleanupResult cleanupNamespaceFullAsync(String namespace, boolean removeRules) {
         compositeNamespaceService.deleteNamespace(namespace);
-        int markedForDropCount = markNamespaceRegistriesForDrop(namespace);
-        cleanupMarkedForDropRegistries(namespace);
+        markNamespaceRegistriesForDrop(namespace);
+        CleanupResult cleanupResult = cleanupMarkedForDropRegistries(namespace);
         cleanupNamespaceResources(namespace, removeRules);
-        return markedForDropCount;
+        return cleanupResult;
     }
 
     public boolean checkNamespaceAlreadyDropped(String namespace) {
@@ -272,7 +272,7 @@ public class DeletionService {
         dropRegistriesAsync(namespace, markedForDropRegistries, force);
     }
 
-    public void cleanupMarkedForDropRegistries(String namespace) {
+    public CleanupResult cleanupMarkedForDropRegistries(String namespace) {
         List<DatabaseRegistry> markedForDropRegistries = getMarkedForDropRegistries(namespace);
         List<DatabaseRegistry> opensearchDBs = markedForDropRegistries.stream()
                 .filter(registry -> DatabaseType.OPENSEARCH.toString().equalsIgnoreCase(registry.getType())).toList();
@@ -284,6 +284,7 @@ public class DeletionService {
             dropRegistriesSafe(namespace, opensearchDBs);
         }
         dropRegistriesAsync(namespace, markedForDropRegistries, false);
+        return new CleanupResult(opensearchDBs.size(), markedForDropRegistries.size());
     }
 
     private void dropRegistriesAsync(String namespace, List<DatabaseRegistry> registriesForDrop, boolean force) {
@@ -399,5 +400,8 @@ public class DeletionService {
                 log.error("Can't register DB deletion error", e);
             }
         });
+    }
+
+    public record CleanupResult(int databasesSyncDeletedCount, int databasesAsyncDeletionScheduledCount) {
     }
 }

@@ -449,7 +449,11 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
         }
         assertNotProdMode();
 
-        int markedForDropCount = deletionService.cleanupNamespaceFullAsync(namespace, deleteRules == null || deleteRules);
-        return Response.ok(String.format("Successfully deleted %d databases and namespace specific resources in %s namespace", markedForDropCount, namespace)).build();
+        DeletionService.CleanupResult cleanupResult = deletionService.cleanupNamespaceFullAsync(namespace, deleteRules == null || deleteRules);
+        return Response.ok(String.format("Successful '%s' namespace cleanup: " +
+                "namespace specific resources are deleted synchronously - success, " +
+                "%d databases are deleted synchronously - success, " +
+                "%d databases are marked for drop and asynchronous deletion is scheduled - success",
+                namespace, cleanupResult.databasesSyncDeletedCount(), cleanupResult.databasesAsyncDeletionScheduledCount())).build();
     }
 }
