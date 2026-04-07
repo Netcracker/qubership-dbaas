@@ -711,7 +711,9 @@ class DeletionServiceTest {
             }
         });
         QuarkusTransaction.requiringNew().run(() -> {
-            deletionService.cleanupNamespaceFullAsync(TEST_NS, false);
+            DeletionService.CleanupResult cleanupResult = deletionService.cleanupNamespaceFullAsync(TEST_NS, false);
+            assertEquals(1, cleanupResult.databasesSyncDeletedCount());
+            assertEquals(2, cleanupResult.databasesAsyncDeletionScheduledCount());
         });
 
         assertFalse(databaseDbaasRepository.findById(opensearchDatabase.getId()).isPresent());
@@ -731,7 +733,9 @@ class DeletionServiceTest {
 
         assertFalse(deletionService.checkNamespaceAlreadyDropped(TEST_NS));
 
-        deletionService.cleanupNamespaceFullAsync(TEST_NS, true);
+        DeletionService.CleanupResult cleanupResult = deletionService.cleanupNamespaceFullAsync(TEST_NS, true);
+        assertEquals(0, cleanupResult.databasesSyncDeletedCount());
+        assertEquals(0, cleanupResult.databasesAsyncDeletionScheduledCount());
 
         assertEquals(0, balancingRulesDbaasRepository.findByNamespace(TEST_NS).size());
         assertEquals(0, balancingRulesDbaasRepository.findPerMicroserviceByNamespace(TEST_NS).size());

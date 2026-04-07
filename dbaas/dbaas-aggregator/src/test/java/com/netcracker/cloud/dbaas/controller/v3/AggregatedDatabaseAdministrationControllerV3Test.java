@@ -742,6 +742,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.setNamespace(TEST_NAMESPACE);
         List<DatabaseRegistry> listOfDbRegistry = database.getDatabaseRegistry();
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(listOfDbRegistry);
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 1));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
@@ -784,6 +785,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
 
         bgDomain.setNamespaces(Arrays.asList(activeBgNamespace, idleBgNamespace));
         when(blueGreenService.getBgDomainContains(TEST_NAMESPACE)).thenReturn(Optional.of(bgDomain));
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 1));
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE_IDLE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 1));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
@@ -1059,12 +1062,13 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     void testDeleteOnlyComposite() {
         when(compositeNamespaceService.isNamespaceInComposite(TEST_NAMESPACE)).thenReturn(true);
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(Collections.emptyList());
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 0));
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()
                 .then()
                 .statusCode(OK.getStatusCode())
-                .body(is("Successfully deleted 0 databases and namespace specific resources in " + TEST_NAMESPACE + " namespace"));
+                .body(is("Successful '" + TEST_NAMESPACE + "' namespace cleanup: namespace specific resources are deleted synchronously - success, 0 databases are deleted synchronously - success, 0 databases are marked for drop and asynchronous deletion is scheduled - success"));
     }
 
     @Test
@@ -1073,13 +1077,13 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         final DatabaseRegistry database = getDatabaseSample();
         List<DatabaseRegistry> dbForDeletion = singletonList(database.getDatabaseRegistry().getFirst());
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(dbForDeletion);
-        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(1);
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(1, 2));
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()
                 .then()
                 .statusCode(OK.getStatusCode())
-                .body(is("Successfully deleted 1 databases and namespace specific resources in " + TEST_NAMESPACE + " namespace"));
+                .body(is("Successful '" + TEST_NAMESPACE + "' namespace cleanup: namespace specific resources are deleted synchronously - success, 1 databases are deleted synchronously - success, 2 databases are marked for drop and asynchronous deletion is scheduled - success"));
     }
 
     @Test
