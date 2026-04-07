@@ -18,7 +18,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"flag"
 	"os"
 	"strings"
@@ -70,28 +69,15 @@ func main() {
 	})
 
 	var metricsAddr string
-	var metricsCertPath, metricsCertName, metricsCertKey string
 	var enableLeaderElection bool
 	var probeAddr string
-	var secureMetrics bool
-	var enableHTTP2 bool
 	var backoffBaseDelay time.Duration
 	var backoffMaxDelay time.Duration
-	var tlsOpts []func(*tls.Config)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
-		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", false,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
-		"The directory that contains the metrics server certificate.")
-	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
-	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics server")
 	flag.DurationVar(&backoffBaseDelay, "backoff-base-delay", 1*time.Second,
 		"Initial delay for exponential backoff when a reconcile error occurs. "+
 			"Doubles on each consecutive failure up to --backoff-max-delay.")
@@ -101,46 +87,8 @@ func main() {
 
 	ctrl.SetLogger(newLogrLogger("dbaas-operator"))
 
-	// if the enable-http2 flag is false (the default), http/2 should be disabled
-	// due to its vulnerabilities. More specifically, disabling http/2 will
-	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
-	// Rapid Reset CVEs. For more information see:
-	// - https://github.com/advisories/GHSA-qppj-fm5r-hxr3
-	// - https://github.com/advisories/GHSA-4374-p667-p6c8
-	disableHTTP2 := func(c *tls.Config) {
-		setupLog.Info("Disabling HTTP/2")
-		c.NextProtos = []string{"http/1.1"}
-	}
-
-	if !enableHTTP2 {
-		tlsOpts = append(tlsOpts, disableHTTP2)
-	}
-
-	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
-	// More info:
-	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/metrics/server
-	// - https://book.kubebuilder.io/reference/metrics.html
 	metricsServerOptions := metricsserver.Options{
-		BindAddress:   metricsAddr,
-		SecureServing: secureMetrics,
-		TLSOpts:       tlsOpts,
-	}
-
-	// If the certificate is not specified, controller-runtime will automatically
-	// generate self-signed certificates for the metrics server. While convenient for development and testing,
-	// this setup is not recommended for production.
-	//
-	// TODO(user): If you enable certManager, uncomment the following lines:
-	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
-	// managed by cert-manager for the metrics server.
-	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
-	if len(metricsCertPath) > 0 {
-		setupLog.Infof("Initializing metrics certificate watcher metrics-cert-path=%v metrics-cert-name=%v metrics-cert-key=%v",
-			metricsCertPath, metricsCertName, metricsCertKey)
-
-		metricsServerOptions.CertDir = metricsCertPath
-		metricsServerOptions.CertName = metricsCertName
-		metricsServerOptions.KeyName = metricsCertKey
+		BindAddress: metricsAddr,
 	}
 
 	// ── Operator namespace ────────────────────────────────────────────────────

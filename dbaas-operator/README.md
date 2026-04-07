@@ -1,5 +1,6 @@
 # dbaas-operator
-// TODO(user): Add simple overview of use/purpose
+
+`dbaas-operator` integrates Kubernetes with DBaaS by reconciling custom resources that describe database registrations and forwarding them to dbaas-aggregator. Its primary use in the current release is registering externally managed databases so workloads can discover and consume their connection details through the broader DBaaS platform.
 
 ## Description
 
