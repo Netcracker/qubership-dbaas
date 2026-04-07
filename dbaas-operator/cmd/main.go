@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -196,6 +197,8 @@ func main() {
 	}
 
 	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
+	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
+	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)
 
 	// ── NamespaceBinding controller (always enabled) ───────────────────────────
 	edbChecker := ownership.NewKindChecker(
@@ -221,7 +224,7 @@ func main() {
 	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("namespacebinding"),
+		Recorder:    recorderFor(mgr, "namespacebinding", eventsEnabled),
 		MyNamespace: cloudNamespace,
 		Ownership:   ownershipResolver,
 		Checker:     blockingChecker,
@@ -234,7 +237,7 @@ func main() {
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
-		Recorder:   mgr.GetEventRecorderFor("externaldatabase"),
+		Recorder:   recorderFor(mgr, "externaldatabase", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
@@ -248,7 +251,7 @@ func main() {
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Aggregator: aggregator,
-			Recorder:   mgr.GetEventRecorderFor("databasedeclaration"),
+			Recorder:   recorderFor(mgr, "databasedeclaration", eventsEnabled),
 			Ownership:  ownershipResolver,
 		}).SetupWithManager(mgr, ctrlOpts); err != nil {
 			setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
@@ -258,7 +261,7 @@ func main() {
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Aggregator: aggregator,
-			Recorder:   mgr.GetEventRecorderFor("dbpolicy"),
+			Recorder:   recorderFor(mgr, "dbpolicy", eventsEnabled),
 			Ownership:  ownershipResolver,
 		}).SetupWithManager(mgr, ctrlOpts); err != nil {
 			setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
@@ -301,4 +304,23 @@ func (r *ownershipWarmupRunnable) Start(ctx context.Context) error {
 		setupLog.Infof("Ownership cache warmup failed (non-fatal, will fall back to live lookups): %v", err)
 	}
 	return nil
+}
+
+// recorderFor returns a real EventRecorder when enabled, or a no-op recorder
+// that silently drops all events when K8S_EVENTS_ENABLED=false.
+func recorderFor(mgr ctrl.Manager, name string, enabled bool) record.EventRecorder {
+	if enabled {
+		return mgr.GetEventRecorderFor(name)
+	}
+	return noopRecorder{}
+}
+
+// noopRecorder implements record.EventRecorder and silently drops all events.
+// Used when K8S_EVENTS_ENABLED=false to avoid requiring events RBAC in
+// restricted environments.
+type noopRecorder struct{}
+
+func (noopRecorder) Event(runtime.Object, string, string, string)                  {}
+func (noopRecorder) Eventf(runtime.Object, string, string, string, ...interface{}) {}
+func (noopRecorder) AnnotatedEventf(runtime.Object, map[string]string, string, string, string, ...interface{}) {
 }

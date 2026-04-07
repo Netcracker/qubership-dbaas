@@ -975,9 +975,9 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		return &dbaasv1.ExternalDatabase{
 			ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 			Spec: dbaasv1.ExternalDatabaseSpec{
-				Classifier:  map[string]string{"namespace": ns, "microserviceName": "svc", "scope": "service"},
-				Type:        "postgresql",
-				DbName:      "testdb",
+				Classifier:           map[string]string{"namespace": ns, "microserviceName": "svc", "scope": "service"},
+				Type:                 "postgresql",
+				DbName:               "testdb",
 				ConnectionProperties: []dbaasv1.ConnectionProperty{{Role: "admin"}},
 			},
 		}

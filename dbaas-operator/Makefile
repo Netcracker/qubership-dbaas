@@ -48,6 +48,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 
 .PHONY: manifests-dev
 manifests-dev: controller-gen ## Generate internal dev manifests, including alpha APIs.
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role paths="./cmd;./internal/controller" output:artifacts:config=config-dev/rbac
 	"$(CONTROLLER_GEN)" crd webhook paths="./api/v1/...;./api/v1alpha1/..." output:crd:artifacts:config=config-dev/crd/bases
 
 .PHONY: generate
