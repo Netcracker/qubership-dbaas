@@ -98,7 +98,7 @@ func main() {
 		"Maximum delay cap for exponential backoff on reconcile errors.")
 	flag.Parse()
 
-	ctrl.SetLogger(newLogrLogger(setupLog))
+	ctrl.SetLogger(newLogrLogger("dbaas-operator"))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will

@@ -13,11 +13,12 @@ import (
 // 1+ = debug.
 type logrAdapter struct {
 	logger logging.Logger
+	name   string
 	kvs    []interface{}
 }
 
-func newLogrLogger(logger logging.Logger) logr.Logger {
-	return logr.New(&logrAdapter{logger: logger})
+func newLogrLogger(name string) logr.Logger {
+	return logr.New(&logrAdapter{logger: logging.GetLogger(name), name: name})
 }
 
 func (a *logrAdapter) Init(_ logr.RuntimeInfo) {}
@@ -51,11 +52,19 @@ func (a *logrAdapter) WithValues(keysAndValues ...interface{}) logr.LogSink {
 	merged := make([]interface{}, len(a.kvs)+len(keysAndValues))
 	copy(merged, a.kvs)
 	copy(merged[len(a.kvs):], keysAndValues)
-	return &logrAdapter{logger: a.logger, kvs: merged}
+	return &logrAdapter{logger: a.logger, name: a.name, kvs: merged}
 }
 
 func (a *logrAdapter) WithName(name string) logr.LogSink {
-	return &logrAdapter{logger: logging.GetLogger(name), kvs: a.kvs}
+	fullName := name
+	if a.name != "" {
+		fullName = a.name + "/" + name
+	}
+	return &logrAdapter{
+		logger: logging.GetLogger(fullName),
+		name:   fullName,
+		kvs:    a.kvs,
+	}
 }
 
 func formatMessage(msg string, kvs []interface{}) string {
