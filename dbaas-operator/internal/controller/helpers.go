@@ -23,6 +23,7 @@ import (
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,6 +48,43 @@ func requestIDFromContext(ctx context.Context) string {
 		panic(err)
 	}
 	return xrid.GetRequestId()
+}
+
+// checkOwnership checks whether namespace is owned by this operator instance.
+// Returns (true, {}, nil) when reconciliation should proceed.
+// Returns (false, result, nil) when the caller should return result immediately.
+// Returns (false, {}, err) on a hard lookup error.
+//
+// The three non-owned states produce different requeue strategies:
+//   - Unknown  — cache miss (startup race); requeue quickly.
+//   - Unbound  — no binding confirmed; requeue at the long safety-net interval.
+//   - Foreign  — belongs to another instance; no requeue.
+func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, namespace, name, kind string) (bool, ctrl.Result, error) {
+	mine, err := resolver.IsMyNamespace(ctx, namespace)
+	if err != nil {
+		return false, ctrl.Result{}, err
+	}
+	if mine {
+		return true, ctrl.Result{}, nil
+	}
+	switch resolver.GetState(namespace) {
+	case ownership.Unknown:
+		log.InfoC(ctx, "no NamespaceBinding for %s %s/%s yet, will retry in %s", kind, namespace, name, ownershipPollInterval)
+		return false, ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
+	case ownership.Unbound:
+		log.InfoC(ctx, "namespace %s unbound for %s %s, will retry in %s", namespace, kind, name, ownershipUnboundRetryInterval)
+		return false, ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
+	default:
+		log.InfoC(ctx, "skipping %s %s/%s: namespace not owned by this operator", kind, namespace, name)
+		return false, ctrl.Result{}, nil
+	}
+}
+
+// markProcessing sets the Processing phase without touching conditions.
+// Conditions are intentionally preserved across Processing transitions so that
+// LastTransitionTime reflects only meaningful status changes.
+func markProcessing[P ~string](phase *P) {
+	*phase = P("Processing")
 }
 
 // setCondition upserts a metav1.Condition in the given slice.

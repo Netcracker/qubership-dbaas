@@ -73,20 +73,11 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	// ── Ownership check ───────────────────────────────────────────────────────
-	if mine, err := r.Ownership.IsMyNamespace(ctx, dd.Namespace); err != nil {
+	// See checkOwnership in helpers.go for the state/requeue semantics.
+	if owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "DatabaseDeclaration"); err != nil {
 		return ctrl.Result{}, err
-	} else if !mine {
-		switch r.Ownership.GetState(dd.Namespace) {
-		case ownership.Unknown:
-			log.InfoC(ctx, "no NamespaceBinding for DatabaseDeclaration %s/%s yet, will retry in %s", dd.Namespace, dd.Name, ownershipPollInterval)
-			return ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
-		case ownership.Unbound:
-			log.InfoC(ctx, "namespace %s unbound for DatabaseDeclaration %s, will retry in %s", dd.Namespace, dd.Name, ownershipUnboundRetryInterval)
-			return ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
-		default:
-			log.InfoC(ctx, "skipping DatabaseDeclaration %s/%s: namespace not owned by this operator", dd.Namespace, dd.Name)
-			return ctrl.Result{}, nil
-		}
+	} else if !owned {
+		return result, nil
 	}
 
 	original := dd.DeepCopy()
@@ -121,7 +112,7 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 // reconcileSubmit handles the SUBMIT branch: pre-flight validation + POST /apply.
 func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
 	requestID := requestIDFromContext(ctx)
-	dd.Status.Phase = dbaasv1alpha1.PhaseProcessing
+	markProcessing(&dd.Status.Phase)
 
 	if msg := validateDatabaseDeclarationSpec(dd); msg != "" {
 		return r.invalidSpec(ctx, dd, msg)

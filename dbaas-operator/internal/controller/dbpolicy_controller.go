@@ -63,20 +63,11 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	}
 
 	// ── Ownership check ───────────────────────────────────────────────────────
-	if mine, err := r.Ownership.IsMyNamespace(ctx, dp.Namespace); err != nil {
+	// See checkOwnership in helpers.go for the state/requeue semantics.
+	if owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DbPolicy"); err != nil {
 		return ctrl.Result{}, err
-	} else if !mine {
-		switch r.Ownership.GetState(dp.Namespace) {
-		case ownership.Unknown:
-			log.InfoC(ctx, "no NamespaceBinding for DbPolicy %s/%s yet, will retry in %s", dp.Namespace, dp.Name, ownershipPollInterval)
-			return ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
-		case ownership.Unbound:
-			log.InfoC(ctx, "namespace %s unbound for DbPolicy %s, will retry in %s", dp.Namespace, dp.Name, ownershipUnboundRetryInterval)
-			return ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
-		default:
-			log.InfoC(ctx, "skipping DbPolicy %s/%s: namespace not owned by this operator", dp.Namespace, dp.Name)
-			return ctrl.Result{}, nil
-		}
+	} else if !owned {
+		return result, nil
 	}
 
 	// Snapshot for the status patch at the end of reconcile.
@@ -90,7 +81,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	}()
 
 	// Mark as Processing while we work.
-	dp.Status.Phase = dbaasv1alpha1.PhaseProcessing
+	markProcessing(&dp.Status.Phase)
 
 	// ── Pre-flight validation ─────────────────────────────────────────────────
 	// Field-level constraints (microserviceName, services[].name/roles, policy[].type/defaultRole)
