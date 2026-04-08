@@ -14,7 +14,7 @@ import (
 type logrAdapter struct {
 	logger logging.Logger
 	name   string
-	kvs    []interface{}
+	kvs    []any
 }
 
 func newLogrLogger(name string) logr.Logger {
@@ -30,7 +30,7 @@ func (a *logrAdapter) Enabled(level int) bool {
 	return true
 }
 
-func (a *logrAdapter) Info(level int, msg string, keysAndValues ...interface{}) {
+func (a *logrAdapter) Info(level int, msg string, keysAndValues ...any) {
 	full := formatMessage(msg, append(a.kvs, keysAndValues...))
 	if level > 0 {
 		a.logger.Debugf("%s", full)
@@ -39,7 +39,7 @@ func (a *logrAdapter) Info(level int, msg string, keysAndValues ...interface{}) 
 	}
 }
 
-func (a *logrAdapter) Error(err error, msg string, keysAndValues ...interface{}) {
+func (a *logrAdapter) Error(err error, msg string, keysAndValues ...any) {
 	full := formatMessage(msg, append(a.kvs, keysAndValues...))
 	if err != nil {
 		a.logger.Errorf("%s: %v", full, err)
@@ -48,8 +48,8 @@ func (a *logrAdapter) Error(err error, msg string, keysAndValues ...interface{})
 	}
 }
 
-func (a *logrAdapter) WithValues(keysAndValues ...interface{}) logr.LogSink {
-	merged := make([]interface{}, len(a.kvs)+len(keysAndValues))
+func (a *logrAdapter) WithValues(keysAndValues ...any) logr.LogSink {
+	merged := make([]any, len(a.kvs)+len(keysAndValues))
 	copy(merged, a.kvs)
 	copy(merged[len(a.kvs):], keysAndValues)
 	return &logrAdapter{logger: a.logger, name: a.name, kvs: merged}
@@ -67,7 +67,7 @@ func (a *logrAdapter) WithName(name string) logr.LogSink {
 	}
 }
 
-func formatMessage(msg string, kvs []interface{}) string {
+func formatMessage(msg string, kvs []any) string {
 	if len(kvs) == 0 {
 		return msg
 	}

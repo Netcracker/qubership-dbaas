@@ -64,7 +64,7 @@ type NamespaceBindingReconciler struct {
 
 func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	requestID := uuid.New().String()
-	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+	ctx = ctxmanager.InitContext(ctx, map[string]any{
 		xRequestID: requestID,
 	})
 

@@ -65,7 +65,7 @@ var _ = BeforeSuite(func() {
 		xrequestid.XRequestIdProvider{},
 	})
 
-	baseCtx := ctxmanager.InitContext(context.Background(), map[string]interface{}{
+	baseCtx := ctxmanager.InitContext(context.Background(), map[string]any{
 		xRequestID: uuid.New().String(),
 	})
 	ctx, cancel = context.WithCancel(baseCtx)

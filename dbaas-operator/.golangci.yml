@@ -40,7 +40,7 @@ linters:
     rules:
       - linters:
           - lll
-        path: api/*
+        path: (api|cmd)
       - linters:
           - dupl
           - lll
@@ -59,3 +59,4 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+      

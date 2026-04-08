@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +40,12 @@ import (
 
 	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+)
+
+const (
+	statusCompleted     = `{"status":"COMPLETED"}`
+	testToken           = "test-token"
+	body401Unauthorized = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 )
 
 var _ = Describe("DatabaseDeclaration Controller", func() {
@@ -74,9 +79,9 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	BeforeEach(func() {
 		applyCode = http.StatusOK
-		applyBody = `{"status":"COMPLETED"}`
+		applyBody = statusCompleted
 		pollCode = http.StatusOK
-		pollBody = `{"status":"COMPLETED"}`
+		pollBody = statusCompleted
 		capturedApplyBody = nil
 
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +112,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		reconciler = &DatabaseDeclarationReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fakeRecorder,
 			Ownership:  mineOwnershipResolver(ns),
 		}
@@ -196,7 +201,6 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
@@ -232,7 +236,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty())
 
@@ -263,7 +267,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty())
 
@@ -303,7 +307,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 		})
 	})
@@ -320,7 +324,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
 
@@ -383,7 +387,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("HTTP 200 — database provisioned synchronously", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/DatabaseProvisioned, does not requeue", func() {
 			applyCode = http.StatusOK
-			applyBody = `{"status":"COMPLETED"}`
+			applyBody = statusCompleted
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -392,7 +396,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
@@ -467,12 +471,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusOK
-			pollBody = `{"status":"COMPLETED"}`
+			pollBody = statusCompleted
 
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
@@ -510,7 +514,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
@@ -763,7 +767,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 
@@ -784,7 +788,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("SUBMIT — HTTP 401 unauthorized", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			applyCode = http.StatusUnauthorized
-			applyBody = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+			applyBody = body401Unauthorized
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -912,7 +916,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("spec change detected while an async operation is in progress", func() {
 		It("clears the stale trackingId and re-submits to the aggregator", func() {
 			applyCode = http.StatusOK
-			applyBody = `{"status":"COMPLETED"}`
+			applyBody = statusCompleted
 
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -962,8 +966,8 @@ var _ = Describe("DatabaseDeclaration Controller — rate limiter", func() {
 		err = (&DatabaseDeclarationReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
+			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"), // nolint:staticcheck
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 			Ownership:  mineOwnershipResolver("ns"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
@@ -1033,7 +1037,7 @@ var _ = Describe("pollConditionText helpers", func() {
 				Conditions: []aggregatorclient.AggregatorCondition{},
 			}
 			Expect(pollFailureReason(resp)).To(ContainSubstring(
-				fmt.Sprintf("%s", aggregatorclient.TaskStateFailed)))
+				string(aggregatorclient.TaskStateFailed)))
 		})
 	})
 

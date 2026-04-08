@@ -66,7 +66,7 @@ var _ = Describe("DbPolicy Controller", func() {
 		reconciler = &DbPolicyReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fixture.recorder,
 			Ownership:  mineOwnershipResolver(ns),
 		}
@@ -181,7 +181,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(fixture.capturedBody).To(BeEmpty())
 
@@ -268,7 +268,6 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dp.Status.ObservedGeneration).To(Equal(dp.Generation))
@@ -303,7 +302,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(dp.Status.ObservedGeneration).To(Equal(dp.Generation))
 
@@ -326,7 +325,7 @@ var _ = Describe("DbPolicy Controller", func() {
 	Context("HTTP 401 — operator credentials misconfigured", func() {
 		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, requeues", func() {
 			fixture.statusCode = http.StatusUnauthorized
-			fixture.body = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.body = body401Unauthorized
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -457,8 +456,8 @@ var _ = Describe("DbPolicy Controller — rate limiter", func() {
 		err = (&DbPolicyReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("dp-rate-limiter-test"),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
+			Recorder:   mgr.GetEventRecorderFor("dp-rate-limiter-test"), //nolint:staticcheck
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 			Ownership:  mineOwnershipResolver("ns"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())

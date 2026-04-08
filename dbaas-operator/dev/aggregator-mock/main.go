@@ -115,8 +115,10 @@ func main() {
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
 		defaultRule.HTTPCode, len(rules))
-	log.Printf("  POST .../apply                 → DbPolicy:200 / DatabaseDeclaration:202  (%d per-microserviceName rules loaded)", len(applyRules))
-	log.Printf("  GET  .../operation/.../status  → default COMPLETED  (%d per-trackingId poll rules loaded)", len(pollRules))
+	log.Printf("  POST .../apply → DbPolicy:200 / DatabaseDeclaration:202 (%d per-microserviceName rules loaded)",
+		len(applyRules))
+	log.Printf("  GET  .../operation/.../status → default COMPLETED (%d per-trackingId poll rules loaded)",
+		len(pollRules))
 	log.Printf("  auth: Bearer token required (any non-empty token accepted)")
 
 	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, pollRules)); err != nil {
@@ -164,7 +166,10 @@ func loadPollRules(path string) map[string]MockPollRule {
 	return rules
 }
 
-func handler(defaultRule MockRule, rules map[string]MockRule, applyRules map[string]MockRule, pollRules map[string]MockPollRule) http.Handler {
+func handler(
+	defaultRule MockRule, rules map[string]MockRule,
+	applyRules map[string]MockRule, pollRules map[string]MockPollRule,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		body := logRequest(r)
@@ -205,7 +210,10 @@ func checkAuth(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
-func handleExternalDB(w http.ResponseWriter, r *http.Request, body []byte, defaultRule MockRule, rules map[string]MockRule) {
+func handleExternalDB(
+	w http.ResponseWriter, r *http.Request,
+	body []byte, defaultRule MockRule, rules map[string]MockRule,
+) {
 	m := reExternalDB.FindStringSubmatch(r.URL.Path)
 	namespace := m[1]
 
@@ -257,7 +265,8 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 
 	// Explicit rule overrides default.
 	if rule, ok := applyRules[msName]; ok {
-		log.Printf("  → apply config  subKind=%q microserviceName=%q → httpCode=%d (rule)", req.SubKind, msName, rule.HTTPCode)
+		log.Printf("  → apply config  subKind=%q microserviceName=%q → httpCode=%d (rule)",
+			req.SubKind, msName, rule.HTTPCode)
 		if rule.HTTPCode >= 400 {
 			writeTmfError(w, rule)
 			return
@@ -265,7 +274,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 		// 2xx rule: honour the exact code.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(rule.HTTPCode)
-		writeJSON(w, map[string]interface{}{
+		writeJSON(w, map[string]any{
 			"status":     "COMPLETED",
 			"conditions": []map[string]string{{"type": "Validated", "state": "COMPLETED"}},
 		})
@@ -276,11 +285,12 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 	if req.SubKind == "DatabaseDeclaration" {
 		// DatabaseDeclaration is always async: return 202 with a deterministic trackingId.
 		trackingID := "tracking-" + msName
-		log.Printf("  → apply config  subKind=DatabaseDeclaration microserviceName=%q → 202 IN_PROGRESS trackingId=%q (default)",
+		log.Printf("  → apply config  subKind=DatabaseDeclaration microserviceName=%q"+
+			" → 202 IN_PROGRESS trackingId=%q (default)",
 			msName, trackingID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		writeJSON(w, map[string]interface{}{
+		writeJSON(w, map[string]any{
 			"status":     "IN_PROGRESS",
 			"trackingId": trackingID,
 			"conditions": []map[string]string{
@@ -295,7 +305,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 	log.Printf("  → apply config  subKind=%q microserviceName=%q → 200 COMPLETED (default)", req.SubKind, msName)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	writeJSON(w, map[string]interface{}{
+	writeJSON(w, map[string]any{
 		"status":     "COMPLETED",
 		"conditions": []map[string]string{{"type": "Validated", "state": "COMPLETED"}},
 	})
@@ -310,7 +320,8 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 	trackingID := m[1]
 
 	if rule, ok := pollRules[trackingID]; ok {
-		log.Printf("  → operation status  trackingId=%q → rule: httpCode=%d status=%q", trackingID, rule.HTTPCode, rule.Status)
+		log.Printf("  → operation status  trackingId=%q → rule: httpCode=%d status=%q",
+			trackingID, rule.HTTPCode, rule.Status)
 
 		// Non-200 response (e.g. 404).
 		if rule.HTTPCode != 0 && rule.HTTPCode != http.StatusOK {
@@ -335,7 +346,7 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 			dbCreatedCondition["message"] = "Failed"
 		}
 
-		writeJSON(w, map[string]interface{}{
+		writeJSON(w, map[string]any{
 			"status":     status,
 			"trackingId": trackingID,
 			"conditions": []map[string]string{
@@ -350,7 +361,7 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 	log.Printf("  → operation status  trackingId=%q → COMPLETED (default)", trackingID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	writeJSON(w, map[string]interface{}{
+	writeJSON(w, map[string]any{
 		"status":     "COMPLETED",
 		"trackingId": trackingID,
 		"conditions": []map[string]string{

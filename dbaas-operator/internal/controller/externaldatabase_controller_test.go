@@ -79,7 +79,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 		reconciler = &ExternalDatabaseReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fixture.recorder,
 			Ownership:  mineOwnershipResolver(ns),
 		}
@@ -169,7 +169,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 
 			edb, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 		})
 	})
@@ -186,7 +186,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			// Aggregator must not be called.
 			Expect(fixture.capturedBody).To(BeEmpty())
@@ -223,7 +222,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -255,7 +253,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -694,7 +691,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(fixture.capturedBody).NotTo(BeEmpty())
 
 			// Verify the credentials were sent to the aggregator.
@@ -738,7 +735,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -763,7 +759,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	Context("HTTP 401 — operator credentials or role binding misconfigured", func() {
 		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, emits Warning/Unauthorized, requeues", func() {
 			fixture.statusCode = http.StatusUnauthorized
-			fixture.body = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.body = body401Unauthorized
 			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -804,7 +800,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -838,7 +833,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -989,7 +983,7 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		reconciler = &ExternalDatabaseReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fixture.recorder,
 		}
 	})
@@ -1024,7 +1018,6 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 				func() *dbaasv1.ExternalDatabase { return &dbaasv1.ExternalDatabase{} })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(fixture.capturedBody).To(BeEmpty())
 		})
 	})
@@ -1095,8 +1088,8 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		err = (&ExternalDatabaseReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
+			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"), //nolint:staticcheck
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 

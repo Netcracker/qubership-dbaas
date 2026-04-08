@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/google/uuid"
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
@@ -58,7 +59,7 @@ type ExternalDatabaseReconciler struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	requestID := uuid.New().String()
-	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+	ctx = ctxmanager.InitContext(ctx, map[string]any{
 		xRequestID: requestID,
 	})
 
@@ -188,10 +189,7 @@ func (r *ExternalDatabaseReconciler) buildConnectionProperties(
 
 		// Extra properties are merged first so that typed fields and resolved
 		// Secret credentials always win on key collisions.
-		for k, v := range cp.ExtraProperties {
-			flat[k] = v
-		}
-
+		maps.Copy(flat, cp.ExtraProperties)
 		flat["role"] = cp.Role
 
 		if err := r.applySecretCredentials(ctx, edb.Namespace, i, cp, flat); err != nil {
