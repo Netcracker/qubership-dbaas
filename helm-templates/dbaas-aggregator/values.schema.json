@@ -566,6 +566,36 @@
         "dbaas",
         "netcracker"
       ]
+    },
+    "APPLICATION_NAME": {
+      "$id": "#/properties/APPLICATION_NAME",
+      "type": "string",
+      "title": "The APPLICATION_NAME schema",
+      "description": "Defines application name",
+      "examples": [
+        "MyApplication"
+      ],
+      "internal": true
+    },
+    "DEPLOYMENT_SESSION_ID": {
+      "$id": "#/properties/DEPLOYMENT_SESSION_ID",
+      "type": "string",
+      "title": "The DEPLOYMENT_SESSION_ID schema",
+      "description": "Unique identifier of deployment session used to track e2e deploy activity",
+      "examples": [
+        "516736bf-d4b7-4900-beab-9599573ac8a8"
+      ],
+      "internal": true
+    },
+    "MONITORING_ENABLED": {
+      "$id": "#/properties/MONITORING_ENABLED",
+      "type": "boolean",
+      "title": "The MONITORING_ENABLED schema",
+      "description": "Set to true to import dashboards to Grafana and configure integration with Prometheus. Requires Platform System Monitor CRDs to be deployed to target k8s/openshift cluster",
+      "examples": [
+        true,
+        false
+      ]
     }
   },
   "additionalProperties": true

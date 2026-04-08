@@ -748,7 +748,7 @@ class BackupV3IT extends AbstractIT {
             }
         }
 
-        backupHelperV1.startRestore(backupRequest1.getBackupName(), new RestoreRequestBuilder().build(), false, 202);
+        backupHelperV1.startRestoreParallel(backupRequest1.getBackupName(), new RestoreRequestBuilder().build(), false, 202);
         backupHelperV1.startRestore(backupRequest1.getBackupName(), new RestoreRequestBuilder().build(), false, 409);
     }
 

@@ -176,6 +176,22 @@ public class BackupHelperV1 {
         return null;
     }
 
+    public RestoreResponse startRestoreParallel(String backupName, RestoreRequest restoreRequest, boolean dryRun, int code) {
+        Request request = startRestoreRequestAllowParallel(helper.getBackupDaemonAuthorization(), backupName, restoreRequest, dryRun);
+        try (Response response = okHttpClient.newCall(request).execute()){
+            log.info("Response: {}", response);
+            String body = response.body().string();
+            log.debug("Response body: {}", body);
+            assertThat(response.code(), equalTo(code));
+            log.info("Restore status result received");
+            return gson.fromJson(body, new com.google.gson.reflect.TypeToken<RestoreResponse>(){
+            }.getType());
+        } catch (IOException e) {
+            log.error("Error during start restore parallel", e);
+        }
+        return null;
+    }
+
     public BackupResponse getBackup(String backupName, int code) {
         Request request = getBackupRequest(helper.getBackupDaemonAuthorization(), backupName);
         try (Response response = okHttpClient.newCall(request).execute()) {

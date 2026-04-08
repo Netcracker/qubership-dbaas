@@ -25,10 +25,6 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
         return list("namespace", namespace);
     }
 
-    public void deleteOnlyTransactionalDatabaseRegistries(String namespace) {
-        delete("namespace = ?1 and database.bgVersion is null", namespace);
-    }
-
     public List<DatabaseRegistry> findAllByNamespaceAndDatabase_BgVersionNull(String namespace) {
         return list("namespace = ?1 and database.bgVersion is null", namespace);
 

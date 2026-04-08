@@ -26,14 +26,17 @@ public class OperationService {
     private final DBaaService dBaaService;
     private final PhysicalDatabasesService physicalDatabasesService;
     private final LogicalDbDbaasRepository logicalDbDbaasRepository;
+    private final DeletionService deletionService;
 
 
     public OperationService(DBaaService dBaaService,
                             PhysicalDatabasesService physicalDatabasesService,
-                            LogicalDbDbaasRepository logicalDbDbaasRepository) {
+                            LogicalDbDbaasRepository logicalDbDbaasRepository,
+                            DeletionService deletionService) {
         this.dBaaService = dBaaService;
         this.physicalDatabasesService = physicalDatabasesService;
         this.logicalDbDbaasRepository = logicalDbDbaasRepository;
+        this.deletionService = deletionService;
     }
 
     @Transactional
@@ -69,7 +72,7 @@ public class OperationService {
             log.debug("Delete orphan logical DB from registry");
             List<DatabaseRegistry> databaseRegistry = oldDb.getDatabaseRegistry();
             for (int i = databaseRegistry.size() - 1; i >= 0; i--) {
-                logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().deleteById(databaseRegistry.get(i).getId());
+                logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().delete(databaseRegistry.get(i));
             }
         }
 
@@ -89,10 +92,9 @@ public class OperationService {
         copyDatabase.setAdapterId(adapterByPhysDbId.identifier());
         if (updateHostRequest.getMakeCopy()) {
             log.debug("save previous record as orhan");
-            dBaaService.markDatabasesAsOrphan(database);
-            dBaaService.saveDatabaseRegistry(database);
+            deletionService.markDatabaseAsOrphan(database);
         }
-        dBaaService.saveDatabaseRegistry(copyDatabase);
+        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(copyDatabase);
         log.debug("changed database record {}", copyDatabase);
         return copyDatabase;
     }

@@ -60,8 +60,6 @@ public interface DbaasAdapter {
 
     void dropDatabase(DatabaseRegistry databaseRegistry);
 
-    void dropDatabase(Database database);
-
     EnsuredUser ensureUser(String username, String password, String dbName);
 
     EnsuredUser ensureUser(String username, String password, String dbName, String role);

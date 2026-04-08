@@ -107,7 +107,7 @@ public enum ErrorCodes implements ErrorCode {
     CORE_DBAAS_4024(
             "CORE-DBAAS-4024",
             "Connection properties doesn't contain field 'role'",
-            "Database with calssifier == %s. Connection properties of this database doesn't contain field 'role'."),
+            "Database with classifier == %s. Connection properties of this database doesn't contain field 'role'."),
     CORE_DBAAS_4025(
             "CORE-DBAAS-4025",
             "Connection properties must not be null or empty",

@@ -17,7 +17,6 @@ import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.NotExistingConnectionPropertiesException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
-import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
@@ -112,10 +111,10 @@ public class UserService {
         for (Map<String, Object> cp : connectionProperties) {
             try {
                 adapter.ensureUser(
-                    cp.get("username").toString(),
-                    cp.get("password").toString(),
-                    DbaasBackupUtils.getDatabaseName(database),
-                    cp.get("role").toString()
+                        cp.get("username").toString(),
+                        cp.get("password").toString(),
+                        DBaaService.getDatabaseName(database),
+                        cp.get("role").toString()
                 );
                 response.getSuccessfully().add(new SuccessfullRestore(cp));
             } catch (WebApplicationException ex) {
