@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "http://example.com/example.json",
+  "type": "object",
+  "title": "The dbaas-operator schema.",
+  "description": "JSON Schema for dbaas-operator.",
+  "definitions": {
+    "integerOrString": {
+      "anyOf": [
+        { "type": "integer" },
+        { "type": "string" }
+      ]
+    },
+    "booleanOrString": {
+      "anyOf": [
+        { "type": "boolean" },
+        { "type": "string" }
+      ]
+    }
+  },
+  "properties": {
+    "SERVICE_NAME": {
+      "$id": "#/properties/SERVICE_NAME",
+      "type": "string",
+      "title": "The SERVICE_NAME schema",
+      "description": "Name of a service.",
+      "internal": true
+    },
+    "NAMESPACE": {
+      "$id": "#/properties/NAMESPACE",
+      "type": "string",
+      "title": "The NAMESPACE schema",
+      "description": "The namespace it is going to be deployed.",
+      "default": "",
+      "internal": true
+    },
+    "IMAGE_REPOSITORY": {
+      "$id": "#/properties/IMAGE_REPOSITORY",
+      "type": "string",
+      "title": "The IMAGE_REPOSITORY schema",
+      "default": "",
+      "internal": true
+    },
+    "TAG": {
+      "$id": "#/properties/TAG",
+      "type": "string",
+      "title": "The TAG schema",
+      "default": "",
+      "internal": true
+    },
+    "REPLICAS": {
+      "$id": "#/properties/REPLICAS",
+      "$ref": "#/definitions/integerOrString",
+      "title": "The REPLICAS schema",
+      "internal": true,
+      "envSpecific": true
+    },
+    "PAAS_PLATFORM": {
+      "$id": "#/properties/PAAS_PLATFORM",
+      "type": "string",
+      "title": "The PAAS_PLATFORM schema",
+      "description": "PaaS Platform.",
+      "examples": [
+        "KUBERNETES",
+        "OPENSHIFT"
+      ],
+      "internal": true
+    },
+    "PAAS_VERSION": {
+      "$id": "#/properties/PAAS_VERSION",
+      "type": "string",
+      "title": "The PAAS_VERSION schema",
+      "description": "This parameter specify paas where this service is deployed.",
+      "default": "",
+      "internal": true
+    },
+    "NODE_SELECTOR_DBAAS_KEY": {
+      "$id": "#/properties/NODE_SELECTOR_DBAAS_KEY",
+      "type": "string",
+      "title": "The NODE_SELECTOR_DBAAS_KEY schema",
+      "description": "Specifies a key value of nodeSelector.",
+      "examples": [
+        "region"
+      ]
+    },
+    "REGION_DBAAS": {
+      "$id": "#/properties/REGION_DBAAS",
+      "type": "string",
+      "title": "The REGION_DBAAS schema",
+      "description": "It indicates a node region where pod will be located.",
+      "examples": [
+        "database"
+      ]
+    },
+    "CLOUD_TOPOLOGY_KEY": {
+      "$id": "#/properties/CLOUD_TOPOLOGY_KEY",
+      "type": "string",
+      "title": "The CLOUD_TOPOLOGY_KEY schema",
+      "description": "Affinity key.",
+      "examples": [
+        "kubernetes.io/hostname"
+      ]
+    },
+    "CLOUD_TOPOLOGIES": {
+      "$id": "#/properties/CLOUD_TOPOLOGIES",
+      "type": "array",
+      "title": "Topologies settings for topologySpreadConstraints",
+      "description": "Array of topologies settings for topologySpreadConstraints. Each array item must contain at least 'topologyKey' attribute. Other supported attributes are 'maxSkew' and 'whenUnsatisfiable' - optional.",
+      "default": "- topologyKey: kubernetes.io/hostname",
+      "internal": true,
+      "examples": [
+        "- topologyKey: kubernetes.io/hostname"
+      ]
+    },
+    "CPU_REQUEST": {
+      "$id": "#/properties/CPU_REQUEST",
+      "$ref": "#/definitions/integerOrString",
+      "title": "The CPU_REQUEST schema",
+      "internal": true,
+      "envSpecific": true
+    },
+    "CPU_LIMIT": {
+      "$id": "#/properties/CPU_LIMIT",
+      "$ref": "#/definitions/integerOrString",
+      "title": "The CPU_LIMIT schema",
+      "internal": true,
+      "envSpecific": true
+    },
+    "MEMORY_LIMIT": {
+      "$id": "#/properties/MEMORY_LIMIT",
+      "type": "string",
+      "title": "The MEMORY_LIMIT schema",
+      "internal": true,
+      "envSpecific": true
+    },
+    "LIVENESS_PROBE_INITIAL_DELAY_SECONDS": {
+      "$id": "#/properties/LIVENESS_PROBE_INITIAL_DELAY_SECONDS",
+      "type": "integer",
+      "title": "The LIVENESS_PROBE_INITIAL_DELAY_SECONDS schema",
+      "internal": true
+    },
+    "READONLY_CONTAINER_FILE_SYSTEM_ENABLED": {
+      "$id": "#/properties/READONLY_CONTAINER_FILE_SYSTEM_ENABLED",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The READONLY_CONTAINER_FILE_SYSTEM_ENABLED schema",
+      "description": "Read-only container file system is enabled",
+      "examples": [
+        false
+      ]
+    },
+    "restrictedEnvironment": {
+      "$id": "#/properties/restrictedEnvironment",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The restrictedEnvironment schema",
+      "description": "Controls cluster-scoped resource creation (ClusterRole, ClusterRoleBinding). Set to true if deploying in a restricted environment where cluster-scoped resources cannot be created.",
+      "default": false,
+      "examples": [
+        false,
+        true
+      ]
+    },
+    "K8S_EVENTS_ENABLED": {
+      "$id": "#/properties/K8S_EVENTS_ENABLED",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The K8S_EVENTS_ENABLED schema",
+      "description": "When true, the operator emits Kubernetes Events and requires events RBAC (create, patch on core/events).",
+      "default": false,
+      "examples": [
+        false,
+        true
+      ]
+    },
+    "DBAAS_OPERATOR_ENABLED": {
+      "$id": "#/properties/DBAAS_OPERATOR_ENABLED",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The DBAAS_OPERATOR_ENABLED schema",
+      "description": "When false, no chart resources are created (Deployment, RBAC, ServiceMonitor).",
+      "default": true,
+      "examples": [
+        true,
+        false
+      ]
+    },
+    "LOG_LEVEL": {
+      "$id": "#/properties/LOG_LEVEL",
+      "type": "string",
+      "title": "The LOG_LEVEL schema",
+      "description": "Log level for service.",
+      "default": "info",
+      "examples": [
+        "info",
+        "debug",
+        "warn"
+      ],
+      "internal": true
+    }
+  },
+  "additionalProperties": true
+}

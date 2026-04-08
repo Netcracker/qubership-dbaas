@@ -13,7 +13,7 @@ PAAS_VERSION: '1.25'
 CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
 DBAAS_OPERATOR_ENABLED: true
 MONITORING_ENABLED: true
-RESTRICTED_ENVIRONMENT: false
+restrictedEnvironment: false
 
 # ============== SERVICE VARIABLES ============================
 LOG_LEVEL: "info"
