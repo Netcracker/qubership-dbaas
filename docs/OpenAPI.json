@@ -696,6 +696,29 @@
           }
         }
       },
+      "CleanupMarkedForDropRequest": {
+        "type": "object",
+        "required": [
+          "namespaces"
+        ],
+        "properties": {
+          "namespaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A list of namespaces where the marked for drop databases should be cleaned"
+          },
+          "delete": {
+            "type": "boolean",
+            "description": "Confirmation parameter. If this is not passed or \u0027false\u0027 then marked for drop databases will not be deleted and response will contain marked for drop databases that are registered in DBaaS for the specified namespaces"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "If this parameter is \u0027true\u0027, then deletion errors from physical adapters will be ignored"
+          }
+        }
+      },
       "CompositeStructureDto": {
         "type": "object",
         "required": [
@@ -1618,7 +1641,7 @@
               "type": "object",
               "additionalProperties": {}
             },
-            "description": "There is an information about connection to database. It contains such keys as url, authDbName, port, host. username and password do not need to specify here.You should specify them in order for the client to be able to connect to the database."
+            "description": "There is an information about connection to database. It contains such keys as url, authDbName, username, password, port, host, etc. You should specify them in order for the client to be able to connect to the database."
           },
           "type": {
             "type": "string",
@@ -6267,6 +6290,175 @@
         ]
       }
     },
+    "/api/v3/dbaas/databases/marked-for-drop": {
+      "post": {
+        "summary": "Get list of marked for drop databases",
+        "description": "List of databases with marked for drop state related to requested namespaces (orphan databases are also included)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "List of marked for drop databases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DatabaseResponseV3ListCP"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal processing error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not Allowed"
+          }
+        },
+        "tags": [
+          "Aggregated Database Administration No Namespace Controller V 3"
+        ],
+        "security": [
+          {
+            "SecurityScheme": [
+              "NAMESPACE_CLEANER"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Cleanup marked for drop databases",
+        "description": "Housekeeping operation which drops all databases with marked for drop state (orphan databases are also included)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupMarkedForDropRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "List of marked for drop databases, no cleanup performed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DatabaseResponseV3ListCP"
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "List of marked for drop databases, async cleanup process is started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DatabaseResponseV3ListCP"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid or cannot be served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "DBaaS is working in PROD mode. Deleting logical databases is prohibited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal processing error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Aggregated Database Administration No Namespace Controller V 3"
+        ],
+        "security": [
+          {
+            "SecurityScheme": [
+              "NAMESPACE_CLEANER"
+            ]
+          }
+        ]
+      }
+    },
     "/api/v3/dbaas/databases/update-host": {
       "post": {
         "summary": "V3. Update Physical Host in Connection Properties",
@@ -8175,9 +8367,6 @@
           "required": true
         },
         "responses": {
-          "500": {
-            "description": "Internal error"
-          },
           "200": {
             "description": "Successfully found database",
             "content": {
@@ -8198,38 +8387,41 @@
               }
             }
           },
-          "401": {
-            "description": "Requested role is not allowed",
+          "400": {
+            "description": "The request was invalid or cannot be served",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided"
+          },
+          "403": {
+            "description": "The request was valid, but the server is refusing action"
           },
           "409": {
             "description": "Logical database with such classifier and type already exist in namespace and it is internal logical database",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
           },
-          "403": {
-            "description": "Namespace in classifier and path variable are not equal",
+          "500": {
+            "description": "Internal error",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/TmfErrorResponse"
                 }
               }
             }
-          },
-          "400": {
-            "description": "Bad Request"
           }
         },
         "security": [

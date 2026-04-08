@@ -11,7 +11,6 @@ import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.enums.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.*;
 import io.quarkus.test.InjectMock;
@@ -19,10 +18,8 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.core.LockAssert;
-import net.javacrumbs.shedlock.core.LockProvider;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +27,6 @@ import org.mockito.Mockito;
 import org.mockito.internal.stubbing.answers.AnswersWithDelay;
 import org.mockito.internal.stubbing.answers.Returns;
 
-import javax.sql.DataSource;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -40,7 +36,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
-import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
+import static com.netcracker.cloud.dbaas.service.DeletionService.MARKED_FOR_DROP;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -60,12 +56,6 @@ class DbBackupV2ServiceTest {
 
     @Inject
     private DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
-    @Inject
-    private DatabaseDbaasRepository dbaasRepository;
-    @Inject
-    private DBaaService dBaaService;
-    @InjectMock
-    private PasswordEncryption encryption;
     @InjectSpy
     private BackupRepository backupRepository;
     @Inject
@@ -88,13 +78,6 @@ class DbBackupV2ServiceTest {
     private BackupExternalDatabaseRepository backupExternalDatabaseRepository;
     @Inject
     private RestoreExternalDatabaseRepository restoreExternalDatabaseRepository;
-    @Inject
-    private BgNamespaceRepository bgNamespaceRepository;
-    @Inject
-    private LockProvider lockProvider;
-    @Inject
-    @Named("process-orchestrator")
-    private DataSource dataSource;
     @InjectMock
     private DbaaSHelper dbaaSHelper;
 

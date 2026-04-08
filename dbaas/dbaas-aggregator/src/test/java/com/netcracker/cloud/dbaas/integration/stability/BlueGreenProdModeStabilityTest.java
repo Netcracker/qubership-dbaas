@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.integration.stability;
 
 import com.google.common.base.Strings;
-import io.quarkus.test.junit.TestProfile;
 import com.netcracker.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.entity.pg.*;
@@ -9,10 +8,7 @@ import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
-import com.netcracker.cloud.dbaas.service.BlueGreenService;
-import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
-import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
-import com.netcracker.cloud.dbaas.service.ProcessService;
+import com.netcracker.cloud.dbaas.service.*;
 import com.netcracker.cloud.dbaas.test.profile.ProcessOrchestratorEnabledProfile;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import com.netcracker.core.scheduler.po.task.TaskState;
@@ -20,6 +16,7 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +31,7 @@ import org.mockito.Mockito;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Predicate;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
@@ -143,13 +141,16 @@ class BlueGreenProdModeStabilityTest {
             // commit execution
             bgState.getOriginNamespace().setState(ACTIVE_STATE);
             bgState.getPeerNamespace().setState(IDLE_STATE);
+        });
+        QuarkusTransaction.requiringNew().run(() -> {
             blueGreenService.commit(bgStateRequest);
         });
+
         // check that in PROD mode doesn't delete any databases
         List<DatabaseRegistry> databaseRegistriesNs2 = databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(NS_2);
         assertEquals(4, databaseRegistriesNs2.size(), "Databases should not be deleted in prod mode");
-        assertEquals(2, databaseRegistriesNs2.stream().filter(o -> o.getClassifier().containsKey("MARKED_FOR_DROP")).count());
-        assertEquals(2, databaseRegistriesNs2.stream().filter(o -> !o.getClassifier().containsKey("MARKED_FOR_DROP")).count());
+        assertEquals(2, databaseRegistriesNs2.stream().filter(DeletionService::isMarkedForDrop).count());
+        assertEquals(2, databaseRegistriesNs2.stream().filter(Predicate.not(DeletionService::isMarkedForDrop)).count());
 
         // check that commit doesn't affect NS-1
         List<DatabaseRegistry> databaseRegistriesNs1 = databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(NS_1);
@@ -169,16 +170,16 @@ class BlueGreenProdModeStabilityTest {
             Assertions.assertEquals(ORPHAN, db.getDbState().getDatabaseState());
             List<DatabaseRegistry> registry = db.getDatabaseRegistry();
             assertEquals(1, registry.size());
-            assertTrue(registry.get(0).getClassifier().containsKey("MARKED_FOR_DROP"));
+            assertTrue(DeletionService.isMarkedForDrop(registry.get(0)));
         });
         Optional<Database> removedStaticDb = idleDatabase.stream().filter(db -> db.getBgVersion() == null && ORPHAN.equals(db.getDbState().getDatabaseState())).findFirst();
         assertTrue(removedStaticDb.isPresent());
         assertEquals(1, removedStaticDb.get().getDatabaseRegistry().size());
-        assertTrue(removedStaticDb.get().getDatabaseRegistry().get(0).getClassifier().containsKey("MARKED_FOR_DROP"));
+        assertTrue(DeletionService.isMarkedForDrop(removedStaticDb.get().getDatabaseRegistry().get(0)));
         Optional<Database> keptStaticDb = idleDatabase.stream().filter(db -> db.getBgVersion() == null && CREATED.equals(db.getDbState().getDatabaseState())).findFirst();
         assertTrue(keptStaticDb.isPresent());
         assertEquals(2, keptStaticDb.get().getDatabaseRegistry().size());
-        assertFalse(keptStaticDb.get().getDatabaseRegistry().get(0).getClassifier().containsKey("MARKED_FOR_DROP"));
+        assertFalse(DeletionService.isMarkedForDrop(keptStaticDb.get().getDatabaseRegistry().get(0)));
 
         BgDomain domain = blueGreenService.getDomain(NS_1);
         log.debug("founded bgDomain {}", domain.getNamespaces());
