@@ -2,8 +2,8 @@
 # kind-down.sh — deletes the kind cluster created by kind-up.sh.
 #
 # Usage:
-#   ./hack/kind-down.sh
-#   KIND_CLUSTER=my-cluster ./hack/kind-down.sh
+#   ./dev/kind-down.sh
+#   KIND_CLUSTER=my-cluster ./dev/kind-down.sh
 
 set -euo pipefail
 

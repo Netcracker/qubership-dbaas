@@ -26,13 +26,13 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 ## Start the environment
 
 ```bash
-./hack/kind-up.sh
+./dev/kind-up.sh
 ```
 
 Creates a cluster named `dbaas`. To use a different name:
 
 ```bash
-KIND_CLUSTER=my-cluster ./hack/kind-up.sh
+KIND_CLUSTER=my-cluster ./dev/kind-up.sh
 ```
 
 The script runs these steps in order:
@@ -52,13 +52,13 @@ The script runs these steps in order:
 resources in namespaces where a `NamespaceBinding` named `binding` exists
 and its `spec.operatorNamespace` matches the operator's own namespace (`CLOUD_NAMESPACE`).
 
-`hack/test-resources/namespacebinding.yaml` (included in the directory) creates
+`dev/test-resources/namespacebinding.yaml` (included in the directory) creates
 the binding for `test-ns` automatically when you apply the full directory.
 
 Apply all test CRs at once and observe their phases:
 
 ```bash
-kubectl apply -f hack/test-resources/ -n test-ns
+kubectl apply -f dev/test-resources/ -n test-ns
 kubectl get namespacebinding -n test-ns       # binding   dbaas-system
 kubectl get externaldatabase -n test-ns
 kubectl get dbpolicy -n test-ns
@@ -202,23 +202,23 @@ kubectl get events -n test-ns --field-selector involvedObject.name=dd-poll-faile
 
 # Reset a CR — delete and reapply
 kubectl delete externaldatabase -n test-ns edb-401
-kubectl apply -f hack/test-resources/edb-401-unauthorized.yaml -n test-ns
+kubectl apply -f dev/test-resources/edb-401-unauthorized.yaml -n test-ns
 
 kubectl delete dbpolicy -n test-ns dp-401
-kubectl apply -f hack/test-resources/dbpolicy-401.yaml -n test-ns
+kubectl apply -f dev/test-resources/dbpolicy-401.yaml -n test-ns
 
 kubectl delete databasedeclaration -n test-ns dd-401-unauthorized
-kubectl apply -f hack/test-resources/dd-401-unauthorized.yaml -n test-ns
+kubectl apply -f dev/test-resources/dd-401-unauthorized.yaml -n test-ns
 
 # Redeploy all test resources at once (NamespaceBinding is preserved — it has a deletion-protection finalizer)
 kubectl delete externaldatabase,dbpolicy,databasedeclaration -n test-ns --all
-kubectl apply -f hack/test-resources/ -n test-ns
+kubectl apply -f dev/test-resources/ -n test-ns
 ```
 
 ## Tear down
 
 ```bash
-./hack/kind-down.sh
+./dev/kind-down.sh
 ```
 
 Or delete the cluster manually:
@@ -230,7 +230,7 @@ kind delete cluster --name dbaas
 ## File structure
 
 ```
-hack/
+dev/
 ├── kind-up.sh                  # spins up the environment from scratch
 ├── kind-down.sh                # deletes the kind cluster
 ├── aggregator-mock/

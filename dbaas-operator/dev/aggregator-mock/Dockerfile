@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
-    go build -a -o dbaas-aggregator ./hack/aggregator-mock/main.go
+    go build -a -o dbaas-aggregator ./dev/aggregator-mock/main.go
 
 FROM ghcr.io/netcracker/qubership-core-base:latest
 WORKDIR /app

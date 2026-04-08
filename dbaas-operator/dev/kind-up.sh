@@ -11,14 +11,14 @@
 #   7. Wait for both deployments to roll out
 #
 # Usage:
-#   ./hack/kind-up.sh                    # cluster name defaults to "dbaas"
-#   KIND_CLUSTER=my-cluster ./hack/kind-up.sh
+#   ./dev/kind-up.sh                    # cluster name defaults to "dbaas"
+#   KIND_CLUSTER=my-cluster ./dev/kind-up.sh
 #
 # After the script completes:
-#   kubectl apply -f hack/test-resources/edb-with-secret.yaml
+#   kubectl apply -f dev/test-resources/edb-with-secret.yaml
 #   kubectl get externaldatabase -n test-ns my-postgres -w
 #
-# To tear down: ./hack/kind-down.sh
+# To tear down: ./dev/kind-down.sh
 
 set -euo pipefail
 
@@ -63,7 +63,7 @@ docker build -t "${OPERATOR_IMAGE}" "${REPO_ROOT}"
 
 info "Building aggregator-mock image (${MOCK_IMAGE})..."
 docker build \
-  -f "${REPO_ROOT}/hack/aggregator-mock/Dockerfile" \
+  -f "${REPO_ROOT}/dev/aggregator-mock/Dockerfile" \
   -t "${MOCK_IMAGE}" \
   "${REPO_ROOT}"
 
@@ -74,13 +74,13 @@ kind load docker-image "${MOCK_IMAGE}"     --name "${KIND_CLUSTER}"
 
 # ── 5. Infrastructure manifests ───────────────────────────────────────────────
 info "Applying infrastructure manifests..."
-kubectl apply -f "${REPO_ROOT}/hack/k8s/mock-aggregator.yaml"
-kubectl apply -f "${REPO_ROOT}/hack/k8s/operator.yaml"
+kubectl apply -f "${REPO_ROOT}/dev/k8s/mock-aggregator.yaml"
+kubectl apply -f "${REPO_ROOT}/dev/k8s/operator.yaml"
 
 # ── 6. Test resources ─────────────────────────────────────────────────────────
 info "Applying test resources (namespace test-ns, secret)..."
-kubectl apply -f "${REPO_ROOT}/hack/test-resources/namespace.yaml"
-kubectl apply -f "${REPO_ROOT}/hack/test-resources/secret.yaml"
+kubectl apply -f "${REPO_ROOT}/dev/test-resources/namespace.yaml"
+kubectl apply -f "${REPO_ROOT}/dev/test-resources/secret.yaml"
 
 # ── 7. Wait for rollouts ──────────────────────────────────────────────────────
 info "Waiting for aggregator-mock to be ready..."
@@ -100,15 +100,15 @@ kubectl get pods -n dbaas-system
 echo ""
 echo "Next steps:"
 echo "  # Test 1 — happy path (secret exists, mock returns 200):"
-echo "  kubectl apply -f hack/test-resources/edb-with-secret.yaml"
+echo "  kubectl apply -f dev/test-resources/edb-with-secret.yaml"
 echo "  kubectl get externaldatabase -n test-ns my-postgres -w"
 echo ""
 echo "  # Test 2 — BackingOff (secret missing):"
-echo "  kubectl apply -f hack/test-resources/edb-missing-secret.yaml"
+echo "  kubectl apply -f dev/test-resources/edb-missing-secret.yaml"
 echo "  kubectl get externaldatabase -n test-ns missing-secret-test -w"
 echo ""
 echo "  # Operator logs:"
 echo "  kubectl logs -n dbaas-system deployment/dbaas-operator -f"
 echo ""
 echo "  # Tear down:"
-echo "  ./hack/kind-down.sh"
+echo "  ./dev/kind-down.sh"

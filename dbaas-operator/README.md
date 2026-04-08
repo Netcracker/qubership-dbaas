@@ -87,7 +87,7 @@ spec:
 ### Local development (kind)
 
 To spin up a full local environment (kind + aggregator-mock + operator) see
-**[hack/README.md](hack/README.md)**.
+**[dev/README.md](dev/README.md)**.
 
 ### Prerequisites
 - go version v1.26+
