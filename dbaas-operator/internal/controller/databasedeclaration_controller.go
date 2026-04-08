@@ -63,7 +63,7 @@ type DatabaseDeclarationReconciler struct {
 
 func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	requestID := uuid.New().String()
-	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+	ctx = ctxmanager.InitContext(ctx, map[string]any{
 		xRequestID: requestID,
 	})
 

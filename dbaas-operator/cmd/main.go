@@ -270,7 +270,7 @@ func recorderFor(mgr ctrl.Manager, name string, enabled bool) record.EventRecord
 // restricted environments.
 type noopRecorder struct{}
 
-func (noopRecorder) Event(runtime.Object, string, string, string)                  {}
-func (noopRecorder) Eventf(runtime.Object, string, string, string, ...interface{}) {}
-func (noopRecorder) AnnotatedEventf(runtime.Object, map[string]string, string, string, string, ...interface{}) {
+func (noopRecorder) Event(runtime.Object, string, string, string)          {}
+func (noopRecorder) Eventf(runtime.Object, string, string, string, ...any) {}
+func (noopRecorder) AnnotatedEventf(runtime.Object, map[string]string, string, string, string, ...any) {
 }

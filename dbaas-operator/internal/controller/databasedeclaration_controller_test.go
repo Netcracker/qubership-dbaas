@@ -43,6 +43,11 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
+const (
+	statusCompleted = `{"status":"COMPLETED"}`
+	testToken       = "test-token"
+)
+
 var _ = Describe("DatabaseDeclaration Controller", func() {
 	const (
 		ns           = "default"
@@ -74,9 +79,9 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	BeforeEach(func() {
 		applyCode = http.StatusOK
-		applyBody = `{"status":"COMPLETED"}`
+		applyBody = statusCompleted
 		pollCode = http.StatusOK
-		pollBody = `{"status":"COMPLETED"}`
+		pollBody = statusCompleted
 		capturedApplyBody = nil
 
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +112,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		reconciler = &DatabaseDeclarationReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fakeRecorder,
 			Ownership:  mineOwnershipResolver(ns),
 		}
@@ -383,7 +388,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("HTTP 200 — database provisioned synchronously", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/DatabaseProvisioned, does not requeue", func() {
 			applyCode = http.StatusOK
-			applyBody = `{"status":"COMPLETED"}`
+			applyBody = statusCompleted
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -467,7 +472,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusOK
-			pollBody = `{"status":"COMPLETED"}`
+			pollBody = statusCompleted
 
 			dd, result, err := reconcileAndFetch()
 
@@ -912,7 +917,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("spec change detected while an async operation is in progress", func() {
 		It("clears the stale trackingId and re-submits to the aggregator", func() {
 			applyCode = http.StatusOK
-			applyBody = `{"status":"COMPLETED"}`
+			applyBody = statusCompleted
 
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -963,7 +968,7 @@ var _ = Describe("DatabaseDeclaration Controller — rate limiter", func() {
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 			Ownership:  mineOwnershipResolver("ns"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())

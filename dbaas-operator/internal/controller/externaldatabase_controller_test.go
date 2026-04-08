@@ -79,7 +79,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 		reconciler = &ExternalDatabaseReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fixture.recorder,
 			Ownership:  mineOwnershipResolver(ns),
 		}
@@ -989,7 +989,7 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		reconciler = &ExternalDatabaseReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fixture.recorder,
 		}
 	})
@@ -1096,7 +1096,7 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return "test-token", nil }),
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 

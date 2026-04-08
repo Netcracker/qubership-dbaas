@@ -164,7 +164,7 @@ var _ = Describe("NamespaceBinding Controller", func() {
 
 			// Binding should now be gone (finalizer removed → GC collected it).
 			err = k8sClient.Get(ctx, namespacedName, &dbaasv1.NamespaceBinding{})
-			Expect(client.IgnoreNotFound(err)).To(BeNil())
+			Expect(client.IgnoreNotFound(err)).To(Succeed())
 
 			// Cache must be cleared.
 			Expect(resolver.GetState(ns)).To(Equal(ownership.Unknown))
