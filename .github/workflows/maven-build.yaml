@@ -8,7 +8,7 @@ on:
 
 jobs:
   mvn:
-    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@e7c8933e41d7e732f6f1f77dab34441d093c5577 # v2.1.0
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@d81c8b5f645e19dc55dc4562bd183eceec29d943 # v2.4.0
     with:
       upload-artifact: true
       java-version: 21
