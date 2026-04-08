@@ -30,7 +30,7 @@ jobs:
           config: kind-config.yaml
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@v5
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
