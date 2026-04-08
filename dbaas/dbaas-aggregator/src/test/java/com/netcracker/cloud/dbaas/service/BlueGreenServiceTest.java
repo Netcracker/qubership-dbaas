@@ -17,7 +17,6 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgDomainRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgTrackRepository;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
 import com.netcracker.core.scheduler.po.task.TaskState;
 import jakarta.ws.rs.core.Response;
 import org.jetbrains.annotations.NotNull;
@@ -34,8 +33,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
-import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
-import static org.junit.Assert.*;
+import static com.netcracker.cloud.dbaas.service.DeletionService.MARKED_FOR_DROP;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -74,7 +74,9 @@ class BlueGreenServiceTest {
     @Mock
     BackupsDbaasRepository backupsDbaasRepository;
     @Mock
-    DatabaseDbaasRepository databaseDbaasRepository;
+    DeletionService deletionService;
+    @Mock
+    DbaaSHelper dbaaSHelper;
 
     BlueGreenService blueGreenService;
 
@@ -83,7 +85,7 @@ class BlueGreenServiceTest {
         blueGreenService = new BlueGreenService(backupsService, logicalDbDbaasRepository,
                 aggregatedDatabaseAdministrationService, bgNamespaceRepository, balancingRulesService,
                 databaseRolesService, bgDomainRepository, dBaaService, bgTrackRepository, processService, declarativeDbaasCreationService,
-                backupsDbaasRepository, databaseConfigurationCreationService);
+                backupsDbaasRepository, databaseConfigurationCreationService, deletionService, dbaaSHelper);
         blueGreenService.RETRY_DYNAMIC_RANGE_DELAY_MILLIS = 10;
         blueGreenService.RETRY_STATIC_DELAY_MILLIS = 10;
     }
@@ -671,10 +673,11 @@ class BlueGreenServiceTest {
         when(databaseRegistryDbaasRepository.findAllVersionedDatabaseRegistries(NS_2)).thenReturn(Collections.singletonList(dbRegistryVersioned));
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
 
-        blueGreenService.commit(bgStateRequest);
-        verify(dBaaService, times(0)).dropDatabasesAsync(eq(NS_1), any());
-        verify(dBaaService, times(1)).dropDatabasesAsync(eq(NS_2), argThat(argument -> argument.contains(dbRegistryVersioned)));
+        int orphanDatabasesCount = blueGreenService.commit(bgStateRequest);
+        verify(deletionService, times(0)).cleanupMarkedForDropRegistries(eq(NS_1));
+        verify(deletionService, times(1)).cleanupMarkedForDropRegistries(eq(NS_2));
         verify(bgTrackRepository, times(1)).deleteByNamespaceAndOperation(eq(NS_2), eq(WARMUP_OPERATION));
+        assertEquals(1, orphanDatabasesCount);
     }
 
     @Test
@@ -1052,7 +1055,7 @@ class BlueGreenServiceTest {
     }
 
     @Test
-    void testCommitDatabasesByNamespace() throws InterruptedException {
+    void testCommitDatabasesByNamespace() {
         DatabaseRegistry dbRegistryVersioned = createDatabaseRegistry(createClassifier("test", NAMESPACE), "postgresql", "adapter", "username", "dbName");
         dbRegistryVersioned.setId(UUID.randomUUID());
         SortedMap<String, Object> test = createClassifier("test", NAMESPACE);
@@ -1072,20 +1075,38 @@ class BlueGreenServiceTest {
         when(databaseRegistryDbaasRepository.findAllTransactionalDatabaseRegistries(NAMESPACE)).thenReturn(List.of(dbRegistryStaticObsolete, dbRegistryStaticActual));
 
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+        when(dbaaSHelper.isProductionMode()).thenReturn(false);
+
+        int deletedDatabasesCount = blueGreenService.commitDatabasesByNamespace(NAMESPACE);
+        verify(databaseRegistryDbaasRepository, times(1)).findAllVersionedDatabaseRegistries(NAMESPACE);
+        verify(databaseRegistryDbaasRepository, times(1)).findAllTransactionalDatabaseRegistries(NAMESPACE);
+        verify(deletionService, times(1)).markDatabasesAsOrphan(List.of(dbRegistryVersioned));
+        verify(deletionService, times(1)).markDatabasesAsOrphan(List.of(dbRegistryStaticObsolete));
+        verify(deletionService, times(1)).cleanupMarkedForDropRegistries(NAMESPACE);
+        verify(declarativeDbaasCreationService).deleteDeclarativeConfigurationByNamespace(NAMESPACE);
+        assertEquals(2, deletedDatabasesCount);
+    }
+
+    @Test
+    void testCommitDatabasesByNamespace_prodMode() {
+        DatabaseRegistry dbRegistryVersioned = createDatabaseRegistry(createClassifier("test", NAMESPACE), "postgresql", "adapter", "username", "dbName");
+        dbRegistryVersioned.setId(UUID.randomUUID());
+        when(databaseRegistryDbaasRepository.findAllVersionedDatabaseRegistries(NAMESPACE)).thenReturn(Collections.singletonList(dbRegistryVersioned));
+        when(databaseRegistryDbaasRepository.findAllTransactionalDatabaseRegistries(NAMESPACE)).thenReturn(List.of());
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+        when(dbaaSHelper.isProductionMode()).thenReturn(true);
 
         blueGreenService.commitDatabasesByNamespace(NAMESPACE);
-        Thread.sleep(1000);
-        Mockito.verify(databaseRegistryDbaasRepository, times(1)).findAllVersionedDatabaseRegistries(NAMESPACE);
-        Mockito.verify(databaseRegistryDbaasRepository, times(1)).findAllTransactionalDatabaseRegistries(NAMESPACE);
-        Mockito.verify(dBaaService, times(1)).markVersionedDatabasesAsOrphan(List.of(dbRegistryVersioned));
-        Mockito.verify(dBaaService, times(1)).markDatabasesAsOrphan(dbRegistryStaticObsolete);
-        Mockito.verify(dBaaService, times(1)).dropDatabasesAsync(NAMESPACE, List.of(dbRegistryVersioned, dbRegistryStaticObsolete));
         verify(declarativeDbaasCreationService).deleteDeclarativeConfigurationByNamespace(NAMESPACE);
+        verify(databaseRegistryDbaasRepository).findAllVersionedDatabaseRegistries(NAMESPACE);
+        verify(databaseRegistryDbaasRepository).findAllTransactionalDatabaseRegistries(NAMESPACE);
+        verify(deletionService).markDatabasesAsOrphan(List.of(dbRegistryVersioned));
+        verify(deletionService).markDatabasesAsOrphan(List.of());
+        verifyNoMoreInteractions(deletionService);
     }
 
-
     @Test
-    void testGetOrphanDatabases() {
+    void testDeleteOrphanDatabases() {
         DatabaseRegistry dbRegistryVersioned = createDatabaseRegistry(createClassifier("test", NAMESPACE), "postgresql", "adapter", "username", "dbName");
         UUID versionedId = UUID.randomUUID();
         dbRegistryVersioned.setId(versionedId);
@@ -1096,32 +1117,11 @@ class BlueGreenServiceTest {
         UUID staticId = UUID.randomUUID();
         dbRegistryStatic.setId(staticId);
         dbRegistryStatic.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
-        when(databaseDbaasRepository.findByDbState(DbState.DatabaseStateStatus.ORPHAN)).thenReturn(List.of(dbRegistryVersioned.getDatabase(), dbRegistryStatic.getDatabase()));
-        when(logicalDbDbaasRepository.getDatabaseDbaasRepository()).thenReturn(databaseDbaasRepository);
-
-        List<DatabaseRegistry> orphanDatabases = blueGreenService.getOrphanDatabases(List.of(NAMESPACE));
-        Assertions.assertEquals(2, orphanDatabases.size());
-    }
-
-    @Test
-    void testDeleteOrphanDatabases() throws InterruptedException {
-        DatabaseRegistry dbRegistryVersioned = createDatabaseRegistry(createClassifier("test", NAMESPACE), "postgresql", "adapter", "username", "dbName");
-        UUID versionedId = UUID.randomUUID();
-        dbRegistryVersioned.setId(versionedId);
-        dbRegistryVersioned.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
-        SortedMap<String, Object> test = createClassifier("test", NAMESPACE);
-        test.put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-        DatabaseRegistry dbRegistryStatic = createDatabaseRegistry(test, "postgresql", "adapter", "username", "dbName");
-        UUID staticId = UUID.randomUUID();
-        dbRegistryStatic.setId(staticId);
-        dbRegistryStatic.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
-        when(databaseDbaasRepository.findByDbState(DbState.DatabaseStateStatus.ORPHAN)).thenReturn(List.of(dbRegistryVersioned.getDatabase(), dbRegistryStatic.getDatabase()));
-        when(logicalDbDbaasRepository.getDatabaseDbaasRepository()).thenReturn(databaseDbaasRepository);
+        when(deletionService.getOrphanRegistries(eq(List.of(NAMESPACE)))).thenReturn(List.of(dbRegistryVersioned, dbRegistryStatic));
 
         List<DatabaseRegistry> orphanDatabases = blueGreenService.dropOrphanDatabases(List.of(NAMESPACE), true);
-        Thread.sleep(1000);
         Assertions.assertEquals(2, orphanDatabases.size());
-        Mockito.verify(dBaaService).dropDatabases(any(), any());
+        Mockito.verify(deletionService).cleanupOrphanRegistriesAsync(eq(NAMESPACE));
     }
 
     @Test
@@ -1136,12 +1136,12 @@ class BlueGreenServiceTest {
         UUID staticId = UUID.randomUUID();
         dbRegistryStatic.setId(staticId);
         dbRegistryStatic.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
-        when(databaseDbaasRepository.findByDbState(DbState.DatabaseStateStatus.ORPHAN)).thenReturn(List.of(dbRegistryVersioned.getDatabase(), dbRegistryStatic.getDatabase()));
-        when(logicalDbDbaasRepository.getDatabaseDbaasRepository()).thenReturn(databaseDbaasRepository);
+        when(deletionService.getOrphanRegistries(eq(List.of(NAMESPACE)))).thenReturn(List.of(dbRegistryVersioned, dbRegistryStatic));
 
         List<DatabaseRegistry> orphanDatabases = blueGreenService.dropOrphanDatabases(List.of(NAMESPACE), false);
         Assertions.assertEquals(2, orphanDatabases.size());
-        Mockito.verifyNoInteractions(dBaaService);
+        verify(deletionService).getOrphanRegistries(eq(List.of(NAMESPACE)));
+        verifyNoMoreInteractions(deletionService);
     }
 
     @Test
@@ -1205,21 +1205,6 @@ class BlueGreenServiceTest {
         bgNamespace.setVersion(version);
         return bgNamespace;
     }
-
-
-    @NotNull
-    private static ProcessInstanceImpl createTestProcessInstance(TaskState ts1, TaskState ts2) {
-        ProcessInstanceImpl processInstance = mock(ProcessInstanceImpl.class);
-        TaskInstanceImpl task1 = mock(TaskInstanceImpl.class);
-        when(task1.getState()).thenReturn(ts1);
-
-        TaskInstanceImpl task2 = mock(TaskInstanceImpl.class);
-        when(task2.getState()).thenReturn(ts2);
-
-        when(processInstance.getTasks()).thenReturn(List.of(task1, task2));
-        return processInstance;
-    }
-
 
     private SortedMap<String, Object> createClassifier(String testClassifierValue, String namespace) {
         SortedMap<String, Object> classifier = new TreeMap<>();

@@ -20,7 +20,7 @@ on:
 jobs:
   build:
     name: Build and test
-    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.3.0
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.4.0
     with:
       install-envtest: true
       envtest-version: latest

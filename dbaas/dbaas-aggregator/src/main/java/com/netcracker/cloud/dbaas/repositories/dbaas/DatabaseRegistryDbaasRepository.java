@@ -13,8 +13,6 @@ import java.util.UUID;
 public interface DatabaseRegistryDbaasRepository {
     List<DatabaseRegistry> findAnyLogDbRegistryTypeByNamespace(String namespace);
 
-    void deleteById(UUID databaseRegistryId);
-
     List<DatabaseRegistry> findExternalDatabaseRegistryByNamespace(String namespace);
 
     Optional<DatabaseRegistry> getDatabaseByClassifierAndType(Map<String, Object> classifier, String type);
@@ -25,8 +23,6 @@ public interface DatabaseRegistryDbaasRepository {
     List<DatabaseRegistry> findInternalDatabaseRegistryByNamespace(String namespace);
 
     void delete(DatabaseRegistry database);
-
-    void deleteOnlyTransactionalDatabaseRegistries(List<DatabaseRegistry> database);
 
     void deleteExternalDatabases(List<Database> databases, String namespace);
 
@@ -49,11 +45,7 @@ public interface DatabaseRegistryDbaasRepository {
     List<DatabaseRegistry> saveAll(List<DatabaseRegistry> databaseList);
 
 
-    List<DatabaseRegistry> findDatabasesByMicroserviceNameAndNamespace(String microserviceName, String namespace);
-
     void reloadDatabaseRegistryH2Cache(UUID databaseRegistryId);
-
-    void deleteOnlyTransactionalDatabaseRegistries(String namespace);
 
     List<DatabaseRegistry> findAllVersionedDatabaseRegistries(String namespace);
 

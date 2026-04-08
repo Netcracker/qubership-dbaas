@@ -26,7 +26,7 @@ public class StartupDatabaseCleaner {
     @Inject
     DbaaSHelper dbaaSHelper;
     @Inject
-    DBaaService dBaaService;
+    DeletionService deletionService;
 
     public void onStartup(@Observes StartupEvent event) {
         cleanProcessingDatabases();
@@ -55,7 +55,7 @@ public class StartupDatabaseCleaner {
                         }
                 ));
                 for (Map.Entry<String, List<DatabaseRegistry>> entry : namespaceDbs.entrySet()) {
-                    dBaaService.markForDrop(entry.getKey(), entry.getValue());
+                    deletionService.markRegistriesForDrop(entry.getKey(), entry.getValue());
                 }
             } else {
                 log.info("DbaaS in dev mode. Deleting PROCESSING databases from repository");

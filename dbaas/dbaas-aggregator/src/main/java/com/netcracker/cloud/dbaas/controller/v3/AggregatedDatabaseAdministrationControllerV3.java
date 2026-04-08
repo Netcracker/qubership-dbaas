@@ -1,7 +1,8 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
-import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
+import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.role.Role;
@@ -13,8 +14,10 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.security.validators.NamespaceValidator;
 import com.netcracker.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
 import com.netcracker.cloud.framework.contexts.tenant.BaseTenantProvider;
 import com.netcracker.cloud.framework.contexts.tenant.TenantContextObject;
@@ -59,7 +62,7 @@ import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministratio
         "   \"microserviceName\": \"product-catalog-manager\"" +
         "&#125;")
 @Produces(MediaType.APPLICATION_JSON)
-public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDatabaseAdministrationController {
+public class AggregatedDatabaseAdministrationControllerV3 extends AbstractController {
 
     @Inject
     AggregatedDatabaseAdministrationService aggregatedDatabaseAdministrationService;
@@ -70,9 +73,15 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     @Inject
     MonitoringService monitoringService;
     @Inject
-    PasswordEncryption encryption;
-    @Inject
     BlueGreenService blueGreenService;
+    @Inject
+    CompositeNamespaceService compositeNamespaceService;
+    @Inject
+    ResponseHelper responseHelper;
+    @Inject
+    DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
+    @Inject
+    DeletionService deletionService;
     @Inject
     NamespaceValidator namespaceValidator;
     @Inject
@@ -279,16 +288,13 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     @Operation(summary = "V3. External database registration",
             description = "This API supports registration in DBaaS for any external logical database.")
     @APIResponses({
-            @APIResponse(responseCode = "500", description = "Internal error"),
-            @APIResponse(responseCode = "200",
-                    description = "Successfully found database",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "201",
-                    description = "The database was added or updated successfully",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "401", description = ROLE_IS_NOT_ALLOWED, content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "403", description = "Namespace in classifier and path variable are not equal", content = @Content(schema = @Schema(implementation = String.class)))
+            @APIResponse(responseCode = "200", description = "Successfully found database", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "201", description = "The database was added or updated successfully", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
+            @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
+            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "Internal error", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/registration/externally_manageable")
     @PUT
@@ -324,7 +330,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                 return Response.ok(new ExternalDatabaseResponseV3(processedDb)).build();
             } else {
                 if (externalDatabaseRequest.getConnectionProperties().isEmpty()) {
-                    throw new EmptyConnectionPropertiesException();
+                    throw new ExternalDbEmptyConnectionPropertiesException();
                 }
                 existingDatabaseRegistry.setConnectionProperties(databaseRegistry.getConnectionProperties());
             }
@@ -341,7 +347,6 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
             @APIResponse(responseCode = "200", description = "Databases with the specified namespace were drop successfully", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "403", description = "Dbaas is working in PROD mode. Deleting logical databases is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
     })
-    @Override
     @Path("/deleteall")
     @DELETE
     @RolesAllowed(NAMESPACE_CLEANER)
@@ -356,11 +361,11 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
             Optional<BgNamespace> idleNamespace = domain.get().getNamespaces().stream().filter(o -> IDLE_STATE.equals(o.getState())).findFirst();
             idleNamespace.ifPresent(bgNamespace -> {
                         log.info("Dropping BG namespace with idle status: {}", bgNamespace.getNamespace());
-                        super.dropAllDatabasesInNamespace(bgNamespace.getNamespace(), deleteRules);
+                        cleanupNamespace(bgNamespace.getNamespace(), deleteRules);
                     }
             );
         }
-        return super.dropAllDatabasesInNamespace(namespace, deleteRules);
+        return cleanupNamespace(namespace, deleteRules);
     }
 
 
@@ -382,9 +387,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                                @PathParam(NAMESPACE_PARAMETER) String namespace,
                                                @Parameter(description = "The physical type of logical database. For example mongodb or postgresql", required = true)
                                                @PathParam("type") String type) {
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
+        assertNotProdMode();
         checkOriginService(classifierRequest);
         String supportedRole = databaseRolesService.getSupportedRoleFromRequest(classifierRequest, type, namespace);
         if (supportedRole == null || !supportedRole.equals(Role.ADMIN.toString())) {
@@ -400,15 +403,8 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                 throw new ForbiddenNamespaceException(namespace, databaseRegistry.getNamespace(),
                         Source.builder().pathVariable("namespace").build());
             }
-            if (databaseRegistry.isExternallyManageable()) {
-                dBaaService.dropExternalDatabase(databaseRegistry);
-            } else {
-                dBaaService.dropDatabase(databaseRegistry);
-                encryption.deletePassword(databaseRegistry.getDatabase());
-                databaseRegistryDbaasRepository.deleteById(databaseRegistry.getId());
-            }
+            deletionService.dropRegistrySafe(databaseRegistry);
             log.info("Database in namespace={} with classifier={} is dropped", namespace, databaseRegistry.getClassifier());
-
         }
         //should return ok if db not found
         return Response.ok().build();
@@ -442,5 +438,22 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
         } catch (TenantNotFoundException e) {
             throw new ForbiddenTenantIdException(idFromClassifier, "");
         }
+    }
+
+    private Response cleanupNamespace(String namespace, Boolean deleteRules) {
+        boolean namespaceInComposite = compositeNamespaceService.isNamespaceInComposite(namespace);
+
+        if (!namespaceInComposite && deletionService.checkNamespaceAlreadyDropped(namespace)) {
+            log.info("Namespace {} is empty, dropping is not needed", namespace);
+            return Response.ok(String.format("namespace %s doesn't contain any databases and namespace specific resources", namespace)).build();
+        }
+        assertNotProdMode();
+
+        DeletionService.CleanupResult cleanupResult = deletionService.cleanupNamespaceFullAsync(namespace, deleteRules == null || deleteRules);
+        return Response.ok(String.format("Successful '%s' namespace cleanup: " +
+                "namespace specific resources are deleted synchronously - success, " +
+                "%d databases are deleted synchronously - success, " +
+                "%d databases are marked for drop and asynchronous deletion is scheduled - success",
+                namespace, cleanupResult.databasesSyncDeletedCount(), cleanupResult.databasesAsyncDeletionScheduledCount())).build();
     }
 }

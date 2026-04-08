@@ -23,7 +23,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.junit.cloudcore</groupId>
             <artifactId>cloud-core-extension</artifactId>
-            <version>8.8.2</version>
+            <version>8.8.4</version>
             <scope>test</scope>
         </dependency>
 
@@ -101,7 +101,7 @@
         <dependency>
             <groupId>org.opensearch.client</groupId>
             <artifactId>opensearch-java</artifactId>
-            <version>3.7.0</version>
+            <version>3.8.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.httpcomponents.core5</groupId>
@@ -136,7 +136,7 @@
         <dependency>
             <groupId>com.clickhouse</groupId>
             <artifactId>clickhouse-jdbc</artifactId>
-            <version>0.9.7</version>
+            <version>0.9.8</version>
         </dependency>
         <dependency>
             <groupId>at.yawk.lz4</groupId>
@@ -168,7 +168,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>3.4.2</version>
+            <version>4.0.1</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>
