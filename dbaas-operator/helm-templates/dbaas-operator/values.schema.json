@@ -170,6 +170,17 @@
         true
       ]
     },
+    "LEADER_ELECT": {
+      "$id": "#/properties/LEADER_ELECT",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The LEADER_ELECT schema",
+      "description": "Enables leader election for the operator, required when running multiple replicas to ensure only one active instance processes resources at a time.",
+      "default": true,
+      "examples": [
+        true,
+        false
+      ]
+    },
     "DBAAS_OPERATOR_ENABLED": {
       "$id": "#/properties/DBAAS_OPERATOR_ENABLED",
       "$ref": "#/definitions/booleanOrString",

@@ -18,4 +18,5 @@ restrictedEnvironment: false
 # ============== SERVICE VARIABLES ============================
 LOG_LEVEL: "info"
 K8S_EVENTS_ENABLED: false
+LEADER_ELECT: true
 

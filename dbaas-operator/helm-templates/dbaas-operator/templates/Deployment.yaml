@@ -73,7 +73,9 @@ spec:
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
+            {{- if .Values.LEADER_ELECT }}
             - --leader-elect
+            {{- end }}
           env:
             - name: ALPHA_APIS_ENABLED
               value: "false"
