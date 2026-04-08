@@ -43,9 +43,9 @@ import (
 )
 
 const (
-	statusCompleted      = `{"status":"COMPLETED"}`
-	testToken            = "test-token"
-	body401Unauthorized  = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+	statusCompleted     = `{"status":"COMPLETED"}`
+	testToken           = "test-token"
+	body401Unauthorized = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 )
 
 var _ = Describe("DatabaseDeclaration Controller", func() {

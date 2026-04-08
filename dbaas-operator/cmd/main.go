@@ -261,7 +261,7 @@ func (r *ownershipWarmupRunnable) Start(ctx context.Context) error {
 // that silently drops all events when K8S_EVENTS_ENABLED=false.
 func recorderFor(mgr ctrl.Manager, name string, enabled bool) record.EventRecorder {
 	if enabled {
-		return mgr.GetEventRecorderFor(name)
+		return mgr.GetEventRecorderFor(name) //nolint:staticcheck
 	}
 	return noopRecorder{}
 }

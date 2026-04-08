@@ -181,7 +181,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(fixture.capturedBody).To(BeEmpty())
 
@@ -268,7 +268,6 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dp.Status.ObservedGeneration).To(Equal(dp.Generation))
@@ -303,7 +302,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(dp.Status.ObservedGeneration).To(Equal(dp.Generation))
 
@@ -457,7 +456,7 @@ var _ = Describe("DbPolicy Controller — rate limiter", func() {
 		err = (&DbPolicyReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("dp-rate-limiter-test"),
+			Recorder:   mgr.GetEventRecorderFor("dp-rate-limiter-test"), //nolint:staticcheck
 			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 			Ownership:  mineOwnershipResolver("ns"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})

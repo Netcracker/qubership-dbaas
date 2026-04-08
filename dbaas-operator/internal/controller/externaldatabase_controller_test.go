@@ -169,7 +169,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 
 			edb, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 		})
 	})
@@ -186,7 +186,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			// Aggregator must not be called.
 			Expect(fixture.capturedBody).To(BeEmpty())
@@ -223,7 +222,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -255,7 +253,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -694,7 +691,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(fixture.capturedBody).NotTo(BeEmpty())
 
 			// Verify the credentials were sent to the aggregator.
@@ -738,7 +735,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -804,7 +800,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -838,7 +833,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			edb, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(edb.Status.ObservedGeneration).To(Equal(edb.Generation))
@@ -1024,7 +1018,6 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 				func() *dbaasv1.ExternalDatabase { return &dbaasv1.ExternalDatabase{} })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(fixture.capturedBody).To(BeEmpty())
 		})
 	})
@@ -1095,7 +1088,7 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		err = (&ExternalDatabaseReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"),
+			Recorder:   mgr.GetEventRecorderFor("edb-rate-limiter-test"), //nolint:staticcheck
 			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())

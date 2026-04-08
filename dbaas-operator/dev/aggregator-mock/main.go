@@ -274,7 +274,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 		// 2xx rule: honour the exact code.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(rule.HTTPCode)
-		writeJSON(w, map[string]interface{}{
+		writeJSON(w, map[string]any{
 			"status":     "COMPLETED",
 			"conditions": []map[string]string{{"type": "Validated", "state": "COMPLETED"}},
 		})
@@ -290,7 +290,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 			msName, trackingID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		writeJSON(w, map[string]interface{}{
+		writeJSON(w, map[string]any{
 			"status":     "IN_PROGRESS",
 			"trackingId": trackingID,
 			"conditions": []map[string]string{
@@ -305,7 +305,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 	log.Printf("  → apply config  subKind=%q microserviceName=%q → 200 COMPLETED (default)", req.SubKind, msName)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	writeJSON(w, map[string]interface{}{
+	writeJSON(w, map[string]any{
 		"status":     "COMPLETED",
 		"conditions": []map[string]string{{"type": "Validated", "state": "COMPLETED"}},
 	})
@@ -346,7 +346,7 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 			dbCreatedCondition["message"] = "Failed"
 		}
 
-		writeJSON(w, map[string]interface{}{
+		writeJSON(w, map[string]any{
 			"status":     status,
 			"trackingId": trackingID,
 			"conditions": []map[string]string{
@@ -361,7 +361,7 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 	log.Printf("  → operation status  trackingId=%q → COMPLETED (default)", trackingID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	writeJSON(w, map[string]interface{}{
+	writeJSON(w, map[string]any{
 		"status":     "COMPLETED",
 		"trackingId": trackingID,
 		"conditions": []map[string]string{
