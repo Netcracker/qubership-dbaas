@@ -10,12 +10,15 @@ TAG: ${DBAAS_OPERATOR_TAG}
 # ============== Namespace ============================
 NAMESPACE: ${DBAAS_NAMESPACE}
 
-# ============== Service ============================
-WATCH_NAMESPACES: ${DBAAS_NAMESPACE}
-
 # ============== RBAC ============================
-RESTRICTED_ENVIRONMENT: false
+restrictedEnvironment: false
 
 # ============== Operator Mode ============================
 MONITORING_ENABLED: false
 DBAAS_OPERATOR_ENABLED: true
+PAAS_PLATFORM: KUBERNETES
+
+# ============== Service ============================
+LOG_LEVEL: info
+K8S_EVENTS_ENABLED: true
+LEADER_ELECT: true
