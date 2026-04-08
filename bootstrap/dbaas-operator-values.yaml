@@ -15,7 +15,7 @@ restrictedEnvironment: false
 
 # ============== Operator Mode ============================
 MONITORING_ENABLED: false
-DBAAS_OPERATOR_ENABLED: true
+DBAAS_OPERATOR_ENABLED: ${DBAAS_OPERATOR_ENABLED}
 PAAS_PLATFORM: KUBERNETES
 
 # ============== Service ============================

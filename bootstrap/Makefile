@@ -233,6 +233,7 @@ wait-dbaas-aggregator:
 # Install DBaaS Operator
 .PHONY: install-dbaas-operator
 install-dbaas-operator:
+ifeq ($(DBAAS_OPERATOR_ENABLED),true)
 	@echo "$(BLUE)=== DBaaS Operator Installation ===$(NC)"
 	@echo "$(CYAN)--- BEGIN: Installing DBaaS Operator...$(NC)"
 	@envsubst < $(DBAAS_OPERATOR_VALUES_FILE) | helm upgrade --install -n $(DBAAS_NAMESPACE) $(CREATE_NAMESPACE_OPTION) \
@@ -240,10 +241,14 @@ install-dbaas-operator:
 		(echo "$(RED)Error: DBaaS Operator installation failed$(NC)" && echo "$(CYAN)Please check the helm output above for details$(NC)" && exit 1)
 	@echo "$(GREEN)--- END: DBaaS Operator installation completed$(NC)"
 	@echo ""
+else
+	@echo "$(CYAN)--- Skipping DBaaS Operator installation (DBAAS_OPERATOR_ENABLED=false)$(NC)"
+endif
 
 # Wait for DBaaS Operator
 .PHONY: wait-dbaas-operator
 wait-dbaas-operator:
+ifeq ($(DBAAS_OPERATOR_ENABLED),true)
 	@echo "$(BLUE)=== Wait for DBaaS Operator ===$(NC)"
 	@echo "$(CYAN)--- BEGIN: Waiting for dbaas-operator to be ready (timeout: 5 minutes)...$(NC)"
 	@TIMEOUT=300; START_TIME=$$(date +%s); \
@@ -267,6 +272,9 @@ wait-dbaas-operator:
 	done
 	@echo "$(GREEN)--- END: DBaaS Operator is ready$(NC)"
 	@echo ""
+else
+	@echo "$(CYAN)--- Skipping DBaaS Operator wait (DBAAS_OPERATOR_ENABLED=false)$(NC)"
+endif
 
 # Install Patroni Services
 .PHONY: install-patroni-services
