@@ -193,6 +193,295 @@
         "warn"
       ],
       "internal": true
+    },
+    "ARTIFACT_DESCRIPTOR_VERSION": {
+      "$id": "#/properties/ARTIFACT_DESCRIPTOR_VERSION",
+      "type": "string",
+      "title": "The ARTIFACT_DESCRIPTOR_VERSION schema",
+      "description": "Artifact descriptor version which is installed",
+      "internal": true
+    },
+    "DEPLOYMENT_STRATEGY_TYPE": {
+      "$id": "#/properties/DEPLOYMENT_STRATEGY_TYPE",
+      "type": "string",
+      "title": "The DEPLOYMENT_STRATEGY_TYPE schema",
+      "description": "Specify Deployment Strategy type for deploying service",
+      "enum": [
+        "recreate",
+        "best_effort_controlled_rollout",
+        "ramped_slow_rollout",
+        "custom_rollout"
+      ],
+      "examples": [
+        "recreate",
+        "best_effort_controlled_rollout",
+        "ramped_slow_rollout",
+        "custom_rollout"
+      ]
+    },
+    "DEPLOYMENT_STRATEGY_MAXSURGE": {
+      "$id": "#/properties/DEPLOYMENT_STRATEGY_MAXSURGE",
+      "type": "string",
+      "title": "The DEPLOYMENT_STRATEGY_MAXSURGE schema",
+      "description": "Specify .spec.strategy.rollingUpdate.maxSurge parameter",
+      "examples": [
+        "50%",
+        "2"
+      ]
+    },
+    "DEPLOYMENT_STRATEGY_MAXUNAVAILABLE": {
+      "$id": "#/properties/DEPLOYMENT_STRATEGY_MAXUNAVAILABLE",
+      "type": "string",
+      "title": "The DEPLOYMENT_STRATEGY_MAXUNAVAILABLE schema",
+      "description": "Specify .spec.strategy.rollingUpdate.maxUnavailable parameter",
+      "examples": [
+        "50%",
+        "2"
+      ]
+    },
+    "MEMORY_REQUEST": {
+      "$id": "#/properties/MEMORY_REQUEST",
+      "type": "string",
+      "title": "The MEMORY_REQUEST schema",
+      "description": "Defines minimum amount of memory the container will use to start",
+      "examples": [
+        "256Mi"
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "MONITORING_ENABLED": {
+      "$id": "#/properties/MONITORING_ENABLED",
+      "type": "boolean",
+      "title": "The MONITORING_ENABLED schema",
+      "description": "Set to true to import dashboards to Grafana and configure integration with Prometheus. Requires Platform System Monitor CRDs to be deployed to target k8s/openshift cluster",
+      "examples": [
+        true,
+        false
+      ]
+    },
+    "HPA_ENABLED": {
+      "$id": "#/properties/HPA_ENABLED",
+      "type": "boolean",
+      "title": "The HPA_ENABLED schema",
+      "description": "Defines whether horizontal autoscaling enabled for microservice",
+      "examples": [
+        true,
+        false
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_MIN_REPLICAS": {
+      "$id": "#/properties/HPA_MIN_REPLICAS",
+      "type": "integer",
+      "title": "The HPA_MIN_REPLICAS schema",
+      "description": "Defines the lower limit for the number of replicas to which the autoscaler can scale down",
+      "examples": [
+        2
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_MAX_REPLICAS": {
+      "$id": "#/properties/HPA_MAX_REPLICAS",
+      "type": "integer",
+      "title": "The HPA_MAX_REPLICAS schema",
+      "description": "Defines the upper limit for the number of replicas to which the autoscaler can scale up. It cannot be less that HPA_MIN_REPLICAS",
+      "examples": [
+        5
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT": {
+      "$id": "#/properties/HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT",
+      "type": "integer",
+      "title": "The HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT schema",
+      "description": "Target average CPU utilization for horizontal pod autoscaling",
+      "examples": [
+        75
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS",
+      "type": "integer",
+      "title": "The HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS schema",
+      "description": "Defines behavior.scaleUp.stabilizationWindowSeconds property in HPA resource",
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_UP_SELECT_POLICY": {
+      "$id": "#/properties/HPA_SCALING_UP_SELECT_POLICY",
+      "type": "string",
+      "title": "The HPA_SCALING_UP_SELECT_POLICY schema",
+      "description": "Defines behavior.scaleUp.selectPolicy property in HPA resource. Allowed values are: Min, Max, Disabled",
+      "enum": [
+        "Min",
+        "Max",
+        "Disabled"
+      ],
+      "examples": [
+        "Min",
+        "Max",
+        "Disabled"
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_UP_PODS_VALUE": {
+      "$id": "#/properties/HPA_SCALING_UP_PODS_VALUE",
+      "type": "integer",
+      "title": "The HPA_SCALING_UP_PODS_VALUE schema",
+      "description": "Defines behavior.scaleUp.policies[].value property in HPA resource for Pods type",
+      "examples": [
+        1
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_UP_PODS_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_UP_PODS_PERIOD_SECONDS",
+      "type": "integer",
+      "title": "The HPA_SCALING_UP_PODS_PERIOD_SECONDS schema",
+      "description": "Defines behavior.scaleUp.policies[].periodSeconds property in HPA resource for Pods type",
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_UP_PERCENT_VALUE": {
+      "$id": "#/properties/HPA_SCALING_UP_PERCENT_VALUE",
+      "type": "integer",
+      "title": "The HPA_SCALING_UP_PERCENT_VALUE schema",
+      "description": "Defines behavior.scaleUp.policies[].value property in HPA resource for Percent type",
+      "examples": [
+        100
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_UP_PERCENT_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_UP_PERCENT_PERIOD_SECONDS",
+      "type": "integer",
+      "title": "The HPA_SCALING_UP_PERCENT_PERIOD_SECONDS schema",
+      "description": "Defines behavior.scaleUp.policies[].periodSeconds property in HPA resource for Percent type",
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS",
+      "type": "integer",
+      "title": "The HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS schema",
+      "description": "Defines behavior.scaleDown.stabilizationWindowSeconds property in HPA resource",
+      "examples": [
+        300
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_DOWN_SELECT_POLICY": {
+      "$id": "#/properties/HPA_SCALING_DOWN_SELECT_POLICY",
+      "type": "string",
+      "title": "The HPA_SCALING_DOWN_SELECT_POLICY schema",
+      "description": "Defines behavior.scaleDown.selectPolicy property in HPA resource. Allowed values are: Min, Max, Disabled",
+      "enum": [
+        "Min",
+        "Max",
+        "Disabled"
+      ],
+      "examples": [
+        "Min",
+        "Max",
+        "Disabled"
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_DOWN_PODS_VALUE": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PODS_VALUE",
+      "type": "integer",
+      "title": "The HPA_SCALING_DOWN_PODS_VALUE schema",
+      "description": "Defines behavior.scaleDown.policies[].value property in HPA resource for Pods type",
+      "examples": [
+        1
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_DOWN_PODS_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PODS_PERIOD_SECONDS",
+      "type": "integer",
+      "title": "The HPA_SCALING_DOWN_PODS_PERIOD_SECONDS schema",
+      "description": "Defines behavior.scaleDown.policies[].periodSeconds property in HPA resource for Pods type",
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_DOWN_PERCENT_VALUE": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PERCENT_VALUE",
+      "type": "integer",
+      "title": "The HPA_SCALING_DOWN_PERCENT_VALUE schema",
+      "description": "Defines behavior.scaleDown.policies[].value property in HPA resource for Percent type",
+      "examples": [
+        100
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS",
+      "type": "integer",
+      "title": "The HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS schema",
+      "description": "Defines behavior.scaleDown.policies[].periodSeconds property in HPA resource for Percent type",
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "envSpecific": true
+    },
+    "APPLICATION_NAME": {
+      "$id": "#/properties/APPLICATION_NAME",
+      "type": "string",
+      "title": "The APPLICATION_NAME schema",
+      "description": "Defines application name",
+      "examples": [
+        "MyApplication"
+      ],
+      "internal": true
+    },
+    "MANAGED_BY": {
+      "$id": "#/properties/MANAGED_BY",
+      "type": "string",
+      "title": "The MANAGED_BY schema",
+      "description": "The tool being used to manage the operation of an application",
+      "examples": [
+        "helm",
+        "operator",
+        "argocd"
+      ],
+      "internal": true
+    },
+    "DEPLOYMENT_SESSION_ID": {
+      "$id": "#/properties/DEPLOYMENT_SESSION_ID",
+      "type": "string",
+      "title": "The DEPLOYMENT_SESSION_ID schema",
+      "description": "Unique identifier of deployment session used to track e2e deploy activity",
+      "examples": [
+        "516736bf-d4b7-4900-beab-9599573ac8a8"
+      ],
+      "internal": true
     }
   },
   "additionalProperties": true
