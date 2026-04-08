@@ -59,7 +59,7 @@ type ExternalDatabaseReconciler struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	requestID := uuid.New().String()
-	ctx = ctxmanager.InitContext(ctx, map[string]interface{}{
+	ctx = ctxmanager.InitContext(ctx, map[string]any{
 		xRequestID: requestID,
 	})
 

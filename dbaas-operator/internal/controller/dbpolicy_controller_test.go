@@ -326,7 +326,7 @@ var _ = Describe("DbPolicy Controller", func() {
 	Context("HTTP 401 — operator credentials misconfigured", func() {
 		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, requeues", func() {
 			fixture.statusCode = http.StatusUnauthorized
-			fixture.body = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+			fixture.body = body401Unauthorized
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),

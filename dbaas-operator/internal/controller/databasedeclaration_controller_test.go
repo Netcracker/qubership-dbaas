@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -44,8 +43,9 @@ import (
 )
 
 const (
-	statusCompleted = `{"status":"COMPLETED"}`
-	testToken       = "test-token"
+	statusCompleted      = `{"status":"COMPLETED"}`
+	testToken            = "test-token"
+	body401Unauthorized  = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 )
 
 var _ = Describe("DatabaseDeclaration Controller", func() {
@@ -201,7 +201,6 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
@@ -237,7 +236,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty())
 
@@ -268,7 +267,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty())
 
@@ -308,7 +307,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			dd, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 		})
 	})
@@ -325,7 +324,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
 
@@ -397,7 +396,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
@@ -477,7 +476,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
@@ -515,7 +514,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
@@ -768,7 +767,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 
@@ -789,7 +788,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("SUBMIT — HTTP 401 unauthorized", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			applyCode = http.StatusUnauthorized
-			applyBody = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
+			applyBody = body401Unauthorized
 			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
@@ -967,7 +966,7 @@ var _ = Describe("DatabaseDeclaration Controller — rate limiter", func() {
 		err = (&DatabaseDeclarationReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"),
+			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"), // nolint:staticcheck
 			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 			Ownership:  mineOwnershipResolver("ns"),
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
@@ -1038,7 +1037,7 @@ var _ = Describe("pollConditionText helpers", func() {
 				Conditions: []aggregatorclient.AggregatorCondition{},
 			}
 			Expect(pollFailureReason(resp)).To(ContainSubstring(
-				fmt.Sprintf("%s", aggregatorclient.TaskStateFailed)))
+				string(aggregatorclient.TaskStateFailed)))
 		})
 	})
 
