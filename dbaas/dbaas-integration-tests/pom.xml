@@ -168,7 +168,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>3.4.3</version>
+            <version>4.0.1</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>

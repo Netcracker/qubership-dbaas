@@ -128,7 +128,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>3.4.3</version>
+            <version>4.0.1</version>
         </dependency>
         <dependency>
             <groupId>com.netcracker.core</groupId>
@@ -205,7 +205,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.security.core.utils</groupId>
             <artifactId>k8s-utils</artifactId>
-            <version>2.4.3</version>
+            <version>3.0.1</version>
         </dependency>
 
         <dependency>
