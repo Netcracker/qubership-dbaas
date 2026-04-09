@@ -62,8 +62,6 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// ── Ownership check ───────────────────────────────────────────────────────
-	// See checkOwnership in helpers.go for the state/requeue semantics.
 	if owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DbPolicy"); err != nil {
 		return ctrl.Result{}, err
 	} else if !owned {

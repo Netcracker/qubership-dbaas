@@ -325,7 +325,6 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(result.RequeueAfter).To(BeZero())
 			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
 
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
@@ -396,7 +395,6 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
@@ -477,7 +475,6 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
@@ -514,7 +511,6 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
 			Expect(dd.Status.TrackingID).To(BeEmpty())

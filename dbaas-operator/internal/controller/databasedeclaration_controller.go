@@ -72,8 +72,6 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// ── Ownership check ───────────────────────────────────────────────────────
-	// See checkOwnership in helpers.go for the state/requeue semantics.
 	if owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "DatabaseDeclaration"); err != nil {
 		return ctrl.Result{}, err
 	} else if !owned {

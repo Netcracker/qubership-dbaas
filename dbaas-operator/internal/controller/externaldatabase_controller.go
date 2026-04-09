@@ -68,9 +68,7 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// ── Ownership check ───────────────────────────────────────────────────────
 	// Skip namespaces not owned by this operator instance.
-	// See checkOwnership in helpers.go for the state/requeue semantics.
 	if owned, result, err := checkOwnership(ctx, r.Ownership, edb.Namespace, edb.Name, "ExternalDatabase"); err != nil {
 		return ctrl.Result{}, err
 	} else if !owned {
