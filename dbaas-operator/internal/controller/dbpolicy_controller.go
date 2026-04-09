@@ -62,9 +62,11 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DbPolicy"); err != nil {
+	owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DbPolicy")
+	if err != nil {
 		return ctrl.Result{}, err
-	} else if !owned {
+	}
+	if !owned {
 		return result, nil
 	}
 

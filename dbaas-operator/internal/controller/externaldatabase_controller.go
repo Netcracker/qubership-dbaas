@@ -69,9 +69,11 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// Skip namespaces not owned by this operator instance.
-	if owned, result, err := checkOwnership(ctx, r.Ownership, edb.Namespace, edb.Name, "ExternalDatabase"); err != nil {
+	owned, result, err := checkOwnership(ctx, r.Ownership, edb.Namespace, edb.Name, "ExternalDatabase")
+	if err != nil {
 		return ctrl.Result{}, err
-	} else if !owned {
+	}
+	if !owned {
 		return result, nil
 	}
 

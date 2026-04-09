@@ -72,9 +72,11 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "DatabaseDeclaration"); err != nil {
+	owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "DatabaseDeclaration")
+	if err != nil {
 		return ctrl.Result{}, err
-	} else if !owned {
+	}
+	if !owned {
 		return result, nil
 	}
 
