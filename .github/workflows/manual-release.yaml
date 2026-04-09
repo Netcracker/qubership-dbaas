@@ -42,7 +42,7 @@ jobs:
       dry-run: ${{ inputs.dry-run }}
 
   go-build:
-    needs: create-tag
+    needs: [ create-tag, mvn-build ]
     uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.4.0
     with:
       install-envtest: true
