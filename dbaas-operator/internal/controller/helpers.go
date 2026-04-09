@@ -50,15 +50,20 @@ func requestIDFromContext(ctx context.Context) string {
 	return xrid.GetRequestId()
 }
 
+// State semantics and requeue strategy:
+//   Unknown  — transient; no cache entry (startup race or post-Forget).
+//              Requeue quickly so the CR is retried once the cache settles.
+//   Unbound  — live GET confirmed no NamespaceBinding exists.  Requeue at a
+//              long interval as a safety net: if the NamespaceBinding →
+//              workloads fan-out loses its trigger due to a transient LIST
+//              error, the periodic requeue here ensures the CR is eventually
+//              reconciled after the binding is created and SetOwner is called.
+//   Foreign  — binding belongs to another operator instance; no requeue.
+
 // checkOwnership checks whether namespace is owned by this operator instance.
 // Returns (true, {}, nil) when reconciliation should proceed.
 // Returns (false, result, nil) when the caller should return result immediately.
 // Returns (false, {}, err) on a hard lookup error.
-//
-// The three non-owned states produce different requeue strategies:
-//   - Unknown  — cache miss (startup race); requeue quickly.
-//   - Unbound  — no binding confirmed; requeue at the long safety-net interval.
-//   - Foreign  — belongs to another instance; no requeue.
 func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, namespace, name, kind string) (bool, ctrl.Result, error) {
 	mine, err := resolver.IsMyNamespace(ctx, namespace)
 	if err != nil {

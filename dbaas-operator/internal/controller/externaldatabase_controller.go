@@ -87,6 +87,9 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}()
 
 	// Mark as Processing while we work.
+	// Conditions are NOT cleared here — setCondition upserts each type in place,
+	// preserving LastTransitionTime when Status has not changed.
+	// This makes conditions durable API state across reconcile cycles.
 	edb.Status.Phase = dbaasv1.PhaseProcessing
 
 	// Validate that classifier.namespace, if set, matches the CR's own namespace.
