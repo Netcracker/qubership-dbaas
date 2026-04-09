@@ -110,7 +110,7 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 // reconcileSubmit handles the SUBMIT branch: pre-flight validation + POST /apply.
 func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
 	requestID := requestIDFromContext(ctx)
-	markProcessing(&dd.Status.Phase)
+	dd.Status.Phase = dbaasv1alpha1.PhaseProcessing
 
 	if msg := validateDatabaseDeclarationSpec(dd); msg != "" {
 		return r.invalidSpec(ctx, dd, msg)

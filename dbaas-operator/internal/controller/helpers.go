@@ -80,13 +80,6 @@ func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, 
 	}
 }
 
-// markProcessing sets the Processing phase without touching conditions.
-// Conditions are intentionally preserved across Processing transitions so that
-// LastTransitionTime reflects only meaningful status changes.
-func markProcessing[P ~string](phase *P) {
-	*phase = P("Processing")
-}
-
 // setCondition upserts a metav1.Condition in the given slice.
 // LastTransitionTime is preserved when Status is unchanged, per Kubernetes API
 // conventions. A change in Reason or Message at the same Status does not reset

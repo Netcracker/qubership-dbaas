@@ -87,7 +87,7 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}()
 
 	// Mark as Processing while we work.
-	markProcessing(&edb.Status.Phase)
+	edb.Status.Phase = dbaasv1.PhaseProcessing
 
 	// Validate that classifier.namespace, if set, matches the CR's own namespace.
 	// A mismatch is a permanent misconfiguration — no retry.

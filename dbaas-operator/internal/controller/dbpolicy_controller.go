@@ -79,7 +79,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	}()
 
 	// Mark as Processing while we work.
-	markProcessing(&dp.Status.Phase)
+	dp.Status.Phase = dbaasv1alpha1.PhaseProcessing
 
 	// ── Pre-flight validation ─────────────────────────────────────────────────
 	// Field-level constraints (microserviceName, services[].name/roles, policy[].type/defaultRole)
