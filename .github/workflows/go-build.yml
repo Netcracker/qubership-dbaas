@@ -31,7 +31,7 @@ on:
 jobs:
   build:
     name: Build and test
-    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.4.0
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.4.1
     with:
       sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
       install-envtest: true
