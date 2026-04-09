@@ -50,6 +50,11 @@ func requestIDFromContext(ctx context.Context) string {
 	return xrid.GetRequestId()
 }
 
+// checkOwnership checks whether namespace is owned by this operator instance.
+// Returns (true, {}, nil) when reconciliation should proceed.
+// Returns (false, result, nil) when the caller should return result immediately.
+// Returns (false, {}, err) on a hard lookup error.
+//
 // State semantics and requeue strategy:
 //   Unknown  — transient; no cache entry (startup race or post-Forget).
 //              Requeue quickly so the CR is retried once the cache settles.
@@ -59,11 +64,6 @@ func requestIDFromContext(ctx context.Context) string {
 //              error, the periodic requeue here ensures the CR is eventually
 //              reconciled after the binding is created and SetOwner is called.
 //   Foreign  — binding belongs to another operator instance; no requeue.
-
-// checkOwnership checks whether namespace is owned by this operator instance.
-// Returns (true, {}, nil) when reconciliation should proceed.
-// Returns (false, result, nil) when the caller should return result immediately.
-// Returns (false, {}, err) on a hard lookup error.
 func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, namespace, name, kind string) (bool, ctrl.Result, error) {
 	mine, err := resolver.IsMyNamespace(ctx, namespace)
 	if err != nil {
