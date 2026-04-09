@@ -24,15 +24,15 @@
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
-        <quarkus.platform.version>3.27.2</quarkus.platform.version>
-        <qs.quarkus.core.version>9.0.1</qs.quarkus.core.version>
+        <quarkus.platform.version>3.27.3</quarkus.platform.version>
+        <qs.quarkus.core.version>9.1.0</qs.quarkus.core.version>
 
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.5</surefire-plugin.version>
         <jacoco.plugin.version>0.8.14</jacoco.plugin.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
-        <jackson-bom.version>2.20.2</jackson-bom.version>
-        <lombok.version>1.18.42</lombok.version>
+        <jackson-bom.version>2.21.2</jackson-bom.version>
+        <lombok.version>1.18.44</lombok.version>
         <junit.version>6.0.3</junit.version>
         <jaxb.version>4.0.6</jaxb.version>
         <sonar.coverage.jacoco.xmlReportPaths>
