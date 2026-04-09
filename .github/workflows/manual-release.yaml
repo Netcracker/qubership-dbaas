@@ -41,8 +41,19 @@ jobs:
       java-version: 21
       dry-run: ${{ inputs.dry-run }}
 
+  go-build:
+    needs: create-tag
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.4.0
+    with:
+      install-envtest: true
+      envtest-version: latest
+      docker-config-file: 'docker-go-dev-config.json'
+      ref: "refs/tags/v${{ inputs.version }}"
+      dry-run: ${{ inputs.dry-run }}
+    secrets: inherit
+
   cleanup-on-dry-run:
-    needs: mvn-build
+    needs: [ mvn-build, go-build ]
     if: ${{ inputs.dry-run }}
     runs-on: ubuntu-latest
     steps:
@@ -54,7 +65,7 @@ jobs:
           delete-tag: true
 
   cleanup-on-failure:
-    needs: [create-tag, mvn-build]
+    needs: [ create-tag, mvn-build, go-build ]
     if: ${{ failure() && needs.create-tag.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -66,7 +77,7 @@ jobs:
           delete-tag: true
 
   github-release:
-    needs: [ mvn-build ]
+    needs: [ mvn-build, go-build ]
     if: ${{ !inputs.dry-run }}
     uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v2.2.0
     with:
