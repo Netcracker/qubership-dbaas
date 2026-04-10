@@ -12,7 +12,7 @@ spec:
     listKind: ExternalDatabaseList
     plural: externaldatabases
     shortNames:
-    - edb
+    - dbedb
     singular: externaldatabase
   scope: Namespaced
   versions:

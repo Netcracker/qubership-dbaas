@@ -12,7 +12,7 @@ spec:
     listKind: NamespaceBindingList
     plural: namespacebindings
     shortNames:
-    - nb
+    - dbnb
     singular: namespacebinding
   scope: Namespaced
   versions:

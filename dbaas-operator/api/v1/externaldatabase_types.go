@@ -123,7 +123,7 @@ type ExternalDatabaseStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=externaldatabases,singular=externaldatabase,shortName=edb
+// +kubebuilder:resource:scope=Namespaced,path=externaldatabases,singular=externaldatabase,shortName=dbedb
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="DbName",type="string",JSONPath=".spec.dbName"

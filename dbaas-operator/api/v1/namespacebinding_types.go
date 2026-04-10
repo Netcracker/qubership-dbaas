@@ -42,7 +42,7 @@ type NamespaceBindingSpec struct {
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Namespaced,path=namespacebindings,singular=namespacebinding,shortName=nb
+// +kubebuilder:resource:scope=Namespaced,path=namespacebindings,singular=namespacebinding,shortName=dbnb
 // +kubebuilder:printcolumn:name="OperatorNamespace",type=string,JSONPath=".spec.operatorNamespace"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'binding'",message="NamespaceBinding name must be 'binding'"
