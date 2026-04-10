@@ -231,7 +231,7 @@ func markPermanentFailure[P ~string](
 
 func patchStatusOnExit[T interface {
 	client.Object
-	interface{ SetObservedGeneration(int64) }
+	SetObservedGeneration(int64)
 }](
 	ctx context.Context,
 	statusWriter client.StatusWriter,
@@ -253,7 +253,7 @@ func patchStatusOnExit[T interface {
 
 func setObservedGeneration[T interface {
 	client.Object
-	interface{ SetObservedGeneration(int64) }
+	SetObservedGeneration(int64)
 }](obj T) {
 	obj.SetObservedGeneration(obj.GetGeneration())
 }

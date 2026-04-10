@@ -129,7 +129,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 
 	if resp.TrackingID != "" {
 		// HTTP 202 Accepted — async operation started.
-		log.Infof("database provisioning started asynchronously. trackingId = %v, microserviceName = %v", resp.TrackingID, dd.Spec.Classifier.MicroserviceName)
+		log.InfoC(ctx, "database provisioning started asynchronously. trackingId = %v, microserviceName = %v", resp.TrackingID, dd.Spec.Classifier.MicroserviceName)
 		markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s, requestId=%s)",
@@ -138,7 +138,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	}
 
 	// HTTP 200 OK — synchronous completion.
-	log.Infof("database provisioned synchronously. microserviceName = %v", dd.Spec.Classifier.MicroserviceName)
+	log.InfoC(ctx, "database provisioned synchronously. microserviceName = %v", dd.Spec.Classifier.MicroserviceName)
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 		"database provisioned synchronously (microserviceName=%s)",
@@ -247,17 +247,17 @@ func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) stri
 		return "spec: lazy=true is prohibited when initialInstantiation.approach=clone"
 	}
 
-	if dd.Spec.InitialInstantiation != nil &&
-		dd.Spec.InitialInstantiation.Approach == "clone" &&
-		dd.Spec.InitialInstantiation.SourceClassifier == nil {
-		return "spec: initialInstantiation.sourceClassifier is required when approach=clone"
-	}
+	if dd.Spec.InitialInstantiation != nil {
+		if dd.Spec.InitialInstantiation.Approach == "clone" &&
+			dd.Spec.InitialInstantiation.SourceClassifier == nil {
+			return "spec: initialInstantiation.sourceClassifier is required when approach=clone"
+		}
 
-	if dd.Spec.InitialInstantiation != nil &&
-		dd.Spec.InitialInstantiation.SourceClassifier != nil &&
-		dd.Spec.InitialInstantiation.SourceClassifier.MicroserviceName !=
-			dd.Spec.Classifier.MicroserviceName {
-		return "spec: initialInstantiation.sourceClassifier.microserviceName must match classifier.microserviceName"
+		if dd.Spec.InitialInstantiation.SourceClassifier != nil &&
+			dd.Spec.InitialInstantiation.SourceClassifier.MicroserviceName !=
+				dd.Spec.Classifier.MicroserviceName {
+			return "spec: initialInstantiation.sourceClassifier.microserviceName must match classifier.microserviceName"
+		}
 	}
 
 	return ""

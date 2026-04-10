@@ -16,7 +16,10 @@ limitations under the License.
 
 package client
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
 
 // ─── Declarative API ──────────────────────────────────────────────────────────
 
@@ -116,7 +119,7 @@ func (e *AggregatorError) UserMessage() string {
 // it is NOT a spec error, so the controller retries (BackingOff) rather than
 // setting InvalidConfiguration.
 func (e *AggregatorError) IsAuthError() bool {
-	return e.StatusCode == 401
+	return e.StatusCode == http.StatusUnauthorized
 }
 
 // IsSpecRejection returns true when the aggregator explicitly rejected the request
@@ -133,7 +136,7 @@ func (e *AggregatorError) IsAuthError() bool {
 // 401 is handled separately by IsAuthError.
 func (e *AggregatorError) IsSpecRejection() bool {
 	switch e.StatusCode {
-	case 400, 403, 409, 410, 422:
+	case http.StatusBadRequest, http.StatusForbidden, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity:
 		return true
 	}
 	return false
