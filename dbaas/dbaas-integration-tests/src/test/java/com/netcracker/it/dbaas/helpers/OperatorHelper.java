@@ -13,8 +13,10 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.netcracker.it.dbaas.test.AbstractIT.getPropertyOrEnv;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
 public class OperatorHelper {
@@ -23,9 +25,7 @@ public class OperatorHelper {
 
     public static final String CR_NAMESPACE_BINDING_NAME = "binding";
     public static final String TEST_ID = "dbaas-autotest";
-    public static final String NAMESPACE = "dbaas-dev";
     public static final Pattern NAMESPACE_PATTERN = Pattern.compile("^operator-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-
 
     public static final String PHASE_SUCCEEDED = "Succeeded";
     public static final String PHASE_BACKING_OFF = "BackingOff";
@@ -38,6 +38,8 @@ public class OperatorHelper {
     public static final String REASON_AGGREGATOR_REJECTED = "AggregatorRejected";
     public static final String REASON_SECRET_ERROR = "SecretError";
     public static final String REASON_INVALID_SPEC = "InvalidSpec";
+
+    public static String NAMESPACE;
 
     public static final CustomResourceDefinitionContext CRD_EXTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
@@ -54,6 +56,11 @@ public class OperatorHelper {
             .withScope("Namespaced")
             .build();
 
+    public static String getTestNamespace() {
+        String namespace = getPropertyOrEnv("clouds.cloud.namespaces.namespace");
+        assumeTrue(namespace != null && !namespace.isBlank(), "Failed to get 'clouds.cloud.namespaces.namespace' property");
+        return namespace;
+    }
 
     public static GenericKubernetesResource buildNamespaceBindingCR() {
         return buildNamespaceBindingCR("binding", NAMESPACE, NAMESPACE);
@@ -67,7 +74,7 @@ public class OperatorHelper {
         ObjectMeta meta = new ObjectMeta();
         meta.setName(crName);
         meta.setNamespace(namespace);
-        meta.setLabels(Map.of(TEST_ID, TEST_ID));
+        meta.getLabels().put(TEST_ID, TEST_ID);
         cr.setMetadata(meta);
 
         cr.setAdditionalProperty("spec", Map.of(
@@ -84,7 +91,7 @@ public class OperatorHelper {
         ObjectMeta meta = new ObjectMeta();
         meta.setName(crName);
         meta.setNamespace(NAMESPACE);
-        meta.setLabels(Map.of(TEST_ID, TEST_ID));
+        meta.getLabels().put(TEST_ID, TEST_ID);
         cr.setMetadata(meta);
 
         Map<String, Object> classifier = new HashMap<>();
@@ -121,6 +128,7 @@ public class OperatorHelper {
         cr.setAdditionalProperty("spec", specBody);
         return cr;
     }
+
     public static boolean isDesiredState(GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) {
         if (cr == null || cr.getAdditionalProperties() == null) {
             return false;

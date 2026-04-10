@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.getTestNamespace;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -34,9 +35,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 public class OperatorIT extends AbstractIT {
 
     @BeforeAll
-    static void setUp() {
+    static void setUp() throws IOException {
+        NAMESPACE = getTestNamespace();
+        cleanUp();
         dbaasOperatorExistOrSkipTests();
-        createNamespaceBindingCrOrSkipTests();
+        createNamespaceBindingCROrSkipTests();
     }
 
     @AfterAll
@@ -62,7 +65,7 @@ public class OperatorIT extends AbstractIT {
         @EnableExtension
         class ExternalDatabase {
             @Test
-            void testExternalDatabaseCreatedSuccessfully() throws InterruptedException, IOException {
+            void testExternalDatabaseCreatedSuccessfully() throws IOException {
                 String crName = generateName();
                 String microserviceName = generateName();
 
@@ -74,7 +77,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseCreatedWithSecret() throws InterruptedException, IOException {
+            void testExternalDatabaseCreatedWithSecret() throws IOException {
                 String crName = generateName();
                 String secretName = generateName();
                 String microserviceName = generateName();
@@ -92,7 +95,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseMissingSecret() throws IOException, InterruptedException {
+            void testExternalDatabaseMissingSecret() throws IOException {
                 String crName = generateName();
                 String microserviceName = generateName();
 
@@ -104,7 +107,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseSecretMissingKey() throws InterruptedException, IOException {
+            void testExternalDatabaseSecretMissingKey() throws IOException {
                 String crName = generateName();
                 String secretName = generateName();
                 String microserviceName = generateName();
@@ -121,7 +124,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseSecretEmptyKey() throws InterruptedException, IOException {
+            void testExternalDatabaseSecretEmptyKey() throws IOException {
                 String crName = generateName();
                 String secretName = generateName();
                 String microserviceName = generateName();
@@ -139,7 +142,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseMetadataClassifierNamespacesMismatch() throws InterruptedException, IOException {
+            void testExternalDatabaseMetadataClassifierNamespacesMismatch() throws IOException {
                 String crName = generateName();
                 String microserviceName = generateName();
 
@@ -151,7 +154,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseCreateNotUniqueClassifierDb() throws InterruptedException, IOException {
+            void testExternalDatabaseCreateNotUniqueClassifierDb() throws IOException {
                 String crName = generateName();
                 String microserviceName = generateName();
                 String type = "postgresql";
@@ -165,6 +168,220 @@ public class OperatorIT extends AbstractIT {
                 var actualDb = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, type, 200);
                 assertEquals(actualDb.getConnectionProperties(), internalDb.getConnectionProperties());
                 assertFalse(actualDb.isExternallyManageable());
+            }
+
+            @Test
+            void testExternalDatabaseMissedClassifier() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-missed-classifier", "");
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                spec.remove("classifier");
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_EXTERNAL_DATABASE, cr));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.classifier: Required value"));
+
+                assertNull(
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .get()
+                );
+            }
+
+            @Test
+            void testExternalDatabaseMissedType() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-missed-type", "");
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                spec.remove("type");
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_EXTERNAL_DATABASE, cr));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.type: Required value"));
+
+                assertNull(
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .get()
+                );
+            }
+
+            @Test
+            void testExternalDatabaseMissedName() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-missed-name", "");
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                spec.remove("dbName");
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_EXTERNAL_DATABASE, cr));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.dbName: Required value"));
+
+                assertNull(
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .get()
+                );
+            }
+
+            @Test
+            void testExternalDatabaseEmptyConnectionProperties() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-empty-connection-properties", "");
+
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                spec.put("connectionProperties", List.of());
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_EXTERNAL_DATABASE, cr));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.connectionProperties in body should have at least 1 items"));
+
+                assertNull(
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .get()
+                );
+            }
+
+            @Test
+            void testExternalDatabaseMissedRole() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-empty-connection-properties", "");
+
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                spec.put("connectionProperties", List.of(Map.of("extraProperties", Map.of(TEST_ID, TEST_ID))));
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_EXTERNAL_DATABASE, cr));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.connectionProperties[0].role: Required value"));
+
+                assertNull(
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .get()
+                );
+            }
+
+            @Test
+            void testExternalDatabaseTryToUpdateClassifier() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-immutable-classifier", "");
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .edit(r -> {
+                                    Map<String, Object> spec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                                    spec.put("classifier", Map.of("microserviceName", "updatedMicroservice"));
+
+                                    return r;
+                                }));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.classifier is immutable after creation"));
+            }
+
+            @Test
+            void testExternalDatabaseTryToUpdateType() {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String updatedType = "arangoDb";
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-immutable-type", "");
+                var spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                var type = spec.get("type");
+                assertNotEquals(updatedType, type);
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .edit(r -> {
+                                    Map<String, Object> currSpec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                                    currSpec.put("type", "arangodb");
+                                    return r;
+                                }));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.type is immutable after creation"));
+            }
+
+            @Test
+            void testExternalDatabaseTryToUpdateDbName() {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String updatedDbName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-immutable-dbName", "");
+                var spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                var dbName = spec.get("dbName");
+                assertNotEquals(updatedDbName, dbName);
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
+                        kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .edit(r -> {
+                                    Map<String, Object> currSpec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                                    currSpec.put("dbName", generateName());
+                                    return r;
+                                }));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.dbName is immutable after creation"));
+            }
+
+            @Test
+            void testExternalDatabaseTryToUpdateConnectionProperties() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+                var updatedConnectionProperties = List.of(Map.of("role", "admin", "extraProperties", Map.of(TEST_ID, TEST_ID)));
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-immutable-dbName", "");
+                var spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                var connectionProperties = spec.get("connectionProperties");
+                assertNotEquals(updatedConnectionProperties, connectionProperties);
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+
+                kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                        .inNamespace(NAMESPACE)
+                        .resource(cr)
+                        .edit(r -> {
+                            Map<String, Object> currSpec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                            currSpec.put("connectionProperties", updatedConnectionProperties);
+                            return r;
+                        });
+
+                var updatedCR = kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                        .inNamespace(NAMESPACE)
+                        .resource(cr)
+                        .get();
+                var updatedSpec = (Map<String, Object>) updatedCR.getAdditionalProperties().get("spec");
+                assertEquals(List.of(Map.of("role", "admin", "extraProperties", Map.of(TEST_ID, TEST_ID))), updatedSpec.get("connectionProperties"));
+
+                var updatedDb = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
+                assertEquals(Map.of("role", "admin", TEST_ID, TEST_ID), updatedDb.getConnectionProperties());
             }
         }
 
@@ -219,6 +436,61 @@ public class OperatorIT extends AbstractIT {
                 assertEquals(422, ex.getCode());
                 assertTrue(ex.toString().contains("spec.operatorNamespace is immutable after creation"));
             }
+
+            @Test
+            void testNamespaceBindingUpdateMetadata() {
+                String label = generateName();
+                var cr = buildNamespaceBindingCR(CR_NAMESPACE_BINDING_NAME, NAMESPACE, NAMESPACE);
+
+                kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                        .inNamespace(NAMESPACE)
+                        .resource(cr)
+                        .edit(r -> {
+                            var metadata = r.getMetadata() != null ? r.getMetadata() : new ObjectMeta();
+                            metadata.getLabels().put(label, label);
+                            return r;
+                        });
+
+                var updatedCR = kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                        .inNamespace(NAMESPACE)
+                        .resource(cr)
+                        .get();
+                assertTrue(updatedCR.getMetadata().getLabels().containsKey(label));
+            }
+
+            @Test
+            void testNamespaceBindingTryToCreateSameOne() {
+                var cr = buildNamespaceBindingCR(CR_NAMESPACE_BINDING_NAME, NAMESPACE, NAMESPACE);
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class,
+                        () -> createCR(CRD_NAMESPACE_BINDING, cr));
+                assertEquals(409, ex.getCode());
+                assertTrue(ex.toString().contains(String.format("namespacebindings.dbaas.netcracker.com \"%s\" already exists", CR_NAMESPACE_BINDING_NAME)));
+            }
+
+            @Test
+            void testNamespaceBindingDeletionBlockedByAnotherCRD() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "new-db", "");
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+                waitForDesiredState(cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
+
+                kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                        .withLabel(TEST_ID, TEST_ID)
+                        .delete();
+
+                var undeletedNamespaceBinding = kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                        .inNamespace(NAMESPACE)
+                        .withLabel(TEST_ID, TEST_ID)
+                        .list().getItems().getFirst();
+
+                assertNotNull(undeletedNamespaceBinding.getMetadata().getDeletionTimestamp());
+                assertTrue(undeletedNamespaceBinding.getMetadata().getFinalizers().contains("platform.dbaas.netcracker.com/binding-protection"));
+            }
         }
     }
 
@@ -247,7 +519,7 @@ public class OperatorIT extends AbstractIT {
         log.info("CR created: {}", r);
     }
 
-    private void waitForDesiredState(GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) throws InterruptedException {
+    private void waitForDesiredState(GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) {
         try {
             kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
                     .inNamespace(NAMESPACE)
@@ -265,11 +537,11 @@ public class OperatorIT extends AbstractIT {
     }
 
     private static void dbaasOperatorExistOrSkipTests() {
-        var pod = kubernetesClient.pods().withLabel("name", DBAAS_OPERATOR_NAME).list().getItems();
-        assumeTrue(pod != null && !pod.isEmpty(), "dbaas-operator do not exists, Operator tests will be ignored");
+        var pods = kubernetesClient.pods().withLabel("name", DBAAS_OPERATOR_NAME).list().getItems();
+        assumeTrue(pods != null && !pods.isEmpty(), "dbaas-operator do not exists, 'OperatorIT' tests will be ignored");
     }
 
-    private static void createNamespaceBindingCrOrSkipTests() {
+    private static void createNamespaceBindingCROrSkipTests() {
         try {
             var cr = buildNamespaceBindingCR();
             kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
@@ -282,7 +554,7 @@ public class OperatorIT extends AbstractIT {
                     .resource(cr)
                     .waitUntilCondition(r -> r.getMetadata().getFinalizers().contains("platform.dbaas.netcracker.com/binding-protection"), 1, TimeUnit.MINUTES);
         } catch (Exception ex) {
-            throw new TestAbortedException("NamespaceBinding CR couldn't created, tests aborted");
+            throw new TestAbortedException("Failed to create CR 'NamespaceBinding', tests aborted");
         }
     }
 
@@ -291,7 +563,7 @@ public class OperatorIT extends AbstractIT {
                 .filter(db -> NAMESPACE_PATTERN.matcher((String) db.getClassifier().get("microserviceName")).matches())
                 .toList();
 
-        for (DatabaseV3 logicalDb: logicalDbs) {
+        for (DatabaseV3 logicalDb : logicalDbs) {
             var classifier = logicalDb.getClassifier();
             ClassifierWithRolesRequest classifierWithRolesRequest = new ClassifierWithRolesRequest();
             classifierWithRolesRequest.setClassifier(classifier);
