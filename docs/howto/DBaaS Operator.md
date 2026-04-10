@@ -434,7 +434,7 @@ spec:
 | Field | Required | Description |
 |-------|:--------:|-------------|
 | `name` | Yes | Name of the Kubernetes Secret |
-| `keys` | Yes | List of `{key, name}` mappings. At least one entry required. Duplicate `name` values are rejected by CRD validation. |
+| `keys` | Yes | List of `{key, name}` mappings. At least one entry required. Duplicate `name` values within the list are rejected by the controller with `InvalidSpec`. |
 | `keys[].key` | Yes | Key in `Secret.data` to read (e.g., `db-user`) |
 | `keys[].name` | Yes | Target field name in the aggregator request (e.g., `username`) |
 
