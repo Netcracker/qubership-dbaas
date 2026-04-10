@@ -107,13 +107,7 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 		return nil, newAggregatorError(resp)
 	}
 
-	var result DeclarativeResponse
-	if len(resp.Body()) > 0 {
-		if err := json.Unmarshal(resp.Body(), &result); err != nil {
-			return nil, fmt.Errorf("decode apply response: %w", err)
-		}
-	}
-	return &result, nil
+	return decodeResponse(resp.Body(), "apply")
 }
 
 // GetOperationStatus polls the status of an asynchronous operation.
@@ -134,13 +128,7 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 		return nil, newAggregatorError(resp)
 	}
 
-	var result DeclarativeResponse
-	if len(resp.Body()) > 0 {
-		if err := json.Unmarshal(resp.Body(), &result); err != nil {
-			return nil, fmt.Errorf("decode operation status response: %w", err)
-		}
-	}
-	return &result, nil
+	return decodeResponse(resp.Body(), "operation status")
 }
 
 // RegisterExternalDatabase sends a PUT request to register an externally managed
@@ -165,6 +153,16 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	}
 
 	return nil
+}
+
+func decodeResponse(body []byte, context string) (*DeclarativeResponse, error) {
+	var result DeclarativeResponse
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("decode %s response: %w", context, err)
+		}
+	}
+	return &result, nil
 }
 
 func newAggregatorError(resp *resty.Response) *AggregatorError {
