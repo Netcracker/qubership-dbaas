@@ -1,3 +1,4 @@
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -113,6 +114,9 @@ spec:
                             type: object
                           minItems: 1
                           type: array
+                          x-kubernetes-validations:
+                          - message: keys must not contain duplicate name values
+                            rule: self.map(k, k.name).toSet().size() == self.size()
                         name:
                           description: |-
                             name is the name of the Kubernetes Secret in the same namespace as the
@@ -275,3 +279,4 @@ spec:
     storage: true
     subresources:
       status: {}
+{{- end }}
