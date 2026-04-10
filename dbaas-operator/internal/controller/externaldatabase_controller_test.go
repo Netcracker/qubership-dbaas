@@ -439,15 +439,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	})
 
 	Context("duplicate name in credentialsSecretRef.keys (defence-in-depth)", func() {
-		It("sets Phase=BackingOff, SecretError, message mentions duplicate target key", func() {
-			Expect(k8sClient.Create(ctx, &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
-				Data: map[string][]byte{
-					"db-user":  []byte("admin"),
-					"db-user2": []byte("admin2"),
-				},
-			})).To(Succeed())
-
+		It("sets Phase=InvalidConfiguration, InvalidSpec, message mentions duplicate name", func() {
 			spec := baseSpec()
 			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
 				Name: secretName,
@@ -463,14 +455,14 @@ var _ = Describe("ExternalDatabase Controller", func() {
 
 			edb, _, err := reconcileAndFetch()
 
-			Expect(err).To(HaveOccurred())
-			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 
 			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
-			Expect(ready.Reason).To(Equal(EventReasonSecretError))
-			Expect(ready.Message).To(ContainSubstring(`duplicate target key "username"`))
+			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
+			Expect(ready.Message).To(ContainSubstring(`duplicate name "username"`))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonSecretError)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})

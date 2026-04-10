@@ -44,11 +44,8 @@ type CredentialsSecretRef struct {
 
 	// keys is the list of mappings from Secret data keys to dbaas-aggregator
 	// connection payload field names. At least one mapping is required.
-	// All name values within the list must be unique.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=20
-	// +kubebuilder:validation:XValidations:rule="self.all(i, self.filter(j, j.name == i.name).size() == 1)",message="keys must not contain duplicate name values"
 	Keys []SecretKeyMapping `json:"keys"`
 }
 

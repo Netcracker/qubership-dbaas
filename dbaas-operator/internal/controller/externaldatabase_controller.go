@@ -102,6 +102,23 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			fmt.Sprintf("spec.classifier[\"namespace\"] %q must match metadata.namespace %q", ns, edb.Namespace))
 	}
 
+	// Validate that all keys[].name values are unique within each connectionProperties entry.
+	// Duplicate names would silently overwrite each other in the aggregator request.
+	for i, cp := range edb.Spec.ConnectionProperties {
+		if cp.CredentialsSecretRef == nil {
+			continue
+		}
+		seen := make(map[string]struct{}, len(cp.CredentialsSecretRef.Keys))
+		for _, k := range cp.CredentialsSecretRef.Keys {
+			if _, dup := seen[k.Name]; dup {
+				return invalidSpec(ctx, &edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+					r.Recorder, edb,
+					fmt.Sprintf("spec.connectionProperties[%d].credentialsSecretRef.keys contains duplicate name %q", i, k.Name))
+			}
+			seen[k.Name] = struct{}{}
+		}
+	}
+
 	// Build the flat-map request, resolving any Secret references.
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {
