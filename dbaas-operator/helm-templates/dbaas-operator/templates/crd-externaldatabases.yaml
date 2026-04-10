@@ -112,6 +112,7 @@ spec:
                             - key
                             - name
                             type: object
+                          maxItems: 20
                           minItems: 1
                           type: array
                           x-kubernetes-validations:
