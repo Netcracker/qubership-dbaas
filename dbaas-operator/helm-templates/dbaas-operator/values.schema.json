@@ -186,10 +186,10 @@
       "$ref": "#/definitions/booleanOrString",
       "title": "The DBAAS_OPERATOR_ENABLED schema",
       "description": "When false, no chart resources are created (Deployment, RBAC, ServiceMonitor).",
-      "default": true,
+      "default": false,
       "examples": [
-        true,
-        false
+        false,
+        true
       ]
     },
     "LOG_LEVEL": {
