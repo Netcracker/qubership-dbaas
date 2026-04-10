@@ -155,11 +155,11 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	return nil
 }
 
-func decodeResponse(body []byte, context string) (*DeclarativeResponse, error) {
+func decodeResponse(body []byte, label string) (*DeclarativeResponse, error) {
 	var result DeclarativeResponse
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &result); err != nil {
-			return nil, fmt.Errorf("decode %s response: %w", context, err)
+			return nil, fmt.Errorf("decode %s response: %w", label, err)
 		}
 	}
 	return &result, nil
