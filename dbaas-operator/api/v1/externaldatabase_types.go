@@ -47,7 +47,7 @@ type CredentialsSecretRef struct {
 	// All name values within the list must be unique.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:XValidations:rule="self.map(k, k.name).toSet().size() == self.size()",message="keys must not contain duplicate name values"
+	// +kubebuilder:validation:XValidations:rule="self.all(i, self.filter(j, j.name == i.name).size() == 1)",message="keys must not contain duplicate name values"
 	Keys []SecretKeyMapping `json:"keys"`
 }
 

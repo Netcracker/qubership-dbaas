@@ -116,7 +116,7 @@ spec:
                           type: array
                           x-kubernetes-validations:
                           - message: keys must not contain duplicate name values
-                            rule: self.map(k, k.name).toSet().size() == self.size()
+                            rule: self.all(i, self.filter(j, j.name == i.name).size() == 1)
                         name:
                           description: |-
                             name is the name of the Kubernetes Secret in the same namespace as the
