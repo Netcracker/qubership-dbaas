@@ -6,4 +6,3 @@
 .idea/
 *.iml
 .DS_Store
-dbaas-operator/hack/aggregator-mock/aggregator-mock
