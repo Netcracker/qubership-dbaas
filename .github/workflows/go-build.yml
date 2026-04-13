@@ -25,5 +25,4 @@ jobs:
       install-envtest: true
       envtest-version: latest
       docker-config-file: 'docker-go-dev-config.json'
-      # sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
     secrets: inherit

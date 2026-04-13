@@ -598,5 +598,3 @@ cleanup-namespaces:
 		echo "$(GREEN)--- Skipping namespace cleanup (CREATE_NAMESPACE=false)...$(NC)"; \
 		echo ""; \
 	fi
-
-
