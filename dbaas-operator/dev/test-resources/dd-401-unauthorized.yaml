@@ -1,0 +1,13 @@
+# DatabaseDeclaration — aggregator rejects with HTTP 401
+# apply-rules.json key: "dd-svc-401" → httpCode=401
+# Expected: Phase=BackingOff, Ready=False/Unauthorized, Stalled=False (retries)
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: DatabaseDeclaration
+metadata:
+  name: dd-401-unauthorized
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: dd-svc-401
+      scope: service
+  type: postgresql

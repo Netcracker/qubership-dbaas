@@ -1,0 +1,40 @@
+{{- if and .Values.DBAAS_OPERATOR_ENABLED (not .Values.restrictedEnvironment) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+rules:
+  # dbaas CRs
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources:
+      - externaldatabases
+      - namespacebindings
+    verbs: [ get, list, watch, create, update, patch, delete ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources:
+      - externaldatabases/status
+    verbs: [ get, update, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources:
+      - externaldatabases/finalizers
+      - namespacebindings/finalizers
+    verbs: [ update ]
+  # Secrets (for credentials in ExternalDatabase)
+  - apiGroups: [ "" ]
+    resources: [ secrets ]
+    verbs: [ get, list, watch ]
+  # Leader election
+  - apiGroups: [ coordination.k8s.io ]
+    resources: [ leases ]
+    verbs: [ get, list, watch, create, update, patch, delete ]
+  {{- if .Values.K8S_EVENTS_ENABLED }}
+  # Event recording
+  - apiGroups: [ "" ]
+    resources: [ events ]
+    verbs: [ create, patch ]
+  {{- end }}
+{{- end }}

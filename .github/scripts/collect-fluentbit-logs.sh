@@ -22,11 +22,11 @@ for node in $nodes; do
   node_dir="${OUT_DIR}/${node}"
   mkdir -p "$node_dir"
 
-  for log in dbaas-aggregator.log dbaas-postgres-adapter.log postgres-backup-daemon.log; do
+  for log in dbaas-aggregator.log dbaas-postgres-adapter.log postgres-backup-daemon.log dbaas-operator.log; do
     if docker exec "$node" sh -c "test -f /var/log/fluent-bit/${log}"; then
       echo "Split ${log} from ${node}"
       docker exec "$node" sh -c "cat /var/log/fluent-bit/${log}" | \
-        jq -Rr 'fromjson? | select(.kubernetes.pod_name and .log) | select(.kubernetes.pod_name|test("^(dbaas-aggregator|dbaas-postgres-adapter|postgres-backup-daemon)")) | [.kubernetes.pod_name, .log] | @tsv' | \
+        jq -Rr 'fromjson? | select(.kubernetes.pod_name and .log) | select(.kubernetes.pod_name|test("^(dbaas-aggregator|dbaas-postgres-adapter|postgres-backup-daemon|dbaas-operator)")) | [.kubernetes.pod_name, .log] | @tsv' | \
         while IFS=$'\t' read -r pod_name msg; do
           [[ -z "$pod_name" ]] && continue
           printf '%s\n' "$msg" >> "${node_dir}/${pod_name}.log"

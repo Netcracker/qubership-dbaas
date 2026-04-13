@@ -1,0 +1,18 @@
+{{- if and .Values.DBAAS_OPERATOR_ENABLED (not .Values.restrictedEnvironment) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: '{{ .Values.SERVICE_NAME }}'
+subjects:
+  - kind: ServiceAccount
+    name: '{{ .Values.SERVICE_NAME }}'
+    namespace: '{{ .Values.NAMESPACE }}'
+{{- end }}

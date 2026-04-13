@@ -47,7 +47,7 @@ data:
     [INPUT]
         Name              tail
         Tag               kube.*
-        Path              /var/log/containers/dbaas-aggregator-*.log,/var/log/containers/dbaas-postgres-adapter-*.log,/var/log/containers/postgres-backup-daemon-*.log
+        Path              /var/log/containers/dbaas-aggregator-*.log,/var/log/containers/dbaas-postgres-adapter-*.log,/var/log/containers/postgres-backup-daemon-*.log,/var/log/containers/dbaas-operator-*.log
         Parser            cri
         Read_From_Head    On
         Mem_Buf_Limit     20MB
@@ -87,6 +87,14 @@ data:
         Match  kube.var.log.containers.postgres-backup-daemon-*_postgres_*
         Path   /var/log/fluent-bit
         File   postgres-backup-daemon.log
+        Format plain
+        Mkdir  true
+
+    [OUTPUT]
+        Name   file
+        Match  kube.var.log.containers.dbaas-operator-*_dbaas_*
+        Path   /var/log/fluent-bit
+        File   dbaas-operator.log
         Format plain
         Mkdir  true
 

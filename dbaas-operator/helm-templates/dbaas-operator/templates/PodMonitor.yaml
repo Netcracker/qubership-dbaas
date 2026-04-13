@@ -1,0 +1,27 @@
+{{- if and .Values.DBAAS_OPERATOR_ENABLED .Values.MONITORING_ENABLED }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}-pod-monitor'
+  labels:
+    k8s-app: '{{ .Values.SERVICE_NAME }}-pod-monitor'
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}-pod-monitor'
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/processed-by-operator: victoriametrics-operator
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
+spec:
+  podMetricsEndpoints:
+    - interval: 30s
+      port: metrics
+      scheme: http
+      path: /metrics
+  jobLabel: k8s-app
+  namespaceSelector:
+    matchNames:
+      - '{{ .Values.NAMESPACE }}'
+  selector:
+    matchLabels:
+      app: '{{ .Values.SERVICE_NAME }}'
+{{- end }}

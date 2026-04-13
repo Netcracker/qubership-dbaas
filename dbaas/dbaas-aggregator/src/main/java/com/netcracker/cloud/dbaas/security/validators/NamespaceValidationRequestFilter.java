@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
+import com.netcracker.cloud.dbaas.Constants;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.exceptions.FailedNamespaceIsolationCheckException;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
@@ -23,6 +24,9 @@ public class NamespaceValidationRequestFilter implements ContainerRequestFilter 
         String namespaceFromPath = requestContext.getUriInfo().getPathParameters().getFirst(DbaasApiPath.NAMESPACE_PARAMETER);
         // Don't check namespace if not present or not token auth
         if (namespaceFromPath == null || !(requestContext.getSecurityContext().getUserPrincipal() instanceof JWTCallerPrincipal)) {
+            return;
+        }
+        if (requestContext.getSecurityContext().isUserInRole(Constants.CLUSTER_OPERATOR)) {
             return;
         }
         String namespaceFromToken = JwtUtils.getNamespace(requestContext.getSecurityContext());
