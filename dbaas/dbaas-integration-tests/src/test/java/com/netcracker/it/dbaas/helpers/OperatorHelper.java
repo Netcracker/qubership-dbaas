@@ -14,9 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.test.AbstractIT.getPropertyOrEnv;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @Slf4j
 public class OperatorHelper {
@@ -58,7 +56,7 @@ public class OperatorHelper {
 
     public static String getTestNamespace() {
         String namespace = getPropertyOrEnv("clouds.cloud.namespaces.namespace");
-        assumeTrue(namespace != null && !namespace.isBlank(), "Failed to get 'clouds.cloud.namespaces.namespace' property");
+        assertTrue(namespace != null && !namespace.isBlank(), "Failed to get 'clouds.cloud.namespaces.namespace' property");
         return namespace;
     }
 

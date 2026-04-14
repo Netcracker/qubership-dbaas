@@ -19,7 +19,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
-import org.opentest4j.TestAbortedException;
 
 import java.io.IOException;
 import java.util.List;
@@ -27,7 +26,6 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.getTestNamespace;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -36,10 +34,10 @@ public class OperatorIT extends AbstractIT {
 
     @BeforeAll
     static void setUp() throws IOException {
+        dbaasOperatorExistOrSkipTests();
         NAMESPACE = getTestNamespace();
         cleanUp();
-        dbaasOperatorExistOrSkipTests();
-        createNamespaceBindingCROrSkipTests();
+        createNamespaceBindingCR();
     }
 
     @AfterAll
@@ -538,24 +536,28 @@ public class OperatorIT extends AbstractIT {
 
     private static void dbaasOperatorExistOrSkipTests() {
         var pods = kubernetesClient.pods().withLabel("name", DBAAS_OPERATOR_NAME).list().getItems();
-        assumeTrue(pods != null && !pods.isEmpty(), "dbaas-operator do not exists, 'OperatorIT' tests will be ignored");
+        assumeTrue(pods != null && !pods.isEmpty(), () -> {
+            String message = "pod 'dbaas-operator' do not exists, 'OperatorIT' tests will be ignored";
+            log.warn(message);
+            return message;
+        });
     }
 
-    private static void createNamespaceBindingCROrSkipTests() {
-        try {
-            var cr = buildNamespaceBindingCR();
-            kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                    .inNamespace(NAMESPACE)
-                    .resource(cr)
-                    .create();
+    private static void createNamespaceBindingCR() {
+        var cr = buildNamespaceBindingCR();
+        kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                .inNamespace(NAMESPACE)
+                .resource(cr)
+                .create();
 
-            kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                    .inNamespace(NAMESPACE)
-                    .resource(cr)
-                    .waitUntilCondition(r -> r.getMetadata().getFinalizers().contains("platform.dbaas.netcracker.com/binding-protection"), 1, TimeUnit.MINUTES);
-        } catch (Exception ex) {
-            throw new TestAbortedException("Failed to create CR 'NamespaceBinding', tests aborted");
-        }
+        kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                .inNamespace(NAMESPACE)
+                .resource(cr)
+                .waitUntilCondition(r -> r != null
+                        && r.getMetadata() != null
+                        && r.getMetadata().getFinalizers() != null
+                        && r.getMetadata().getFinalizers()
+                        .contains("platform.dbaas.netcracker.com/binding-protection"), 1, TimeUnit.MINUTES);
     }
 
     private static void deleteAllLogicalDatabases() throws IOException {
