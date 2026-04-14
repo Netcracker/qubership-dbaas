@@ -19,6 +19,8 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -26,6 +28,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -108,14 +111,28 @@ func main() {
 	aggregator := aggregatorclient.NewAggregatorClient(aggregatorURL)
 	setupLog.Infof("dbaas-aggregator client configured url=%v", aggregatorURL)
 
+	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
+	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)
+
 	setupLog.Info("watching all namespaces (cluster-scoped)")
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// When events are disabled, the LeaderElectionConfig's transport
+	// silently swallows event POSTs. This will prevent the leader
+	// election recorder from logging "Server rejected event" errors
+	baseConfig := ctrl.GetConfigOrDie()
+	var leaderElectionConfig *rest.Config
+	if !eventsEnabled {
+		leaderElectionConfig = rest.CopyConfig(baseConfig)
+		leaderElectionConfig.WrapTransport = silentEventsTransport
+	}
+
+	mgr, err := ctrl.NewManager(baseConfig, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
+		LeaderElectionConfig:   leaderElectionConfig,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -148,8 +165,6 @@ func main() {
 	}
 
 	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
-	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
-	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)
 
 	// ── NamespaceBinding controller (always enabled) ───────────────────────────
 	edbChecker := ownership.NewKindChecker(
@@ -264,6 +279,33 @@ func recorderFor(mgr ctrl.Manager, name string, enabled bool) record.EventRecord
 		return mgr.GetEventRecorderFor(name) //nolint:staticcheck
 	}
 	return noopRecorder{}
+}
+
+// silentEventsTransport is a transport.WrapperFunc that intercepts event POST
+// requests and returns a fake 201 without hitting the API server.  Used as
+// LeaderElectionConfig.WrapTransport when K8S_EVENTS_ENABLED=false, because
+// the leader-election recorder is wired inside controller-runtime and bypasses
+// the per-controller noopRecorder.
+func silentEventsTransport(rt http.RoundTripper) http.RoundTripper {
+	return silentEventsRT{rt}
+}
+
+type silentEventsRT struct{ wrapped http.RoundTripper }
+
+func (s silentEventsRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.HasSuffix(req.URL.Path, "/events") {
+		if req.Body != nil {
+			_, _ = io.Copy(io.Discard, req.Body)
+			_ = req.Body.Close()
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	}
+	return s.wrapped.RoundTrip(req)
 }
 
 // noopRecorder implements record.EventRecorder and silently drops all events.
