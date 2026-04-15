@@ -42,6 +42,7 @@ public class OperatorIT extends AbstractIT {
 
     @AfterAll
     static void cleanUp() throws IOException {
+        dbaasOperatorExistOrSkipTests();
         kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
