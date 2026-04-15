@@ -299,7 +299,7 @@ func (s silentEventsRT) RoundTrip(req *http.Request) (*http.Response, error) {
 			_ = req.Body.Close()
 		}
 		return &http.Response{
-			StatusCode: http.StatusOK,
+			StatusCode: http.StatusCreated,
 			Body:       io.NopCloser(strings.NewReader("{}")),
 			Header:     make(http.Header),
 			Request:    req,
