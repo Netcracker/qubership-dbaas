@@ -436,9 +436,10 @@
     },
     "READONLY_CONTAINER_FILE_SYSTEM_ENABLED": {
       "$id": "#/properties/READONLY_CONTAINER_FILE_SYSTEM_ENABLED",
-      "$ref": "#/definitions/booleanOrString",
+      "type": "boolean",
       "title": "The READONLY_CONTAINER_FILE_SYSTEM_ENABLED schema",
       "description": "Read-only container file system is enabled",
+      "default": false,
       "examples": [
         false
       ]
