@@ -4,7 +4,9 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import lombok.extern.slf4j.Slf4j;
+import net.jodah.failsafe.RetryPolicy;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +40,9 @@ public class OperatorHelper {
     public static final String REASON_INVALID_SPEC = "InvalidSpec";
 
     public static String NAMESPACE;
+
+    public final static RetryPolicy<Object> OPERATOR_RETRY_POLICY = new RetryPolicy<>()
+            .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(5));
 
     public static final CustomResourceDefinitionContext CRD_EXTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
