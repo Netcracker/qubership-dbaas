@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
+import com.netcracker.cloud.dbaas.Constants;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
@@ -19,8 +20,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class NamespaceValidatorTest {
@@ -81,5 +81,16 @@ class NamespaceValidatorTest {
             assertTrue(namespaceValidator.isNamespaceFromClassifierValid(securityContext, Collections.singletonMap("namespace", otherNamespaceInComposite)));
             assertFalse(namespaceValidator.isNamespaceFromClassifierValid(securityContext, Collections.singletonMap("namespace", someOtherNamespace)));
         }
+    }
+
+    @Test
+    void isNamespaceFromClassifierValid_isUserHasClusterOperatorRole() {
+        when(securityContext.getUserPrincipal()).thenReturn(principal);
+        when(securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)).thenReturn(true);
+
+        assertTrue(namespaceValidator.isNamespaceFromClassifierValid(securityContext, Collections.singletonMap("namespace", someOtherNamespace)));
+
+        verify(compositeNamespaceService, times(0)).getBaselineByNamespace(any());
+        verify(compositeNamespaceService, times(0)).getCompositeStructure(any());
     }
 }
