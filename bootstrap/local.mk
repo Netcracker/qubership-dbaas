@@ -21,7 +21,7 @@ NODE_SELECTOR_DBAAS_KEY ?= region
 REGION_DBAAS ?= database
 # Validation image tag
 TAG ?= latest
-DBAAS_OPERATOR_TAG ?= feat-dbaas-operator-snapshot
+DBAAS_OPERATOR_TAG ?= fix-dbaas-operator-secrets-snapshot
 
 # Export all variables for use in shell commands
 export PG_NAMESPACE
