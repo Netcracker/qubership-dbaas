@@ -203,9 +203,10 @@ rules:
     verbs: ["update"]
 
   # Read Secrets to resolve credentials referenced by ExternalDatabase CRs
+  # Secrets are fetched directly from the API server (not cached), so only get is required.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get"]
 
   # Leader election (required when LEADER_ELECT=true, which is the default)
   - apiGroups: ["coordination.k8s.io"]
@@ -243,7 +244,7 @@ subjects:
 | `dbaas.netcracker.com` | `externaldatabases`, `namespacebindings` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Read and reconcile CRs across all namespaces |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `externaldatabases/finalizers`, `namespacebindings/finalizers` | `update` | Add and remove the `binding-protection` finalizer on `NamespaceBinding` |
-| `""` (core) | `secrets` | `get`, `list`, `watch` | Read credential Secrets referenced by `ExternalDatabase` CRs |
+| `""` (core) | `secrets` | `get` | Read credential Secrets referenced by `ExternalDatabase` CRs (fetched directly, not cached) |
 | `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Leader election lock (required when `LEADER_ELECT=true`) |
 | `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events on reconcile outcomes (required when `K8S_EVENTS_ENABLED=true`) |
 
