@@ -439,6 +439,8 @@ spec:
 | `keys[].key` | Yes | Key in `Secret.data` to read (e.g., `db-user`) |
 | `keys[].name` | Yes | Target field name in the aggregator request (e.g., `username`) |
 
+> **Important:** The operator does **not** watch Secrets for changes. Secrets are read once per reconcile, which is triggered only by a change to the `ExternalDatabase` spec (i.e., when `metadata.generation` increments). If you rotate credentials in a Secret, you must also make a change to the `ExternalDatabase` spec — for example, add or update an annotation — to trigger a new reconcile and push the updated credentials to dbaas-aggregator.
+
 #### How ExternalDatabase Works
 
 Each time the spec changes (i.e., `metadata.generation` increments), the controller:
