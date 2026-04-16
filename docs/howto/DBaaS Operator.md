@@ -152,27 +152,31 @@ containers:
 
 ## RBAC and Required Permissions
 
-The operator needs a `ServiceAccount`, a `ClusterRole`, and a `ClusterRoleBinding` to function correctly. By default the Helm chart creates all three automatically. In environments where cluster-scoped resources cannot be created, set `restrictedEnvironment: true` — the chart will then create only the `ServiceAccount` and skip the `ClusterRole`/`ClusterRoleBinding`, which must be applied manually using the manifests below.
+The operator needs a `ServiceAccount`, a `ClusterRole`, a `ClusterRoleBinding`, a namespace-scoped `Role`, and a `RoleBinding` to function correctly. By default the Helm chart creates all of these automatically. In environments where cluster-scoped resources cannot be created, set `restrictedEnvironment: true` — the chart will then create only the `ServiceAccount`, the namespace-scoped `Role`, and the `RoleBinding`, skipping the `ClusterRole`/`ClusterRoleBinding`, which must be applied manually using the manifests below.
 
 ### Default Installation
 
 When `restrictedEnvironment: false` (the default), the chart creates:
 
-| Resource | Name | Scope |
-|----------|------|-------|
-| `ServiceAccount` | `dbaas-operator` | Namespaced (operator namespace) |
-| `ClusterRole` | `dbaas-operator` | Cluster-wide |
-| `ClusterRoleBinding` | `dbaas-operator` | Cluster-wide |
+| Resource | Name | Scope | Purpose |
+|----------|------|-------|---------|
+| `ServiceAccount` | `dbaas-operator` | Namespaced (operator namespace) | Pod identity |
+| `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs and Secrets across all namespaces |
+| `ClusterRoleBinding` | `dbaas-operator` | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
+| `Role` | `dbaas-operator` | Namespaced (operator namespace) | Leader election leases and event recording |
+| `RoleBinding` | `dbaas-operator` | Namespaced (operator namespace) | Binds `Role` to the `ServiceAccount` |
 
-The `ClusterRoleBinding` binds the `ClusterRole` to the `ServiceAccount` in the operator namespace.
+Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader election leases and Kubernetes Events are always written to the operator's own namespace, so they use a namespace-scoped `Role`.
 
 ### Restricted Environment
 
-When `restrictedEnvironment: true`, only the `ServiceAccount` is created. You must create the `ClusterRole` and `ClusterRoleBinding` manually before starting the operator.
+When `restrictedEnvironment: true`, only the `ServiceAccount`, `Role`, and `RoleBinding` are created by the chart. You must create the `ClusterRole` and `ClusterRoleBinding` manually before starting the operator.
 
 #### Why cluster-scoped RBAC is needed
 
-The operator runs cluster-wide and watches resources in all namespaces. Namespace-scoped `Role`/`RoleBinding` are not sufficient — they cannot grant access to resources across multiple namespaces.
+The operator runs cluster-wide and watches resources in all namespaces. Namespace-scoped `Role`/`RoleBinding` cannot grant access to resources across multiple namespaces, so a `ClusterRole` is required for dbaas CRs and Secrets.
+
+Leader election leases and Kubernetes Events, however, are always created in the operator's own namespace — a namespace-scoped `Role` is sufficient and more secure.
 
 #### Required ClusterRole
 
@@ -202,21 +206,12 @@ rules:
       - namespacebindings/finalizers
     verbs: ["update"]
 
-  # Read Secrets to resolve credentials referenced by ExternalDatabase CRs
+  # Read Secrets to resolve credentials referenced by ExternalDatabase CRs.
+  # Secrets are fetched directly from the API server on each reconcile (not cached),
+  # so only get is required — list and watch are not needed.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
-
-  # Leader election (required when LEADER_ELECT=true, which is the default)
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # Kubernetes Events — required only when K8S_EVENTS_ENABLED=true
-  # Remove this block if K8S_EVENTS_ENABLED=false
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "patch"]
+    verbs: ["get"]
 ```
 
 #### Required ClusterRoleBinding
@@ -236,18 +231,64 @@ subjects:
     namespace: <operator-namespace>   # replace with the namespace where the operator runs
 ```
 
+#### Required Role
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dbaas-operator
+  namespace: <operator-namespace>     # replace with the namespace where the operator runs
+rules:
+  # Leader election — the lease object is always in the operator's own namespace
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Kubernetes Events — required only when K8S_EVENTS_ENABLED=true
+  # Remove this block if K8S_EVENTS_ENABLED=false
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+```
+
+#### Required RoleBinding
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dbaas-operator
+  namespace: <operator-namespace>     # replace with the namespace where the operator runs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dbaas-operator
+subjects:
+  - kind: ServiceAccount
+    name: dbaas-operator
+    namespace: <operator-namespace>   # replace with the namespace where the operator runs
+```
+
 #### Permission reference
+
+**ClusterRole** (cluster-wide access):
 
 | API group | Resource | Verbs | Why it is needed |
 |-----------|----------|-------|-----------------|
 | `dbaas.netcracker.com` | `externaldatabases`, `namespacebindings` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Read and reconcile CRs across all namespaces |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `externaldatabases/finalizers`, `namespacebindings/finalizers` | `update` | Add and remove the `binding-protection` finalizer on `NamespaceBinding` |
-| `""` (core) | `secrets` | `get`, `list`, `watch` | Read credential Secrets referenced by `ExternalDatabase` CRs |
+| `""` (core) | `secrets` | `get` | Read credential Secrets referenced by `ExternalDatabase` CRs (fetched directly, not cached) |
+
+**Role** (operator namespace only):
+
+| API group | Resource | Verbs | Why it is needed |
+|-----------|----------|-------|-----------------|
 | `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Leader election lock (required when `LEADER_ELECT=true`) |
 | `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events on reconcile outcomes (required when `K8S_EVENTS_ENABLED=true`) |
 
-> **Note:** If you set `K8S_EVENTS_ENABLED=false` (the default), you may omit the `events` rule from the `ClusterRole`. If you set `LEADER_ELECT=false`, you may omit the `leases` rule, but this is only safe when running a single replica.
+> **Note:** If you set `K8S_EVENTS_ENABLED=false` (the default), you may omit the `events` rule from the `Role`. If you set `LEADER_ELECT=false`, you may omit the `leases` rule, but this is only safe when running a single replica.
 
 ---
 
@@ -438,6 +479,8 @@ spec:
 | `keys[].key` | Yes | Key in `Secret.data` to read (e.g., `db-user`) |
 | `keys[].name` | Yes | Target field name in the aggregator request (e.g., `username`) |
 
+> **Important:** The operator does **not** watch Secrets for changes. Secrets are read once per reconcile, which is triggered only by a change to the `ExternalDatabase` spec (i.e., when `metadata.generation` increments). If you rotate credentials in a Secret, you must also make a change to the `ExternalDatabase` spec — for example, add or update an annotation — to trigger a new reconcile and push the updated credentials to dbaas-aggregator.
+
 #### How ExternalDatabase Works
 
 Each time the spec changes (i.e., `metadata.generation` increments), the controller:
@@ -624,7 +667,7 @@ The following parameters control the operator's deployment and behavior. They ar
 | `LEADER_ELECT` | boolean | `true` | Enables leader election. Required when running more than one replica to ensure only one active instance processes resources at a time. |
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |
-| `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding`. Use in environments where cluster-scoped RBAC cannot be created. |
+| `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
 | `MONITORING_ENABLED` | boolean | — | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Requires Platform System Monitor CRDs. |
 
 **Deployment parameters** — control pod scheduling and resources:

@@ -24,17 +24,9 @@ rules:
       - namespacebindings/finalizers
     verbs: [ update ]
   # Secrets (for credentials in ExternalDatabase)
+  # Secrets are fetched directly from the API server on each reconcile (no cache).
+  # list and watch are not required.
   - apiGroups: [ "" ]
     resources: [ secrets ]
-    verbs: [ get, list, watch ]
-  # Leader election
-  - apiGroups: [ coordination.k8s.io ]
-    resources: [ leases ]
-    verbs: [ get, list, watch, create, update, patch, delete ]
-  {{- if .Values.K8S_EVENTS_ENABLED }}
-  # Event recording
-  - apiGroups: [ "" ]
-    resources: [ events ]
-    verbs: [ create, patch ]
-  {{- end }}
+    verbs: [ get ]
 {{- end }}

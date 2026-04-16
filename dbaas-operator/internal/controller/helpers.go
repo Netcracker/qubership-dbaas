@@ -56,14 +56,15 @@ func requestIDFromContext(ctx context.Context) string {
 // Returns (false, {}, err) on a hard lookup error.
 //
 // State semantics and requeue strategy:
-//   Unknown  — transient; no cache entry (startup race or post-Forget).
-//              Requeue quickly so the CR is retried once the cache settles.
-//   Unbound  — live GET confirmed no NamespaceBinding exists.  Requeue at a
-//              long interval as a safety net: if the NamespaceBinding →
-//              workloads fan-out loses its trigger due to a transient LIST
-//              error, the periodic requeue here ensures the CR is eventually
-//              reconciled after the binding is created and SetOwner is called.
-//   Foreign  — binding belongs to another operator instance; no requeue.
+//
+//	Unknown  — transient; no cache entry (startup race or post-Forget).
+//	           Requeue quickly so the CR is retried once the cache settles.
+//	Unbound  — live GET confirmed no NamespaceBinding exists.  Requeue at a
+//	           long interval as a safety net: if the NamespaceBinding →
+//	           workloads fan-out loses its trigger due to a transient LIST
+//	           error, the periodic requeue here ensures the CR is eventually
+//	           reconciled after the binding is created and SetOwner is called.
+//	Foreign  — binding belongs to another operator instance; no requeue.
 func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, namespace, name, kind string) (bool, ctrl.Result, error) {
 	mine, err := resolver.IsMyNamespace(ctx, namespace)
 	if err != nil {

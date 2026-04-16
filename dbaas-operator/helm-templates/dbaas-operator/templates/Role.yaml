@@ -1,0 +1,22 @@
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+rules:
+  # Leader election — leases are always in the operator's own namespace
+  - apiGroups: [ coordination.k8s.io ]
+    resources: [ leases ]
+    verbs: [ get, list, watch, create, update, patch, delete ]
+  {{- if .Values.K8S_EVENTS_ENABLED }}
+  # Event recording — events are written to the operator's own namespace
+  - apiGroups: [ "" ]
+    resources: [ events ]
+    verbs: [ create, patch ]
+  {{- end }}
+{{- end }}
