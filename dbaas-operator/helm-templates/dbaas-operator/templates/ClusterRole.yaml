@@ -29,14 +29,4 @@ rules:
   - apiGroups: [ "" ]
     resources: [ secrets ]
     verbs: [ get ]
-  # Leader election
-  - apiGroups: [ coordination.k8s.io ]
-    resources: [ leases ]
-    verbs: [ get, list, watch, create, update, patch, delete ]
-  {{- if .Values.K8S_EVENTS_ENABLED }}
-  # Event recording
-  - apiGroups: [ "" ]
-    resources: [ events ]
-    verbs: [ create, patch ]
-  {{- end }}
 {{- end }}

@@ -1,0 +1,19 @@
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: '{{ .Values.SERVICE_NAME }}'
+subjects:
+  - kind: ServiceAccount
+    name: '{{ .Values.SERVICE_NAME }}'
+    namespace: '{{ .Values.NAMESPACE }}'
+{{- end }}
