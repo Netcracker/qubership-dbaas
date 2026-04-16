@@ -21,7 +21,7 @@ NODE_SELECTOR_DBAAS_KEY ?= region
 REGION_DBAAS ?= database
 # Validation image tag
 TAG ?= latest
-DBAAS_OPERATOR_TAG ?= fix-dbaas-operator-secrets-snapshot
+DBAAS_OPERATOR_TAG ?= latest
 
 # Export all variables for use in shell commands
 export PG_NAMESPACE
@@ -38,7 +38,7 @@ export PATRONI_CORE_VALUES_FILE
 export DBAAS_VALUES_FILE
 export DBAAS_OPERATOR_VALUES_FILE
 export DBAAS_OPERATOR_RESOURCE_PROFILE
-export PATRONI_SERVICES_VALUES_FILE 
+export PATRONI_SERVICES_VALUES_FILE
 
 
 # installation parameters - not propagated to helm values
