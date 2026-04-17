@@ -13,9 +13,9 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.service.PasswordEncryption;
 import io.quarkus.narayana.jta.QuarkusTransaction;
+import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.mockito.InjectSpy;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -27,7 +27,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.util.*;
 
@@ -36,8 +35,7 @@ import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
@@ -52,7 +50,7 @@ class DbaasOperationTest {
     @Inject
     PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
 
-    @InjectSpy
+    @InjectMock
     PasswordEncryption passwordEncryption;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -69,7 +67,6 @@ class DbaasOperationTest {
 
     @Transactional
     public void clean() {
-        Mockito.reset();
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType().forEach(dbr -> databaseRegistryDbaasRepository.delete(dbr));
         physicalDatabaseDbaasRepository.findAll().forEach(pd -> physicalDatabaseDbaasRepository.delete(pd));
     }
@@ -88,7 +85,7 @@ class DbaasOperationTest {
 
         PhysicalDatabase physicalDatabase = createPhysicalDatabase();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.save(physicalDatabase));
-        doReturn(UUID.randomUUID().toString()).when(passwordEncryption).decrypt(anyString());
+        when(passwordEncryption.decrypt(physicalDatabase.getAdapter().getHttpBasicCredentials().getPassword())).thenReturn(UUID.randomUUID().toString());
         UpdateHostRequest updateHostRequest = new UpdateHostRequest();
         updateHostRequest.setClassifier(getClassifier());
         updateHostRequest.setType(POSTGRESQL);
@@ -134,7 +131,7 @@ class DbaasOperationTest {
 
         PhysicalDatabase physicalDatabase = createPhysicalDatabase();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.save(physicalDatabase));
-        doReturn(UUID.randomUUID().toString()).when(passwordEncryption).decrypt(anyString());
+        when(passwordEncryption.decrypt(physicalDatabase.getAdapter().getHttpBasicCredentials().getPassword())).thenReturn(UUID.randomUUID().toString());
         UpdateHostRequest updateHostRequest = new UpdateHostRequest();
         updateHostRequest.setClassifier(getClassifier());
         updateHostRequest.setType(POSTGRESQL);
