@@ -186,24 +186,25 @@ kind: ClusterRole
 metadata:
   name: dbaas-operator
 rules:
-  # Manage ExternalDatabase and NamespaceBinding CRs across all namespaces
+  # ExternalDatabase: the controller only reads (Get/List) and watches CRs.
+  # Status is written via the /status subresource — no write access to the main resource is needed.
   - apiGroups: ["dbaas.netcracker.com"]
-    resources:
-      - externaldatabases
-      - namespacebindings
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    resources: ["externaldatabases"]
+    verbs: ["get", "list", "watch"]
 
   # Update ExternalDatabase status subresource
   - apiGroups: ["dbaas.netcracker.com"]
-    resources:
-      - externaldatabases/status
+    resources: ["externaldatabases/status"]
     verbs: ["get", "update", "patch"]
 
-  # Manage finalizers on both resource types
+  # NamespaceBinding: patch is required to add/remove the binding-protection finalizer (client.MergeFrom).
+  # Kubernetes additionally checks update on /finalizers when metadata.finalizers changes during a patch.
   - apiGroups: ["dbaas.netcracker.com"]
-    resources:
-      - externaldatabases/finalizers
-      - namespacebindings/finalizers
+    resources: ["namespacebindings"]
+    verbs: ["get", "list", "watch", "patch"]
+
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["namespacebindings/finalizers"]
     verbs: ["update"]
 
   # Read Secrets to resolve credentials referenced by ExternalDatabase CRs.
@@ -276,9 +277,10 @@ subjects:
 
 | API group | Resource | Verbs | Why it is needed |
 |-----------|----------|-------|-----------------|
-| `dbaas.netcracker.com` | `externaldatabases`, `namespacebindings` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Read and reconcile CRs across all namespaces |
+| `dbaas.netcracker.com` | `externaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
-| `dbaas.netcracker.com` | `externaldatabases/finalizers`, `namespacebindings/finalizers` | `update` | Add and remove the `binding-protection` finalizer on `NamespaceBinding` |
+| `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
+| `dbaas.netcracker.com` | `namespacebindings/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `""` (core) | `secrets` | `get` | Read credential Secrets referenced by `ExternalDatabase` CRs (fetched directly, not cached) |
 
 **Role** (operator namespace only):

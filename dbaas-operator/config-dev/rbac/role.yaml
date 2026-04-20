@@ -9,12 +9,9 @@ rules:
   resources:
   - namespacebindings
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
-  - update
   - watch
 - apiGroups:
   - dbaas.netcracker.com

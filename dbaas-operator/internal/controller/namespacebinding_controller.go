@@ -59,7 +59,7 @@ type NamespaceBindingReconciler struct {
 	Checker     ownership.BlockingResourceChecker
 }
 
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
 
 func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

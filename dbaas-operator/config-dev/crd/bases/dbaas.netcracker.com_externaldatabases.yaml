@@ -90,7 +90,6 @@ spec:
                           description: |-
                             keys is the list of mappings from Secret data keys to dbaas-aggregator
                             connection payload field names. At least one mapping is required.
-                            All name values within the list must be unique.
                           items:
                             description: |-
                               SecretKeyMapping maps a single key from a Kubernetes Secret to the field name

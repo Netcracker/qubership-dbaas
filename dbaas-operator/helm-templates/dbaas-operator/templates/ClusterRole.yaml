@@ -9,19 +9,20 @@ metadata:
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
 rules:
   # dbaas CRs
+  # externaldatabases: operator only reads (Get/List) and watches; status is updated via the /status subresource.
   - apiGroups: [ dbaas.netcracker.com ]
-    resources:
-      - externaldatabases
-      - namespacebindings
-    verbs: [ get, list, watch, create, update, patch, delete ]
+    resources: [ externaldatabases ]
+    verbs: [ get, list, watch ]
   - apiGroups: [ dbaas.netcracker.com ]
-    resources:
-      - externaldatabases/status
+    resources: [ externaldatabases/status ]
     verbs: [ get, update, patch ]
+  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
+  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
   - apiGroups: [ dbaas.netcracker.com ]
-    resources:
-      - externaldatabases/finalizers
-      - namespacebindings/finalizers
+    resources: [ namespacebindings ]
+    verbs: [ get, list, watch, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ namespacebindings/finalizers ]
     verbs: [ update ]
   # Secrets (for credentials in ExternalDatabase)
   # Secrets are fetched directly from the API server on each reconcile (no cache).
