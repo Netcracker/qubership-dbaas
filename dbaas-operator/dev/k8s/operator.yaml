@@ -10,25 +10,27 @@ metadata:
   name: dbaas-operator
 rules:
   # dbaas CRs
+  # Read-only access (Get/List/Watch) is sufficient for all workload resources;
+  # none of the controllers call Create, Update, or Delete on the main resource.
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - databasedeclarations
       - dbpolicies
       - externaldatabases
-      - namespacebindings
-    verbs: [get, list, watch, create, update, patch, delete]
+    verbs: [get, list, watch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - databasedeclarations/status
       - dbpolicies/status
       - externaldatabases/status
     verbs: [get, update, patch]
+  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
+  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
   - apiGroups: [dbaas.netcracker.com]
-    resources:
-      - databasedeclarations/finalizers
-      - dbpolicies/finalizers
-      - externaldatabases/finalizers
-      - namespacebindings/finalizers
+    resources: [namespacebindings]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [namespacebindings/finalizers]
     verbs: [update]
   # Secrets (for credentials in ExternalDatabase)
   # Fetched directly from the API server on each reconcile; no cache.
