@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
@@ -45,7 +46,7 @@ func requestIDFromContext(ctx context.Context) string {
 	xrid, err := xrequestid.Of(ctx)
 	if err != nil {
 		log.ErrorC(ctx, "failed to retrieve request ID from context: %v", err)
-		panic(err)
+		panic(fmt.Sprintf("requestIDFromContext: context not initialized, error: %v", err))
 	}
 	return xrid.GetRequestId()
 }

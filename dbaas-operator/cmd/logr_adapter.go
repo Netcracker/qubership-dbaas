@@ -49,10 +49,7 @@ func (a *logrAdapter) Error(err error, msg string, keysAndValues ...any) {
 }
 
 func (a *logrAdapter) WithValues(keysAndValues ...any) logr.LogSink {
-	merged := make([]any, len(a.kvs)+len(keysAndValues))
-	copy(merged, a.kvs)
-	copy(merged[len(a.kvs):], keysAndValues)
-	return &logrAdapter{logger: a.logger, name: a.name, kvs: merged}
+	return &logrAdapter{logger: a.logger, name: a.name, kvs: append(append([]any{}, a.kvs...), keysAndValues...)}
 }
 
 func (a *logrAdapter) WithName(name string) logr.LogSink {
