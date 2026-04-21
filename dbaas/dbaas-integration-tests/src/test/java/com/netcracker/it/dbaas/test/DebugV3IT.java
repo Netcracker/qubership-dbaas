@@ -147,4 +147,3 @@ public class DebugV3IT extends AbstractIT {
         return response;
     }
 }
-
