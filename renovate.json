@@ -11,7 +11,16 @@
       "matchPackageNames": [
         "io.quarkus.platform:quarkus-bom",
         "io.quarkus.platform:quarkus-maven-plugin",
-        "io.quarkus.platform:quarkus-operator-sdk-bom"
+        "io.quarkus.platform:quarkus-operator-sdk-bom",
+        "io.quarkus:quarkus-bom",
+        "io.quarkus:quarkus-core",
+        "io.quarkus:quarkus-core-deployment",
+        "io.quarkus:quarkus-devtools-common",
+        "io.quarkus:quarkus-extension-maven-plugin",
+        "io.quarkus:quarkus-extension-processor",
+        "io.quarkus:quarkus-maven-plugin",
+        "io.quarkus:quarkus-rest-client",
+        "io.quarkus:quarkus-universe-bom"
       ],
       "groupName": "quarkus",
       "separateMajorMinor": true,
