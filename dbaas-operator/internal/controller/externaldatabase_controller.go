@@ -183,7 +183,7 @@ func (r *ExternalDatabaseReconciler) buildConnectionProperties(
 	connProps := make([]map[string]string, 0, len(edb.Spec.ConnectionProperties))
 
 	for i, cp := range edb.Spec.ConnectionProperties {
-		flat := make(map[string]string, len(cp.ExtraProperties)+3)
+		flat := make(map[string]string, len(cp.ExtraProperties)+1) // +1 for "role"
 
 		// Extra properties are merged first so that typed fields and resolved
 		// Secret credentials always win on key collisions.
