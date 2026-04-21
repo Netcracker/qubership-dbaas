@@ -3,5 +3,19 @@
   "assignAutomerge": true,
   "assigneesFromCodeOwners": true,
   "reviewersFromCodeOwners": true,
-  "extends": [ "github>Netcracker/qubership-core-infra:renovate-core-config" ]
+  "extends": [
+    "github>Netcracker/qubership-core-infra:renovate-core-config"
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "io.quarkus.platform:quarkus-bom",
+        "io.quarkus.platform:quarkus-maven-plugin",
+        "io.quarkus.platform:quarkus-operator-sdk-bom"
+      ],
+      "groupName": "quarkus",
+      "separateMajorMinor": true,
+      "separateMinorPatch": true
+    }
+  ]
 }
