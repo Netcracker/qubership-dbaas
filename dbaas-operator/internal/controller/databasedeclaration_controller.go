@@ -23,8 +23,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,10 +60,8 @@ type DatabaseDeclarationReconciler struct {
 }
 
 func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	requestID := uuid.New().String()
-	ctx = ctxmanager.InitContext(ctx, map[string]any{
-		xRequestID: requestID,
-	})
+	// requestID is stored in ctx; sub-methods retrieve it via requestIDFromContext.
+	ctx, _ = initReconcileContext(ctx)
 
 	dd := &dbaasv1alpha1.DatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {

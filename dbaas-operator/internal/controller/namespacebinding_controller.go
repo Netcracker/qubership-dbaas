@@ -19,8 +19,6 @@ package controller
 import (
 	"context"
 
-	"github.com/google/uuid"
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -63,10 +61,7 @@ type NamespaceBindingReconciler struct {
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
 
 func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	requestID := uuid.New().String()
-	ctx = ctxmanager.InitContext(ctx, map[string]any{
-		xRequestID: requestID,
-	})
+	ctx, requestID := initReconcileContext(ctx)
 
 	nb := &dbaasv1.NamespaceBinding{}
 	if err := r.Get(ctx, req.NamespacedName, nb); err != nil {
