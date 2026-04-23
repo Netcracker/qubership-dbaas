@@ -1,4 +1,4 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: '{{ .Values.SERVICE_NAME }}-deploy-placeholder'
+  name: '{{ .Values.SERVICE_NAME }}'
