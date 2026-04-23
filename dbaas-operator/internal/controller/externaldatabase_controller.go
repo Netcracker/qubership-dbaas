@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/google/uuid"
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -58,10 +56,7 @@ type ExternalDatabaseReconciler struct {
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	requestID := uuid.New().String()
-	ctx = ctxmanager.InitContext(ctx, map[string]any{
-		xRequestID: requestID,
-	})
+	ctx, requestID := initReconcileContext(ctx)
 
 	edb := &dbaasv1.ExternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
