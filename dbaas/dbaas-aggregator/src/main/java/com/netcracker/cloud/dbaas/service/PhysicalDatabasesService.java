@@ -472,4 +472,10 @@ public class PhysicalDatabasesService {
                 && Objects.equals(metadata.getFeatures(), existingDatabase.getFeatures())
                 && Objects.equals(metadata.getRoHost(), existingDatabase.getRoHost());
     }
+
+
+    public void clearCache() {
+        startedAdaptersCache.clear();
+        physicalDatabaseCache.clear();
+    }
 }
