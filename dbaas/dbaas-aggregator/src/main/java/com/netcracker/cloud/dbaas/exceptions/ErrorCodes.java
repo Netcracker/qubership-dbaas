@@ -255,8 +255,11 @@ public enum ErrorCodes implements ErrorCode {
             "CORE-DBAAS-4055",
             "Failed namespace isolation check",
             "Namespace from path '%s' and namespace from jwt token '%s' doesn't not match or aren't in the same composite structure"),
-
-
+    CORE_DBAAS_4056(
+            "CORE-DBAAS-4056",
+            "Failed request to physical adapter",
+            "An error occurred during the request to adapter: %s"
+    ),
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",
             "trackingId not found",

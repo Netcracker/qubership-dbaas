@@ -1319,6 +1319,10 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setId(UUID.randomUUID());
         databaseRegistry.setDatabase(database);
+        SortedMap<String, Object> classifier = new TreeMap<>();
+        classifier.put(NAMESPACE, NAMESPACE);
+        classifier.put(MICROSERVICE_NAME, MICROSERVICE_NAME);
+        databaseRegistry.setClassifier(classifier);
         database.setResources(Collections.singletonList(new DbResource("database", TEST_NAME)));
         ArrayList<DatabaseRegistry> dbrs = new ArrayList<>();
         dbrs.add(databaseRegistry);
