@@ -7,7 +7,6 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -383,23 +382,21 @@ public class DeletionService {
     }
 
     private void registerDeletionError(Exception ex, DatabaseRegistry databaseRegistry) {
-        QuarkusTransaction.requiringNew().run(() -> {
-            log.warn("Register deletion error: '{}' of database {} with classifier {}", ex.getMessage(), DBaaService.getDatabaseName(databaseRegistry.getDatabase()), databaseRegistry.getClassifier());
-            try {
-                int status = 0;
-                if (ex instanceof WebApplicationException) {
-                    status = ((WebApplicationException) ex).getResponse().getStatus();
-                }
-                if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
-                    databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING_FAILED);
-                    logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
-                }
-
-                logicalDbOperationErrorRepository.persist(new LogicalDbOperationError(UUID.randomUUID(), databaseRegistry.getDatabase(), new Date(), ex.getMessage(), status, LogicalDbOperationError.Operation.DELETE));
-            } catch (Exception e) {
-                log.error("Can't register DB deletion error", e);
+        log.warn("Register deletion error: '{}' of database {} with classifier {}", ex.getMessage(), DBaaService.getDatabaseName(databaseRegistry.getDatabase()), databaseRegistry.getClassifier());
+        try {
+            int status = 0;
+            if (ex instanceof WebApplicationException) {
+                status = ((WebApplicationException) ex).getResponse().getStatus();
             }
-        });
+            if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
+                databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING_FAILED);
+                logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
+            }
+
+            logicalDbOperationErrorRepository.persist(new LogicalDbOperationError(UUID.randomUUID(), databaseRegistry.getDatabase(), new Date(), ex.getMessage(), status, LogicalDbOperationError.Operation.DELETE));
+        } catch (Exception e) {
+            log.error("Can't register DB deletion error", e);
+        }
     }
 
     public record CleanupResult(int databasesSyncDeletedCount, int databasesAsyncDeletionScheduledCount) {
