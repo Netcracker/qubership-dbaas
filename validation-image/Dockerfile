@@ -1,4 +1,4 @@
-FROM ghcr.io/netcracker/qubership-core-base:2.2.11
+FROM ghcr.io/netcracker/qubership-core-base:2.2.12
 LABEL maintainer="qubership"
 
 USER root
