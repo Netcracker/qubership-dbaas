@@ -52,9 +52,6 @@ class DbaasOperationTest {
     @Inject
     PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
 
-    @Inject
-    PhysicalDatabasesService physicalDatabasesService;
-
     @InjectMock
     PasswordEncryption passwordEncryption;
 
@@ -72,7 +69,6 @@ class DbaasOperationTest {
 
     @Transactional
     public void clean() {
-        physicalDatabasesService.clearCache();
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType().forEach(dbr -> databaseRegistryDbaasRepository.delete(dbr));
         physicalDatabaseDbaasRepository.findAll().forEach(pd -> physicalDatabaseDbaasRepository.delete(pd));
     }
