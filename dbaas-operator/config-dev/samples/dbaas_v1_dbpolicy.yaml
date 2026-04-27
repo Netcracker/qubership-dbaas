@@ -1,0 +1,13 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: DbPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: dbaas-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: dbpolicy-sample
+spec:
+  microserviceName: sample-service
+  services:
+    - name: other-service
+      roles:
+        - admin
