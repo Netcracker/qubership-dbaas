@@ -135,9 +135,11 @@ spec:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by DbPolicy:
-                    - "Ready"   — True when the policy was successfully applied to
-                                  dbaas-aggregator for the current generation (reason "PolicyApplied").
+                  Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy):
+                    - "Ready"   — True when the resource was successfully processed by
+                                  dbaas-aggregator for the current generation.
+                                  ExternalDatabase: reason "DatabaseRegistered" on success.
+                                  DbPolicy: reason "PolicyApplied" on success.
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,
