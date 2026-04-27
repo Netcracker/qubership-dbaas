@@ -112,8 +112,8 @@ github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.5.0 h1:uglCyQIu
 github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.5.0/go.mod h1:V7wi9GntZuPLJ+xD+ofSPE85lRqaaCVjauM1A3fAbLk=
 github.com/netcracker/qubership-core-lib-go/v3 v3.8.0 h1:hDzflmqo5xmZmBjlmzYQp5gawDheKnuSJfiV1ED2DIo=
 github.com/netcracker/qubership-core-lib-go/v3 v3.8.0/go.mod h1:REJ6332XpbP4n20tnCrkJ2iNxgzoo0H6SEf5NHIKRvg=
-github.com/onsi/ginkgo/v2 v2.28.1 h1:S4hj+HbZp40fNKuLUQOYLDgZLwNUVn19N3Atb98NCyI=
-github.com/onsi/ginkgo/v2 v2.28.1/go.mod h1:CLtbVInNckU3/+gC8LzkGUb9oF+e8W8TdUsxPwvdOgE=
+github.com/onsi/ginkgo/v2 v2.28.2 h1:DTrMfpqxiNUyQ3Y0zhn1n3cOO2euFgQPYIpkWwxVFps=
+github.com/onsi/ginkgo/v2 v2.28.2/go.mod h1:CLtbVInNckU3/+gC8LzkGUb9oF+e8W8TdUsxPwvdOgE=
 github.com/onsi/gomega v1.39.1 h1:1IJLAad4zjPn2PsnhH70V4DKRFlrCzGBNrNaru+Vf28=
 github.com/onsi/gomega v1.39.1/go.mod h1:hL6yVALoTOxeWudERyfppUcZXjMwIMLnuSfruD2lcfg=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 h1:onHthvaw9LFnH4t2DcNVpwGmV9E1BkGknEliJkfwQj0=
