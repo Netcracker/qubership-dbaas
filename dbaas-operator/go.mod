@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.5.0
 	github.com/netcracker/qubership-core-lib-go/v3 v3.8.0
-	github.com/onsi/ginkgo/v2 v2.28.1
+	github.com/onsi/ginkgo/v2 v2.28.2
 	github.com/onsi/gomega v1.39.1
 	k8s.io/api v0.35.4
 	k8s.io/apimachinery v0.35.4
