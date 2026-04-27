@@ -182,20 +182,19 @@ func main() {
 		func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} },
 		func(l *dbaasv1.ExternalDatabaseList) int { return len(l.Items) },
 	)
-	blockingChecker := ownership.NewCompositeChecker(edbChecker)
+	dpChecker := ownership.NewKindChecker(
+		mgr.GetClient(),
+		func() *dbaasv1.DbPolicyList { return &dbaasv1.DbPolicyList{} },
+		func(l *dbaasv1.DbPolicyList) int { return len(l.Items) },
+	)
+	blockingChecker := ownership.NewCompositeChecker(edbChecker, dpChecker)
 	if alphaAPIsEnabled {
 		ddChecker := ownership.NewKindChecker(
 			mgr.GetClient(),
 			func() *dbaasv1alpha1.DatabaseDeclarationList { return &dbaasv1alpha1.DatabaseDeclarationList{} },
 			func(l *dbaasv1alpha1.DatabaseDeclarationList) int { return len(l.Items) },
 		)
-		dpChecker := ownership.NewKindChecker(
-			mgr.GetClient(),
-			func() *dbaasv1alpha1.DbPolicyList { return &dbaasv1alpha1.DbPolicyList{} },
-			func(l *dbaasv1alpha1.DbPolicyList) int { return len(l.Items) },
-		)
 		blockingChecker.Add(ddChecker)
-		blockingChecker.Add(dpChecker)
 	}
 	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),
@@ -220,6 +219,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.DbPolicyReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   recorderFor(mgr, "dbpolicy", eventsEnabled),
+		Ownership:  ownershipResolver,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
+		os.Exit(1)
+	}
+
 	if alphaAPIsEnabled {
 		setupLog.Info("Alpha APIs are enabled")
 
@@ -231,16 +241,6 @@ func main() {
 			Ownership:  ownershipResolver,
 		}).SetupWithManager(mgr, ctrlOpts); err != nil {
 			setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
-			os.Exit(1)
-		}
-		if err := (&controller.DbPolicyReconciler{
-			Client:     mgr.GetClient(),
-			Scheme:     mgr.GetScheme(),
-			Aggregator: aggregator,
-			Recorder:   recorderFor(mgr, "dbpolicy", eventsEnabled),
-			Ownership:  ownershipResolver,
-		}).SetupWithManager(mgr, ctrlOpts); err != nil {
-			setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
 			os.Exit(1)
 		}
 	} else {

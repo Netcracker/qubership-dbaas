@@ -1,3 +1,4 @@
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -134,15 +135,14 @@ spec:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by ExternalDatabase:
-                    - "Ready"   — True when the resource was successfully registered with
-                                  dbaas-aggregator for the current generation (reason "DatabaseRegistered").
+                  Condition types used by DbPolicy:
+                    - "Ready"   — True when the policy was successfully applied to
+                                  dbaas-aggregator for the current generation (reason "PolicyApplied").
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,
                                   AggregatorRejected). False for transient errors that are
-                                  retried automatically (e.g. SecretError, AggregatorError,
-                                  Unauthorized).
+                                  retried automatically (e.g. AggregatorError, Unauthorized).
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -236,3 +236,4 @@ spec:
     storage: true
     subresources:
       status: {}
+{{- end }}

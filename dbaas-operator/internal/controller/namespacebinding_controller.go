@@ -146,7 +146,7 @@ func enqueueBindingForWorkload(_ context.Context, obj client.Object) []reconcile
 }
 
 // SetupWithManager registers the controller and configures watches.
-// alphaEnabled controls whether DatabaseDeclaration and DbPolicy watches are added.
+// alphaEnabled controls whether DatabaseDeclaration watches are added.
 func (r *NamespaceBindingReconciler) SetupWithManager(
 	mgr ctrl.Manager,
 	opts ctrlcontroller.Options,
@@ -159,6 +159,10 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 			&dbaasv1.ExternalDatabase{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
+		Watches(
+			&dbaasv1.DbPolicy{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
 		WithOptions(opts).
 		Named("namespacebinding")
 
@@ -166,10 +170,6 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 		b = b.
 			Watches(
 				&dbaasv1alpha1.DatabaseDeclaration{},
-				handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
-			).
-			Watches(
-				&dbaasv1alpha1.DbPolicy{},
 				handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 			)
 	}
