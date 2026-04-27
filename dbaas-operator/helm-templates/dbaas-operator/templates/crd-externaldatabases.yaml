@@ -6,11 +6,6 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
   name: externaldatabases.dbaas.netcracker.com
-  labels:
-    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
-    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
-    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
 spec:
   group: dbaas.netcracker.com
   names:

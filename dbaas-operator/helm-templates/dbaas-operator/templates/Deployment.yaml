@@ -42,14 +42,9 @@ spec:
   template:
     metadata:
       labels:
-        app: '{{ .Values.SERVICE_NAME }}'
-        name: '{{ .Values.SERVICE_NAME }}'
-        app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-        app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
-        app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
-        app.kubernetes.io/component: 'operator'
-        app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
-        app.kubernetes.io/technology: 'go'
+        name: '{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}'
+        app.kubernetes.io/name: '{{ $.Values.SERVICE_NAME }}'
+        app.kubernetes.io/part-of: '{{ $.Values.APPLICATION_NAME }}'
     spec:
       nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
