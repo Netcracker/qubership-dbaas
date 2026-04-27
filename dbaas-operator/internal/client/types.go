@@ -91,6 +91,44 @@ type ExternalDatabaseRequest struct {
 	UpdateConnectionProperties bool                `json:"updateConnectionProperties,omitempty"`
 }
 
+// ─── DatabaseDeclaration wire types ──────────────────────────────────────────
+
+// DatabaseDeclarationSpecWire is the wire representation of the spec field
+// in POST /api/declarations/v1/apply for subKind=DatabaseDeclaration.
+// Field names mirror com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration
+// in dbaas-aggregator. The CRD exposes the classifier field as "classifier" for a
+// cleaner user-facing API, while the aggregator expects it as "classifierConfig".
+type DatabaseDeclarationSpecWire struct {
+	ClassifierConfig     ClassifierWire            `json:"classifierConfig"`
+	Type                 string                    `json:"type"`
+	Lazy                 bool                      `json:"lazy,omitempty"`
+	Settings             map[string]string         `json:"settings,omitempty"`
+	NamePrefix           string                    `json:"namePrefix,omitempty"`
+	VersioningConfig     *VersioningConfigWire     `json:"versioningConfig,omitempty"`
+	InitialInstantiation *InitialInstantiationWire `json:"initialInstantiation,omitempty"`
+}
+
+// ClassifierWire is the wire representation of a database classifier.
+// Mirrors com.netcracker.cloud.dbaas.dto.classifier.ClassifierConfig in dbaas-aggregator.
+type ClassifierWire struct {
+	MicroserviceName string            `json:"microserviceName"`
+	Scope            string            `json:"scope"`
+	Namespace        string            `json:"namespace,omitempty"`
+	TenantId         string            `json:"tenantId,omitempty"`
+	CustomKeys       map[string]string `json:"customKeys,omitempty"`
+}
+
+// VersioningConfigWire mirrors DatabaseDeclaration.VersioningConfig in dbaas-aggregator.
+type VersioningConfigWire struct {
+	Approach string `json:"approach,omitempty"`
+}
+
+// InitialInstantiationWire mirrors DatabaseDeclaration.InitialInstantiation in dbaas-aggregator.
+type InitialInstantiationWire struct {
+	Approach         string          `json:"approach,omitempty"`
+	SourceClassifier *ClassifierWire `json:"sourceClassifier,omitempty"`
+}
+
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.

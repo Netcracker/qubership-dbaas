@@ -166,7 +166,9 @@ func (r *DatabaseDeclarationReconciler) invalidSpec(ctx context.Context, dd *dba
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
 // kind/subKind are hardcoded to what the aggregator expects.
-// microserviceName goes into metadata; the entire spec is forwarded as-is.
+// microserviceName goes into metadata; spec fields are mapped to the aggregator wire
+// format — notably the CRD field "classifier" is sent as "classifierConfig" to match
+// the Java DTO com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration.
 func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1alpha1.DatabaseDeclaration) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
 		APIVersion: apiVersionV1,
@@ -177,7 +179,46 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1alpha1.DatabaseD
 			Namespace:        dd.Namespace,
 			MicroserviceName: dd.Spec.Classifier.MicroserviceName,
 		},
-		Spec: dd.Spec,
+		Spec: toWireSpec(dd.Spec),
+	}
+}
+
+// toWireSpec converts a DatabaseDeclarationSpec (CRD shape) into the wire format
+// expected by dbaas-aggregator. The key difference is that "classifier" in the CRD
+// maps to "classifierConfig" in the aggregator DTO.
+func toWireSpec(spec dbaasv1alpha1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
+	wire := aggregatorclient.DatabaseDeclarationSpecWire{
+		ClassifierConfig: classifierToWire(spec.Classifier),
+		Type:             spec.Type,
+		Lazy:             spec.Lazy,
+		Settings:         spec.Settings,
+		NamePrefix:       spec.NamePrefix,
+	}
+	if spec.VersioningConfig != nil {
+		wire.VersioningConfig = &aggregatorclient.VersioningConfigWire{
+			Approach: spec.VersioningConfig.Approach,
+		}
+	}
+	if spec.InitialInstantiation != nil {
+		ii := &aggregatorclient.InitialInstantiationWire{
+			Approach: spec.InitialInstantiation.Approach,
+		}
+		if spec.InitialInstantiation.SourceClassifier != nil {
+			sc := classifierToWire(*spec.InitialInstantiation.SourceClassifier)
+			ii.SourceClassifier = &sc
+		}
+		wire.InitialInstantiation = ii
+	}
+	return wire
+}
+
+func classifierToWire(c dbaasv1alpha1.Classifier) aggregatorclient.ClassifierWire {
+	return aggregatorclient.ClassifierWire{
+		MicroserviceName: c.MicroserviceName,
+		Scope:            c.Scope,
+		Namespace:        c.Namespace,
+		TenantId:         c.TenantId,
+		CustomKeys:       c.CustomKeys,
 	}
 }
 
