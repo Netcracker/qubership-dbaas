@@ -6,8 +6,9 @@ metadata:
   namespace: '{{ .Values.NAMESPACE }}'
   labels:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
