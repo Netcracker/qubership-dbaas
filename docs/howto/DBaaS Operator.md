@@ -5,6 +5,8 @@
 - [Overview](#overview)
 - [High-Level Architecture](#high-level-architecture)
 - [API Endpoints](#api-endpoints)
+  - [ExternalDatabase Registration Endpoint](#externaldatabase-registration-endpoint)
+  - [DbPolicy Apply Endpoint](#dbpolicy-apply-endpoint)
 - [Authentication: Projected Service Account Token](#authentication-projected-service-account-token)
 - [RBAC and Required Permissions](#rbac-and-required-permissions)
   - [Default Installation](#default-installation)
@@ -20,6 +22,11 @@
     - [How It Works](#how-externaldatabase-works)
     - [Status Reference](#externaldatabase-status-reference)
     - [Usage Examples](#externaldatabase-usage-examples)
+  - [DbPolicy](#dbpolicy)
+    - [Resource Fields](#dbpolicy-resource-fields)
+    - [How It Works](#how-dbpolicy-works)
+    - [Status Reference](#dbpolicy-status-reference)
+    - [Usage Examples](#dbpolicy-usage-examples)
 - [Configuration Parameters](#configuration-parameters)
   - [Reconcile Backoff](#reconcile-backoff)
 
@@ -33,6 +40,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 |-----------------|-----------|-------|---------|
 | `NamespaceBinding` | `dbaas.netcracker.com/v1` | Namespaced | Declares that a namespace is managed by this operator instance |
 | `ExternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Registers a pre-existing database with dbaas-aggregator |
+| `DbPolicy` | `dbaas.netcracker.com/v1` | Namespaced | Declares database role assignments for microservices in a namespace |
 
 ---
 
@@ -50,6 +58,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 │  │  │                                          │   │  │
 │  │  │  NamespaceBinding controller             │   │  │
 │  │  │  ExternalDatabase controller             │   │  │
+│  │  │  DbPolicy controller                     │   │  │
 │  │  └──────────────────────────────────────────┘   │  │
 │  └──────────────────────────────────────────────────┘  │
 │                          │                              │
@@ -60,6 +69,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 │  │                       ▼                          │  │
 │  │  NamespaceBinding ─── ownership check            │  │
 │  │  ExternalDatabase ─── reconcile ──────────────── ┼──┼──▶ dbaas-aggregator
+│  │  DbPolicy         ─── reconcile ──────────────── ┼──┤
 │  │  Secret (credentials)                            │  │
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
@@ -77,11 +87,12 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 
 ## API Endpoints
 
-The operator calls the following dbaas-aggregator endpoint:
+The operator calls the following dbaas-aggregator endpoints:
 
 | Method | URL | Used by | Purpose |
 |--------|-----|---------|---------|
 | `PUT` | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable` | `ExternalDatabase` reconciler | Register or update an externally managed database |
+| `POST` | `/api/declarations/v1/apply` | `DbPolicy` reconciler | Apply a declarative database role policy |
 
 ### ExternalDatabase Registration Endpoint
 
@@ -100,6 +111,23 @@ The operator always sends `updateConnectionProperties: true`, which means the re
 | `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
 | `403` | `tenantId` in classifier does not match JWT | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `409` | Database exists but is not externally managed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
+| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+### DbPolicy Apply Endpoint
+
+**`POST /api/declarations/v1/apply`**
+
+The operator posts a declarative payload with `subKind: DbPolicy`. The `microserviceName` from the CR spec is sent in the payload `metadata`, not in the spec body.
+
+**Possible responses and operator behavior:**
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `200 OK` | Policy applied successfully | `Succeeded` — `Ready=True`, reason `PolicyApplied` |
+| `400` / `422` | Invalid policy spec | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
+| `403` / `409` | Permanent conflict or authorization error | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
 | Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
@@ -186,13 +214,22 @@ kind: ClusterRole
 metadata:
   name: dbaas-operator
 rules:
+  # DbPolicy: the controller reads and watches CRs.
+  # Status is written via the /status subresource.
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["dbpolicies"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["dbpolicies/status"]
+    verbs: ["get", "update", "patch"]
+
   # ExternalDatabase: the controller only reads (Get/List) and watches CRs.
   # Status is written via the /status subresource — no write access to the main resource is needed.
   - apiGroups: ["dbaas.netcracker.com"]
     resources: ["externaldatabases"]
     verbs: ["get", "list", "watch"]
 
-  # Update ExternalDatabase status subresource
   - apiGroups: ["dbaas.netcracker.com"]
     resources: ["externaldatabases/status"]
     verbs: ["get", "update", "patch"]
@@ -277,6 +314,8 @@ subjects:
 
 | API group | Resource | Verbs | Why it is needed |
 |-----------|----------|-------|-----------------|
+| `dbaas.netcracker.com` | `dbpolicies` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
+| `dbaas.netcracker.com` | `dbpolicies/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `externaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
@@ -325,12 +364,12 @@ spec:
 
 #### How NamespaceBinding Works
 
-The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource (e.g., `ExternalDatabase`), it checks whether the resource's namespace is owned by this operator instance.
+The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource (e.g., `ExternalDatabase`, `DbPolicy`), it checks whether the resource's namespace is owned by this operator instance.
 
 Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing `spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable.
 
 ```
-ExternalDatabase reconcile triggered
+ExternalDatabase / DbPolicy reconcile triggered
          │
          ▼
   Look up NamespaceBinding "binding" in the same namespace
@@ -342,7 +381,7 @@ ExternalDatabase reconcile triggered
          └── Found, operatorNamespace = CLOUD_NAMESPACE (Mine) ──▶ Proceed with reconcile
 ```
 
-When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase` objects are reconciled immediately without requiring a spec change.
+When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase` and `DbPolicy` objects are reconciled immediately without requiring a spec change.
 
 | Cache state | Meaning | Operator action |
 |-------------|---------|-----------------|
@@ -363,7 +402,7 @@ This finalizer prevents the `NamespaceBinding` from being deleted while workload
 
 | Situation | Result |
 |-----------|--------|
-| Namespace still contains `ExternalDatabase` resources | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
+| Namespace still contains `ExternalDatabase` or `DbPolicy` resources | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
 | No blocking workload resources remain | Finalizer is removed; Kubernetes completes the deletion |
 
 #### NamespaceBinding Usage Examples
@@ -391,15 +430,15 @@ kubectl get namespacebinding binding -n my-namespace -o jsonpath='{.metadata.fin
 # ["platform.dbaas.netcracker.com/binding-protection"]
 ```
 
-If the finalizer is present, the operator owns the namespace and will reconcile workload resources (`ExternalDatabase`) within it.
+If the finalizer is present, the operator owns the namespace and will reconcile workload resources (`ExternalDatabase`, `DbPolicy`) within it.
 
 This is intentional. `NamespaceBinding` is a declaration of ownership, not a job or pipeline — its semantics are binary: either the operator has claimed the namespace or it has not. A `status` field would add complexity without real benefit, and stale status values would be misleading in edge cases (e.g., operator restart). The finalizer is sufficient and follows the established Kubernetes practice for simple ownership resources.
 
 **Delete a binding (after removing all workload resources):**
 
 ```bash
-# Remove all ExternalDatabase resources first
-kubectl delete externaldatabase --all -n my-namespace
+# Remove all workload resources first
+kubectl delete externaldatabase,dbpolicy --all -n my-namespace
 
 # Then delete the binding
 kubectl delete namespacebinding binding -n my-namespace
@@ -653,6 +692,207 @@ kubectl get dbedb my-postgres-external -n my-namespace -o jsonpath='{.status.con
 # If Stalled=False and Ready=False — transient error, controller is retrying;
 #   use lastRequestId to look up logs
 kubectl get dbedb my-postgres-external -n my-namespace -o jsonpath='{.status.lastRequestId}'
+```
+
+---
+
+### DbPolicy
+
+`DbPolicy` declares the database role assignments for microservices in a namespace. The operator forwards this declaration to dbaas-aggregator, which applies the role grants when provisioning or connecting databases for those microservices.
+
+Short name: `dbbp`
+
+`kubectl get dbbp` columns: `PHASE`, `AGE`
+
+#### DbPolicy Resource Fields
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DbPolicy
+metadata:
+  name: my-policy
+  namespace: my-namespace
+spec:
+  microserviceName: my-service
+  services:
+    - name: other-service
+      roles:
+        - admin
+    - name: reporting-service
+      roles:
+        - readonly
+  policy:
+    - type: postgresql
+      defaultRole: readonly
+      additionalRole:
+        - admin
+  disableGlobalPermissions: false
+```
+
+**Top-level spec fields:**
+
+| Field | Required | Mutable | Description |
+|-------|:--------:|:-------:|-------------|
+| `spec.microserviceName` | Yes | Yes | The microservice that owns this policy. Sent as `metadata.microserviceName` in the aggregator payload. |
+| `spec.services` | At least one of `services` or `policy` | Yes | Per-microservice role assignments. |
+| `spec.policy` | At least one of `services` or `policy` | Yes | Default role rules per database type, applied to services not listed in `services`. |
+| `spec.disableGlobalPermissions` | No | Yes | When `true`, opts out of dbaas-aggregator's default global permission grants. Defaults to `false`. |
+
+**`spec.services[]` fields:**
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `name` | Yes | Microservice name. Must match the service's `app.kubernetes.io/name` label. Minimum length: 1. |
+| `roles` | Yes | List of database roles granted to this microservice. At least one role required. Role names are adapter-specific (e.g., `admin`, `readonly`, `readwrite`). |
+
+**`spec.policy[]` fields:**
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `type` | Yes | Database engine type this rule applies to (e.g., `postgresql`, `mongodb`). Must match a type known to dbaas-aggregator. |
+| `defaultRole` | Yes | Role assigned to any microservice not explicitly listed in `services`. |
+| `additionalRole` | No | Extra roles that may be granted beyond `defaultRole`. Interpretation is adapter-specific. |
+
+> **Constraint:** at least one of `spec.services` or `spec.policy` must be non-empty. A CR with both fields absent is rejected by the controller with `InvalidSpec` before the aggregator is contacted.
+
+#### How DbPolicy Works
+
+Each time the spec changes (i.e., `metadata.generation` increments), the controller:
+
+1. Checks namespace ownership via `NamespaceBinding` (skips if not owned).
+2. Validates that at least one of `services` or `policy` is non-empty.
+3. Sends a `POST /api/declarations/v1/apply` request to dbaas-aggregator with `subKind: DbPolicy`.
+4. Updates `status.phase` and `status.conditions` based on the outcome.
+
+```
+CR created / spec changed
+        │
+        ▼
+  Ownership check (NamespaceBinding)
+        │ not owned → skip
+        ▼
+  phase = Processing
+        │
+        ▼
+  Pre-flight validation
+    services and policy both empty? ────────────────▶ InvalidConfiguration (InvalidSpec)
+        │
+        ▼
+  Call dbaas-aggregator POST /api/declarations/v1/apply
+    401 ────────────────────────────────────────────▶ BackingOff (Unauthorized, retried)
+    400 / 403 / 409 / 422 ──────────────────────────▶ InvalidConfiguration (AggregatorRejected)
+    5xx / network ──────────────────────────────────▶ BackingOff (AggregatorError, retried)
+        │
+        ▼
+  Succeeded — Ready=True / PolicyApplied
+```
+
+#### DbPolicy Status Reference
+
+**`status.phase`** — human-readable summary for `kubectl get dbbp`.
+
+| Phase | Meaning |
+|-------|---------|
+| `Unknown` | CR just created, not yet processed |
+| `Processing` | Controller is actively reconciling (transient) |
+| `Succeeded` | Policy successfully applied via dbaas-aggregator |
+| `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
+| `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
+
+**`Ready`** — is the policy applied?
+
+| Status | Meaning |
+|--------|---------|
+| `True` | Successfully applied for the current generation |
+| `False` | Apply failed — check `Reason` and `Message` |
+
+**`Stalled`** — will retrying help?
+
+| Status | Meaning |
+|--------|---------|
+| `True` | Permanent error — the spec must be corrected; the controller will not retry |
+| `False` | Transient error or success — the controller retries automatically |
+
+**Reason vocabulary:**
+
+| Reason | Applied to | Meaning |
+|--------|-----------|---------|
+| `PolicyApplied` | `Ready=True` | Policy successfully applied via dbaas-aggregator |
+| `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
+| `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed — both `services` and `policy` are empty |
+| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
+| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 422 — permanent spec issue |
+| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, or network error |
+
+**Full state matrix:**
+
+| Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
+|----------|---------|:-------:|----------|:---------:|
+| Applied (200) | `Succeeded` | `True` | `PolicyApplied` | `False` |
+| Both `services` and `policy` empty | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
+| Aggregator 400 / 403 / 409 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
+| Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
+
+**Diagnostic rules:**
+
+- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
+- **`Stalled=False` + `Ready=False`** — wait. The controller is retrying automatically.
+- **`status.lastRequestId`** — use this value to correlate operator logs with dbaas-aggregator logs.
+
+#### DbPolicy Usage Examples
+
+**Grant a specific microservice admin access:**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DbPolicy
+metadata:
+  name: my-policy
+  namespace: my-namespace
+spec:
+  microserviceName: my-service
+  services:
+    - name: other-service
+      roles:
+        - admin
+```
+
+**Set default roles per database type (for all services not explicitly listed):**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DbPolicy
+metadata:
+  name: my-policy
+  namespace: my-namespace
+spec:
+  microserviceName: my-service
+  policy:
+    - type: postgresql
+      defaultRole: readonly
+      additionalRole:
+        - admin
+```
+
+**Check status:**
+
+```bash
+kubectl get dbbp -n my-namespace
+# NAME        PHASE       AGE
+# my-policy   Succeeded   1m
+
+kubectl describe dbbp my-policy -n my-namespace
+```
+
+**Troubleshoot a stuck resource:**
+
+```bash
+# Check conditions
+kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+
+# Use lastRequestId to correlate with aggregator logs
+kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---

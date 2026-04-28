@@ -7,6 +7,22 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
+  - dbpolicies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - dbpolicies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
   - namespacebindings
   verbs:
   - get

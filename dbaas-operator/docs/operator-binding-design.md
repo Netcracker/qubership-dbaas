@@ -121,8 +121,8 @@ In `cmd/main.go`, the composition depends on `ALPHA_APIS_ENABLED`:
 ```
 CompositeChecker
 ├── KindChecker[ExternalDatabaseList]         (always)
-├── KindChecker[DatabaseDeclarationList]      (only if alpha enabled)
-└── KindChecker[DbPolicyList]                 (only if alpha enabled)
+├── KindChecker[DbPolicyList]                 (always)
+└── KindChecker[DatabaseDeclarationList]      (only if alpha enabled)
 ```
 
 ### 3. `internal/controller/namespacebinding_controller.go` and the `binding → workloads` watch
@@ -149,7 +149,7 @@ GET NamespaceBinding
 
 **Watches in `NamespaceBindingReconciler`** (`workload → binding`):
 `handler.EnqueueRequestsFromMapFunc` is configured for `ExternalDatabase`
-(always) plus `DatabaseDeclaration` and `DbPolicy` (when `alphaEnabled`).
+and `DbPolicy` (always) plus `DatabaseDeclaration` (when `alphaEnabled`).
 Mapping: any object
 → `{Namespace: obj.Namespace, Name: "binding"}`. This guarantees that
 deleting the last blocking resource immediately triggers another finalizer
