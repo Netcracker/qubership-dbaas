@@ -125,9 +125,8 @@ The operator posts a declarative payload with `subKind: DbPolicy`. The `microser
 | HTTP Code | Situation | Operator outcome |
 |-----------|-----------|-----------------|
 | `200 OK` | Policy applied successfully | `Succeeded` — `Ready=True`, reason `PolicyApplied` |
-| `400` / `422` | Invalid policy spec | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `400` / `403` / `409` / `410` / `422` | Invalid or permanently rejected policy spec | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
-| `403` / `409` | Permanent conflict or authorization error | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
 | Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
@@ -821,7 +820,7 @@ CR created / spec changed
 | `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
 | `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed — both `services` and `policy` are empty |
 | `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
-| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 422 — permanent spec issue |
+| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 — permanent spec issue |
 | `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, or network error |
 
 **Full state matrix:**
@@ -831,7 +830,7 @@ CR created / spec changed
 | Applied (200) | `Succeeded` | `True` | `PolicyApplied` | `False` |
 | Both `services` and `policy` empty | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
-| Aggregator 400 / 403 / 409 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
+| Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
 
 **Diagnostic rules:**
