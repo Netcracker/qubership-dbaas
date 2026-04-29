@@ -315,10 +315,12 @@ public class PhysicalDatabasesService {
     }
 
     public DbaasAdapter getAdapterById(String adapterId) {
+        log.info("Adapter cache {}" , startedAdaptersCache);
         return startedAdaptersCache.computeIfAbsent(adapterId, adapter -> startAdapter(adapterId));
     }
 
     private void resetCacheForAdapter(String adapterId) {
+        log.info("Reset cache {}" , startedAdaptersCache);
         startedAdaptersCache.computeIfPresent(adapterId, (id, dbaasAdapter) -> startAdapter(id));
     }
 
@@ -358,6 +360,7 @@ public class PhysicalDatabasesService {
         log.info("Starting registration of adapter with id = {}", physicalDatabase.getAdapter().getAdapterId());
         String username = physicalDatabase.getAdapter().getHttpBasicCredentials().getUsername();
         String password = encryption.decrypt(physicalDatabase.getAdapter().getHttpBasicCredentials().getPassword());
+        log.info("password {}", password);
         if (physicalDatabase.getAdapter().getSupportedVersion().equals(VERSION_2)) {
             return dbaasAdapterRESTClientFactory.createDbaasAdapterClientV2(username, password, physicalDatabase.getAdapter().getAddress(),
                     physicalDatabase.getType(), physicalDatabase.getAdapter().getAdapterId(), tracker, physicalDatabase.getAdapter().getApiVersions());
@@ -471,5 +474,10 @@ public class PhysicalDatabasesService {
                 && CollectionUtils.isEqualCollection(metadata.getSupportedRoles(), existingDatabase.getRoles())
                 && Objects.equals(metadata.getFeatures(), existingDatabase.getFeatures())
                 && Objects.equals(metadata.getRoHost(), existingDatabase.getRoHost());
+    }
+
+    public void clearCache() {
+        startedAdaptersCache.clear();
+        physicalDatabaseCache.clear();
     }
 }

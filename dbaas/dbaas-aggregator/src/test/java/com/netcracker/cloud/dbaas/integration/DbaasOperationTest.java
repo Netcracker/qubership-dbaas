@@ -75,6 +75,7 @@ class DbaasOperationTest {
 
     @Test
     void testSaveAndDeleteDatabase() throws JsonProcessingException {
+        log.info("testSaveAndDeleteDatabase1");
         DatabaseRegistry databaseRegistry = createDatabase();
         QuarkusTransaction.requiringNew().run(() -> {
             databaseRegistryDbaasRepository.saveAnyTypeLogDb(databaseRegistry);
@@ -87,7 +88,10 @@ class DbaasOperationTest {
 
         PhysicalDatabase physicalDatabase = createPhysicalDatabase();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.save(physicalDatabase));
-        when(passwordEncryption.decrypt(anyString())).thenReturn(UUID.randomUUID().toString());
+        when(passwordEncryption.decrypt(anyString())).thenAnswer(invocation -> {
+            Thread.dumpStack();
+            return UUID.randomUUID().toString();
+        });
         UpdateHostRequest updateHostRequest = new UpdateHostRequest();
         updateHostRequest.setClassifier(getClassifier());
         updateHostRequest.setType(POSTGRESQL);
@@ -121,6 +125,7 @@ class DbaasOperationTest {
 
     @Test
     void testSaveAndDeleteDatabase2() {
+        log.info("testSaveAndDeleteDatabase2");
         DatabaseRegistry databaseRegistry = createDatabase();
         QuarkusTransaction.requiringNew().run(() -> {
             databaseRegistryDbaasRepository.saveAnyTypeLogDb(databaseRegistry);
@@ -133,7 +138,10 @@ class DbaasOperationTest {
 
         PhysicalDatabase physicalDatabase = createPhysicalDatabase();
         QuarkusTransaction.requiringNew().run(() -> physicalDatabaseDbaasRepository.save(physicalDatabase));
-        when(passwordEncryption.decrypt(anyString())).thenReturn(UUID.randomUUID().toString());
+        when(passwordEncryption.decrypt(anyString())).thenAnswer(invocation -> {
+            Thread.dumpStack();
+            return UUID.randomUUID().toString();
+        });
         UpdateHostRequest updateHostRequest = new UpdateHostRequest();
         updateHostRequest.setClassifier(getClassifier());
         updateHostRequest.setType(POSTGRESQL);
