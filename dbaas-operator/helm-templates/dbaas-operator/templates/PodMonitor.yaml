@@ -7,7 +7,7 @@ metadata:
     k8s-app: '{{ .Values.SERVICE_NAME }}-pod-monitor'
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}-pod-monitor'
     app.kubernetes.io/component: monitoring
-    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
     app.kubernetes.io/processed-by-operator: victoriametrics-operator
     deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'

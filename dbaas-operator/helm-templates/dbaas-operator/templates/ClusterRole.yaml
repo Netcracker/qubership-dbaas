@@ -5,8 +5,9 @@ metadata:
   name: '{{ .Values.SERVICE_NAME }}'
   labels:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
-    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
 rules:
   # dbaas CRs
   # externaldatabases: operator only reads (Get/List) and watches; status is updated via the /status subresource.
