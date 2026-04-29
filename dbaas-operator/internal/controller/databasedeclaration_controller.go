@@ -186,7 +186,7 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclara
 // toWireSpec converts a DatabaseDeclarationSpec (CRD shape) into the wire format
 // expected by dbaas-aggregator. The key difference is that "classifier" in the CRD
 // maps to "classifierConfig" in the aggregator DTO.
-func toWireSpec(spec dbaasv1alpha1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
+func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
 	wire := aggregatorclient.DatabaseDeclarationSpecWire{
 		ClassifierConfig: classifierToWire(spec.Classifier),
 		Type:             spec.Type,
@@ -212,7 +212,7 @@ func toWireSpec(spec dbaasv1alpha1.DatabaseDeclarationSpec) aggregatorclient.Dat
 	return wire
 }
 
-func classifierToWire(c dbaasv1alpha1.Classifier) aggregatorclient.ClassifierWire {
+func classifierToWire(c dbaasv1.Classifier) aggregatorclient.ClassifierWire {
 	return aggregatorclient.ClassifierWire{
 		MicroserviceName: c.MicroserviceName,
 		Scope:            c.Scope,
