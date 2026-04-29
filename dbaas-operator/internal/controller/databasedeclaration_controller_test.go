@@ -367,9 +367,10 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 					Namespace        string `json:"namespace"`
 				} `json:"metadata"`
 				Spec struct {
-					Classifier struct {
+					// The aggregator DTO uses "classifierConfig", not "classifier".
+					ClassifierConfig struct {
 						MicroserviceName string `json:"microserviceName"`
-					} `json:"classifier"`
+					} `json:"classifierConfig"`
 				} `json:"spec"`
 			}
 			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
@@ -377,7 +378,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(sent.SubKind).To(Equal("DatabaseDeclaration"))
 			Expect(sent.Metadata.MicroserviceName).To(Equal("test-service"))
 			Expect(sent.Metadata.Namespace).To(Equal(ns))
-			Expect(sent.Spec.Classifier.MicroserviceName).To(Equal("test-service"))
+			Expect(sent.Spec.ClassifierConfig.MicroserviceName).To(Equal("test-service"))
 		})
 	})
 
