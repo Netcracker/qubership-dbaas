@@ -188,11 +188,13 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1alpha1.DatabaseD
 // maps to "classifierConfig" in the aggregator DTO.
 func toWireSpec(spec dbaasv1alpha1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
 	wire := aggregatorclient.DatabaseDeclarationSpecWire{
-		ClassifierConfig: classifierToWire(spec.Classifier),
-		Type:             spec.Type,
-		Lazy:             spec.Lazy,
-		Settings:         spec.Settings,
-		NamePrefix:       spec.NamePrefix,
+		ClassifierConfig: aggregatorclient.ClassifierConfigWire{
+			Classifier: classifierToWire(spec.Classifier),
+		},
+		Type:       spec.Type,
+		Lazy:       spec.Lazy,
+		Settings:   spec.Settings,
+		NamePrefix: spec.NamePrefix,
 	}
 	if spec.VersioningConfig != nil {
 		wire.VersioningConfig = &aggregatorclient.VersioningConfigWire{

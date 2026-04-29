@@ -99,7 +99,7 @@ type ExternalDatabaseRequest struct {
 // in dbaas-aggregator. The CRD exposes the classifier field as "classifier" for a
 // cleaner user-facing API, while the aggregator expects it as "classifierConfig".
 type DatabaseDeclarationSpecWire struct {
-	ClassifierConfig     ClassifierWire            `json:"classifierConfig"`
+	ClassifierConfig     ClassifierConfigWire      `json:"classifierConfig"`
 	Type                 string                    `json:"type"`
 	Lazy                 bool                      `json:"lazy,omitempty"`
 	Settings             map[string]string         `json:"settings,omitempty"`
@@ -110,6 +110,10 @@ type DatabaseDeclarationSpecWire struct {
 
 // ClassifierWire is the wire representation of a database classifier.
 // Mirrors com.netcracker.cloud.dbaas.dto.classifier.ClassifierConfig in dbaas-aggregator.
+type ClassifierConfigWire struct {
+	Classifier ClassifierWire `json:"classifier"`
+}
+
 type ClassifierWire struct {
 	MicroserviceName string            `json:"microserviceName"`
 	Scope            string            `json:"scope"`
