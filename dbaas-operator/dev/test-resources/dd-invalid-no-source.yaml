@@ -1,7 +1,7 @@
 # DatabaseDeclaration — controller pre-flight rejects approach=clone without sourceClassifier
 # No aggregator call is made — the controller catches this before sending the request.
 # Expected: Phase=InvalidConfiguration/InvalidSpec, Stalled=True (no requeue)
-apiVersion: dbaas.netcracker.com/v1alpha1
+apiVersion: dbaas.netcracker.com/v1
 kind: DatabaseDeclaration
 metadata:
   name: dd-invalid-no-source

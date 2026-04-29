@@ -1,4 +1,4 @@
-apiVersion: dbaas.netcracker.com/v1alpha1
+apiVersion: dbaas.netcracker.com/v1
 kind: DbPolicy
 metadata:
   name: dp-400

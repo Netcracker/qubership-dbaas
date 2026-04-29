@@ -31,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
@@ -41,6 +40,9 @@ import (
 // On every reconcile it validates the spec, assembles a DeclarativePayload, calls
 // POST /api/declarations/v1/apply on dbaas-aggregator, and updates the CR status.
 // Key outcomes are also emitted as Kubernetes Events.
+//
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies/status,verbs=get;update;patch
 type DbPolicyReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -52,7 +54,7 @@ type DbPolicyReconciler struct {
 func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
-	dp := &dbaasv1alpha1.DbPolicy{}
+	dp := &dbaasv1.DbPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, dp); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -71,12 +73,12 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	// Always patch status on exit, even if reconcile fails.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dp, original, &retErr,
-			func(_ *dbaasv1alpha1.DbPolicy, retErr error) bool { return retErr == nil },
+			func(_ *dbaasv1.DbPolicy, retErr error) bool { return retErr == nil },
 			"DbPolicy")
 	}()
 
 	// Mark as Processing while we work.
-	dp.Status.Phase = dbaasv1alpha1.PhaseProcessing
+	dp.Status.Phase = dbaasv1.PhaseProcessing
 
 	// ── Pre-flight validation ─────────────────────────────────────────────────
 	// Field-level constraints (microserviceName, services[].name/roles, policy[].type/defaultRole)
@@ -103,21 +105,21 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	return ctrl.Result{}, nil
 }
 
-func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1alpha1.DbPolicy, msg string) (ctrl.Result, error) {
+func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1.DbPolicy, msg string) (ctrl.Result, error) {
 	return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, msg)
 }
 
 // dbPolicyAggregatorSpec is the wire-format spec sent to dbaas-aggregator.
 // MicroserviceName is intentionally excluded: it goes into Metadata, not Spec.
 type dbPolicyAggregatorSpec struct {
-	Services                 []dbaasv1alpha1.ServiceRole `json:"services,omitempty"`
-	Policy                   []dbaasv1alpha1.PolicyRole  `json:"policy,omitempty"`
-	DisableGlobalPermissions bool                        `json:"disableGlobalPermissions,omitempty"`
+	Services                 []dbaasv1.ServiceRole `json:"services,omitempty"`
+	Policy                   []dbaasv1.PolicyRole  `json:"policy,omitempty"`
+	DisableGlobalPermissions bool                  `json:"disableGlobalPermissions,omitempty"`
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
 // MicroserviceName goes into metadata (not into the spec that is forwarded to the aggregator).
-func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1alpha1.DbPolicy) *aggregatorclient.DeclarativePayload {
+func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1.DbPolicy) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
 		APIVersion: apiVersionV1,
 		Kind:       "DBaaS",
@@ -140,7 +142,7 @@ func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1alpha1.DbPolicy) *aggregato
 // not on the controller's own status updates.
 func (r *DbPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dbaasv1alpha1.DbPolicy{},
+		For(&dbaasv1.DbPolicy{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue all DbPolicies in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
@@ -155,7 +157,7 @@ func (r *DbPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontrol
 // enqueueForBinding maps an NamespaceBinding event to reconcile requests for
 // all DbPolicies that live in the same namespace.
 func (r *DbPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1alpha1.DbPolicyList{}
+	list := &dbaasv1.DbPolicyList{}
 	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
 		log.ErrorC(ctx, "enqueueForBinding: list DbPolicies in %s: %v", obj.GetNamespace(), err)
 		return nil

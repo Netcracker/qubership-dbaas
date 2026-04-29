@@ -34,8 +34,8 @@ resources:
   domain: netcracker.com
   group: dbaas
   kind: DatabaseDeclaration
-  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1
-  version: v1alpha1
+  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
+  version: v1
 - api:
     crdVersion: v1
     namespaced: true
@@ -43,6 +43,6 @@ resources:
   domain: netcracker.com
   group: dbaas
   kind: DbPolicy
-  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1
-  version: v1alpha1
+  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
+  version: v1
 version: "3"

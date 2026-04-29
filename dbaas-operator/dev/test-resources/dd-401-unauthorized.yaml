@@ -1,7 +1,7 @@
 # DatabaseDeclaration — aggregator rejects with HTTP 401
 # apply-rules.json key: "dd-svc-401" → httpCode=401
 # Expected: Phase=BackingOff, Ready=False/Unauthorized, Stalled=False (retries)
-apiVersion: dbaas.netcracker.com/v1alpha1
+apiVersion: dbaas.netcracker.com/v1
 kind: DatabaseDeclaration
 metadata:
   name: dd-401-unauthorized

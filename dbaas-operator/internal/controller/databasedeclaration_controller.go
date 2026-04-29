@@ -36,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
@@ -51,6 +50,9 @@ const pollRequeueAfter = 5 * time.Second
 //     HTTP 200 → Succeeded (synchronous). HTTP 202 → store trackingId, requeue for polling.
 //   - POLL: pending trackingId → call GET /operation/{id}/status.
 //     COMPLETED → Succeeded. FAILED/TERMINATED → InvalidConfiguration. IN_PROGRESS → requeue.
+//
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations/status,verbs=get;update;patch
 type DatabaseDeclarationReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -63,7 +65,7 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	// requestID is stored in ctx; sub-methods retrieve it via requestIDFromContext.
 	ctx, _ = initReconcileContext(ctx)
 
-	dd := &dbaasv1alpha1.DatabaseDeclaration{}
+	dd := &dbaasv1.DatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -82,9 +84,9 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	// WaitingForDependency/BackingOff are not terminal — don't stamp.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dd, original, &retErr,
-			func(dd *dbaasv1alpha1.DatabaseDeclaration, _ error) bool {
-				return dd.Status.Phase == dbaasv1alpha1.PhaseSucceeded ||
-					dd.Status.Phase == dbaasv1alpha1.PhaseInvalidConfiguration
+			func(dd *dbaasv1.DatabaseDeclaration, _ error) bool {
+				return dd.Status.Phase == dbaasv1.PhaseSucceeded ||
+					dd.Status.Phase == dbaasv1.PhaseInvalidConfiguration
 			},
 			"DatabaseDeclaration")
 	}()
@@ -106,9 +108,9 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // reconcileSubmit handles the SUBMIT branch: pre-flight validation + POST /apply.
-func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
+func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1.DatabaseDeclaration) (ctrl.Result, error) {
 	requestID := requestIDFromContext(ctx)
-	dd.Status.Phase = dbaasv1alpha1.PhaseProcessing
+	dd.Status.Phase = dbaasv1.PhaseProcessing
 
 	if msg := validateDatabaseDeclarationSpec(dd); msg != "" {
 		return r.invalidSpec(ctx, dd, msg)
@@ -143,13 +145,13 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 }
 
 // reconcilePoll handles the POLL branch: GET /operation/{trackingId}/status.
-func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration) (ctrl.Result, error) {
+func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1.DatabaseDeclaration) (ctrl.Result, error) {
 	requestID := requestIDFromContext(ctx)
 
 	trackingID := dd.Status.TrackingID
 	log.DebugC(ctx, "polling operation status trackingId=%v", trackingID)
 
-	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+	dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 	dd.Status.LastRequestID = requestID
 
 	resp, err := r.Aggregator.GetOperationStatus(ctx, trackingID)
@@ -160,16 +162,14 @@ func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *d
 	return r.handlePollResponse(ctx, dd, trackingID, requestID, resp)
 }
 
-func (r *DatabaseDeclarationReconciler) invalidSpec(ctx context.Context, dd *dbaasv1alpha1.DatabaseDeclaration, msg string) (ctrl.Result, error) {
+func (r *DatabaseDeclarationReconciler) invalidSpec(ctx context.Context, dd *dbaasv1.DatabaseDeclaration, msg string) (ctrl.Result, error) {
 	return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
 // kind/subKind are hardcoded to what the aggregator expects.
-// microserviceName goes into metadata; spec fields are mapped to the aggregator wire
-// format — notably the CRD field "classifier" is sent as "classifierConfig" to match
-// the Java DTO com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration.
-func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1alpha1.DatabaseDeclaration) *aggregatorclient.DeclarativePayload {
+// microserviceName goes into metadata; the entire spec is forwarded as-is.
+func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclaration) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
 		APIVersion: apiVersionV1,
 		Kind:       "DBaaS",
@@ -186,7 +186,7 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1alpha1.DatabaseD
 // toWireSpec converts a DatabaseDeclarationSpec (CRD shape) into the wire format
 // expected by dbaas-aggregator. The key difference is that "classifier" in the CRD
 // maps to "classifierConfig" in the aggregator DTO.
-func toWireSpec(spec dbaasv1alpha1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
+func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
 	wire := aggregatorclient.DatabaseDeclarationSpecWire{
 		ClassifierConfig: classifierToWire(spec.Classifier),
 		Type:             spec.Type,
@@ -212,7 +212,7 @@ func toWireSpec(spec dbaasv1alpha1.DatabaseDeclarationSpec) aggregatorclient.Dat
 	return wire
 }
 
-func classifierToWire(c dbaasv1alpha1.Classifier) aggregatorclient.ClassifierWire {
+func classifierToWire(c dbaasv1.Classifier) aggregatorclient.ClassifierWire {
 	return aggregatorclient.ClassifierWire{
 		MicroserviceName: c.MicroserviceName,
 		Scope:            c.Scope,
@@ -266,7 +266,7 @@ func pollConditionText(resp *aggregatorclient.DeclarativeResponse, fallback stri
 	return fallback
 }
 
-func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) string {
+func validateDatabaseDeclarationSpec(dd *dbaasv1.DatabaseDeclaration) string {
 	// CRD enforces: classifier.required, classifier.microserviceName/scope required+minLength,
 	// type required+minLength. Controller handles cross-field constraints only.
 
@@ -300,10 +300,10 @@ func validateDatabaseDeclarationSpec(dd *dbaasv1alpha1.DatabaseDeclaration) stri
 	return ""
 }
 
-func markProvisioningStarted(dd *dbaasv1alpha1.DatabaseDeclaration, trackingID string) {
+func markProvisioningStarted(dd *dbaasv1.DatabaseDeclaration, trackingID string) {
 	dd.Status.TrackingID = trackingID
 	dd.Status.PendingOperationGeneration = dd.Generation
-	dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+	dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 	setCondition(&dd.Status.Conditions, dd.Generation,
 		conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted,
 		"database provisioning started asynchronously")
@@ -311,14 +311,14 @@ func markProvisioningStarted(dd *dbaasv1alpha1.DatabaseDeclaration, trackingID s
 		conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
 }
 
-func clearPendingOperation(dd *dbaasv1alpha1.DatabaseDeclaration) {
+func clearPendingOperation(dd *dbaasv1.DatabaseDeclaration) {
 	dd.Status.TrackingID = ""
 	dd.Status.PendingOperationGeneration = 0
 }
 
 func (r *DatabaseDeclarationReconciler) handlePollError(
 	ctx context.Context,
-	dd *dbaasv1alpha1.DatabaseDeclaration,
+	dd *dbaasv1.DatabaseDeclaration,
 	trackingID string,
 	requestID string,
 	err error,
@@ -362,7 +362,7 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 
 func (r *DatabaseDeclarationReconciler) handlePollResponse(
 	ctx context.Context,
-	dd *dbaasv1alpha1.DatabaseDeclaration,
+	dd *dbaasv1.DatabaseDeclaration,
 	trackingID string,
 	requestID string,
 	resp *aggregatorclient.DeclarativeResponse,
@@ -428,7 +428,7 @@ func pollProgressMessage(resp *aggregatorclient.DeclarativeResponse) string {
 // bypass the predicate and always trigger reconcile.
 func (r *DatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dbaasv1alpha1.DatabaseDeclaration{},
+		For(&dbaasv1.DatabaseDeclaration{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue all DatabaseDeclarations in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
@@ -443,7 +443,7 @@ func (r *DatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 // enqueueForBinding maps an NamespaceBinding event to reconcile requests for
 // all DatabaseDeclarations that live in the same namespace.
 func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1alpha1.DatabaseDeclarationList{}
+	list := &dbaasv1.DatabaseDeclarationList{}
 	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
 		log.ErrorC(ctx, "enqueueForBinding: list DatabaseDeclarations in %s: %v", obj.GetNamespace(), err)
 		return nil

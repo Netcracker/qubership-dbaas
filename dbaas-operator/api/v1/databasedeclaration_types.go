@@ -14,14 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // Classifier uniquely identifies a database in dbaas-aggregator.
 // All keys are sorted alphabetically by the aggregator for identity comparison.
 type Classifier struct {
-	// microserviceName is the name of the microservice that owns the database.
+	// name is the microservice name that owns the database.
 	// Must match metadata.microserviceName sent in the declarative payload.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -151,6 +151,7 @@ type DatabaseDeclarationStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced,path=databasedeclarations,singular=databasedeclaration
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"

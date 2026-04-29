@@ -2,6 +2,8 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
+- bases/dbaas.netcracker.com_databasedeclarations.yaml
+- bases/dbaas.netcracker.com_dbpolicies.yaml
 - bases/dbaas.netcracker.com_externaldatabases.yaml
 - bases/dbaas.netcracker.com_namespacebindings.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
