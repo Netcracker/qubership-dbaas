@@ -77,8 +77,6 @@ spec:
             - --leader-elect
             {{- end }}
           env:
-            - name: ALPHA_APIS_ENABLED
-              value: "false"
             - name: CLOUD_NAMESPACE
               valueFrom:
                 fieldRef:

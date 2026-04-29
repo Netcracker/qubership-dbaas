@@ -116,8 +116,6 @@ spec:
           image: dbaas-operator:dev
           imagePullPolicy: Never   # image is loaded into kind locally
           env:
-            - name: ALPHA_APIS_ENABLED
-              value: "true"
             - name: CLOUD_NAMESPACE
               valueFrom:
                 fieldRef:

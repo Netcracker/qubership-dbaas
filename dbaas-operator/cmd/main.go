@@ -48,7 +48,6 @@ import (
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	_ "github.com/netcracker/qubership-core-lib-go/v3/memlimit"
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
@@ -64,7 +63,6 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(dbaasv1.AddToScheme(scheme))
-	utilruntime.Must(dbaasv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -174,8 +172,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
-
 	// ── NamespaceBinding controller (always enabled) ───────────────────────────
 	edbChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
@@ -187,15 +183,12 @@ func main() {
 		func() *dbaasv1.DbPolicyList { return &dbaasv1.DbPolicyList{} },
 		func(l *dbaasv1.DbPolicyList) int { return len(l.Items) },
 	)
-	blockingChecker := ownership.NewCompositeChecker(edbChecker, dpChecker)
-	if alphaAPIsEnabled {
-		ddChecker := ownership.NewKindChecker(
-			mgr.GetClient(),
-			func() *dbaasv1alpha1.DatabaseDeclarationList { return &dbaasv1alpha1.DatabaseDeclarationList{} },
-			func(l *dbaasv1alpha1.DatabaseDeclarationList) int { return len(l.Items) },
-		)
-		blockingChecker.Add(ddChecker)
-	}
+	ddChecker := ownership.NewKindChecker(
+		mgr.GetClient(),
+		func() *dbaasv1.DatabaseDeclarationList { return &dbaasv1.DatabaseDeclarationList{} },
+		func(l *dbaasv1.DatabaseDeclarationList) int { return len(l.Items) },
+	)
+	blockingChecker := ownership.NewCompositeChecker(edbChecker, dpChecker, ddChecker)
 	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
@@ -203,7 +196,7 @@ func main() {
 		MyNamespace: cloudNamespace,
 		Ownership:   ownershipResolver,
 		Checker:     blockingChecker,
-	}).SetupWithManager(mgr, ctrlOpts, alphaAPIsEnabled); err != nil {
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
 		os.Exit(1)
 	}
@@ -230,21 +223,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if alphaAPIsEnabled {
-		setupLog.Info("Alpha APIs are enabled")
-
-		if err := (&controller.DatabaseDeclarationReconciler{
-			Client:     mgr.GetClient(),
-			Scheme:     mgr.GetScheme(),
-			Aggregator: aggregator,
-			Recorder:   recorderFor(mgr, "databasedeclaration", eventsEnabled),
-			Ownership:  ownershipResolver,
-		}).SetupWithManager(mgr, ctrlOpts); err != nil {
-			setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		setupLog.Info("Alpha APIs are disabled")
+	if err := (&controller.DatabaseDeclarationReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   recorderFor(mgr, "databasedeclaration", eventsEnabled),
+		Ownership:  ownershipResolver,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
+		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
 

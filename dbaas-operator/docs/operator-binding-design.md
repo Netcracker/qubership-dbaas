@@ -116,13 +116,13 @@ An interface plus two implementations:
 - `CompositeChecker` — aggregates multiple checkers with OR semantics
   (short-circuit on the first `true`). Supports `Add()` after creation.
 
-In `cmd/main.go`, the composition depends on `ALPHA_APIS_ENABLED`:
+In `cmd/main.go`:
 
 ```
 CompositeChecker
 ├── KindChecker[ExternalDatabaseList]         (always)
 ├── KindChecker[DbPolicyList]                 (always)
-└── KindChecker[DatabaseDeclarationList]      (only if alpha enabled)
+└── KindChecker[DatabaseDeclarationList]      (always)
 ```
 
 ### 3. `internal/controller/namespacebinding_controller.go` and the `binding → workloads` watch
@@ -148,8 +148,8 @@ GET NamespaceBinding
 ```
 
 **Watches in `NamespaceBindingReconciler`** (`workload → binding`):
-`handler.EnqueueRequestsFromMapFunc` is configured for `ExternalDatabase`
-and `DbPolicy` (always) plus `DatabaseDeclaration` (when `alphaEnabled`).
+`handler.EnqueueRequestsFromMapFunc` is configured for `ExternalDatabase`,
+`DbPolicy`, and `DatabaseDeclaration` (all always).
 Mapping: any object
 → `{Namespace: obj.Namespace, Name: "binding"}`. This guarantees that
 deleting the last blocking resource immediately triggers another finalizer
@@ -254,6 +254,7 @@ This helper pre-seeds the resolver with `Mine` state for the test namespace
 | `cache.Options.DefaultNamespaces` in manager | Removed |
 | `WATCH_NAMESPACES` in Helm values | Removed |
 | Watches limited to explicitly configured namespaces | Cluster-wide watch + per-object ownership check |
+| `ALPHA_APIS_ENABLED` env var | Removed — DatabaseDeclaration is now stable (v1) |
 
 ---
 

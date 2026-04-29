@@ -552,7 +552,7 @@ CR created / spec changed
         ▼
   Call dbaas-aggregator PUT
     401 ────────────────────────────────────────────▶ BackingOff (Unauthorized, retried)
-    400 / 403 / 409 ────────────────────────────────▶ InvalidConfiguration (AggregatorRejected)
+    400 / 403 / 409 / 410 / 422 ────────────────────▶ InvalidConfiguration (AggregatorRejected)
     5xx / network ──────────────────────────────────▶ BackingOff (AggregatorError, retried)
         │
         ▼
@@ -598,7 +598,7 @@ CR created / spec changed
 | `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed before calling aggregator |
 | `SecretError` | `Ready=False`, `Stalled=False` | Secret not found, or required key is missing or empty |
 | `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
-| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 — permanent spec issue |
+| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 — permanent spec issue |
 | `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, or network error |
 
 **Full state matrix:**
@@ -610,7 +610,7 @@ CR created / spec changed
 | Secret not found | `BackingOff` | `False` | `SecretError` | `False` |
 | Secret key missing or empty | `BackingOff` | `False` | `SecretError` | `False` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
-| Aggregator 400 / 403 / 409 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
+| Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
 
 **Diagnostic rules:**
@@ -779,7 +779,7 @@ CR created / spec changed
         ▼
   Call dbaas-aggregator POST /api/declarations/v1/apply
     401 ────────────────────────────────────────────▶ BackingOff (Unauthorized, retried)
-    400 / 403 / 409 / 422 ──────────────────────────▶ InvalidConfiguration (AggregatorRejected)
+    400 / 403 / 409 / 410 / 422 ────────────────────▶ InvalidConfiguration (AggregatorRejected)
     5xx / network ──────────────────────────────────▶ BackingOff (AggregatorError, retried)
         │
         ▼

@@ -38,7 +38,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
@@ -67,9 +67,9 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	)
 
 	// baseSpec returns a minimal valid DatabaseDeclaration spec.
-	baseSpec := func() dbaasv1alpha1.DatabaseDeclarationSpec {
-		return dbaasv1alpha1.DatabaseDeclarationSpec{
-			Classifier: dbaasv1alpha1.Classifier{
+	baseSpec := func() dbaasv1.DatabaseDeclarationSpec {
+		return dbaasv1.DatabaseDeclarationSpec{
+			Classifier: dbaasv1.Classifier{
 				MicroserviceName: "test-service",
 				Scope:            "service",
 			},
@@ -121,7 +121,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	AfterEach(func() {
 		mockServer.Close()
 
-		dd := &dbaasv1alpha1.DatabaseDeclaration{}
+		dd := &dbaasv1.DatabaseDeclaration{}
 		if err := k8sClient.Get(ctx, namespacedName, dd); err == nil {
 			Expect(k8sClient.Delete(ctx, dd)).To(Succeed())
 		}
@@ -129,10 +129,10 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		drainRecordedEvents(fakeRecorder.Events)
 	})
 
-	reconcileAndFetch := func() (*dbaasv1alpha1.DatabaseDeclaration, reconcile.Result, error) {
+	reconcileAndFetch := func() (*dbaasv1.DatabaseDeclaration, reconcile.Result, error) {
 		GinkgoHelper()
-		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1alpha1.DatabaseDeclaration {
-			return &dbaasv1alpha1.DatabaseDeclaration{}
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1.DatabaseDeclaration {
+			return &dbaasv1.DatabaseDeclaration{}
 		})
 	}
 
@@ -142,7 +142,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
 			spec.Classifier.MicroserviceName = ""
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			err := k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})
@@ -156,7 +156,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
 			spec.Classifier.Scope = ""
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			err := k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})
@@ -170,7 +170,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
 			spec.Type = ""
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			err := k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})
@@ -186,14 +186,14 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration without calling the aggregator", func() {
 			spec := baseSpec()
 			spec.Lazy = true
-			spec.InitialInstantiation = &dbaasv1alpha1.InitialInstantiation{
+			spec.InitialInstantiation = &dbaasv1.InitialInstantiation{
 				Approach: "clone",
-				SourceClassifier: &dbaasv1alpha1.Classifier{
+				SourceClassifier: &dbaasv1.Classifier{
 					MicroserviceName: "test-service",
 					Scope:            "service",
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -202,7 +202,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -224,11 +224,11 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("approach=clone without sourceClassifier", func() {
 		It("sets Phase=InvalidConfiguration without calling the aggregator", func() {
 			spec := baseSpec()
-			spec.InitialInstantiation = &dbaasv1alpha1.InitialInstantiation{
+			spec.InitialInstantiation = &dbaasv1.InitialInstantiation{
 				Approach: "clone",
 				// SourceClassifier deliberately omitted
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -237,7 +237,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty())
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -252,14 +252,14 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("sourceClassifier.microserviceName mismatch", func() {
 		It("sets Phase=InvalidConfiguration without calling the aggregator", func() {
 			spec := baseSpec()
-			spec.InitialInstantiation = &dbaasv1alpha1.InitialInstantiation{
+			spec.InitialInstantiation = &dbaasv1.InitialInstantiation{
 				Approach: "clone",
-				SourceClassifier: &dbaasv1alpha1.Classifier{
+				SourceClassifier: &dbaasv1.Classifier{
 					MicroserviceName: "other-service", // mismatch
 					Scope:            "service",
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -268,7 +268,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(capturedApplyBody).To(BeEmpty())
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -284,14 +284,14 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("proceeds normally; aggregator receives namespace from metadata", func() {
 			spec := baseSpec()
 			// Namespace field left unset (zero value / omitempty).
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
 
 			dd, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(capturedApplyBody).NotTo(BeEmpty())
 		})
 	})
@@ -300,7 +300,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("proceeds normally and succeeds", func() {
 			spec := baseSpec()
 			spec.Classifier.Namespace = ns // same as metadata.namespace
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -308,7 +308,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 		})
 	})
 
@@ -316,7 +316,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue, never calls aggregator", func() {
 			spec := baseSpec()
 			spec.Classifier.Namespace = "other-namespace"
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -327,7 +327,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
 
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -350,7 +350,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("buildPayload", func() {
 		It("sets kind=DBaaS, subKind=DatabaseDeclaration, microserviceName in metadata", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -387,7 +387,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/DatabaseProvisioned, does not requeue", func() {
 			applyCode = http.StatusOK
 			applyBody = statusCompleted
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -396,7 +396,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
 
@@ -422,7 +422,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=WaitingForDependency, stores trackingId, emits ProvisioningStarted, requeues after poll interval", func() {
 			applyCode = http.StatusAccepted
 			applyBody = `{"trackingId":"track-abc-123"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -431,7 +431,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseWaitingForDependency))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
 			Expect(dd.Status.TrackingID).To(Equal("track-abc-123"))
 			Expect(dd.Status.PendingOperationGeneration).To(Equal(dd.Generation))
 			Expect(dd.Status.ObservedGeneration).To(BeZero(),
@@ -456,16 +456,16 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=COMPLETED", func() {
 		It("sets Phase=Succeeded, clears trackingId, emits DatabaseProvisioned, does not requeue", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-poll-completed"
 			dd.Status.PendingOperationGeneration = dd.Generation
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusOK
@@ -475,7 +475,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
@@ -493,16 +493,16 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=FAILED", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, clears trackingId, emits AggregatorRejected, does not requeue", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-poll-failed"
 			dd.Status.PendingOperationGeneration = dd.Generation
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusOK
@@ -512,7 +512,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
@@ -534,16 +534,16 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=TERMINATED", func() {
 		It("sets Phase=BackingOff, Stalled=False, clears trackingId, emits OperationTerminated, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-terminated"
 			dd.Status.PendingOperationGeneration = dd.Generation
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusOK
@@ -555,7 +555,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			// Transient — requeues automatically.
 			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
 			// BackingOff (not InvalidConfiguration) so the operator keeps retrying.
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			// trackingID cleared so the next reconcile enters the SUBMIT branch.
 			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
@@ -577,17 +577,17 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			applyCode = http.StatusAccepted
 			applyBody = `{"trackingId":"track-resubmit"}`
 
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
 			// Simulate a pending tracking ID that comes back TERMINATED.
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-stale"
 			dd.Status.PendingOperationGeneration = dd.Generation
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusOK
@@ -614,17 +614,17 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=IN_PROGRESS", func() {
 		It("keeps Phase=WaitingForDependency, keeps trackingId, requeues after poll interval", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			gen := dd.Generation
 			dd.Status.TrackingID = "track-in-progress"
 			dd.Status.PendingOperationGeneration = gen
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusOK
@@ -634,7 +634,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseWaitingForDependency))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
 			Expect(dd.Status.TrackingID).To(Equal("track-in-progress"))
 			Expect(dd.Status.ObservedGeneration).To(BeZero(),
 				"observedGeneration must not be stamped while in progress")
@@ -647,16 +647,16 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — HTTP 404 trackingId not found", func() {
 		It("clears trackingId, sets Phase=BackingOff, Stalled=False, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-gone"
 			dd.Status.PendingOperationGeneration = dd.Generation
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusNotFound
@@ -665,7 +665,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dd.Status.TrackingID).To(BeEmpty(),
 				"trackingId must be cleared on 404 so next reconcile re-submits")
 			Expect(dd.Status.PendingOperationGeneration).To(BeZero())
@@ -682,16 +682,16 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — HTTP 401 unauthorized", func() {
 		It("keeps trackingId, sets Phase=BackingOff, Stalled=False, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-unauth"
 			dd.Status.PendingOperationGeneration = dd.Generation
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusUnauthorized
@@ -700,7 +700,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dd.Status.TrackingID).To(Equal("track-unauth"),
 				"trackingId must be retained on 401 to resume polling after credentials are fixed")
 
@@ -719,16 +719,16 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — HTTP 500 server error", func() {
 		It("keeps trackingId, sets Phase=BackingOff, Stalled=False, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-500"
 			dd.Status.PendingOperationGeneration = dd.Generation
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			pollCode = http.StatusInternalServerError
@@ -737,7 +737,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dd.Status.TrackingID).To(Equal("track-500"),
 				"trackingId must be retained on 5xx to resume polling after the aggregator recovers")
 
@@ -755,7 +755,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, does not requeue", func() {
 			applyCode = http.StatusBadRequest
 			applyBody = `{"code":"CORE-DBAAS-4036","reason":"Validation failed","message":"Declarative configuration validation failed.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -764,7 +764,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -785,7 +785,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			applyCode = http.StatusUnauthorized
 			applyBody = body401Unauthorized
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -793,7 +793,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dd.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -813,7 +813,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff (not InvalidConfiguration), Stalled=False, requeues", func() {
 			applyCode = http.StatusNotFound
 			applyBody = ""
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -821,7 +821,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff),
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff),
 				"404 is an infrastructure error, not a spec rejection; CR must not be stuck in InvalidConfiguration")
 			Expect(dd.Status.ObservedGeneration).To(BeZero())
 
@@ -840,7 +840,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff (not InvalidConfiguration), Stalled=False, requeues", func() {
 			applyCode = http.StatusTooManyRequests
 			applyBody = ""
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -848,7 +848,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff),
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff),
 				"429 is a transient rate limit, not a spec rejection; CR must not be stuck in InvalidConfiguration")
 
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
@@ -863,7 +863,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			applyCode = http.StatusInternalServerError
 			applyBody = `{"code":"CORE-DBAAS-2000","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -871,7 +871,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dd.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
@@ -889,7 +889,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("SUBMIT — network error (aggregator unreachable)", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			mockServer.Close()
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -897,7 +897,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			dd, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
 			Expect(ready.Reason).To(Equal(EventReasonAggregatorError))
@@ -914,24 +914,24 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			applyCode = http.StatusOK
 			applyBody = statusCompleted
 
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1alpha1.DatabaseDeclaration{}
+			dd := &dbaasv1.DatabaseDeclaration{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			// Simulate a stale trackingId from a previous generation.
 			dd.Status.TrackingID = "track-stale"
 			dd.Status.PendingOperationGeneration = dd.Generation - 1 // mismatch
-			dd.Status.Phase = dbaasv1alpha1.PhaseWaitingForDependency
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
 
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
 			// Stale trackingId cleared → took the SUBMIT branch → sync 200 → Succeeded.
-			Expect(dd.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
 			Expect(result.RequeueAfter).To(BeZero())
 			// The apply endpoint must have been called (not the poll endpoint).

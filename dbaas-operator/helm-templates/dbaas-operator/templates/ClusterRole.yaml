@@ -9,6 +9,13 @@ metadata:
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
 rules:
   # dbaas CRs
+  # databasedeclarations: operator reads and watches; status is updated via the /status subresource.
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ databasedeclarations ]
+    verbs: [ get, list, watch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ databasedeclarations/status ]
+    verbs: [ get, update, patch ]
   # dbpolicies: operator reads and watches; status is updated via the /status subresource.
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ dbpolicies ]

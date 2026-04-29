@@ -4,16 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: externaldatabases.dbaas.netcracker.com
+  name: databasedeclarations.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: ExternalDatabase
-    listKind: ExternalDatabaseList
-    plural: externaldatabases
-    shortNames:
-    - dbedb
-    singular: externaldatabase
+    kind: DatabaseDeclaration
+    listKind: DatabaseDeclarationList
+    plural: databasedeclarations
+    singular: databasedeclaration
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -23,9 +21,6 @@ spec:
     - jsonPath: .spec.type
       name: Type
       type: string
-    - jsonPath: .spec.dbName
-      name: DbName
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -33,9 +28,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ExternalDatabase registers a pre-existing database instance with dbaas-aggregator
-          so that the aggregator can track it and grant access roles.
-          The database is not provisioned by dbaas — it must already exist in the DBMS.
+          DatabaseDeclaration is the Schema for the databasedeclarations API.
+          It declares a logical database that dbaas should provision and manage on behalf
+          of the owning microservice.
         properties:
           apiVersion:
             description: |-
@@ -55,119 +50,140 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of ExternalDatabase.
+            description: spec defines the desired state of DatabaseDeclaration.
             properties:
               classifier:
+                description: |-
+                  classifier uniquely identifies this database in dbaas.
+                  The aggregator uses it to look up or create the physical database.
+                  Required keys: microserviceName, scope.
+                properties:
+                  customKeys:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      customKeys is an optional nested map for adapter-specific or
+                      application-specific identifiers (e.g. logicalDBName).
+                      Values are arbitrary strings; not validated by the aggregator.
+                    type: object
+                  microserviceName:
+                    description: |-
+                      name is the microservice name that owns the database.
+                      Must match metadata.microserviceName sent in the declarative payload.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: |-
+                      namespace is the Kubernetes namespace of the owning service.
+                      If omitted, the aggregator uses metadata.namespace from the request.
+                    type: string
+                  scope:
+                    description: scope defines the logical scope of the database,
+                      e.g. "service" or "tenant".
+                    minLength: 1
+                    type: string
+                  tenantId:
+                    description: |-
+                      tenantId is the tenant identifier for multi-tenant deployments.
+                      Only relevant when scope="tenant". When absent, the aggregator applies
+                      the declaration for every tenant already registered in the namespace.
+                    type: string
+                required:
+                - microserviceName
+                - scope
+                type: object
+              initialInstantiation:
+                description: |-
+                  initialInstantiation defines how the database is created on the first deployment.
+                  If absent — instantiationApproach defaults to "new".
+                properties:
+                  approach:
+                    description: |-
+                      approach defines the strategy for initial database creation.
+                      "clone" — clone from sourceClassifier (lazy=true is prohibited in this mode).
+                      "new"   — create an empty database (default when initialInstantiation is absent).
+                    type: string
+                  sourceClassifier:
+                    description: |-
+                      sourceClassifier is the classifier of the database to clone from.
+                      Required when approach is "clone". Must reference an existing database in dbaas.
+                      microserviceName must match classifier.microserviceName.
+                    properties:
+                      customKeys:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          customKeys is an optional nested map for adapter-specific or
+                          application-specific identifiers (e.g. logicalDBName).
+                          Values are arbitrary strings; not validated by the aggregator.
+                        type: object
+                      microserviceName:
+                        description: |-
+                          name is the microservice name that owns the database.
+                          Must match metadata.microserviceName sent in the declarative payload.
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          namespace is the Kubernetes namespace of the owning service.
+                          If omitted, the aggregator uses metadata.namespace from the request.
+                        type: string
+                      scope:
+                        description: scope defines the logical scope of the database,
+                          e.g. "service" or "tenant".
+                        minLength: 1
+                        type: string
+                      tenantId:
+                        description: |-
+                          tenantId is the tenant identifier for multi-tenant deployments.
+                          Only relevant when scope="tenant". When absent, the aggregator applies
+                          the declaration for every tenant already registered in the namespace.
+                        type: string
+                    required:
+                    - microserviceName
+                    - scope
+                    type: object
+                type: object
+              lazy:
+                description: |-
+                  lazy indicates whether the database should be provisioned on first access rather
+                  than immediately during reconciliation. Defaults to false.
+                  Prohibited when initialInstantiation.approach=clone.
+                type: boolean
+              namePrefix:
+                description: namePrefix is a prefix applied to the physical database
+                  name created in the DBMS.
+                type: string
+              settings:
                 additionalProperties:
                   type: string
                 description: |-
-                  classifier is a map of key-value pairs that uniquely identifies the database
-                  in dbaas-aggregator. All keys are sorted alphabetically by the aggregator
-                  for identity comparison. Typical keys: microserviceName, scope, namespace.
-                  Immutable after creation.
+                  settings contains database-engine-specific configuration passed through to the
+                  dbaas adapter. All values are strings.
                 type: object
-                x-kubernetes-validations:
-                - message: spec.classifier is immutable after creation
-                  rule: self == oldSelf
-              connectionProperties:
-                description: |-
-                  connectionProperties is the list of connection entries, one per access role.
-                  Each entry provides the credentials and extra properties for that role.
-                  At least one entry is required.
-                items:
-                  description: |-
-                    ConnectionProperty defines the connection details for a single database access role.
-                    The controller reads credentials from the referenced Secret and includes them in
-                    the registration payload sent to dbaas-aggregator.
-                  properties:
-                    credentialsSecretRef:
-                      description: |-
-                        credentialsSecretRef references a Kubernetes Secret that contains the
-                        credentials (e.g. username and password) for this role.
-                        If absent, no credentials are sent for this role.
-                      properties:
-                        keys:
-                          description: |-
-                            keys is the list of mappings from Secret data keys to dbaas-aggregator
-                            connection payload field names. At least one mapping is required.
-                          items:
-                            description: |-
-                              SecretKeyMapping maps a single key from a Kubernetes Secret to the field name
-                              expected in the dbaas-aggregator connection payload.
-                            properties:
-                              key:
-                                description: key is the key in the Secret's data map
-                                  whose value will be extracted.
-                                minLength: 1
-                                type: string
-                              name:
-                                description: |-
-                                  name is the field name in the dbaas-aggregator connection payload that
-                                  this secret value is mapped to (e.g. "username", "password").
-                                minLength: 1
-                                type: string
-                            required:
-                            - key
-                            - name
-                            type: object
-                          minItems: 1
-                          type: array
-                        name:
-                          description: |-
-                            name is the name of the Kubernetes Secret in the same namespace as the
-                            ExternalDatabase resource.
-                          minLength: 1
-                          type: string
-                      required:
-                      - keys
-                      - name
-                      type: object
-                    extraProperties:
-                      additionalProperties:
-                        type: string
-                      description: |-
-                        extraProperties is a free-form map of additional adapter-specific connection
-                        properties (e.g. host, port, ssl-mode) passed through to dbaas-aggregator as-is.
-                      type: object
-                    role:
-                      description: |-
-                        role is the access role name for this connection entry, e.g. "admin", "readonly".
-                        Role names are adapter-specific and must match values known to dbaas-aggregator.
-                      minLength: 1
-                      type: string
-                  required:
-                  - role
-                  type: object
-                minItems: 1
-                type: array
-              dbName:
-                description: |-
-                  dbName is the logical database name used by dbaas-aggregator to identify
-                  this registration. Included in the request URL path.
-                  Immutable after creation.
-                minLength: 1
-                type: string
-                x-kubernetes-validations:
-                - message: spec.dbName is immutable after creation
-                  rule: self == oldSelf
               type:
                 description: |-
-                  type is the database engine type, e.g. "postgresql", "mongodb", "opensearch".
-                  Must match a type known to dbaas-aggregator.
-                  Immutable after creation.
+                  type is the database engine type. Must match a type known to dbaas-aggregator,
+                  e.g. "postgresql", "mongodb", "opensearch".
                 minLength: 1
                 type: string
-                x-kubernetes-validations:
-                - message: spec.type is immutable after creation
-                  rule: self == oldSelf
+              versioningConfig:
+                description: |-
+                  versioningConfig defines the strategy for handling database versions during
+                  blue-green deployments. If absent — versioningType="static" (no versioning).
+                properties:
+                  approach:
+                    description: |-
+                      approach defines how a new database version is created during a blue-green update.
+                      Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
+                    type: string
+                type: object
             required:
             - classifier
-            - connectionProperties
-            - dbName
             - type
             type: object
           status:
-            description: status defines the observed state of ExternalDatabase.
+            description: status defines the observed state of DatabaseDeclaration.
             properties:
               conditions:
                 description: |-
@@ -258,6 +274,16 @@ spec:
                   waiting for a transient error to clear.
                 format: int64
                 type: integer
+              pendingOperationGeneration:
+                description: |-
+                  pendingOperationGeneration stores the .metadata.generation at which the
+                  current trackingID was obtained. The controller uses this to detect spec
+                  changes that occur while an async operation is in progress: if the current
+                  generation differs from pendingOperationGeneration, the stale trackingID is
+                  cleared and the operation is re-submitted.
+                  Zero means no pending async operation.
+                format: int64
+                type: integer
               phase:
                 default: Unknown
                 description: phase represents the current processing phase of the
@@ -269,6 +295,13 @@ spec:
                 - Succeeded
                 - BackingOff
                 - InvalidConfiguration
+                type: string
+              trackingID:
+                description: |-
+                  trackingID is the identifier returned by dbaas-aggregator when a database
+                  provisioning operation is started asynchronously (HTTP 202). The controller
+                  stores it here and uses it to poll the operation status on subsequent reconciles.
+                  Cleared once the operation reaches a terminal state (Completed or Failed).
                 type: string
             type: object
         required:
