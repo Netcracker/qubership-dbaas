@@ -10,10 +10,9 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.exceptions.RecordIsCorruptedException;
 import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
-import lombok.Data;
+import jakarta.enterprise.context.ApplicationScoped;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections4.MapUtils;
 
 import java.util.*;
@@ -22,7 +21,7 @@ import java.util.stream.Collectors;
 import static com.netcracker.cloud.dbaas.dto.ConnectionDescription.FieldTypeEnum.PASSWORD;
 
 @Slf4j
-@Data
+@ApplicationScoped
 public class PasswordEncryption {
     public static final String ENCRYPTED_PASSWORD_FIELD = "encryptedPassword";
     public static final String ENCRYPTED_SECRET_FIELD = "encryptedSecret";
