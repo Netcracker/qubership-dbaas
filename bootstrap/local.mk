@@ -21,7 +21,7 @@ NODE_SELECTOR_DBAAS_KEY ?= region
 REGION_DBAAS ?= database
 # Validation image tag
 TAG ?= latest
-DBAAS_OPERATOR_TAG ?= latest
+DBAAS_OPERATOR_TAG ?= feat-dbpolicy_migration-d3a86b6
 
 # Export all variables for use in shell commands
 export PG_NAMESPACE
