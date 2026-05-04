@@ -16,6 +16,9 @@ limitations under the License.
 
 package controller
 
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies/status,verbs=get;update;patch
+
 import (
 	"context"
 
@@ -40,9 +43,6 @@ import (
 // On every reconcile it validates the spec, assembles a DeclarativePayload, calls
 // POST /api/declarations/v1/apply on dbaas-aggregator, and updates the CR status.
 // Key outcomes are also emitted as Kubernetes Events.
-//
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies/status,verbs=get;update;patch
 type DbPolicyReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme

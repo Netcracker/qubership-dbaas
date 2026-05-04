@@ -96,10 +96,11 @@ type ExternalDatabaseRequest struct {
 // DatabaseDeclarationSpecWire is the wire representation of the spec field
 // in POST /api/declarations/v1/apply for subKind=DatabaseDeclaration.
 // Field names mirror com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration
-// in dbaas-aggregator. The CRD exposes the classifier field as "classifier" for a
-// cleaner user-facing API, while the aggregator expects it as "classifierConfig".
+// in dbaas-aggregator.
 type DatabaseDeclarationSpecWire struct {
-	ClassifierConfig     ClassifierWire            `json:"classifierConfig"`
+	// ClassifierConfig wraps the classifier flat map.
+	// Mirrors DatabaseDeclaration.ClassifierConfig (static nested class).
+	ClassifierConfig     ClassifierConfigWire      `json:"classifierConfig"`
 	Type                 string                    `json:"type"`
 	Lazy                 bool                      `json:"lazy,omitempty"`
 	Settings             map[string]string         `json:"settings,omitempty"`
@@ -108,14 +109,17 @@ type DatabaseDeclarationSpecWire struct {
 	InitialInstantiation *InitialInstantiationWire `json:"initialInstantiation,omitempty"`
 }
 
-// ClassifierWire is the wire representation of a database classifier.
-// Mirrors com.netcracker.cloud.dbaas.dto.classifier.ClassifierConfig in dbaas-aggregator.
-type ClassifierWire struct {
-	MicroserviceName string            `json:"microserviceName"`
-	Scope            string            `json:"scope"`
-	Namespace        string            `json:"namespace,omitempty"`
-	TenantId         string            `json:"tenantId,omitempty"`
-	CustomKeys       map[string]string `json:"customKeys,omitempty"`
+// ClassifierConfigWire mirrors DatabaseDeclaration.ClassifierConfig in dbaas-aggregator:
+//
+//	public static class ClassifierConfig {
+//	    @JsonProperty("classifier")
+//	    private SortedMap<String, Object> classifier;
+//	}
+//
+// The classifier fields (microserviceName, scope, namespace, tenantId, customKeys, …)
+// are flattened into the map. customKeys itself is a nested map[string]any inside it.
+type ClassifierConfigWire struct {
+	Classifier map[string]any `json:"classifier"`
 }
 
 // VersioningConfigWire mirrors DatabaseDeclaration.VersioningConfig in dbaas-aggregator.
@@ -123,10 +127,17 @@ type VersioningConfigWire struct {
 	Approach string `json:"approach,omitempty"`
 }
 
-// InitialInstantiationWire mirrors DatabaseDeclaration.InitialInstantiation in dbaas-aggregator.
+// InitialInstantiationWire mirrors DatabaseDeclaration.InitialInstantiation in dbaas-aggregator:
+//
+//	public static class InitialInstantiation {
+//	    @JsonProperty("approach")         String approach;
+//	    @JsonProperty("sourceClassifier") SortedMap<String, Object> sourceClassifier;
+//	}
+//
+// sourceClassifier is a flat map with the same shape as ClassifierConfigWire.Classifier.
 type InitialInstantiationWire struct {
-	Approach         string          `json:"approach,omitempty"`
-	SourceClassifier *ClassifierWire `json:"sourceClassifier,omitempty"`
+	Approach         string         `json:"approach,omitempty"`
+	SourceClassifier map[string]any `json:"sourceClassifier,omitempty"`
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

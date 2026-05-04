@@ -1,0 +1,22 @@
+# DatabaseDeclaration — customKeys with mixed value types (string, number, boolean, nested object)
+# No apply-rule → default 202 IN_PROGRESS with trackingId="tracking-dd-svc-custom-keys"
+# No poll-rule  → default COMPLETED
+# Expected: Phase=WaitingForDependency → Phase=Succeeded
+# Verify in mock logs that classifierConfig.customKeys contains all four entries.
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseDeclaration
+metadata:
+  name: dd-custom-keys
+  namespace: test-ns
+spec:
+  classifier:
+    microserviceName: dd-svc-custom-keys
+    scope: service
+    customKeys:
+      logicalDBName: "my-application-db"   # string
+      schemaVersion: 5                      # number
+      lazy: false                           # boolean
+      meta:                                 # nested object
+        owner: "team-platform"
+        tier: "gold"
+  type: postgresql

@@ -16,7 +16,10 @@ limitations under the License.
 
 package v1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // Classifier uniquely identifies a database in dbaas-aggregator.
 // All keys are sorted alphabetically by the aggregator for identity comparison.
@@ -45,9 +48,10 @@ type Classifier struct {
 
 	// customKeys is an optional nested map for adapter-specific or
 	// application-specific identifiers (e.g. logicalDBName).
-	// Values are arbitrary strings; not validated by the aggregator.
+	// Values can be any valid JSON type (string, number, boolean, nested object).
+	// Not validated by the aggregator — passed through as-is.
 	// +optional
-	CustomKeys map[string]string `json:"customKeys,omitempty"`
+	CustomKeys map[string]apiextensionsv1.JSON `json:"customKeys,omitempty"`
 }
 
 // VersioningConfig defines the strategy for managing database versions during

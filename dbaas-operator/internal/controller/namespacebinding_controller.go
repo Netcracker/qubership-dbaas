@@ -16,6 +16,9 @@ limitations under the License.
 
 package controller
 
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
+
 import (
 	"context"
 
@@ -54,9 +57,6 @@ type NamespaceBindingReconciler struct {
 	Ownership   *ownership.OwnershipResolver
 	Checker     ownership.BlockingResourceChecker
 }
-
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;patch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
 
 func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ctx, requestID := initReconcileContext(ctx)

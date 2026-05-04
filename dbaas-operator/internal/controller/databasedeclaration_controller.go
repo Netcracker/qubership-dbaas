@@ -16,8 +16,12 @@ limitations under the License.
 
 package controller
 
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations/status,verbs=get;update;patch
+
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -50,9 +54,6 @@ const pollRequeueAfter = 5 * time.Second
 //     HTTP 200 → Succeeded (synchronous). HTTP 202 → store trackingId, requeue for polling.
 //   - POLL: pending trackingId → call GET /operation/{id}/status.
 //     COMPLETED → Succeeded. FAILED/TERMINATED → InvalidConfiguration. IN_PROGRESS → requeue.
-//
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations,verbs=get;list;watch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations/status,verbs=get;update;patch
 type DatabaseDeclarationReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -184,15 +185,21 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclara
 }
 
 // toWireSpec converts a DatabaseDeclarationSpec (CRD shape) into the wire format
-// expected by dbaas-aggregator. The key difference is that "classifier" in the CRD
-// maps to "classifierConfig" in the aggregator DTO.
+// expected by dbaas-aggregator.
+//
+// Mapping summary:
+//   - spec.classifier         → classifierConfig.classifier (SortedMap<String,Object>)
+//   - spec.classifier.customKeys → classifier["customKeys"] (nested map inside the flat map)
+//   - initialInstantiation.sourceClassifier → initialInstantiation.sourceClassifier (same flat-map shape)
 func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
 	wire := aggregatorclient.DatabaseDeclarationSpecWire{
-		ClassifierConfig: classifierToWire(spec.Classifier),
-		Type:             spec.Type,
-		Lazy:             spec.Lazy,
-		Settings:         spec.Settings,
-		NamePrefix:       spec.NamePrefix,
+		ClassifierConfig: aggregatorclient.ClassifierConfigWire{
+			Classifier: classifierFlatMap(spec.Classifier),
+		},
+		Type:       spec.Type,
+		Lazy:       spec.Lazy,
+		Settings:   spec.Settings,
+		NamePrefix: spec.NamePrefix,
 	}
 	if spec.VersioningConfig != nil {
 		wire.VersioningConfig = &aggregatorclient.VersioningConfigWire{
@@ -204,22 +211,42 @@ func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec) aggregatorclient.DatabaseD
 			Approach: spec.InitialInstantiation.Approach,
 		}
 		if spec.InitialInstantiation.SourceClassifier != nil {
-			sc := classifierToWire(*spec.InitialInstantiation.SourceClassifier)
-			ii.SourceClassifier = &sc
+			ii.SourceClassifier = classifierFlatMap(*spec.InitialInstantiation.SourceClassifier)
 		}
 		wire.InitialInstantiation = ii
 	}
 	return wire
 }
 
-func classifierToWire(c dbaasv1.Classifier) aggregatorclient.ClassifierWire {
-	return aggregatorclient.ClassifierWire{
-		MicroserviceName: c.MicroserviceName,
-		Scope:            c.Scope,
-		Namespace:        c.Namespace,
-		TenantId:         c.TenantId,
-		CustomKeys:       c.CustomKeys,
+// classifierFlatMap converts a Classifier CR field into the flat map expected by
+// DatabaseDeclaration.ClassifierConfig.classifier (SortedMap<String, Object>).
+// All scalar fields are added as top-level keys; customKeys is added as a nested
+// map[string]any under the "customKeys" key, with each JSON value deserialized.
+func classifierFlatMap(c dbaasv1.Classifier) map[string]any {
+	m := make(map[string]any, 4+len(c.CustomKeys))
+	m["microserviceName"] = c.MicroserviceName
+	m["scope"] = c.Scope
+	if c.Namespace != "" {
+		m["namespace"] = c.Namespace
 	}
+	if c.TenantId != "" {
+		m["tenantId"] = c.TenantId
+	}
+	if len(c.CustomKeys) > 0 {
+		customKeys := make(map[string]any, len(c.CustomKeys))
+		for k, v := range c.CustomKeys {
+			var val any
+			if err := json.Unmarshal(v.Raw, &val); err != nil {
+				// raw bytes are always valid JSON from the API server, but
+				// fall back to string representation if something goes wrong.
+				customKeys[k] = string(v.Raw)
+				continue
+			}
+			customKeys[k] = val
+		}
+		m["customKeys"] = customKeys
+	}
+	return m
 }
 
 // aggregatorConditionDataBaseCreated is the condition type used by dbaas-aggregator

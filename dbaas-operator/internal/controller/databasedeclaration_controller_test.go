@@ -29,6 +29,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -359,6 +360,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(capturedApplyBody).NotTo(BeEmpty())
 
+			// Wire format: classifierConfig.classifier is a flat map
+			// (mirrors DatabaseDeclaration.ClassifierConfig.classifier: SortedMap<String,Object>).
 			var sent struct {
 				Kind     string `json:"kind"`
 				SubKind  string `json:"subKind"`
@@ -367,9 +370,8 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 					Namespace        string `json:"namespace"`
 				} `json:"metadata"`
 				Spec struct {
-					// The aggregator DTO uses "classifierConfig", not "classifier".
 					ClassifierConfig struct {
-						MicroserviceName string `json:"microserviceName"`
+						Classifier map[string]any `json:"classifier"`
 					} `json:"classifierConfig"`
 				} `json:"spec"`
 			}
@@ -378,7 +380,50 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(sent.SubKind).To(Equal("DatabaseDeclaration"))
 			Expect(sent.Metadata.MicroserviceName).To(Equal("test-service"))
 			Expect(sent.Metadata.Namespace).To(Equal(ns))
-			Expect(sent.Spec.ClassifierConfig.MicroserviceName).To(Equal("test-service"))
+			Expect(sent.Spec.ClassifierConfig.Classifier["microserviceName"]).To(Equal("test-service"))
+		})
+	})
+
+	Context("buildPayload — customKeys", func() {
+		It("serialises customKeys as classifierConfig.customKeys with correct value types", func() {
+			spec := baseSpec()
+			spec.Classifier.CustomKeys = map[string]apiextensionsv1.JSON{
+				"name":    {Raw: []byte(`"my-db"`)},       // string
+				"version": {Raw: []byte(`3`)},             // number
+				"active":  {Raw: []byte(`true`)},          // boolean
+				"meta":    {Raw: []byte(`{"owner":"a"}`)}, // nested object
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(capturedApplyBody).NotTo(BeEmpty())
+
+			// classifierConfig.classifier is a flat map; customKeys is a nested
+			// map[string]any entry inside it — matching the Java DTO:
+			//   ClassifierConfig.classifier: SortedMap<String,Object>
+			var sent struct {
+				Spec struct {
+					ClassifierConfig struct {
+						Classifier map[string]any `json:"classifier"`
+					} `json:"classifierConfig"`
+				} `json:"spec"`
+			}
+			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
+
+			cl := sent.Spec.ClassifierConfig.Classifier
+			Expect(cl["microserviceName"]).To(Equal("test-service"))
+
+			ck, ok := cl["customKeys"].(map[string]any)
+			Expect(ok).To(BeTrue(), "customKeys should be a nested map inside classifier")
+			Expect(ck).To(HaveLen(4))
+			Expect(ck["name"]).To(Equal("my-db"))
+			Expect(ck["version"]).To(BeNumerically("==", 3))
+			Expect(ck["active"]).To(BeTrue())
+			Expect(ck["meta"]).To(Equal(map[string]any{"owner": "a"}))
 		})
 	})
 
