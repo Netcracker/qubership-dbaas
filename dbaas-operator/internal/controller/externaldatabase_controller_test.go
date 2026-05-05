@@ -1023,6 +1023,9 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 			edb2.Name = resourceName + "-2"
 			Expect(k8sClient.Create(ctx, edb1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, edb2)).To(Succeed())
+			DeferCleanup(func() {
+				deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: edb2.Name, Namespace: ns}})
+			})
 
 			ob := &dbaasv1.NamespaceBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBindingName, Namespace: ns},
