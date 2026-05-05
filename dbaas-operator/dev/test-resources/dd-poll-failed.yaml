@@ -2,7 +2,7 @@
 # No apply-rule → default 202 with trackingId="tracking-dd-poll-failed"
 # poll-rules.json key: "tracking-dd-poll-failed" → FAILED / "disk quota exceeded"
 # Expected: Phase=WaitingForDependency → Phase=InvalidConfiguration/AggregatorRejected, Stalled=True
-apiVersion: dbaas.netcracker.com/v1alpha1
+apiVersion: dbaas.netcracker.com/v1
 kind: DatabaseDeclaration
 metadata:
   name: dd-poll-failed

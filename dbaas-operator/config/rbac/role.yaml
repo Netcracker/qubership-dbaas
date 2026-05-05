@@ -5,6 +5,32 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - databasedeclarations
+  - dbpolicies
+  - externaldatabases
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - databasedeclarations/status
+  - dbpolicies/status
+  - externaldatabases/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - dbaas.netcracker.com
   resources:
   - namespacebindings

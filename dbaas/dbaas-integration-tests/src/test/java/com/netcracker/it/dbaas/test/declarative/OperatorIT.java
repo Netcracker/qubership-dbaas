@@ -2,6 +2,7 @@ package com.netcracker.it.dbaas.test.declarative;
 
 import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtension;
 import com.netcracker.it.dbaas.entity.ClassifierWithRolesRequest;
+import com.netcracker.it.dbaas.entity.DatabaseResponse;
 import com.netcracker.it.dbaas.entity.DatabaseV3;
 import com.netcracker.it.dbaas.entity.Role;
 import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
@@ -13,20 +14,30 @@ import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import lombok.extern.slf4j.Slf4j;
-import net.jodah.failsafe.Failsafe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.opentest4j.TestAbortedException;
 
 import java.io.IOException;
+import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.CRD_DATABASE_DECLARATION;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.CRD_DB_POLICY;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.PHASE_WAITING_FOR_DEPENDENCY;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.REASON_DATABASE_PROVISIONED;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.REASON_POLICY_APPLIED;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.REASON_PROVISIONING_STARTED;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.buildDatabaseDeclarationCR;
+import static com.netcracker.it.dbaas.helpers.OperatorHelper.buildDbPolicyCR;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -35,16 +46,21 @@ public class OperatorIT extends AbstractIT {
 
     @BeforeAll
     static void setUp() throws IOException {
-        dbaasOperatorExistOrSkipTests();
         NAMESPACE = getTestNamespace();
         cleanUp();
-        createNamespaceBindingCR();
+        dbaasOperatorExistOrSkipTests();
+        createNamespaceBindingCROrSkipTests();
     }
 
     @AfterAll
     static void cleanUp() throws IOException {
-        dbaasOperatorExistOrSkipTests();
         kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
@@ -54,6 +70,10 @@ public class OperatorIT extends AbstractIT {
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         deleteAllLogicalDatabases();
+    }
+
+    @Override
+    protected void closePortForwardAfterTest() {
     }
 
     @Nested
@@ -72,7 +92,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "new-db", "");
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
                 helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
             }
 
@@ -90,7 +110,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-secret", secretName);
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
                 helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
             }
 
@@ -102,7 +122,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-miss-secret", "does-not-exist");
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
                 helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
             }
 
@@ -119,7 +139,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-miss-secret-key", secretName);
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
                 helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
             }
 
@@ -137,7 +157,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-secret-empty-key", secretName);
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
                 helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
             }
 
@@ -149,7 +169,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, generateName(), "db-namespace-conflict", null);
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
                 helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
             }
 
@@ -163,7 +183,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-classifier-conflict", null);
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_AGGREGATOR_REJECTED, STATUS_TRUE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_AGGREGATOR_REJECTED, STATUS_TRUE);
 
                 var actualDb = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, type, 200);
                 assertEquals(actualDb.getConnectionProperties(), internalDb.getConnectionProperties());
@@ -380,10 +400,8 @@ public class OperatorIT extends AbstractIT {
                 var updatedSpec = (Map<String, Object>) updatedCR.getAdditionalProperties().get("spec");
                 assertEquals(List.of(Map.of("role", "admin", "extraProperties", Map.of(TEST_ID, TEST_ID))), updatedSpec.get("connectionProperties"));
 
-                Failsafe.with(OPERATOR_RETRY_POLICY).run(() -> {
-                    var updatedDb = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
-                    assertEquals(Map.of("role", "admin", TEST_ID, TEST_ID), updatedDb.getConnectionProperties());
-                });
+                var updatedDb = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
+                assertEquals(Map.of("role", "admin", TEST_ID, TEST_ID), updatedDb.getConnectionProperties());
             }
         }
 
@@ -478,7 +496,7 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "new-db", "");
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
-                waitForDesiredState(cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
                 helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
 
                 kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
@@ -492,6 +510,303 @@ public class OperatorIT extends AbstractIT {
 
                 assertNotNull(undeletedNamespaceBinding.getMetadata().getDeletionTimestamp());
                 assertTrue(undeletedNamespaceBinding.getMetadata().getFinalizers().contains("platform.dbaas.netcracker.com/binding-protection"));
+            }
+        }
+
+        @Nested
+        @EnableExtension
+        class DatabaseDeclaration {
+
+            @Test
+            void testDatabaseDeclarationValidMinimalSpec() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
+            }
+
+            @Test
+            void testDatabaseDeclarationClassifierNamespaceMismatch() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, generateName(), "postgresql");
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
+            }
+
+            @Test
+            void testDatabaseDeclarationLazyAndCloneRejected() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                Map<String, Object> extraSpec = new HashMap<>();
+                extraSpec.put("initialInstantiation", Map.of(
+                        "approach", "clone",
+                        "sourceClassifier", Map.of(
+                                "namespace", NAMESPACE,
+                                "scope", "service",
+                                "microserviceName", microserviceName)
+                ));
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", true, extraSpec);
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
+            }
+
+            @Test
+            void testDatabaseDeclarationCloneWithoutSourceClassifier() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                Map<String, Object> extraSpec = Map.of(
+                        "initialInstantiation", Map.of("approach", "clone")
+                );
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
+            }
+
+            @Test
+            void testDatabaseDeclarationSourceClassifierMicroserviceNameMismatch() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                Map<String, Object> extraSpec = Map.of(
+                        "initialInstantiation", Map.of(
+                                "approach", "clone",
+                                "sourceClassifier", Map.of(
+                                        "scope", "service",
+                                        "namespace", NAMESPACE,
+                                        "microserviceName", generateName())
+                        )
+                );
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
+            }
+
+            @Test
+            void testDatabaseDeclarationValidCloneConfig() throws IOException, SQLException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var sourceClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+                sourceClassifier.put("customKeys", Map.of(TEST_ID, "source"));
+                DatabaseResponse sourceDb = helperV3.createDatabase(sourceClassifier, "postgresql", 201);
+
+                helperV3.checkConnectionPostgres(sourceDb, "source-marker", "source-marker");
+
+                Map<String, Object> extraSpec = Map.of("initialInstantiation", Map.of(
+                        "approach", "clone",
+                        "sourceClassifier", Map.of(
+                                "scope", "service",
+                                "namespace", NAMESPACE,
+                                "microserviceName", microserviceName,
+                                "customKeys", Map.of(
+                                        TEST_ID, "source"
+                                )
+                        )
+                ));
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                Map<String, Object> cloneClassifier = (Map<String, Object>) spec.get("classifier");
+                cloneClassifier.put("customKeys", Map.of(
+                        TEST_ID, "clone"
+                ));
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                var cloneClassifierMap = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+                cloneClassifierMap.put("customKeys", Map.of(TEST_ID, "clone"));
+                DatabaseResponse cloneDb = helperV3.getDatabaseByClassifierAsPOJO(
+                        helperV3.getClusterDbaAuthorization(), cloneClassifierMap, NAMESPACE, "postgresql", 200);
+                helperV3.checkConnectionPostgres(cloneDb, null, "source-marker");
+
+                helperV3.checkConnectionPostgres(cloneDb, "clone-marker", "clone-marker");
+                assertThrows(AssertionError.class,
+                        () -> helperV3.checkConnectionPostgres(sourceDb, null, "clone-marker"));
+            }
+
+            @Test
+            void testDatabaseDeclarationWaitsForCloneSource() throws IOException, SQLException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                Map<String, Object> extraSpec = Map.of("initialInstantiation", Map.of(
+                        "approach", "clone",
+                        "sourceClassifier", Map.of(
+                                "scope", "service",
+                                "namespace", NAMESPACE,
+                                "microserviceName", microserviceName,
+                                "customKeys", Map.of(
+                                        TEST_ID, "source"
+                                )
+                        )
+                ));
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                Map<String, Object> cloneClassifier = (Map<String, Object>) spec.get("classifier");
+                cloneClassifier.put("customKeys", Map.of(
+                        TEST_ID, "clone"
+                ));
+
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr,
+                        PHASE_WAITING_FOR_DEPENDENCY, STATUS_FALSE, REASON_PROVISIONING_STARTED, STATUS_FALSE);
+
+                var cloneClassifierMap = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+                cloneClassifierMap.put("customKeys", Map.of(TEST_ID, "clone"));
+                helperV3.getDatabaseByClassifierAsPOJO(
+                        helperV3.getClusterDbaAuthorization(), cloneClassifierMap, NAMESPACE, "postgresql", 404);
+
+                var sourceClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+                sourceClassifier.put("customKeys", Map.of(TEST_ID, "source"));
+                var sourceDb = helperV3.createDatabase(sourceClassifier, "postgresql", 201);
+                helperV3.checkConnectionPostgres(sourceDb);
+
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                helperV3.getDatabaseByClassifierAsPOJO(
+                        helperV3.getClusterDbaAuthorization(), cloneClassifierMap, NAMESPACE, "postgresql", 200);
+            }
+        }
+
+        @Nested
+        @EnableExtension
+        class DbPolicy {
+
+            @Test
+            void testDbPolicyBothServicesAndPolicyEmpty() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildDbPolicyCR(crName, microserviceName, List.of(), List.of());
+
+                createCR(CRD_DB_POLICY, cr);
+                waitForDesiredState(CRD_DB_POLICY, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                helperV3.getAccessRoles(NAMESPACE, microserviceName, 404);
+            }
+
+            @Test
+            void testDbPolicyOnlyServicesSet() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var service = Map.of("name", "svc-a", "roles", List.of("admin"));
+                var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
+
+                createCR(CRD_DB_POLICY, cr);
+                waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+
+                var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
+                assertTrue(roles.getPolicies() == null || roles.getPolicies().isEmpty());
+
+                var actualServices = roles.getServices();
+                assertTrue(actualServices != null && !actualServices.isEmpty());
+                assertEquals(1, roles.getServices().size());
+
+                var actualService = actualServices.getFirst();
+                assertEquals(actualService.getName(), service.get("name"));
+                assertEquals(actualService.getRoles(), service.get("roles"));
+            }
+
+            @Test
+            void testDbPolicyOnlyPolicySet() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var policy = Map.<String, Object>of("type", "backup", "defaultRole", "admin");
+                var cr = buildDbPolicyCR(crName, microserviceName, null, List.of(policy));
+
+                createCR(CRD_DB_POLICY, cr);
+                waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+
+                var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
+                assertTrue(roles.getServices() == null || roles.getServices().isEmpty());
+
+                var actualPolicies = roles.getPolicies();
+                assertTrue(actualPolicies != null && !actualPolicies.isEmpty());
+                assertEquals(1, actualPolicies.size());
+
+                var actualPolicy = actualPolicies.getFirst();
+                assertEquals(policy.get("type"), actualPolicy.getType());
+                assertEquals(policy.get("defaultRole"), actualPolicy.getDefaultRole());
+            }
+
+            @Test
+            void testDbPolicyBothServicesAndPolicySet() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var service = Map.of("name", "svc-a", "roles", List.of("admin"));
+                var policy = Map.<String, Object>of("type", "backup", "defaultRole", "admin");
+                var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), List.of(policy));
+
+                createCR(CRD_DB_POLICY, cr);
+                waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+
+                var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
+
+                var actualServices = roles.getServices();
+                assertTrue(actualServices != null && !actualServices.isEmpty());
+                assertEquals(1, actualServices.size());
+
+                var actualService = actualServices.getFirst();
+                assertEquals(service.get("name"), actualService.getName());
+                assertEquals(service.get("roles"), actualService.getRoles());
+
+                var actualPolicies = roles.getPolicies();
+                assertTrue(actualPolicies != null && !actualPolicies.isEmpty());
+                assertEquals(1, actualPolicies.size());
+
+                var actualPolicy = actualPolicies.getFirst();
+                assertEquals(policy.get("type"), actualPolicy.getType());
+                assertEquals(policy.get("defaultRole"), actualPolicy.getDefaultRole());
+            }
+
+            @Test
+            void testDbPolicyDisableGlobalPermissions() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var service = Map.of("name", "svc-a", "roles", List.of("admin"));
+                var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
+
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                spec.put("disableGlobalPermissions", true);
+
+                createCR(CRD_DB_POLICY, cr);
+                waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+
+                var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
+                assertEquals(Boolean.TRUE, roles.getDisableGlobalPermissions());
+
+                var actualServices = roles.getServices();
+                assertTrue(actualServices != null && !actualServices.isEmpty());
+                assertEquals(1, actualServices.size());
+
+                var actualService = actualServices.getFirst();
+                assertEquals(service.get("name"), actualService.getName());
+                assertEquals(service.get("roles"), actualService.getRoles());
             }
         }
     }
@@ -521,47 +836,43 @@ public class OperatorIT extends AbstractIT {
         log.info("CR created: {}", r);
     }
 
-    private void waitForDesiredState(GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) {
+    private void waitForDesiredState(CustomResourceDefinitionContext crd, GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) {
         try {
-            kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+            kubernetesClient.genericKubernetesResources(crd)
                     .inNamespace(NAMESPACE)
                     .resource(cr)
                     .waitUntilCondition(r -> isDesiredState(r, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling),
-                            10, TimeUnit.SECONDS);
+                            2, TimeUnit.MINUTES);
         } catch (Exception e) {
             // Catch later
         }
-        GenericKubernetesResource externalDatabaseCR = kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+        GenericKubernetesResource resultCR = kubernetesClient.genericKubernetesResources(crd)
                 .inNamespace(NAMESPACE)
                 .resource(cr)
                 .get();
-        assertDesiredState(externalDatabaseCR, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling);
+        assertDesiredState(resultCR, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling);
     }
 
     private static void dbaasOperatorExistOrSkipTests() {
         var pods = kubernetesClient.pods().withLabel("name", DBAAS_OPERATOR_NAME).list().getItems();
-        assumeTrue(pods != null && !pods.isEmpty(), () -> {
-            String message = "pod 'dbaas-operator' do not exists, 'OperatorIT' tests will be ignored";
-            log.warn(message);
-            return message;
-        });
+        assumeTrue(pods != null && !pods.isEmpty(), "dbaas-operator do not exists, 'OperatorIT' tests will be ignored");
     }
 
-    private static void createNamespaceBindingCR() {
-        var cr = buildNamespaceBindingCR();
-        kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                .inNamespace(NAMESPACE)
-                .resource(cr)
-                .create();
+    private static void createNamespaceBindingCROrSkipTests() {
+        try {
+            var cr = buildNamespaceBindingCR();
+            kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                    .inNamespace(NAMESPACE)
+                    .resource(cr)
+                    .create();
 
-        kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                .inNamespace(NAMESPACE)
-                .resource(cr)
-                .waitUntilCondition(r -> r != null
-                        && r.getMetadata() != null
-                        && r.getMetadata().getFinalizers() != null
-                        && r.getMetadata().getFinalizers()
-                        .contains("platform.dbaas.netcracker.com/binding-protection"), 1, TimeUnit.MINUTES);
+            kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
+                    .inNamespace(NAMESPACE)
+                    .resource(cr)
+                    .waitUntilCondition(r -> r.getMetadata().getFinalizers().contains("platform.dbaas.netcracker.com/binding-protection"), 1, TimeUnit.MINUTES);
+        } catch (Exception ex) {
+            throw new TestAbortedException("Failed to create CR 'NamespaceBinding', tests aborted");
+        }
     }
 
     private static void deleteAllLogicalDatabases() throws IOException {

@@ -14,14 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // Classifier uniquely identifies a database in dbaas-aggregator.
 // All keys are sorted alphabetically by the aggregator for identity comparison.
 type Classifier struct {
-	// microserviceName is the name of the microservice that owns the database.
+	// name is the microservice name that owns the database.
 	// Must match metadata.microserviceName sent in the declarative payload.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -45,9 +48,10 @@ type Classifier struct {
 
 	// customKeys is an optional nested map for adapter-specific or
 	// application-specific identifiers (e.g. logicalDBName).
-	// Values are arbitrary strings; not validated by the aggregator.
+	// Values can be any valid JSON type (string, number, boolean, nested object).
+	// Not validated by the aggregator — passed through as-is.
 	// +optional
-	CustomKeys map[string]string `json:"customKeys,omitempty"`
+	CustomKeys map[string]apiextensionsv1.JSON `json:"customKeys,omitempty"`
 }
 
 // VersioningConfig defines the strategy for managing database versions during
@@ -151,6 +155,7 @@ type DatabaseDeclarationStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced,path=databasedeclarations,singular=databasedeclaration
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"

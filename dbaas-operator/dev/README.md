@@ -138,6 +138,7 @@ Expected output (`kubectl get databasedeclaration -n test-ns`):
 NAME                    PHASE                  TYPE
 dd-success-sync         Succeeded              postgresql
 dd-success-async        Succeeded              postgresql
+dd-custom-keys          Succeeded              postgresql
 dd-400-bad-request      InvalidConfiguration   postgresql
 dd-401-unauthorized     BackingOff             postgresql
 dd-500-server-error     BackingOff             postgresql
@@ -151,6 +152,7 @@ dd-invalid-no-source    InvalidConfiguration   postgresql
 |---|---|---|---|---|---|---|
 | `dd-success-sync.yaml` | `dd-svc-sync` | 200 (rule) | — | `Succeeded` | `DatabaseProvisioned` | `False` |
 | `dd-success-async.yaml` | `dd-svc-async` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
+| `dd-custom-keys.yaml` | `dd-svc-custom-keys` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
 | `dd-400-bad-request.yaml` | `dd-svc-400` | 400 (rule) | — | `InvalidConfiguration` | `AggregatorRejected` | `True` |
 | `dd-401-unauthorized.yaml` | `dd-svc-401` | 401 (rule) | — | `BackingOff` | `Unauthorized` | `False` |
 | `dd-500-server-error.yaml` | `dd-svc-500` | 500 (rule) | — | `BackingOff` | `AggregatorError` | `False` |
@@ -163,19 +165,28 @@ dd-invalid-no-source    InvalidConfiguration   postgresql
 (`lazy=true` + `approach=clone` and `approach=clone` without `sourceClassifier` respectively).
 These are cross-field constraints that the CRD schema cannot enforce.
 
+`dd-custom-keys` exercises the `classifier.customKeys` field, which accepts any JSON value type
+(string, number, boolean, nested object). The operator converts these to the aggregator wire format
+under `classifierConfig.customKeys`. Check the mock logs to verify all four types are transmitted
+correctly:
+
+```bash
+kubectl logs -n dbaas-system deployment/dbaas-aggregator | grep -A 10 "dd-svc-custom-keys"
+```
+
 ### Changing rules without rebuilding
 
 Edit the ConfigMap directly and restart the pod:
 
 ```bash
 kubectl edit configmap aggregator-mock-rules -n dbaas-system
-kubectl rollout restart deployment/aggregator-mock -n dbaas-system
+kubectl rollout restart deployment/dbaas-aggregator -n dbaas-system
 ```
 
 Override the global fallback code for all unmatched requests:
 
 ```bash
-kubectl set env deployment/aggregator-mock -n dbaas-system MOCK_RESPONSE_CODE=400
+kubectl set env deployment/dbaas-aggregator -n dbaas-system MOCK_RESPONSE_CODE=400
 ```
 
 ## Useful commands
@@ -185,7 +196,7 @@ kubectl set env deployment/aggregator-mock -n dbaas-system MOCK_RESPONSE_CODE=40
 kubectl logs -n dbaas-system deployment/dbaas-operator -f
 
 # aggregator-mock logs (shows incoming requests and rule matches)
-kubectl logs -n dbaas-system deployment/aggregator-mock -f
+kubectl logs -n dbaas-system deployment/dbaas-aggregator -f
 
 # Full CR status — ExternalDatabase
 kubectl get externaldatabase -n test-ns edb-401 -o yaml
@@ -266,6 +277,7 @@ dev/
     │   # DatabaseDeclaration test CRs
     ├── dd-success-sync.yaml                 # DD — apply-rule 200 (sync) → Succeeded
     ├── dd-success-async.yaml                # DD — 202 default → poll COMPLETED → Succeeded
+    ├── dd-custom-keys.yaml                  # DD — classifier.customKeys with string/number/boolean/object values → Succeeded
     ├── dd-400-bad-request.yaml              # DD — apply-rule 400 → InvalidConfiguration
     ├── dd-401-unauthorized.yaml             # DD — apply-rule 401 → BackingOff
     ├── dd-500-server-error.yaml             # DD — apply-rule 500 → BackingOff

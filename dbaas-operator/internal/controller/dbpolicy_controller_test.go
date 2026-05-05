@@ -34,7 +34,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
@@ -51,10 +51,10 @@ var _ = Describe("DbPolicy Controller", func() {
 	)
 
 	// baseSpec builds a minimal valid spec for use in aggregator-response tests.
-	baseSpec := func() dbaasv1alpha1.DbPolicySpec {
-		return dbaasv1alpha1.DbPolicySpec{
+	baseSpec := func() dbaasv1.DbPolicySpec {
+		return dbaasv1.DbPolicySpec{
 			MicroserviceName: "test-service",
-			Services: []dbaasv1alpha1.ServiceRole{
+			Services: []dbaasv1.ServiceRole{
 				{Name: "other-service", Roles: []string{"admin"}},
 			},
 		}
@@ -74,12 +74,12 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	AfterEach(func() {
 		fixture.close()
-		deleteIfExists(&dbaasv1alpha1.DbPolicy{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+		deleteIfExists(&dbaasv1.DbPolicy{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 	})
 
-	reconcileAndFetch := func() (*dbaasv1alpha1.DbPolicy, reconcile.Result, error) {
-		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1alpha1.DbPolicy {
-			return &dbaasv1alpha1.DbPolicy{}
+	reconcileAndFetch := func() (*dbaasv1.DbPolicy, reconcile.Result, error) {
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1.DbPolicy {
+			return &dbaasv1.DbPolicy{}
 		})
 	}
 
@@ -88,7 +88,7 @@ var _ = Describe("DbPolicy Controller", func() {
 	Context("buildPayload — microserviceName goes to metadata, not spec", func() {
 		It("serializes microserviceName in metadata and excludes it from spec", func() {
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -114,17 +114,17 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("buildPayload — services and policy are serialized into spec", func() {
 		It("sends services and policy in the spec field", func() {
-			spec := dbaasv1alpha1.DbPolicySpec{
+			spec := dbaasv1.DbPolicySpec{
 				MicroserviceName: "test-service",
-				Services: []dbaasv1alpha1.ServiceRole{
+				Services: []dbaasv1.ServiceRole{
 					{Name: "other-svc", Roles: []string{"admin", "readonly"}},
 				},
-				Policy: []dbaasv1alpha1.PolicyRole{
+				Policy: []dbaasv1.PolicyRole{
 					{Type: "postgresql", DefaultRole: "admin", AdditionalRole: []string{"readonly"}},
 				},
 			}
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -161,7 +161,7 @@ var _ = Describe("DbPolicy Controller", func() {
 		It("is rejected by CRD admission validation before reaching the controller", func() {
 			spec := baseSpec()
 			spec.MicroserviceName = ""
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			err := k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})
@@ -173,16 +173,16 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("both services and policy are empty", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
-				Spec:       dbaasv1alpha1.DbPolicySpec{MicroserviceName: "test-service"},
+				Spec:       dbaasv1.DbPolicySpec{MicroserviceName: "test-service"},
 			})).To(Succeed())
 
 			dp, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(fixture.capturedBody).To(BeEmpty())
 
 			ready := findCondition(dp.Status.Conditions, conditionTypeReady)
@@ -197,11 +197,11 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("services entry has empty name", func() {
 		It("is rejected by CRD admission validation before reaching the controller", func() {
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			err := k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
-				Spec: dbaasv1alpha1.DbPolicySpec{
+				Spec: dbaasv1.DbPolicySpec{
 					MicroserviceName: "test-service",
-					Services:         []dbaasv1alpha1.ServiceRole{{Name: "", Roles: []string{"admin"}}},
+					Services:         []dbaasv1.ServiceRole{{Name: "", Roles: []string{"admin"}}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -212,11 +212,11 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("services entry has empty roles", func() {
 		It("is rejected by CRD admission validation before reaching the controller", func() {
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			err := k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
-				Spec: dbaasv1alpha1.DbPolicySpec{
+				Spec: dbaasv1.DbPolicySpec{
 					MicroserviceName: "test-service",
-					Services:         []dbaasv1alpha1.ServiceRole{{Name: "other-svc", Roles: nil}},
+					Services:         []dbaasv1.ServiceRole{{Name: "other-svc", Roles: nil}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -227,11 +227,11 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("policy entry has empty type", func() {
 		It("is rejected by CRD admission validation before reaching the controller", func() {
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			err := k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
-				Spec: dbaasv1alpha1.DbPolicySpec{
+				Spec: dbaasv1.DbPolicySpec{
 					MicroserviceName: "test-service",
-					Policy:           []dbaasv1alpha1.PolicyRole{{Type: "", DefaultRole: "admin"}},
+					Policy:           []dbaasv1.PolicyRole{{Type: "", DefaultRole: "admin"}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -242,11 +242,11 @@ var _ = Describe("DbPolicy Controller", func() {
 
 	Context("policy entry has empty defaultRole", func() {
 		It("is rejected by CRD admission validation before reaching the controller", func() {
-			err := k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			err := k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
-				Spec: dbaasv1alpha1.DbPolicySpec{
+				Spec: dbaasv1.DbPolicySpec{
 					MicroserviceName: "test-service",
-					Policy:           []dbaasv1alpha1.PolicyRole{{Type: "postgresql", DefaultRole: ""}},
+					Policy:           []dbaasv1.PolicyRole{{Type: "postgresql", DefaultRole: ""}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -260,7 +260,7 @@ var _ = Describe("DbPolicy Controller", func() {
 	Context("HTTP 200 — policy applied synchronously", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/PolicyApplied, does not requeue", func() {
 			fixture.statusCode = http.StatusOK
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -269,7 +269,7 @@ var _ = Describe("DbPolicy Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseSucceeded))
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(dp.Status.ObservedGeneration).To(Equal(dp.Generation))
 
 			ready := findCondition(dp.Status.Conditions, conditionTypeReady)
@@ -294,7 +294,7 @@ var _ = Describe("DbPolicy Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True, does not requeue", func() {
 			fixture.statusCode = http.StatusBadRequest
 			fixture.body = `{"code":"CORE-DBAAS-4036","reason":"Validation failed","message":"Declarative configuration validation failed.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -303,7 +303,7 @@ var _ = Describe("DbPolicy Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseInvalidConfiguration))
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			Expect(dp.Status.ObservedGeneration).To(Equal(dp.Generation))
 
 			ready := findCondition(dp.Status.Conditions, conditionTypeReady)
@@ -326,7 +326,7 @@ var _ = Describe("DbPolicy Controller", func() {
 		It("sets Phase=BackingOff, Ready=False/Unauthorized, Stalled=False, requeues", func() {
 			fixture.statusCode = http.StatusUnauthorized
 			fixture.body = body401Unauthorized
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -334,7 +334,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dp.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(dp.Status.Conditions, conditionTypeReady)
@@ -357,7 +357,7 @@ var _ = Describe("DbPolicy Controller", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, requeues", func() {
 			fixture.statusCode = http.StatusInternalServerError
 			fixture.body = `{"code":"CORE-DBAAS-2000","reason":"Unexpected exception","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -365,7 +365,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dp.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(dp.Status.Conditions, conditionTypeReady)
@@ -387,7 +387,7 @@ var _ = Describe("DbPolicy Controller", func() {
 		It("sets Phase=BackingOff (not InvalidConfiguration), Stalled=False, requeues", func() {
 			fixture.statusCode = http.StatusNotFound
 			fixture.body = ""
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -395,7 +395,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff),
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff),
 				"404 is an infrastructure error, not a spec rejection; CR must not be stuck in InvalidConfiguration")
 
 			stalled := findCondition(dp.Status.Conditions, conditionTypeStalled)
@@ -411,7 +411,7 @@ var _ = Describe("DbPolicy Controller", func() {
 		It("sets Phase=BackingOff, Ready=False/AggregatorError, Stalled=False, requeues", func() {
 			fixture.server.Close()
 
-			Expect(k8sClient.Create(ctx, &dbaasv1alpha1.DbPolicy{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DbPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -419,7 +419,7 @@ var _ = Describe("DbPolicy Controller", func() {
 			dp, _, err := reconcileAndFetch()
 
 			Expect(err).To(HaveOccurred())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1alpha1.PhaseBackingOff))
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dp.Status.ObservedGeneration).To(BeZero())
 
 			ready := findCondition(dp.Status.Conditions, conditionTypeReady)

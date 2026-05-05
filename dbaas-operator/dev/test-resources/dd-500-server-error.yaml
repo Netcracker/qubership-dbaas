@@ -1,7 +1,7 @@
 # DatabaseDeclaration — aggregator returns HTTP 500
 # apply-rules.json key: "dd-svc-500" → httpCode=500 CORE-DBAAS-2000
 # Expected: Phase=BackingOff, Ready=False/AggregatorError, Stalled=False (retries)
-apiVersion: dbaas.netcracker.com/v1alpha1
+apiVersion: dbaas.netcracker.com/v1
 kind: DatabaseDeclaration
 metadata:
   name: dd-500-server-error

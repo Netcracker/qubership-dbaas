@@ -12,7 +12,7 @@
 # Observable via:
 #   kubectl -n test-ns get databasedeclaration dd-poll-terminated -o yaml
 #   kubectl -n test-ns get events --field-selector involvedObject.name=dd-poll-terminated
-apiVersion: dbaas.netcracker.com/v1alpha1
+apiVersion: dbaas.netcracker.com/v1
 kind: DatabaseDeclaration
 metadata:
   name: dd-poll-terminated

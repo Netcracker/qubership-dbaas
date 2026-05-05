@@ -4,9 +4,7 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import lombok.extern.slf4j.Slf4j;
-import net.jodah.failsafe.RetryPolicy;
 
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +14,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.test.AbstractIT.getPropertyOrEnv;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
 public class OperatorHelper {
@@ -30,6 +30,8 @@ public class OperatorHelper {
     public static final String PHASE_SUCCEEDED = "Succeeded";
     public static final String PHASE_BACKING_OFF = "BackingOff";
     public static final String PHASE_INVALID_CONFIGURATION = "InvalidConfiguration";
+    public static final String PHASE_WAITING_FOR_DEPENDENCY = "WaitingForDependency";
+    public static final String PHASE_TERMINATED = "Terminated";
 
     public static final String STATUS_TRUE = "True";
     public static final String STATUS_FALSE = "False";
@@ -38,11 +40,14 @@ public class OperatorHelper {
     public static final String REASON_AGGREGATOR_REJECTED = "AggregatorRejected";
     public static final String REASON_SECRET_ERROR = "SecretError";
     public static final String REASON_INVALID_SPEC = "InvalidSpec";
+    public static final String REASON_DATABASE_PROVISIONED = "DatabaseProvisioned";
+    public static final String REASON_UNAUTHORIZED = "Unauthorized";
+    public static final String REASON_AGGREGATOR_ERROR = "AggregatorError";
+    public static final String REASON_OPERATION_TERMINATED = "OperationTerminated";
+    public static final String REASON_POLICY_APPLIED = "PolicyApplied";
+    public static final String REASON_PROVISIONING_STARTED = "ProvisioningStarted";
 
     public static String NAMESPACE;
-
-    public final static RetryPolicy<Object> OPERATOR_RETRY_POLICY = new RetryPolicy<>()
-            .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(5));
 
     public static final CustomResourceDefinitionContext CRD_EXTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
@@ -59,9 +64,25 @@ public class OperatorHelper {
             .withScope("Namespaced")
             .build();
 
+    public static final CustomResourceDefinitionContext CRD_DATABASE_DECLARATION =
+            new CustomResourceDefinitionContext.Builder()
+                    .withGroup("dbaas.netcracker.com")
+                    .withVersion("v1")
+                    .withPlural("databasedeclarations")
+                    .withScope("Namespaced")
+                    .build();
+
+    public static final CustomResourceDefinitionContext CRD_DB_POLICY =
+            new CustomResourceDefinitionContext.Builder()
+                    .withGroup("dbaas.netcracker.com")
+                    .withVersion("v1")
+                    .withPlural("dbpolicies")
+                    .withScope("Namespaced")
+                    .build();
+
     public static String getTestNamespace() {
         String namespace = getPropertyOrEnv("clouds.cloud.namespaces.namespace");
-        assertTrue(namespace != null && !namespace.isBlank(), "Failed to get 'clouds.cloud.namespaces.namespace' property");
+        assumeTrue(namespace != null && !namespace.isBlank(), "Failed to get 'clouds.cloud.namespaces.namespace' property");
         return namespace;
     }
 
@@ -178,6 +199,8 @@ public class OperatorHelper {
                 (Map<String, Object>) cr.getAdditionalProperties().get("status");
         assertNotNull(status, "status must be not null");
 
+        log.info("CR status: {}", status);
+
         String actualPhase = (String) status.get("phase");
         assertEquals(desiredPhase, actualPhase, "actual 'Phase' do not equals to desired one");
 
@@ -197,5 +220,64 @@ public class OperatorHelper {
 
     public static String generateName() {
         return "operator-autotests-" + UUID.randomUUID();
+    }
+
+    public static GenericKubernetesResource buildDatabaseDeclarationCR(String crName, String microserviceName,
+                                                                       String namespace, String type) {
+        return buildDatabaseDeclarationCR(crName, microserviceName, namespace, type, false, new HashMap<>());
+    }
+
+    public static GenericKubernetesResource buildDatabaseDeclarationCR(String crName, String microserviceName,
+                                                                       String namespace, String type, boolean lazy,
+                                                                       Map<String, Object> extraSpecFields) {
+        GenericKubernetesResource cr = new GenericKubernetesResource();
+        cr.setApiVersion("dbaas.netcracker.com/v1");
+        cr.setKind("DatabaseDeclaration");
+
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName(crName);
+        meta.setNamespace(NAMESPACE);
+        meta.getLabels().put(TEST_ID, TEST_ID);
+        cr.setMetadata(meta);
+
+        Map<String, Object> classifier = new HashMap<>();
+        classifier.put("microserviceName", microserviceName);
+        classifier.put("namespace", namespace);
+        classifier.put("scope", "service");
+
+        Map<String, Object> specBody = new HashMap<>();
+        specBody.put("classifier", classifier);
+        specBody.put("type", type);
+        specBody.put("lazy", lazy);
+        specBody.putAll(extraSpecFields);
+
+        cr.setAdditionalProperty("spec", specBody);
+        return cr;
+    }
+
+    public static GenericKubernetesResource buildDbPolicyCR(String crName, String microserviceName,
+                                                            List<Map<String, Object>> services,
+                                                            List<Map<String, Object>> policy) {
+        GenericKubernetesResource cr = new GenericKubernetesResource();
+        cr.setApiVersion("dbaas.netcracker.com/v1");
+        cr.setKind("DbPolicy");
+
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName(crName);
+        meta.setNamespace(NAMESPACE);
+        meta.getLabels().put(TEST_ID, TEST_ID);
+        cr.setMetadata(meta);
+
+        Map<String, Object> specBody = new HashMap<>();
+        specBody.put("microserviceName", microserviceName);
+        if (services != null) {
+            specBody.put("services", services);
+        }
+        if (policy != null) {
+            specBody.put("policy", policy);
+        }
+
+        cr.setAdditionalProperty("spec", specBody);
+        return cr;
     }
 }
