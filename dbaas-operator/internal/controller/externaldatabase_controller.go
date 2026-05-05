@@ -18,7 +18,7 @@ package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 import (
 	"context"
@@ -259,6 +259,12 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+		// Re-enqueue all ExternalDatabases in a namespace when a Secret changes,
+		// so credential rotations take effect without a spec change.
+		// WatchesMetadata avoids caching Secret data (credentials) in operator memory —
+		// enqueueForSecret only needs the name/namespace to decide what to enqueue.
+		WatchesMetadata(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForSecret)).
 		WithOptions(opts).
 		Named("externaldatabase").
 		Complete(r)
@@ -275,6 +281,27 @@ func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj 
 	reqs := make([]reconcile.Request, 0, len(list.Items))
 	for i := range list.Items {
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return reqs
+}
+
+// enqueueForSecret maps a Secret event to reconcile requests for all
+// ExternalDatabases in the same namespace that reference the Secret by name.
+func (r *ExternalDatabaseReconciler) enqueueForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &dbaasv1.ExternalDatabaseList{}
+	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.ErrorC(ctx, "enqueueForSecret: list ExternalDatabases in %s: %v", obj.GetNamespace(), err)
+		return nil
+	}
+	secretName := obj.GetName()
+	var reqs []reconcile.Request
+	for i := range list.Items {
+		for _, cp := range list.Items[i].Spec.ConnectionProperties {
+			if cp.CredentialsSecretRef != nil && cp.CredentialsSecretRef.Name == secretName {
+				reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+				break
+			}
+		}
 	}
 	return reqs
 }
