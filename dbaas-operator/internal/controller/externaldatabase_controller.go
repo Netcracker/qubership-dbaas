@@ -42,6 +42,10 @@ import (
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
+// secretNamesIndex is the field index key used to look up ExternalDatabases
+// by the name of a secret they reference in credentialsSecretRef.
+const secretNamesIndex = "spec.credentialSecretNames"
+
 // ExternalDatabaseReconciler reconciles ExternalDatabase objects.
 //
 // On every reconcile it assembles the registration request (reading credentials
@@ -251,6 +255,19 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 // Reconcile returns an error (BackingOff phase).  Pass
 // ctrlcontroller.Options{} to keep the controller-runtime defaults.
 func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+	// Register the field index before building the controller.
+	// controller-runtime calls indexSecretNames for every ExternalDatabase to
+	// build the reverse map (secretName → EDBs), then keeps it up to date
+	// automatically as EDBs are created, updated, or deleted.
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&dbaasv1.ExternalDatabase{},
+		secretNamesIndex,
+		indexSecretNames,
+	); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.ExternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
@@ -259,10 +276,10 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
-		// Re-enqueue all ExternalDatabases in a namespace when a Secret changes,
-		// so credential rotations take effect without a spec change.
+		// Re-enqueue ExternalDatabases that reference a Secret when that Secret
+		// changes, so credential rotations take effect without a spec change.
 		// WatchesMetadata avoids caching Secret data (credentials) in operator memory —
-		// enqueueForSecret only needs the name/namespace to decide what to enqueue.
+		// enqueueForSecret only needs the name/namespace to query the field index.
 		WatchesMetadata(&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForSecret)).
 		WithOptions(opts).
@@ -285,23 +302,39 @@ func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj 
 	return reqs
 }
 
-// enqueueForSecret maps a Secret event to reconcile requests for all
-// ExternalDatabases in the same namespace that reference the Secret by name.
-func (r *ExternalDatabaseReconciler) enqueueForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.ExternalDatabaseList{}
-	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
-		log.ErrorC(ctx, "enqueueForSecret: list ExternalDatabases in %s: %v", obj.GetNamespace(), err)
+// indexSecretNames is the indexer function registered at startup.
+// controller-runtime calls it for every ExternalDatabase to populate and
+// maintain the reverse map: secretName → []ExternalDatabase.
+func indexSecretNames(obj client.Object) []string {
+	edb, ok := obj.(*dbaasv1.ExternalDatabase)
+	if !ok {
 		return nil
 	}
-	secretName := obj.GetName()
-	var reqs []reconcile.Request
-	for i := range list.Items {
-		for _, cp := range list.Items[i].Spec.ConnectionProperties {
-			if cp.CredentialsSecretRef != nil && cp.CredentialsSecretRef.Name == secretName {
-				reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-				break
-			}
+	var names []string
+	for _, cp := range edb.Spec.ConnectionProperties {
+		if cp.CredentialsSecretRef != nil {
+			names = append(names, cp.CredentialsSecretRef.Name)
 		}
+	}
+	return names
+}
+
+// enqueueForSecret maps a Secret event to reconcile requests for ExternalDatabases
+// that reference it. Uses the field index for an O(1) lookup — no full list scan.
+func (r *ExternalDatabaseReconciler) enqueueForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &dbaasv1.ExternalDatabaseList{}
+	if err := r.List(ctx, list,
+		client.InNamespace(obj.GetNamespace()),
+		// MatchingFields resolves against the in-memory index — no scan of unrelated EDBs.
+		client.MatchingFields{secretNamesIndex: obj.GetName()},
+	); err != nil {
+		log.ErrorC(ctx, "enqueueForSecret: index lookup for Secret %s/%s: %v",
+			obj.GetNamespace(), obj.GetName(), err)
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
 }

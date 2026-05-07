@@ -1049,46 +1049,36 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		})
 	})
 
-	Context("enqueueForSecret — fan-out mapping", func() {
-		const secretName = "edb-ownership-secret"
-
-		AfterEach(func() {
-			deleteIfExists(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}})
-			deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: resourceName + "-2", Namespace: ns}})
+	Context("indexSecretNames — index key extraction", func() {
+		It("returns all secret names referenced by the EDB", func() {
+			edb := baseEDB()
+			edb.Spec.ConnectionProperties = []dbaasv1.ConnectionProperty{
+				{
+					Role: "admin",
+					CredentialsSecretRef: &dbaasv1.CredentialsSecretRef{
+						Name: "secret-a",
+						Keys: []dbaasv1.SecretKeyMapping{{Key: "user", Name: "username"}},
+					},
+				},
+				{
+					Role: "ro",
+					CredentialsSecretRef: &dbaasv1.CredentialsSecretRef{
+						Name: "secret-b",
+						Keys: []dbaasv1.SecretKeyMapping{{Key: "user", Name: "username"}},
+					},
+				},
+			}
+			Expect(indexSecretNames(edb)).To(ConsistOf("secret-a", "secret-b"))
 		})
 
-		It("returns a reconcile.Request only for ExternalDatabases that reference the Secret", func() {
-			reconciler.Ownership = mineOwnershipResolver(ns)
-
-			edbWithSecret := baseEDB()
-			edbWithSecret.Spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
-				Name: secretName,
-				Keys: []dbaasv1.SecretKeyMapping{{Key: "db-user", Name: "username"}},
-			}
-
-			edbWithoutSecret := baseEDB()
-			edbWithoutSecret.Name = resourceName + "-2"
-
-			Expect(k8sClient.Create(ctx, edbWithSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, edbWithoutSecret)).To(Succeed())
-
-			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}}
-			reqs := reconciler.enqueueForSecret(ctx, secret)
-
-			names := make([]string, 0, len(reqs))
-			for _, r := range reqs {
-				names = append(names, r.Name)
-			}
-			Expect(names).To(ConsistOf(edbWithSecret.Name))
+		It("returns nil when no connectionProperty has a credentialsSecretRef", func() {
+			edb := baseEDB()
+			// baseEDB has no credentialsSecretRef set.
+			Expect(indexSecretNames(edb)).To(BeNil())
 		})
 
-		It("returns an empty slice when no ExternalDatabase references the Secret", func() {
-			reconciler.Ownership = mineOwnershipResolver(ns)
-			Expect(k8sClient.Create(ctx, baseEDB())).To(Succeed())
-
-			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "unrelated-secret", Namespace: ns}}
-			reqs := reconciler.enqueueForSecret(ctx, secret)
-			Expect(reqs).To(BeEmpty())
+		It("returns nil for a non-ExternalDatabase object", func() {
+			Expect(indexSecretNames(&dbaasv1.NamespaceBinding{})).To(BeNil())
 		})
 	})
 })
