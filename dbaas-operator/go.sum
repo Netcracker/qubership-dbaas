@@ -110,8 +110,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.5.3 h1:YHkxhzJqHzqKmAYMzbkpaOHpMLm8AegExmC9Ivn2YJw=
 github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.5.3/go.mod h1:V7wi9GntZuPLJ+xD+ofSPE85lRqaaCVjauM1A3fAbLk=
-github.com/netcracker/qubership-core-lib-go/v3 v3.8.1 h1:31UTTAiPN7mJuLKlkDJ2foyRyNcyyb2nupQyBK+/7Zg=
-github.com/netcracker/qubership-core-lib-go/v3 v3.8.1/go.mod h1:REJ6332XpbP4n20tnCrkJ2iNxgzoo0H6SEf5NHIKRvg=
+github.com/netcracker/qubership-core-lib-go/v3 v3.9.1 h1:Cz3NrT5kWYLVQciOZt0Rz4FHergTuIYLe3Nf5xu/edw=
+github.com/netcracker/qubership-core-lib-go/v3 v3.9.1/go.mod h1:REJ6332XpbP4n20tnCrkJ2iNxgzoo0H6SEf5NHIKRvg=
 github.com/onsi/ginkgo/v2 v2.28.3 h1:4JvMdwtFU0imd8fHx25OJXoDMRexnf8v5NHKYSTTji4=
 github.com/onsi/ginkgo/v2 v2.28.3/go.mod h1:+aXOY+vzZ5mu2iI2HpTZUPmM//oQfsNFX6gU9kNcA44=
 github.com/onsi/gomega v1.40.0 h1:Vtol0e1MghCD2ZVIilPDIg44XSL9l2QAn8ZNaljWcJc=
