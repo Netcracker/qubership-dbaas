@@ -146,6 +146,18 @@ jobs:
               registrationPassword: password
           EOF
 
+      - name: Resolve image tags
+        run: |
+          SAFE_REF="${GITHUB_REF_NAME//\//-}"
+          if [ "$SAFE_REF" = "main" ]; then
+            IMAGE_TAG=latest
+          else
+            IMAGE_TAG="${SAFE_REF}-snapshot"
+          fi
+          echo "Using image tag: $IMAGE_TAG"
+          echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
       - name: Deploy DBaaS
         working-directory: bootstrap
         run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
