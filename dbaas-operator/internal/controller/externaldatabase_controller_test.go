@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	config "sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -1101,10 +1102,14 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 	It("registers the controller with a custom exponential rate limiter", func() {
 		// Create a throw-away manager backed by the same envtest API server.
 		// Metrics and health probes are disabled to avoid port conflicts.
+		// SkipNameValidation avoids "controller already exists" errors when multiple
+		// test suites register the same controller name in the same process.
+		skipValidation := true
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
 			Metrics:                metricsserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
+			Controller:             config.Controller{SkipNameValidation: &skipValidation},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1163,11 +1168,13 @@ var _ = Describe("ExternalDatabase Controller — secret watch", func() {
 		var mgrCtx context.Context
 		mgrCtx, cancel = context.WithCancel(context.Background())
 
+		skipValidation := true
 		var err error
 		mgr, err = ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
 			Metrics:                metricsserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
+			Controller:             config.Controller{SkipNameValidation: &skipValidation},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
