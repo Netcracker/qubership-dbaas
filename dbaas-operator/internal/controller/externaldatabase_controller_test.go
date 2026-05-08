@@ -1068,7 +1068,7 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 					},
 				},
 			}
-			Expect(indexSecretNames(edb)).To(ConsistOf("secret-a", "secret-b"))
+			Expect(indexSecretNames(edb)).To(ConsistOf("default/secret-a", "default/secret-b"))
 		})
 
 		It("returns nil when no connectionProperty has a credentialsSecretRef", func() {
@@ -1136,5 +1136,96 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		// After Forget the counter is reset; the next failure starts from base again.
 		rateLimiter.Forget(req)
 		Expect(rateLimiter.When(req)).To(Equal(base))
+	})
+})
+
+// ── Secret watch integration ───────────────────────────────────────────────────
+
+var _ = Describe("ExternalDatabase Controller — secret watch", func() {
+	// enqueueForSecret requires the field index to be registered and the cache
+	// to be populated, so it cannot be tested with a bare reconciler.  This suite
+	// spins up a real manager (same envtest API server) so that SetupWithManager
+	// registers the index and the cache warms up before we call enqueueForSecret.
+
+	const (
+		ns         = "default"
+		secretName = "sw-test-secret"
+		edbName    = "sw-test-edb"
+	)
+
+	var (
+		mgr        ctrl.Manager
+		reconciler *ExternalDatabaseReconciler
+		cancel     context.CancelFunc
+	)
+
+	BeforeEach(func() {
+		var mgrCtx context.Context
+		mgrCtx, cancel = context.WithCancel(context.Background())
+
+		var err error
+		mgr, err = ctrl.NewManager(cfg, ctrl.Options{
+			Scheme:                 k8sClient.Scheme(),
+			Metrics:                metricsserver.Options{BindAddress: "0"},
+			HealthProbeBindAddress: "0",
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		reconciler = &ExternalDatabaseReconciler{
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Recorder:   mgr.GetEventRecorderFor("sw-test"), //nolint:staticcheck
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
+			Ownership:  mineOwnershipResolver(ns),
+		}
+		Expect(reconciler.SetupWithManager(mgr, ctrlcontroller.Options{})).To(Succeed())
+
+		go func() {
+			_ = mgr.Start(mgrCtx)
+		}()
+		// Wait for the cache to sync before any test interacts with the index.
+		Expect(mgr.GetCache().WaitForCacheSync(mgrCtx)).To(BeTrue())
+	})
+
+	AfterEach(func() {
+		cancel()
+		deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: edbName, Namespace: ns}})
+		deleteIfExists(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}})
+	})
+
+	It("enqueueForSecret returns a request for an EDB that references the changed secret", func() {
+		edb := &dbaasv1.ExternalDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: edbName, Namespace: ns},
+			Spec: dbaasv1.ExternalDatabaseSpec{
+				Classifier:           map[string]string{"namespace": ns, "microserviceName": "svc", "scope": "service"},
+				Type:                 "postgresql",
+				DbName:               "testdb",
+				ConnectionProperties: []dbaasv1.ConnectionProperty{
+					{
+						Role: "admin",
+						CredentialsSecretRef: &dbaasv1.CredentialsSecretRef{
+							Name: secretName,
+							Keys: []dbaasv1.SecretKeyMapping{{Key: "password", Name: "password"}},
+						},
+					},
+				},
+			},
+		}
+		Expect(mgr.GetClient().Create(ctx, edb)).To(Succeed())
+
+		// The cache index is populated asynchronously — wait for it to reflect the new EDB.
+		secretObj := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}}
+		Eventually(func() []reconcile.Request {
+			return reconciler.enqueueForSecret(ctx, secretObj)
+		}).Should(HaveLen(1))
+
+		reqs := reconciler.enqueueForSecret(ctx, secretObj)
+		Expect(reqs[0].NamespacedName).To(Equal(types.NamespacedName{Name: edbName, Namespace: ns}))
+	})
+
+	It("enqueueForSecret returns empty when no EDB references the secret", func() {
+		secretObj := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "unrelated-secret", Namespace: ns}}
+		reqs := reconciler.enqueueForSecret(ctx, secretObj)
+		Expect(reqs).To(BeEmpty())
 	})
 })
