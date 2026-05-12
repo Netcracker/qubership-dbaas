@@ -312,8 +312,9 @@ class DatabaseConfigurationCreationServiceTest {
         Assertions.assertTrue(exists.isActual());
     }
 
+    // Context should be passed to ProcessDefinition via addTaskContext() to be created in bulk. No separate context apply calls allowed (very expensive operation).
     @Test
-    void applyContextOnlyOnce() {
+    void noSpecificContextApplied() {
         ProcessInstanceImpl processInstance = mock(ProcessInstanceImpl.class);
         TaskInstanceImpl taskInstance = mock(TaskInstanceImpl.class);
         DataContext dataContext = mock(DataContext.class);
@@ -321,9 +322,9 @@ class DatabaseConfigurationCreationServiceTest {
         when(processInstance.getTasks()).thenReturn(List.of(taskInstance));
         when(taskInstance.getContext()).thenReturn(dataContext);
 
-        databaseConfigurationCreationService.createProcessInstance(new ArrayList<>(), "warmup", "test-namespace");
-        // Context should be applied only one time for each task, because it's very expensive operation
-        verify(dataContext, times(1)).apply(any());
+        databaseConfigurationCreationService.createProcessInstance(new ArrayList<>(), APPLY_CONFIG_OPERATION, "test-namespace");
+
+        verify(dataContext, times(0)).apply(any());
     }
 
 
