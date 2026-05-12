@@ -65,6 +65,11 @@ spec:
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
               readOnly: true
+          # A Pod's `args` field REPLACES image CMD entirely. State the binary path in
+          # `command` so the deployment keeps working regardless of whether the Dockerfile
+          # uses ENTRYPOINT or CMD for /app/dbaas-operator.
+          command:
+            - /app/dbaas-operator
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
