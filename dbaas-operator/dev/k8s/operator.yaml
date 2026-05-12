@@ -33,10 +33,10 @@ rules:
     resources: [namespacebindings/finalizers]
     verbs: [update]
   # Secrets (for credentials in ExternalDatabase)
-  # Fetched directly from the API server on each reconcile; no cache.
+  # list + watch required for WatchesMetadata; get required for reconcile reads.
   - apiGroups: [""]
     resources: [secrets]
-    verbs: [get]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

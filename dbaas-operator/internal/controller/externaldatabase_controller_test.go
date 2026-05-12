@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	config "sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -1023,6 +1024,9 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 			edb2.Name = resourceName + "-2"
 			Expect(k8sClient.Create(ctx, edb1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, edb2)).To(Succeed())
+			DeferCleanup(func() {
+				deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: edb2.Name, Namespace: ns}})
+			})
 
 			ob := &dbaasv1.NamespaceBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBindingName, Namespace: ns},
@@ -1045,6 +1049,39 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 			Expect(reqs).To(BeEmpty())
 		})
 	})
+
+	Context("indexSecretNames — index key extraction", func() {
+		It("returns all secret names referenced by the EDB", func() {
+			edb := baseEDB()
+			edb.Spec.ConnectionProperties = []dbaasv1.ConnectionProperty{
+				{
+					Role: "admin",
+					CredentialsSecretRef: &dbaasv1.CredentialsSecretRef{
+						Name: "secret-a",
+						Keys: []dbaasv1.SecretKeyMapping{{Key: "user", Name: "username"}},
+					},
+				},
+				{
+					Role: "ro",
+					CredentialsSecretRef: &dbaasv1.CredentialsSecretRef{
+						Name: "secret-b",
+						Keys: []dbaasv1.SecretKeyMapping{{Key: "user", Name: "username"}},
+					},
+				},
+			}
+			Expect(indexSecretNames(edb)).To(ConsistOf("default/secret-a", "default/secret-b"))
+		})
+
+		It("returns nil when no connectionProperty has a credentialsSecretRef", func() {
+			edb := baseEDB()
+			// baseEDB has no credentialsSecretRef set.
+			Expect(indexSecretNames(edb)).To(BeNil())
+		})
+
+		It("returns nil for a non-ExternalDatabase object", func() {
+			Expect(indexSecretNames(&dbaasv1.NamespaceBinding{})).To(BeNil())
+		})
+	})
 })
 
 // ── Rate limiter / SetupWithManager ───────────────────────────────────────────
@@ -1065,10 +1102,14 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 	It("registers the controller with a custom exponential rate limiter", func() {
 		// Create a throw-away manager backed by the same envtest API server.
 		// Metrics and health probes are disabled to avoid port conflicts.
+		// SkipNameValidation avoids "controller already exists" errors when multiple
+		// test suites register the same controller name in the same process.
+		skipValidation := true
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
 			Metrics:                metricsserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
+			Controller:             config.Controller{SkipNameValidation: &skipValidation},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1100,5 +1141,154 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		// After Forget the counter is reset; the next failure starts from base again.
 		rateLimiter.Forget(req)
 		Expect(rateLimiter.When(req)).To(Equal(base))
+	})
+})
+
+// ── Secret watch integration ───────────────────────────────────────────────────
+
+var _ = Describe("ExternalDatabase Controller — secret watch", func() {
+	// enqueueForSecret requires the field index to be registered and the cache
+	// to be populated, so it cannot be tested with a bare reconciler.  This suite
+	// spins up a real manager (same envtest API server) so that SetupWithManager
+	// registers the index and the cache warms up before we call enqueueForSecret.
+
+	const (
+		ns         = "default"
+		secretName = "sw-test-secret"
+		edbName    = "sw-test-edb"
+	)
+
+	var (
+		mgr        ctrl.Manager
+		reconciler *ExternalDatabaseReconciler
+		cancel     context.CancelFunc
+		done       chan struct{}
+	)
+
+	BeforeEach(func() {
+		var mgrCtx context.Context
+		mgrCtx, cancel = context.WithCancel(context.Background())
+
+		// SkipNameValidation avoids "controller already exists" errors when the
+		// rate-limiter test suite registers the same controller name in the same process.
+		// GracefulShutdownTimeout caps how long AfterEach waits for mgr.Start to return.
+		skipValidation := true
+		shutdownTimeout := 5 * time.Second
+		var err error
+		mgr, err = ctrl.NewManager(cfg, ctrl.Options{
+			Scheme:                  k8sClient.Scheme(),
+			Metrics:                 metricsserver.Options{BindAddress: "0"},
+			HealthProbeBindAddress:  "0",
+			Controller:              config.Controller{SkipNameValidation: &skipValidation},
+			GracefulShutdownTimeout: &shutdownTimeout,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		reconciler = &ExternalDatabaseReconciler{
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Recorder:   mgr.GetEventRecorderFor("sw-test"), //nolint:staticcheck
+			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
+			Ownership:  mineOwnershipResolver(ns),
+		}
+		Expect(reconciler.SetupWithManager(mgr, ctrlcontroller.Options{})).To(Succeed())
+
+		// done channel signals when mgr.Start has fully returned. AfterEach
+		// waits on it to prevent the previous manager from racing with the
+		// next test (informers, in-flight reconciles, API calls).
+		done = make(chan struct{})
+		go func() {
+			defer close(done)
+			_ = mgr.Start(mgrCtx)
+		}()
+		// Wait for the cache to sync before any test interacts with the index.
+		Expect(mgr.GetCache().WaitForCacheSync(mgrCtx)).To(BeTrue())
+	})
+
+	AfterEach(func() {
+		cancel()
+		// Block until mgr.Start fully returns: ensures informers, controllers,
+		// and any in-flight reconciles have shut down before the next test starts.
+		<-done
+		deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: edbName, Namespace: ns}})
+		deleteIfExists(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}})
+	})
+
+	It("enqueueForSecret returns a request for an EDB that references the changed secret", func() {
+		edb := &dbaasv1.ExternalDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: edbName, Namespace: ns},
+			Spec: dbaasv1.ExternalDatabaseSpec{
+				Classifier: map[string]string{"namespace": ns, "microserviceName": "svc", "scope": "service"},
+				Type:       "postgresql",
+				DbName:     "testdb",
+				ConnectionProperties: []dbaasv1.ConnectionProperty{
+					{
+						Role: "admin",
+						CredentialsSecretRef: &dbaasv1.CredentialsSecretRef{
+							Name: secretName,
+							Keys: []dbaasv1.SecretKeyMapping{{Key: "password", Name: "password"}},
+						},
+					},
+				},
+			},
+		}
+		Expect(mgr.GetClient().Create(ctx, edb)).To(Succeed())
+
+		// The cache index is populated asynchronously — wait for it to reflect the new EDB.
+		secretObj := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}}
+		Eventually(func() []reconcile.Request {
+			return reconciler.enqueueForSecret(ctx, secretObj)
+		}).Should(HaveLen(1))
+
+		reqs := reconciler.enqueueForSecret(ctx, secretObj)
+		Expect(reqs[0].NamespacedName).To(Equal(types.NamespacedName{Name: edbName, Namespace: ns}))
+	})
+
+	It("enqueueForSecret returns empty when no EDB references the secret", func() {
+		secretObj := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "unrelated-secret", Namespace: ns}}
+		reqs := reconciler.enqueueForSecret(ctx, secretObj)
+		Expect(reqs).To(BeEmpty())
+	})
+
+	It("enqueueForSecret returns requests for all EDBs that reference the same secret", func() {
+		const edbName2 = "sw-test-edb-2"
+		mkEDB := func(name string) *dbaasv1.ExternalDatabase {
+			return &dbaasv1.ExternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+				Spec: dbaasv1.ExternalDatabaseSpec{
+					Classifier: map[string]string{"namespace": ns, "microserviceName": name, "scope": "service"},
+					Type:       "postgresql",
+					DbName:     name + "-db",
+					ConnectionProperties: []dbaasv1.ConnectionProperty{
+						{
+							Role: "admin",
+							CredentialsSecretRef: &dbaasv1.CredentialsSecretRef{
+								Name: secretName, // both EDBs share the same Secret
+								Keys: []dbaasv1.SecretKeyMapping{{Key: "password", Name: "password"}},
+							},
+						},
+					},
+				},
+			}
+		}
+		Expect(mgr.GetClient().Create(ctx, mkEDB(edbName))).To(Succeed())
+		Expect(mgr.GetClient().Create(ctx, mkEDB(edbName2))).To(Succeed())
+		// AfterEach removes edbName; clean up the second one here.
+		DeferCleanup(func() {
+			deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: edbName2, Namespace: ns}})
+		})
+
+		// Wait for the cache index to reflect both EDBs.
+		secretObj := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}}
+		Eventually(func() []reconcile.Request {
+			return reconciler.enqueueForSecret(ctx, secretObj)
+		}).Should(HaveLen(2))
+
+		reqs := reconciler.enqueueForSecret(ctx, secretObj)
+		names := []string{reqs[0].NamespacedName.Name, reqs[1].NamespacedName.Name}
+		Expect(names).To(ConsistOf(edbName, edbName2))
+		for _, r := range reqs {
+			Expect(r.NamespacedName.Namespace).To(Equal(ns))
+		}
 	})
 })
