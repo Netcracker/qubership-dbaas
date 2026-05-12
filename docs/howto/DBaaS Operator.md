@@ -27,6 +27,11 @@
     - [How It Works](#how-dbpolicy-works)
     - [Status Reference](#dbpolicy-status-reference)
     - [Usage Examples](#dbpolicy-usage-examples)
+  - [DatabaseDeclaration](#databasedeclaration)
+    - [Resource Fields](#databasedeclaration-resource-fields)
+    - [How It Works](#how-databasedeclaration-works)
+    - [Status Reference](#databasedeclaration-status-reference)
+    - [Usage Examples](#databasedeclaration-usage-examples)
 - [Configuration Parameters](#configuration-parameters)
   - [Reconcile Backoff](#reconcile-backoff)
 
@@ -41,6 +46,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 | `NamespaceBinding` | `dbaas.netcracker.com/v1` | Namespaced | Declares that a namespace is managed by this operator instance |
 | `ExternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Registers a pre-existing database with dbaas-aggregator |
 | `DbPolicy` | `dbaas.netcracker.com/v1` | Namespaced | Declares database role assignments for microservices in a namespace |
+| `DatabaseDeclaration` | `dbaas.netcracker.com/v1` | Namespaced | Declares a logical database that dbaas-aggregator should provision and manage |
 
 ---
 
@@ -59,6 +65,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 │  │  │  NamespaceBinding controller             │   │  │
 │  │  │  ExternalDatabase controller             │   │  │
 │  │  │  DbPolicy controller                     │   │  │
+│  │  │  DatabaseDeclaration controller          │   │  │
 │  │  └──────────────────────────────────────────┘   │  │
 │  └──────────────────────────────────────────────────┘  │
 │                          │                              │
@@ -67,9 +74,10 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 │  ┌───────────────────────┼──────────────────────────┐  │
 │  │     app-namespace     │                          │  │
 │  │                       ▼                          │  │
-│  │  NamespaceBinding ─── ownership check            │  │
-│  │  ExternalDatabase ─── reconcile ──────────────── ┼──┼──▶ dbaas-aggregator
-│  │  DbPolicy         ─── reconcile ──────────────── ┼──┤
+│  │  NamespaceBinding    ── ownership check          │  │
+│  │  ExternalDatabase    ── reconcile ─────────────── ┼──┼──▶ dbaas-aggregator
+│  │  DbPolicy            ── reconcile ─────────────── ┼──┤
+│  │  DatabaseDeclaration ── reconcile ─────────────── ┼──┤
 │  │  Secret (credentials)                            │  │
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
@@ -93,7 +101,8 @@ The operator calls the following dbaas-aggregator endpoints:
 | Method | URL | Used by | Purpose |
 |--------|-----|---------|---------|
 | `PUT` | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable` | `ExternalDatabase` reconciler | Register or update an externally managed database |
-| `POST` | `/api/declarations/v1/apply` | `DbPolicy` reconciler | Apply a declarative database role policy |
+| `POST` | `/api/declarations/v1/apply` | `DbPolicy` and `DatabaseDeclaration` reconcilers | Apply a declarative database role policy or database declaration |
+| `GET` | `/api/declarations/v1/operation/{trackingId}/status` | `DatabaseDeclaration` reconciler | Poll the status of an asynchronous provisioning operation |
 
 ### ExternalDatabase Registration Endpoint
 
@@ -224,6 +233,16 @@ rules:
     resources: ["dbpolicies/status"]
     verbs: ["get", "update", "patch"]
 
+  # DatabaseDeclaration: the controller reads and watches CRs.
+  # Status is written via the /status subresource.
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["databasedeclarations"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["databasedeclarations/status"]
+    verbs: ["get", "update", "patch"]
+
   # ExternalDatabase: the controller only reads (Get/List) and watches CRs.
   # Status is written via the /status subresource — no write access to the main resource is needed.
   - apiGroups: ["dbaas.netcracker.com"]
@@ -318,6 +337,8 @@ subjects:
 |-----------|----------|-------|-----------------|
 | `dbaas.netcracker.com` | `dbpolicies` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `dbpolicies/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
+| `dbaas.netcracker.com` | `databasedeclarations` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
+| `dbaas.netcracker.com` | `databasedeclarations/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, and `status.trackingID` |
 | `dbaas.netcracker.com` | `externaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
@@ -366,12 +387,12 @@ spec:
 
 #### How NamespaceBinding Works
 
-The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource (e.g., `ExternalDatabase`, `DbPolicy`), it checks whether the resource's namespace is owned by this operator instance.
+The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource (`ExternalDatabase`, `DbPolicy`, `DatabaseDeclaration`), it checks whether the resource's namespace is owned by this operator instance.
 
 Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing `spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable.
 
 ```
-ExternalDatabase / DbPolicy reconcile triggered
+ExternalDatabase / DbPolicy / DatabaseDeclaration reconcile triggered
          │
          ▼
   Look up NamespaceBinding "binding" in the same namespace
@@ -383,7 +404,7 @@ ExternalDatabase / DbPolicy reconcile triggered
          └── Found, operatorNamespace = CLOUD_NAMESPACE (Mine) ──▶ Proceed with reconcile
 ```
 
-When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase` and `DbPolicy` objects are reconciled immediately without requiring a spec change.
+When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase`, `DbPolicy`, and `DatabaseDeclaration` objects are reconciled immediately without requiring a spec change.
 
 | Cache state | Meaning | Operator action |
 |-------------|---------|-----------------|
@@ -404,7 +425,7 @@ This finalizer prevents the `NamespaceBinding` from being deleted while workload
 
 | Situation | Result |
 |-----------|--------|
-| Namespace still contains `ExternalDatabase` or `DbPolicy` resources | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
+| Namespace still contains `ExternalDatabase`, `DbPolicy`, or `DatabaseDeclaration` resources | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
 | No blocking workload resources remain | Finalizer is removed; Kubernetes completes the deletion |
 
 #### NamespaceBinding Usage Examples
@@ -440,7 +461,7 @@ This is intentional. `NamespaceBinding` is a declaration of ownership, not a job
 
 ```bash
 # Remove all workload resources first
-kubectl delete externaldatabase,dbpolicy --all -n my-namespace
+kubectl delete externaldatabase,dbpolicy,databasedeclaration --all -n my-namespace
 
 # Then delete the binding
 kubectl delete namespacebinding binding -n my-namespace
@@ -902,6 +923,285 @@ kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.conditions}' | 
 
 # Use lastRequestId to correlate with aggregator logs
 kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
+```
+
+---
+
+### DatabaseDeclaration
+
+`DatabaseDeclaration` declares a logical database that dbaas-aggregator should provision and manage on behalf of the owning microservice. Unlike `ExternalDatabase`, the database does **not** need to exist in advance — the aggregator creates it (and, depending on the configured adapter, the underlying physical DB / user / schema).
+
+Provisioning is **asynchronous**: the aggregator returns `202 Accepted` with a `trackingId`, and the operator polls the operation status until it reaches a terminal state.
+
+Short name: `dbedd`
+
+`kubectl get dbedd` columns: `PHASE`, `TYPE`, `AGE`
+
+#### DatabaseDeclaration Resource Fields
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseDeclaration
+metadata:
+  name: my-app-db
+  namespace: my-namespace
+spec:
+  classifier:
+    microserviceName: my-service   # required
+    scope: service                 # required; "service" or "tenant"
+    # namespace: my-namespace      # optional; if set, must equal metadata.namespace
+    # tenantId: my-tenant          # only meaningful when scope=tenant
+    # customKeys:                  # optional adapter-specific identifiers (arbitrary JSON)
+    #   logicalDBName: payments
+  type: postgresql
+  # lazy: false                    # if true, defer provisioning until first access
+  # namePrefix: "myapp"            # prefix applied to the physical DB name
+  # settings:                      # adapter-specific connection / DB settings (string map)
+  #   encoding: UTF8
+  # versioningConfig:
+  #   approach: clone              # how a new version is created during blue-green
+  # initialInstantiation:
+  #   approach: clone              # "clone" or "new" (default: "new")
+  #   sourceClassifier:            # required when approach=clone
+  #     microserviceName: my-service
+  #     scope: service
+```
+
+**`spec.classifier`** — uniquely identifies the database in dbaas-aggregator.
+
+| Key | Required | Notes |
+|-----|:--------:|-------|
+| `microserviceName` | Yes | Name of the owning microservice |
+| `scope` | Yes | `service` or `tenant` |
+| `namespace` | No | If set, must equal `metadata.namespace` — controller-side validation; mismatch causes `InvalidConfiguration`/`InvalidSpec`. If absent, the aggregator uses `metadata.namespace` from the request |
+| `tenantId` | No | Only meaningful when `scope=tenant`. When absent, the aggregator applies the declaration for every tenant already registered in the namespace |
+| `customKeys` | No | Adapter-specific identifiers. Values can be any JSON type (string, number, boolean, nested object). Not validated by the aggregator — passed through as-is |
+
+**Top-level spec fields:**
+
+| Field | Required | Mutable | Description |
+|-------|:--------:|:-------:|-------------|
+| `spec.classifier` | Yes | Yes | Database identity in dbaas-aggregator |
+| `spec.type` | Yes | Yes | Database engine type (e.g., `postgresql`, `mongodb`). Must match a type known to dbaas-aggregator |
+| `spec.lazy` | No | Yes | When `true`, provisioning is deferred until first access. Defaults to `false`. **Prohibited** in combination with `initialInstantiation.approach=clone` — controller rejects with `InvalidSpec` |
+| `spec.settings` | No | Yes | Free-form string-to-string map of adapter-specific settings |
+| `spec.namePrefix` | No | Yes | Prefix applied to the physical database name created in the DBMS |
+| `spec.versioningConfig` | No | Yes | Strategy for blue-green database versioning. If absent → `versioningType=static`. If present → `versioningType=version` |
+| `spec.initialInstantiation` | No | Yes | Initial database creation strategy. If absent → `approach=new` |
+
+**`spec.versioningConfig` fields:**
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `approach` | No | Strategy for creating a new database version during blue-green updates. Adapter-specific; aggregator default is `clone` |
+
+**`spec.initialInstantiation` fields:**
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `approach` | No | `clone` (clone from `sourceClassifier`) or `new` (create an empty database). Default behaviour when the field is absent is `new` |
+| `sourceClassifier` | Required when `approach=clone` | Classifier of the source database to clone from. **Constraint:** `sourceClassifier.microserviceName` must equal `classifier.microserviceName` (enforced by the controller) |
+
+> **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingID` and polls until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingID` and start a fresh submission — see [Status Reference](#databasedeclaration-status-reference).
+
+#### How DatabaseDeclaration Works
+
+A reconcile is triggered when any of the following happens:
+
+- The CR is created.
+- The CR spec changes (i.e., `metadata.generation` increments).
+- The covering `NamespaceBinding` is created or updated.
+- A polling cycle: while an async operation is in progress (`status.trackingID` is set), the controller re-enqueues itself every 5 seconds.
+
+The reconcile loop has two branches:
+
+- **SUBMIT** — no pending `trackingID`. Validates the spec, builds the declarative payload, sends `POST /api/declarations/v1/apply` with `subKind=DatabaseDeclaration`.
+- **POLL** — `status.trackingID` present. Sends `GET /api/declarations/v1/operation/{trackingId}/status` and reacts to the returned task state.
+
+```
+CR created / spec changed
+        │
+        ▼
+  Ownership check (NamespaceBinding)
+        │ not owned → skip
+        ▼
+  phase = Processing
+        │
+        ▼
+  Pre-flight validation (controller-side)
+    classifier.namespace ≠ metadata.namespace? ─────▶ InvalidConfiguration (InvalidSpec)
+    lazy=true AND initialInstantiation.approach=clone? ▶ InvalidConfiguration (InvalidSpec)
+    approach=clone AND sourceClassifier absent? ────▶ InvalidConfiguration (InvalidSpec)
+    sourceClassifier.microserviceName ≠ classifier.microserviceName? ▶ InvalidConfiguration (InvalidSpec)
+        │
+        ├── trackingID present in status?
+        │
+        ▼ no                              ▼ yes
+  ┌── SUBMIT ──────────────┐    ┌── POLL ─────────────────┐
+  │ POST /apply            │    │ GET /operation/{id}     │
+  │   401 ▶ BackingOff     │    │   401 ▶ BackingOff      │
+  │   400/403/409/410/422  │    │   404 ▶ BackingOff      │
+  │     ▶ InvalidConfig    │    │     (trackingID cleared │
+  │   5xx/network          │    │      → resubmit)        │
+  │     ▶ BackingOff       │    │   5xx/network           │
+  │   200 OK ▶ Succeeded   │    │     ▶ BackingOff        │
+  │   202 Accepted         │    │                         │
+  │     store trackingID   │    │ task state:             │
+  │     ▶ WaitingForDep    │    │   IN_PROGRESS ▶ poll    │
+  └────────────────────────┘    │   COMPLETED ▶ Succeeded │
+                                │   FAILED    ▶ InvalidConfig
+                                │   TERMINATED ▶ BackingOff
+                                │     (trackingID cleared │
+                                │      → resubmit)        │
+                                └─────────────────────────┘
+```
+
+#### DatabaseDeclaration Status Reference
+
+**`status.phase`** — human-readable summary for `kubectl get dbedd`.
+
+| Phase | Meaning |
+|-------|---------|
+| `Unknown` | CR just created, not yet processed |
+| `Processing` | Controller is actively reconciling (transient) |
+| `WaitingForDependency` | Async provisioning in progress; controller is polling the aggregator |
+| `Succeeded` | Operation completed successfully |
+| `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
+| `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
+
+**`status.trackingID`** — aggregator-assigned tracking ID for an in-flight async operation.
+
+- Set when `POST /api/declarations/v1/apply` returns `202 Accepted`.
+- Cleared when polling completes (`COMPLETED`, `FAILED`) or the operation must be re-submitted (`TERMINATED`, `404 Not Found`).
+- While `trackingID` is non-empty, every reconcile goes through the POLL branch (no resubmission).
+
+**`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingID` was set. If a newer `generation` is observed during a reconcile, the stale `trackingID` is discarded and the operation is re-submitted with the new spec.
+
+**`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as `ExternalDatabase`.
+
+**Reason vocabulary:**
+
+| Reason | Applied to | Meaning |
+|--------|-----------|---------|
+| `DatabaseProvisioned` | `Ready=True` | Operation completed (`200 OK` synchronous or polled `COMPLETED`) |
+| `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
+| `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed before calling aggregator |
+| `ProvisioningStarted` | `Ready=False`, `Stalled=False` | `202 Accepted` received; async polling in progress |
+| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
+| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 on submit, or returned `FAILED` on poll — permanent spec issue |
+| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, polling 404 (trackingID expired), or network error |
+| `OperationTerminated` | `Ready=False`, `Stalled=False` | Poll returned `TERMINATED` (aggregator restart or admin cancellation). The stale `trackingID` is cleared and the controller resubmits on the next reconcile |
+
+**Full state matrix:**
+
+| Scenario | `phase` | `Ready` | `Reason` | `Stalled` | `trackingID` |
+|----------|---------|:-------:|----------|:---------:|:------------:|
+| Pre-flight failed | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` | — |
+| POST → 401 | `BackingOff` | `False` | `Unauthorized` | `False` | — |
+| POST → 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` | — |
+| POST → 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` | — |
+| POST → 200 OK (sync) | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | — |
+| POST → 202 Accepted | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | set |
+| Poll → IN_PROGRESS | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | set |
+| Poll → COMPLETED | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | cleared |
+| Poll → FAILED | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` | cleared |
+| Poll → TERMINATED | `BackingOff` | `False` | `OperationTerminated` | `False` | cleared (resubmits) |
+| Poll → 404 (trackingID expired) | `BackingOff` | `False` | `AggregatorError` | `False` | cleared (resubmits) |
+| Poll → 401 / 5xx / network | `BackingOff` | `False` | `Unauthorized` / `AggregatorError` | `False` | preserved (keeps polling) |
+
+**Diagnostic rules:**
+
+- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
+- **`Stalled=False` + `Ready=False`, phase=`WaitingForDependency`** — async provisioning is still running; the controller polls every 5 seconds.
+- **`Stalled=False` + `Ready=False`, phase=`BackingOff`** — transient error, controller is retrying with exponential backoff.
+- **`status.lastRequestId`** — correlate operator logs with aggregator logs.
+
+#### DatabaseDeclaration Usage Examples
+
+**Minimal declaration (synchronous-friendly, non-versioned):**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseDeclaration
+metadata:
+  name: my-app-db
+  namespace: my-namespace
+spec:
+  classifier:
+    microserviceName: my-service
+    scope: service
+  type: postgresql
+```
+
+**Clone from an existing database:**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseDeclaration
+metadata:
+  name: my-app-db-clone
+  namespace: my-namespace
+spec:
+  classifier:
+    microserviceName: my-service
+    scope: service
+  type: postgresql
+  initialInstantiation:
+    approach: clone
+    sourceClassifier:
+      microserviceName: my-service   # must match classifier.microserviceName
+      scope: service
+```
+
+**Versioned (blue-green) database with adapter settings:**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseDeclaration
+metadata:
+  name: payments-db
+  namespace: my-namespace
+spec:
+  classifier:
+    microserviceName: payments
+    scope: service
+    customKeys:
+      logicalDBName: payments
+  type: postgresql
+  namePrefix: pay
+  settings:
+    encoding: UTF8
+  versioningConfig:
+    approach: clone
+```
+
+**Check status:**
+
+```bash
+kubectl get dbedd -n my-namespace
+# NAME              PHASE                  TYPE         AGE
+# my-app-db         Succeeded              postgresql   2m
+# my-app-db-clone   WaitingForDependency   postgresql   10s
+```
+
+**Watch async progress:**
+
+```bash
+# The trackingID field is populated while async provisioning is in progress
+kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
+
+# Full status (phase, conditions, trackingID, lastRequestId)
+kubectl get dbedd my-app-db -n my-namespace -o yaml
+```
+
+**Troubleshoot a stuck resource:**
+
+```bash
+# Check conditions for the human-readable error message
+kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+
+# Use lastRequestId to correlate with aggregator logs
+kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---
