@@ -1,0 +1,38 @@
+name: Integration tests publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dbaas/dbaas-integration-tests/**'
+  workflow_dispatch:
+
+jobs:
+  check-version:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate version
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout -f dbaas/dbaas-integration-tests/pom.xml)
+          BRANCH="${{ github.ref_name }}"
+          NORMALIZED_BRANCH_NAME="${BRANCH//\//-}"
+          EXPECTED_SUFFIX="${NORMALIZED_BRANCH_NAME}-SNAPSHOT"
+          if [[ "$VERSION" != *"$EXPECTED_SUFFIX" ]]; then
+            echo "ERROR: Version '$VERSION' does not end with '$EXPECTED_SUFFIX'"
+            exit 1
+          fi
+          echo "Version '$VERSION' is valid for branch '$BRANCH'"
+
+  mvn:
+    needs: check-version
+    if: always() && (needs.check-version.result == 'success' || needs.check-version.result == 'skipped')
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@bc2a0bd082147e23b4091616c608a21cc2957728 # v2.4.1
+    with:
+      upload-artifact: true
+      java-version: 21
+      pom-file: dbaas/dbaas-integration-tests/pom.xml
+      maven-command: 'deploy'
