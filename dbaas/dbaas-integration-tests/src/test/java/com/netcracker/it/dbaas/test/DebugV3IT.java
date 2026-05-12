@@ -1,6 +1,7 @@
 package com.netcracker.it.dbaas.test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netcracker.it.dbaas.entity.DebugDumpResponse;
 import com.netcracker.it.dbaas.helpers.BGHelper;
 import com.netcracker.it.dbaas.helpers.BalancingRulesHelperV3;
 import com.netcracker.it.dbaas.helpers.DbaasDebugHelperV3;
@@ -21,7 +22,8 @@ import java.util.stream.Collectors;
 public class DebugV3IT extends AbstractIT {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
-
+    private static final String STATUS_CREATED = "CREATED";
+    private static final String DBAAS_AUTO_TEST = "dbaas_auto_test";
     private static DbaasDebugHelperV3 debugHelper;
 
     @BeforeAll
@@ -47,12 +49,9 @@ public class DebugV3IT extends AbstractIT {
 
     @Test
     void testGetDumpOfDbaasDatabaseInformationAsJson() throws IOException {
-
-        try (var response = executeGetDumpOfDbaasDatabaseInformationRequest("application/json")) {
-            Assertions.assertDoesNotThrow(
-                    () -> objectMapper.readTree(response.body().bytes()),
-                    "Returned dump must be valid Json"
-            );
+        try (Response response = executeGetDumpOfDbaasDatabaseInformationRequest("application/json")) {
+            var debugDump = objectMapper.readValue(response.body().string(), DebugDumpResponse.class);
+            verifyDebugDump(debugDump);
         }
     }
 
@@ -94,6 +93,19 @@ public class DebugV3IT extends AbstractIT {
                 """.lines().collect(Collectors.joining());
 
         doTestFindDebugLogicalDatabasesWithFilterRsqlQuery(filterRsqlQuery);
+    }
+
+    protected void verifyDebugDump(DebugDumpResponse debugDump) {
+        Assertions.assertNotNull(debugDump, "Failed to parse DebugDumpResponse");
+        Assertions.assertTrue(debugDump.getLogicalDatabases().stream()
+                        .anyMatch(db -> db.getClassifier() != null
+                                && DBAAS_AUTO_TEST.equals(db.getClassifier().get(DBAAS_AUTO_TEST))),
+                "The database with classifier 'dbaas_auto_test' was not found in the dump among all databases.");
+        Assertions.assertTrue(debugDump.getLogicalDatabases().stream()
+                        .filter(db -> db.getClassifier() != null && DBAAS_AUTO_TEST
+                                .equals(db.getClassifier().get(DBAAS_AUTO_TEST)))
+                        .allMatch(db -> STATUS_CREATED.equals(db.getDbState().getDatabaseState())),
+                "Not all databases are: '%s'".formatted(STATUS_CREATED));
     }
 
     protected void doTestFindDebugLogicalDatabasesWithFilterRsqlQuery(String filterRsqlQuery) throws IOException {

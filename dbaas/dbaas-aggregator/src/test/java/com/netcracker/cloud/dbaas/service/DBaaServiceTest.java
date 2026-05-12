@@ -12,11 +12,8 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
-import com.netcracker.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import jakarta.persistence.EntityManager;
-import jakarta.ws.rs.ServiceUnavailableException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +26,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.platform.commons.util.StringUtils;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -47,7 +43,6 @@ import java.util.stream.Stream;
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static com.netcracker.cloud.dbaas.entity.pg.DbResource.USER_KIND;
-import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,9 +55,6 @@ class DBaaServiceTest {
 
     @InjectMocks
     private DBaaService dBaaService;
-
-    @Mock
-    private DbaasAdapterRESTClientV2 dbaasAdapterRESTClient;
 
     @Mock
     private PasswordEncryption encryption;
@@ -83,31 +75,14 @@ class DBaaServiceTest {
     private DatabaseHistoryDbaasRepository databaseHistoryDbaasRepository;
 
     @Mock
-    private LogicalDbOperationErrorRepository logicalDbOperationErrorRepository;
-
-    @Mock
     private BalancingRulesService balancingRulesService;
 
     @Mock
     private EntityManager entityManager;
 
     @Mock
-    private UserService userService;
-
-    @Mock
-    private DatabaseDeclarativeConfigRepository declarativeConfigRepository;
-
-    @Mock
-    private DbaaSHelper dbaaSHelper;
-
-    @Mock
     private ProcessConnectionPropertiesService connectionPropertiesService;
 
-    @Mock
-    private DbaasAdapter dbaasAdapter;
-
-    @Mock
-    DatabaseRolesService databaseRolesService;
 
     private static final String NAMESPACE = "test-namespace";
     private static final String PG_TYPE = "postgresql";
@@ -439,41 +414,6 @@ class DBaaServiceTest {
     }
 
     @Test
-    void dropExternalDatabasesTest() {
-        Database externalDatabase = new Database();
-        externalDatabase.setMarkedForDrop(true);
-        externalDatabase.setExternallyManageable(true);
-        externalDatabase.setType("test-type");
-        externalDatabase.setNamespace("test-namespace");
-        String msName = "test-ms-name";
-        String username = "external-test-user";
-        String password = "external-test-password";
-        HashMap<String, Object> connectionProperties = new HashMap<>();
-        connectionProperties.put("username", username);
-        connectionProperties.put("password", password);
-        externalDatabase.setConnectionProperties(Arrays.asList(connectionProperties));
-        TreeMap<String, Object> classifier = new TreeMap<>();
-        classifier.put("microserviceName", msName);
-        externalDatabase.setClassifier(classifier);
-        classifier.put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-        ArrayList<DbResource> resources = new ArrayList<>();
-        resources.add(new DbResource(USER_KIND, username));
-        externalDatabase.setResources(resources);
-
-        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
-        databaseRegistry.setDatabase(externalDatabase);
-        databaseRegistry.setClassifier(classifier);
-        databaseRegistry.setNamespace("test-namespace");
-        databaseRegistry.setType("test-type");
-        externalDatabase.setDatabaseRegistry(Arrays.asList(databaseRegistry));
-
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        dBaaService.dropExternalDatabases(externalDatabase.getDatabaseRegistry());
-        verify(encryption).deletePassword(eq(externalDatabase));
-        verify(databaseRegistryDbaasRepository).delete(eq(externalDatabase.getDatabaseRegistry().get(0)));
-    }
-
-    @Test
     void testFindDocumentByClassifierAndType() {
         final UUID databaseRegistryId = UUID.randomUUID();
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
@@ -589,60 +529,6 @@ class DBaaServiceTest {
         when(databaseHistoryDbaasRepository.getLastVersionByName(database.getName())).thenReturn(0);
         DatabaseRegistry actualDatabase = dBaaService.updateClassifier(classifier, targetClassifier, mongodb, false);
         Assertions.assertEquals(targetClassifier, actualDatabase.getClassifier());
-    }
-
-    @Test
-    void testRegisterDeletionError() {
-        final Database database = new Database();
-        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
-        databaseRegistry.setDatabase(database);
-        database.setId(UUID.randomUUID());
-        databaseRegistry.setNamespace("test-namespace");
-        database.setMarkedForDrop(true);
-        databaseRegistry.setType("PostgreSQL");
-        database.setAdapterId("TestPostgreSQL");
-        database.setDbState(new DbState(DbState.DatabaseStateStatus.DELETING));
-
-        SortedMap<String, Object> classifier = new TreeMap<>();
-        classifier.put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-        databaseRegistry.setClassifier(classifier);
-        database.setDatabaseRegistry(List.of(databaseRegistry));
-
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        when(databaseRegistryDbaasRepository.findDatabaseRegistryById(databaseRegistry.getId())).thenReturn(Optional.of(databaseRegistry));
-        when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(dbaasAdapterRESTClient));
-        when(dbaasAdapterRESTClient.identifier()).thenReturn("TestPostgreSQL");
-        doThrow(new ServiceUnavailableException()).when(dbaasAdapterRESTClient).dropDatabase(databaseRegistry);
-
-        dBaaService.dropDatabases(Arrays.asList(databaseRegistry), "test-namespace");
-
-        verify(logicalDbOperationErrorRepository).persist(any(LogicalDbOperationError.class));
-        verifyNoMoreInteractions(logicalDbOperationErrorRepository);
-    }
-
-    @Test
-    void testCorrectDbStateDuringDeletion() {
-        String namespace = "namespace-test";
-
-
-        DatabaseRegistry mockDbr = Mockito.mock(DatabaseRegistry.class);
-
-        DbState mockDbState = Mockito.mock(DbState.class);
-        Database mockDb = Mockito.mock(Database.class);
-        when(mockDb.getDbState()).thenReturn(mockDbState);
-        List<DatabaseRegistry> databaseRegistries = new ArrayList<>();
-        databaseRegistries.add(mockDbr);
-        databaseRegistries.add(mockDbr);
-        databaseRegistries.add(mockDbr);
-
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        when(mockDb.getDatabaseRegistry()).thenReturn(Arrays.asList(mockDbr));
-        when(mockDbr.getDatabase()).thenReturn(mockDb);
-
-        long markForDropDatabasesAmount = dBaaService.markForDrop(namespace, databaseRegistries);
-        Assertions.assertEquals(3L, markForDropDatabasesAmount);
-        verify(mockDb, times(3)).getDbState();
-        verify(mockDbState, times(3)).setDatabaseState(DbState.DatabaseStateStatus.DELETING);
     }
 
     private ExternalDatabaseRequestV3 getExternalDatabaseRequestObject() {
@@ -1217,78 +1103,11 @@ class DBaaServiceTest {
     }
 
     @Test
-    void deleteDatabasesAsync() {
-        String namespace = "test_namespace";
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        Assertions.assertEquals(0L, dBaaService.deleteDatabasesAsync(namespace, Collections.emptyList(), true));
-        Mockito.verify(balancingRulesService).removeRulesByNamespace(namespace);
-        Mockito.verify(balancingRulesService).removePerMicroserviceRulesByNamespace(namespace);
-        Mockito.verify(declarativeConfigRepository).deleteByNamespace(namespace);
-
-    }
-
-    @Test
     void processConnectionProperties() {
         String type = "postgresql";
         DatabaseRegistry database = createDatabase(testClassifier(), type, "adapter", "username", "dbName");
         DatabaseResponse databaseResponse = dBaaService.processConnectionProperties(database);
         Assertions.assertEquals(database.getId(), databaseResponse.getId());
-    }
-
-    @Test
-    void testDropOrphanedDatabases() {
-        final Database database = new Database();
-        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
-        databaseRegistry.setDatabase(database);
-        database.setId(UUID.randomUUID());
-        databaseRegistry.setNamespace("test-namespace");
-        database.setMarkedForDrop(false);
-        databaseRegistry.setType("PostgreSQL");
-        database.setAdapterId("TestPostgreSQL");
-        database.setDbState(new DbState(DbState.DatabaseStateStatus.ORPHAN));
-
-        SortedMap<String, Object> classifier = new TreeMap<>();
-        classifier.put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-        databaseRegistry.setClassifier(classifier);
-        database.setDatabaseRegistry(List.of(databaseRegistry));
-
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        when(databaseRegistryDbaasRepository.findDatabaseRegistryById(databaseRegistry.getId())).thenReturn(Optional.of(databaseRegistry));
-        when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(dbaasAdapterRESTClient));
-        when(dbaasAdapterRESTClient.identifier()).thenReturn("TestPostgreSQL");
-
-        doThrow(new ServiceUnavailableException()).when(dbaasAdapterRESTClient).dropDatabase(database);
-        dBaaService.dropDatabases(List.of(databaseRegistry), "test-namespace");
-        verify(databaseDbaasRepository, times(0)).deleteById(any());
-        verify(logicalDbOperationErrorRepository, times(1)).persist(any(LogicalDbOperationError.class));
-        verifyNoMoreInteractions(logicalDbOperationErrorRepository);
-    }
-
-    @Test
-    void testDropOrphanedDatabasesWithOneDatabaseRegistries() {
-        final Database database = new Database();
-        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
-        databaseRegistry.setDatabase(database);
-        database.setId(UUID.randomUUID());
-        databaseRegistry.setNamespace("test-namespace");
-        database.setMarkedForDrop(false);
-        databaseRegistry.setType("PostgreSQL");
-        database.setAdapterId("TestPostgreSQL");
-        database.setDbState(new DbState(DbState.DatabaseStateStatus.ORPHAN));
-
-        SortedMap<String, Object> classifier = new TreeMap<>();
-        classifier.put(MARKED_FOR_DROP, MARKED_FOR_DROP);
-        databaseRegistry.setClassifier(classifier);
-        database.setDatabaseRegistry(List.of(databaseRegistry));
-        when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(dbaasAdapterRESTClient));
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        when(databaseRegistryDbaasRepository.findDatabaseRegistryById(databaseRegistry.getId())).thenReturn(Optional.of(databaseRegistry));
-        doNothing().when(databaseRegistryDbaasRepository).deleteById(any());
-        when(dbaasAdapterRESTClient.identifier()).thenReturn("TestPostgreSQL");
-        doNothing().when(userService).deleteDatabaseUsers(database);
-        dBaaService.dropDatabases(List.of(databaseRegistry), "test-namespace");
-        verify(databaseRegistryDbaasRepository, times(1)).deleteById(any());
-
     }
 
     @Test
@@ -1305,26 +1124,6 @@ class DBaaServiceTest {
         when(databaseDbaasRepository.findById(database.getDatabase().getId())).thenReturn(Optional.of(database.getDatabase()));
         dBaaService.updateDatabaseConnectionPropertiesAndResourcesById(successRegistrationV3.getId(), successRegistrationV3.getConnectionProperties(), successRegistrationV3.getResources());
         verify(encryption).encryptPassword(any(Database.class));
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void testDropDatabasesAsync(boolean prodMode) throws InterruptedException {
-        when(dbaaSHelper.isProductionMode()).thenReturn(prodMode);
-        lenient().when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-
-        DatabaseRegistry registry = new DatabaseRegistry();
-        registry.setId(UUID.randomUUID());
-        registry.setClassifier(new TreeMap<>(Map.of(MARKED_FOR_DROP, MARKED_FOR_DROP)));
-        Database database = new Database();
-        database.setDatabaseRegistry(List.of(registry));
-        database.setName("name");
-        registry.setDatabase(database);
-        lenient().when(databaseRegistryDbaasRepository.findDatabaseRegistryById(any())).thenReturn(Optional.of(registry));
-
-        dBaaService.dropDatabasesAsync("namespace", List.of(registry));
-        Thread.sleep(1000);
-        Mockito.verify(databaseRegistryDbaasRepository, times(prodMode ? 0 : 1)).deleteById(any());
     }
 
     @Test

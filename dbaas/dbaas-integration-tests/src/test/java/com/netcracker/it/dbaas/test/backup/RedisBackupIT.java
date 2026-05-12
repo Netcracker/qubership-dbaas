@@ -30,7 +30,7 @@ public class RedisBackupIT extends AbstractIT {
     @BeforeEach
     public void initHelper() throws IOException, InterruptedException {
         assumeTrue(helperV3.hasAdapterOfType(REDIS_TYPE));
-        backupsHelper = new BackupHelperV3(dbaasServiceUrl, helperV3);
+        backupsHelper = new BackupHelperV3(helperV3);
         cleanDbs();
     }
 

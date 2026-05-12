@@ -436,9 +436,10 @@
     },
     "READONLY_CONTAINER_FILE_SYSTEM_ENABLED": {
       "$id": "#/properties/READONLY_CONTAINER_FILE_SYSTEM_ENABLED",
-      "$ref": "#/definitions/booleanOrString",
+      "type": "boolean",
       "title": "The READONLY_CONTAINER_FILE_SYSTEM_ENABLED schema",
       "description": "Read-only container file system is enabled",
+      "default": false,
       "examples": [
         false
       ]
@@ -532,6 +533,69 @@
       "default": 3,
       "examples": [
         3
+      ]
+    },
+    "DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED": {
+      "$id": "#/properties/DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED",
+      "type": "boolean",
+      "title": "The DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED schema",
+      "description": "Parameter specifies if namespace isolation is enabled. Requests from not valid namespaces will be discarded",
+      "default": true,
+      "examples": [
+        true,
+        false
+      ]
+    },
+    "KUBERNETES_JWT_ENABLED": {
+      "$id": "#/properties/KUBERNETES_JWT_ENABLED",
+      "type": "boolean",
+      "title": "The KUBERNETES_JWT_ENABLED schema",
+      "description": "Parameter specifies if M2M authentication with Kubernetes service account tokens is enabled",
+      "default": true,
+      "examples": [
+        true,
+        false
+      ]
+    },
+    "KUBERNETES_JWT_AUDIENCE": {
+      "$id": "#/properties/KUBERNETES_JWT_AUDIENCE",
+      "type": "string",
+      "title": "The KUBERNETES_JWT_AUDIENCE schema",
+      "description": "Parameter specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected",
+      "default": "dbaas",
+      "examples": [
+        "dbaas",
+        "netcracker"
+      ]
+    },
+    "APPLICATION_NAME": {
+      "$id": "#/properties/APPLICATION_NAME",
+      "type": "string",
+      "title": "The APPLICATION_NAME schema",
+      "description": "Defines application name",
+      "examples": [
+        "MyApplication"
+      ],
+      "internal": true
+    },
+    "DEPLOYMENT_SESSION_ID": {
+      "$id": "#/properties/DEPLOYMENT_SESSION_ID",
+      "type": "string",
+      "title": "The DEPLOYMENT_SESSION_ID schema",
+      "description": "Unique identifier of deployment session used to track e2e deploy activity",
+      "examples": [
+        "516736bf-d4b7-4900-beab-9599573ac8a8"
+      ],
+      "internal": true
+    },
+    "MONITORING_ENABLED": {
+      "$id": "#/properties/MONITORING_ENABLED",
+      "type": "boolean",
+      "title": "The MONITORING_ENABLED schema",
+      "description": "Set to true to import dashboards to Grafana and configure integration with Prometheus. Requires Platform System Monitor CRDs to be deployed to target k8s/openshift cluster",
+      "examples": [
+        true,
+        false
       ]
     }
   },

@@ -1,0 +1,22 @@
+# ============== DEPLOYMENT VARIABLES ============================
+SERVICE_NAME: dbaas-operator
+NODE_SELECTOR_DBAAS_KEY: region
+REGION_DBAAS: database
+READONLY_CONTAINER_FILE_SYSTEM_ENABLED: true
+MANAGED_BY: saasDeployer
+LIVENESS_PROBE_INITIAL_DELAY_SECONDS: 15
+IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-operator
+TAG: feat-dbaas-operator-snapshot
+NAMESPACE: default
+PAAS_PLATFORM: KUBERNETES
+PAAS_VERSION: '1.25'
+CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
+DBAAS_OPERATOR_ENABLED: false
+MONITORING_ENABLED: true
+restrictedEnvironment: false
+
+# ============== SERVICE VARIABLES ============================
+LOG_LEVEL: "info"
+K8S_EVENTS_ENABLED: false
+LEADER_ELECT: true
+

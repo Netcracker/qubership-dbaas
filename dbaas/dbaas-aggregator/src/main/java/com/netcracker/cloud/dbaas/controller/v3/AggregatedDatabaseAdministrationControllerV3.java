@@ -1,6 +1,8 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
-import com.netcracker.cloud.dbaas.controller.abstact.AbstractDatabaseAdministrationController;
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.role.Role;
@@ -12,13 +14,22 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.monitoring.model.DatabasesInfo;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.security.validators.NamespaceValidator;
 import com.netcracker.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
+import com.netcracker.cloud.dbaas.utils.JwtUtils;
+import com.netcracker.cloud.framework.contexts.tenant.BaseTenantProvider;
+import com.netcracker.cloud.framework.contexts.tenant.TenantContextObject;
+import com.netcracker.cloud.framework.contexts.tenant.TenantNotFoundException;
+import io.smallrye.jwt.auth.principal.DefaultJWTCallerPrincipal;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.SecurityContext;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
@@ -37,6 +48,7 @@ import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
 import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.*;
+import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect;
 
 @Slf4j
 @Path(DATABASES_PATH_V3)
@@ -50,7 +62,7 @@ import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministratio
         "   \"microserviceName\": \"product-catalog-manager\"" +
         "&#125;")
 @Produces(MediaType.APPLICATION_JSON)
-public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDatabaseAdministrationController {
+public class AggregatedDatabaseAdministrationControllerV3 extends AbstractController {
 
     @Inject
     AggregatedDatabaseAdministrationService aggregatedDatabaseAdministrationService;
@@ -61,9 +73,19 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     @Inject
     MonitoringService monitoringService;
     @Inject
-    PasswordEncryption encryption;
-    @Inject
     BlueGreenService blueGreenService;
+    @Inject
+    CompositeNamespaceService compositeNamespaceService;
+    @Inject
+    ResponseHelper responseHelper;
+    @Inject
+    DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
+    @Inject
+    DeletionService deletionService;
+    @Inject
+    NamespaceValidator namespaceValidator;
+    @Inject
+    SecurityContext securityContext;
 
     @Operation(summary = "V3. Creates new database V3",
             description = "Creates new database and returns it with connection information, " +
@@ -85,11 +107,11 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                    @PathParam(NAMESPACE_PARAMETER) String namespace,
                                    @Parameter(description = "Determines if database should be created asynchronously")
                                    @QueryParam(ASYNC_PARAMETER) Boolean async) {
-        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(createRequest.getClassifier())) {
-            throw new InvalidClassifierException("Classifier doesn't contain all mandatory fields. " +
-                    "Check that classifier has `microserviceName`, `scope`. If `scope` = `tenant`, classifier must contain `tenantId` property",
-                    createRequest.getClassifier(), Source.builder().pointer("/classifier").build());
+        if (!isClassifierCorrect(createRequest.getClassifier()) ||
+                !namespaceValidator.isNamespaceFromClassifierValid(securityContext, createRequest.getClassifier())) {
+            throw InvalidClassifierException.withDefaultMsg(createRequest.getClassifier());
         }
+        checkTenantId(createRequest.getClassifier());
         checkOriginService(createRequest);
 
         namespace = (String) createRequest.getClassifier().get(NAMESPACE);
@@ -198,10 +220,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                             @PathParam(NAMESPACE_PARAMETER) String namespace,
                                             @Parameter(description = "The type of base in which the database was created. For example PostgreSQL  or MongoDB", required = true)
                                             @PathParam("type") String type) {
-        checkOriginService(classifierRequest);
-        if (!dBaaService.isValidClassifierV3(classifierRequest.getClassifier())) {
+        if (!dBaaService.isValidClassifierV3(classifierRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, classifierRequest.getClassifier())) {
             throw new InvalidClassifierException("Invalid V3 classifier", classifierRequest.getClassifier(), Source.builder().pointer("").build());
         }
+        checkTenantId(classifierRequest.getClassifier());
         checkOriginService(classifierRequest);
         namespace = (String) classifierRequest.getClassifier().get(NAMESPACE);
 
@@ -266,16 +288,13 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
     @Operation(summary = "V3. External database registration",
             description = "This API supports registration in DBaaS for any external logical database.")
     @APIResponses({
-            @APIResponse(responseCode = "500", description = "Internal error"),
-            @APIResponse(responseCode = "200",
-                    description = "Successfully found database",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "201",
-                    description = "The database was added or updated successfully",
-                    content = @Content(schema = @Schema(implementation = Database.class))),
-            @APIResponse(responseCode = "401", description = ROLE_IS_NOT_ALLOWED, content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "403", description = "Namespace in classifier and path variable are not equal", content = @Content(schema = @Schema(implementation = String.class)))
+            @APIResponse(responseCode = "200", description = "Successfully found database", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "201", description = "The database was added or updated successfully", content = @Content(schema = @Schema(implementation = Database.class))),
+            @APIResponse(responseCode = "400", description = "The request was invalid or cannot be served", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided"),
+            @APIResponse(responseCode = "403", description = "The request was valid, but the server is refusing action"),
+            @APIResponse(responseCode = "409", description = "Logical database with such classifier and type already exist in namespace and it is internal logical database", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "500", description = "Internal error", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class)))
     })
     @Path("/registration/externally_manageable")
     @PUT
@@ -285,11 +304,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                         @Parameter(description = "Namespace with which new database will be connected", required = true)
                                         @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Get request on adding external database with classifier {} and type {} in namespace {}", externalDatabaseRequest.getClassifier(), externalDatabaseRequest.getType(), namespace);
-        if (!AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect(externalDatabaseRequest.getClassifier())) {
-            throw new InvalidClassifierException("Classifier doesn't contain all mandatory fields. " +
-                    "Check that classifier has `microserviceName`, `scope`. If `scope` = `tenant`, classifier must contain `tenantId` property",
-                    externalDatabaseRequest.getClassifier(), Source.builder().pointer("/classifier").build());
+        if (!isClassifierCorrect(externalDatabaseRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, externalDatabaseRequest.getClassifier())) {
+            throw InvalidClassifierException.withDefaultMsg(externalDatabaseRequest.getClassifier());
         }
+        checkTenantId(externalDatabaseRequest.getClassifier());
         DatabaseRegistry databaseRegistry = externalDatabaseRequest.toDatabaseRegistry();
         Optional<BgDomain> bgDomainOpt = aggregatedDatabaseAdministrationService.getBgDomain(namespace);
         if (bgDomainOpt.isPresent()) {
@@ -312,7 +330,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                 return Response.ok(new ExternalDatabaseResponseV3(processedDb)).build();
             } else {
                 if (externalDatabaseRequest.getConnectionProperties().isEmpty()) {
-                    throw new EmptyConnectionPropertiesException();
+                    throw new ExternalDbEmptyConnectionPropertiesException();
                 }
                 existingDatabaseRegistry.setConnectionProperties(databaseRegistry.getConnectionProperties());
             }
@@ -329,7 +347,6 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
             @APIResponse(responseCode = "200", description = "Databases with the specified namespace were drop successfully", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "403", description = "Dbaas is working in PROD mode. Deleting logical databases is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
     })
-    @Override
     @Path("/deleteall")
     @DELETE
     @RolesAllowed(NAMESPACE_CLEANER)
@@ -344,11 +361,11 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
             Optional<BgNamespace> idleNamespace = domain.get().getNamespaces().stream().filter(o -> IDLE_STATE.equals(o.getState())).findFirst();
             idleNamespace.ifPresent(bgNamespace -> {
                         log.info("Dropping BG namespace with idle status: {}", bgNamespace.getNamespace());
-                        super.dropAllDatabasesInNamespace(bgNamespace.getNamespace(), deleteRules);
+                        cleanupNamespace(bgNamespace.getNamespace(), deleteRules);
                     }
             );
         }
-        return super.dropAllDatabasesInNamespace(namespace, deleteRules);
+        return cleanupNamespace(namespace, deleteRules);
     }
 
 
@@ -370,9 +387,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                                                @PathParam(NAMESPACE_PARAMETER) String namespace,
                                                @Parameter(description = "The physical type of logical database. For example mongodb or postgresql", required = true)
                                                @PathParam("type") String type) {
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
+        assertNotProdMode();
         checkOriginService(classifierRequest);
         String supportedRole = databaseRolesService.getSupportedRoleFromRequest(classifierRequest, type, namespace);
         if (supportedRole == null || !supportedRole.equals(Role.ADMIN.toString())) {
@@ -388,24 +403,57 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractDataba
                 throw new ForbiddenNamespaceException(namespace, databaseRegistry.getNamespace(),
                         Source.builder().pathVariable("namespace").build());
             }
-            if (databaseRegistry.isExternallyManageable()) {
-                dBaaService.dropExternalDatabase(databaseRegistry);
-            } else {
-                dBaaService.dropDatabase(databaseRegistry);
-                encryption.deletePassword(databaseRegistry.getDatabase());
-                databaseRegistryDbaasRepository.deleteById(databaseRegistry.getId());
-            }
+            deletionService.dropRegistrySafe(databaseRegistry);
             log.info("Database in namespace={} with classifier={} is dropped", namespace, databaseRegistry.getClassifier());
-
         }
         //should return ok if db not found
         return Response.ok().build();
     }
 
     private void checkOriginService(UserRolesServices rolesServices) {
+        if (securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal principal) {
+            rolesServices.setOriginService(JwtUtils.getServiceAccountName(principal));
+        }
         if (rolesServices.getOriginService() == null || rolesServices.getOriginService().isEmpty()) {
             log.error("Request body={} must contain originService", rolesServices);
             throw new InvalidOriginServiceException();
         }
+    }
+
+    private void checkTenantId(Map<String, Object> classifier) {
+        if (!(securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal)) {
+            return;
+        }
+        if (!Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT)) {
+            return;
+        }
+
+        String idFromClassifier = classifier.get(TENANT_ID).toString();
+        try {
+            TenantContextObject tenantContext = ContextManager.get(BaseTenantProvider.TENANT_CONTEXT_NAME);
+            String idFromRequest = tenantContext == null ? "" : tenantContext.getTenant();
+            if (!Objects.equals(idFromClassifier, idFromRequest)) {
+                throw new ForbiddenTenantIdException(idFromClassifier, idFromRequest);
+            }
+        } catch (TenantNotFoundException e) {
+            throw new ForbiddenTenantIdException(idFromClassifier, "");
+        }
+    }
+
+    private Response cleanupNamespace(String namespace, Boolean deleteRules) {
+        boolean namespaceInComposite = compositeNamespaceService.isNamespaceInComposite(namespace);
+
+        if (!namespaceInComposite && deletionService.checkNamespaceAlreadyDropped(namespace)) {
+            log.info("Namespace {} is empty, dropping is not needed", namespace);
+            return Response.ok(String.format("namespace %s doesn't contain any databases and namespace specific resources", namespace)).build();
+        }
+        assertNotProdMode();
+
+        DeletionService.CleanupResult cleanupResult = deletionService.cleanupNamespaceFullAsync(namespace, deleteRules == null || deleteRules);
+        return Response.ok(String.format("Successful '%s' namespace cleanup: " +
+                "namespace specific resources are deleted synchronously - success, " +
+                "%d databases are deleted synchronously - success, " +
+                "%d databases are marked for drop and asynchronous deletion is scheduled - success",
+                namespace, cleanupResult.databasesSyncDeletedCount(), cleanupResult.databasesAsyncDeletionScheduledCount())).build();
     }
 }

@@ -1,0 +1,160 @@
+@startuml
+title Restore V2 data model (actual)
+
+hide methods
+skinparam classAttributeIconSize 0
+
+class "Restore" <<entity>> {
+  +name : String <<PK>>
+  +storageName : String
+  +blobPath : String
+  +filterCriteria : FilterCriteriaEntity <<jsonb>>
+  +mapping : MappingEntity <<jsonb>>
+  +externalDatabaseStrategy : ExternalDatabaseStrategy
+  +status : RestoreStatus
+  +total : Integer
+  +completed : Integer
+  +errorMessage : String
+  +attemptCount : int
+}
+
+class LogicalRestore <<entity>> {
+  +id : UUID <<PK>>
+  +logicalRestoreName : String
+  +adapterId : String
+  +type : String
+  +status : RestoreTaskStatus
+  +errorMessage : String
+  +creationTime : Instant
+  +completionTime : Instant
+}
+
+class RestoreDatabase <<entity>> {
+  +id : UUID <<PK>>
+  +name : String
+  +classifiers : List<ClassifierDetails> <<jsonb>>
+  +settings : Map<String,Object> <<jsonb>>
+  +users : List<User> <<jsonb>>
+  +bgVersion : String
+  +status : RestoreTaskStatus
+  +duration : long
+  +path : String
+  +errorMessage : String
+  +creationTime : Instant
+}
+
+class RestoreExternalDatabase <<entity>> {
+  +id : UUID <<PK>>
+  +name : String
+  +type : String
+  +classifiers : List<ClassifierDetails> <<jsonb>>
+}
+
+class Backup <<entity>> {
+  +name : String <<PK>>
+}
+
+class BackupDatabase <<entity>> {
+  +id : UUID <<PK>>
+  +name : String
+}
+
+class FilterCriteriaEntity <<value>> {
+  +filter : List<FilterEntity>
+  +exclude : List<FilterEntity>
+}
+
+class FilterEntity <<value>> {
+  +namespace : List<String>
+  +microserviceName : List<String>
+  +databaseType : List<DatabaseType>
+  +databaseKind : List<DatabaseKind>
+}
+
+class MappingEntity <<value>> {
+  +namespaces : Map<String,String>
+  +tenants : Map<String,String>
+}
+
+class ClassifierDetails <<value>> {
+  +type : ClassifierType
+  +previousDatabase : String
+  +classifier : SortedMap<String,Object>
+  +classifierBeforeMapper : SortedMap<String,Object>
+}
+
+class User <<value>> {
+  +name : String
+  +role : String
+}
+
+enum RestoreStatus
+enum RestoreTaskStatus
+enum ExternalDatabaseStrategy
+enum ClassifierType
+enum DatabaseType
+enum DatabaseKind
+
+"Restore" "1" o-- "1" Backup : backup
+"Restore" "1" o-- "0..*" LogicalRestore : logicalRestores\n(mappedBy=restore)
+LogicalRestore "1" o-- "0..*" RestoreDatabase : restoreDatabases\n(mappedBy=logicalRestore)
+"Restore" "1" o-- "0..*" RestoreExternalDatabase : externalDatabases\n(mappedBy=restore)
+
+RestoreDatabase "1" -- "0..1" BackupDatabase : backupDatabase
+
+"Restore" ..> FilterCriteriaEntity : filterCriteria (jsonb)
+"Restore" ..> MappingEntity : mapping (jsonb)
+FilterCriteriaEntity o-- "0..*" FilterEntity : filter/exclude
+RestoreDatabase ..> User : users (jsonb)
+RestoreDatabase ..> ClassifierDetails : classifiers (jsonb)
+RestoreExternalDatabase ..> ClassifierDetails : classifiers (jsonb)
+
+"Restore" ..> RestoreStatus
+LogicalRestore ..> RestoreTaskStatus
+RestoreDatabase ..> RestoreTaskStatus
+"Restore" ..> ExternalDatabaseStrategy
+ClassifierDetails ..> ClassifierType
+FilterEntity ..> DatabaseType
+FilterEntity ..> DatabaseKind
+
+note right of RestoreStatus
+NOT_STARTED
+IN_PROGRESS
+FAILED
+COMPLETED
+DELETED
+end note
+
+note right of RestoreTaskStatus
+NOT_STARTED
+IN_PROGRESS
+FAILED
+RETRYABLE_FAIL
+COMPLETED
+end note
+
+note right of ExternalDatabaseStrategy
+FAIL ("fail")
+SKIP ("skip")
+INCLUDE ("include")
+end note
+
+note right of ClassifierType
+NEW
+REPLACED
+TRANSIENT_REPLACED
+end note
+
+note right of DatabaseType
+POSTGRESQL ("postgresql")
+ARANGODB ("arangodb")
+CLICKHOUSE ("clickhouse")
+MONGODB ("mongodb")
+CASSANDRA ("cassandra")
+end note
+
+note right of DatabaseKind
+CONFIGURATION ("configuration")
+TRANSACTIONAL ("transactional")
+end note
+@enduml

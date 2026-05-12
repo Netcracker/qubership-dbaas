@@ -1,22 +1,18 @@
 package com.netcracker.cloud.dbaas.controller;
 
 import com.netcracker.cloud.dbaas.DbaasApiPath;
+import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.DeleteOrphansRequest;
 import com.netcracker.cloud.dbaas.dto.bluegreen.*;
 import com.netcracker.cloud.dbaas.entity.pg.BgDomain;
 import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.exceptions.BgRequestValidationException;
-import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
 import com.netcracker.cloud.dbaas.service.BlueGreenService;
-import com.netcracker.cloud.dbaas.service.DbaaSHelper;
+import com.netcracker.cloud.dbaas.service.DeletionService;
 import com.netcracker.cloud.dbaas.service.ProcessService;
 import com.netcracker.cloud.dbaas.service.processengine.processes.ProcessWrapper;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import org.eclipse.microprofile.openapi.annotations.Operation;
-import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -24,30 +20,28 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections4.CollectionUtils;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-import static com.netcracker.cloud.dbaas.Constants.ACTIVE_STATE;
-import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
-import static com.netcracker.cloud.dbaas.Constants.IDLE_STATE;
+import static com.netcracker.cloud.dbaas.Constants.*;
 
 @Slf4j
 @Path(DbaasApiPath.DBAAS_BLUE_GREEN_PATH_V1)
 @Produces(MediaType.APPLICATION_JSON)
 @RolesAllowed(DB_CLIENT)
-public class BlueGreenControllerV1 {
-
+public class BlueGreenControllerV1 extends AbstractController {
     @Inject
     BlueGreenService blueGreenService;
-
     @Inject
     ProcessService processService;
-
     @Inject
-    DbaaSHelper dbaaSHelper;
+    DeletionService deletionService;
 
     @Operation(
             summary = "Warmup namespace",
@@ -64,7 +58,7 @@ public class BlueGreenControllerV1 {
     @POST
     @Transactional
     public Response warmup(@Parameter(description = "target namespace to warmup version to warmup", required = true)
-                                   BgStateRequest bgStateRequest) {
+                           BgStateRequest bgStateRequest) {
         log.info("Received request to warmup: {}", bgStateRequest);
         if (!isValidBgStateRequest(bgStateRequest.getBGState())) {
             throw new BgRequestValidationException("Origin namespace or peer namespace in not present");
@@ -95,7 +89,7 @@ public class BlueGreenControllerV1 {
     @POST
     @Transactional
     public Response promote(@Parameter(description = "Blue-Green state to promote", required = true)
-                                    BgStateRequest bgStateRequest) {
+                            BgStateRequest bgStateRequest) {
         log.info("Received request to promote: {}", bgStateRequest);
         blueGreenService.promote(bgStateRequest);
         BlueGreenResponse blueGreenResponse = new BlueGreenResponse();
@@ -116,7 +110,7 @@ public class BlueGreenControllerV1 {
     @POST
     @Transactional
     public Response rollback(@Parameter(description = "Blue-Green state to rollback", required = true)
-                                     BgStateRequest bgStateRequest) {
+                             BgStateRequest bgStateRequest) {
         log.info("Received request to rollback: {}", bgStateRequest);
         blueGreenService.rollback(bgStateRequest);
         BlueGreenResponse blueGreenResponse = new BlueGreenResponse();
@@ -273,7 +267,7 @@ public class BlueGreenControllerV1 {
             throw new BgRequestValidationException("Incorrect version for Active namespace");
         }
 
-        int markedDatabasesAsOrphan = blueGreenService.commit(bgStateRequest).size();
+        int markedDatabasesAsOrphan = blueGreenService.commit(bgStateRequest);
         log.info("Commit operation successfully finished, {} databases are marked as Orphan", markedDatabasesAsOrphan);
         return Response.ok(new BlueGreenResponse(markedDatabasesAsOrphan + " databases are marked as Orphan")).build();
     }
@@ -289,12 +283,12 @@ public class BlueGreenControllerV1 {
     @Path("/orphans")
     @POST
     public Response getOrphans(@Parameter(description = "List of namespaces in blue-green state by which orhan databases is needed to return", required = true)
-                                       List<String> namespaces) {
+                               List<String> namespaces) {
         log.info("Receive request to get orphan databases in {}", namespaces);
         if (CollectionUtils.isEmpty(namespaces)) {
             throw new BgRequestValidationException("Should be at least one namespace");
         }
-        List<DatabaseRegistry> orphans = blueGreenService.getOrphanDatabases(namespaces);
+        List<DatabaseRegistry> orphans = deletionService.getOrphanRegistries(namespaces);
         return Response.ok(toOrphanDatabasesResponse(orphans)).build();
     }
 
@@ -380,9 +374,7 @@ public class BlueGreenControllerV1 {
     @Transactional
     public Response destroyBgDomain(BgNamespaceRequest bgNamespaceRequest) {
         log.info("receive request to destroy BG domain: {}", bgNamespaceRequest);
-        if (dbaaSHelper.isProductionMode()) {
-            throw new ForbiddenDeleteOperationException();
-        }
+        assertNotProdMode();
         Set<String> listOfNamespaces = new HashSet<>(
                 Set.of(bgNamespaceRequest.getOriginNamespace(), bgNamespaceRequest.getPeerNamespace()));
         blueGreenService.destroyDomain(listOfNamespaces);

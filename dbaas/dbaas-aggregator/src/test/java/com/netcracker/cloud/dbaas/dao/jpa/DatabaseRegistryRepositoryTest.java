@@ -11,7 +11,6 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
 import jakarta.persistence.EntityManager;
-
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -73,8 +72,10 @@ class DatabaseRegistryRepositoryTest {
         List<DatabaseRegistry> dbs = Stream.of(db_1, db_2).collect(Collectors.toList());
 
         when(databasesRepository.getEntityManager()).thenReturn(entityManager);
-        databaseRegistryDbaasRepository.saveAll(dbs);
+        when(entityManager.merge(any())).thenAnswer(invocationOnMock -> invocationOnMock.getArgument(0));
+        List<DatabaseRegistry> savedRegistries = databaseRegistryDbaasRepository.saveAll(dbs);
 
+        Assertions.assertEquals(dbs.size(), savedRegistries.size());
         verify(databasesRepository, times(dbs.size())).getEntityManager();
         verify(entityManager, times(dbs.size())).merge(any());
     }
@@ -129,7 +130,7 @@ class DatabaseRegistryRepositoryTest {
     @Test
     void testSaveAnyTypeLogDb() {
         DatabaseRegistry db = generateRandomDatabase(true);
-//        when(entityManager.merge(db.getDatabase())).then(invocationOnMock -> invocationOnMock.getArgument(0));
+        when(entityManager.merge(any())).then(invocationOnMock -> invocationOnMock.getArgument(0));
         when(databasesRepository.getEntityManager()).thenReturn(entityManager);
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(db);
 
@@ -140,18 +141,8 @@ class DatabaseRegistryRepositoryTest {
     void testDelete() {
         DatabaseRegistry db = generateRandomDatabase(true);
         when(databasesRepository.findByIdOptional(db.getDatabase().getId())).thenReturn(Optional.of(db.getDatabase()));
-        databaseRegistryDbaasRepository.delete(db);
-
-        verify(databasesRepository, times(1)).delete(eq(db.getDatabase()));
-    }
-
-    @Test
-    void testDeleteById() {
-        DatabaseRegistry db = generateRandomDatabase(true);
-
-        when(databasesRepository.findByIdOptional(db.getDatabase().getId())).thenReturn(Optional.of(db.getDatabase()));
         when(databaseRegistryRepository.findByIdOptional(db.getId())).thenReturn(Optional.of(db));
-        databaseRegistryDbaasRepository.deleteById(db.getId());
+        databaseRegistryDbaasRepository.delete(db);
 
         verify(databasesRepository, times(1)).delete(eq(db.getDatabase()));
     }

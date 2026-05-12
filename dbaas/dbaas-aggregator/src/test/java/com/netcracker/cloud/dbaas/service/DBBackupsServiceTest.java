@@ -13,7 +13,6 @@ import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
 import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
-import com.netcracker.cloud.dbaas.exceptions.MultiValidationException;
 import com.netcracker.cloud.dbaas.exceptions.NamespaceBackupDeletionFailedException;
 import com.netcracker.cloud.dbaas.exceptions.NamespaceRestorationFailedException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
@@ -46,10 +45,10 @@ public class DBBackupsServiceTest {
     private PasswordEncryption encryption;
     private EntityManager entityManager;
     private EntityManager buckupEntityManager;
-    private DBaaService dBaaService;
     private DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     private DbaaSHelper dbaaSHelper;
     private DBBackupsService dbBackupsService;
+    private DeletionService deletionService;
 
     private final String TEST_NAMESPACE = "test-namespace";
     private final String TEST_ADAPTER_ID = "test-adapter-id";
@@ -66,10 +65,10 @@ public class DBBackupsServiceTest {
         dbaasAdapter = Mockito.mock(DbaasAdapter.class);
         encryption = Mockito.mock(PasswordEncryption.class);
         entityManager = Mockito.mock(EntityManager.class);
-        dBaaService = Mockito.mock(DBaaService.class);
         databaseRegistryDbaasRepository = Mockito.mock(DatabaseRegistryDbaasRepository.class);
         dbaaSHelper = Mockito.mock(DbaaSHelper.class);
-        dbBackupsService = Mockito.spy(new DBBackupsService(dBaaService, physicalDatabasesService, databaseRegistryDbaasRepository, backupsDbaasRepository, encryption, entityManager, dbaaSHelper));
+        deletionService = Mockito.mock(DeletionService.class);
+        dbBackupsService = Mockito.spy(new DBBackupsService(physicalDatabasesService, databaseRegistryDbaasRepository, backupsDbaasRepository, encryption, entityManager, dbaaSHelper, deletionService));
         doReturn(new Object()).when(dbBackupsService).runInNewTransaction(any());
     }
 
@@ -536,6 +535,11 @@ public class DBBackupsServiceTest {
         dbRegistry.setName(databaseName);
         dbRegistry.setMarkedForDrop(isMarkedForDrop);
         dbRegistry.setBackupDisabled(isBackupDisabled);
+        SortedMap<String, Object> classifier = new TreeMap<>();
+        classifier.put("namespace", TEST_NAMESPACE);
+        classifier.put("microservice", "test-service");
+        classifier.put("scope", "service");
+        dbRegistry.setClassifier(classifier);
         return dbRegistry;
     }
 }

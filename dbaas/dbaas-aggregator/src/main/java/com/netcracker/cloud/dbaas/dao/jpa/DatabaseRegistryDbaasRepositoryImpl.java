@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
 
+import com.netcracker.cloud.dbaas.dto.backupV2.Filter;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -12,23 +13,18 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import org.apache.commons.lang.StringUtils;
 
+import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import javax.annotation.Nullable;
-
-import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
-import static com.netcracker.cloud.dbaas.Constants.ROLE;
-import static com.netcracker.cloud.dbaas.Constants.SCOPE;
-import static com.netcracker.cloud.dbaas.Constants.SCOPE_VALUE_TENANT;
+import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.config.ServicesConfig.DBAAS_REPOSITORIES_MUTEX;
 import static jakarta.transaction.Transactional.TxType.REQUIRES_NEW;
 
@@ -142,12 +138,17 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     }
 
     @Override
+    public List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters) {
+        return databaseRegistryRepository.findAllDatabasesByFilter(filters);
+    }
+
+    @Override
     public void delete(DatabaseRegistry databaseRegistry) {
-        log.debug("Delete logical database with classifier {} and type {}", databaseRegistry.getClassifier(), databaseRegistry.getType());
-        Database database = databaseRegistry.getDatabase();
+        UUID databaseRegistryId = databaseRegistry.getId();
+        log.debug("Delete database registry with id={}", databaseRegistryId);
         synchronized (getMutex()) {
-            deleteDatabase(database.getId(), databaseRegistry.getId());
-            safeDeleteAndFlushDatabaseRegistry(databaseRegistry.getId());
+            deleteDatabase(databaseRegistryId);
+            Failsafe.with(H2_DELETE_RETRY_POLICY).run(() -> safeDeleteAndFlushDatabaseRegistry(databaseRegistryId));
         }
     }
 
@@ -180,7 +181,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         long count = 0;
         for (DatabaseRegistry databaseRegistry : databaseRegistries) {
             try {
-                deleteById(databaseRegistry.getId());
+                delete(databaseRegistry);
                 log.info("External database registry in {} with classifier {} was dropped", namespace, databaseRegistry.getClassifier());
                 count++;
             } catch (Exception ex) {
@@ -191,15 +192,6 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         log.info("Was successfully dropped {} external logical databases in namespace={}", count, namespace);
     }
 
-
-    @Override
-    public void deleteById(UUID databaseRegistryId) {
-        log.debug("Delete database registry with id={}", databaseRegistryId);
-        synchronized (getMutex()) {
-            deleteDatabase(databaseRegistryId);
-            Failsafe.with(H2_DELETE_RETRY_POLICY).run(() -> safeDeleteAndFlushDatabaseRegistry(databaseRegistryId));
-        }
-    }
 
     @Override
     public Optional<DatabaseRegistry> findDatabaseRegistryById(UUID id) {
@@ -261,11 +253,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
 
     @Override
     public List<DatabaseRegistry> saveAll(List<DatabaseRegistry> databaseList) {
-        List<DatabaseRegistry> savedDatabases = new ArrayList<>();
-        for (DatabaseRegistry dr : databaseList) {
-            save(dr);
-        }
-        return savedDatabases;
+        return databaseList.stream().map(this::save).toList();
     }
 
     @Override
@@ -301,21 +289,6 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         log.info("finished reload in databaseregistry with id = {}", databaseRegistryId);
     }
 
-    @Override
-    public void deleteOnlyTransactionalDatabaseRegistries(List<DatabaseRegistry> databaseRegistries) {
-        log.debug("Delete classifiers from databases with classifier {}", databaseRegistries);
-        databaseRegistries.forEach(dbr -> {
-            Database database = dbr.getDatabase();
-            database.getDatabaseRegistry().remove(dbr);
-            databasesRepository.persist(database);
-        });
-
-    }
-
-    public void deleteOnlyTransactionalDatabaseRegistries(String namespace) {
-        databaseRegistryRepository.deleteOnlyTransactionalDatabaseRegistries(namespace);
-    }
-
     public List<DatabaseRegistry> findAllVersionedDatabaseRegistries(String namespace) {
         return databaseRegistryRepository.findAllByNamespaceAndDatabase_BgVersionNotNull(namespace);
     }
@@ -331,7 +304,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
                 databasesRepository.persistAndFlush(savedDatabase);
             } else {
                 EntityManager entityManager = databasesRepository.getEntityManager();
-                entityManager.merge(savedDatabase);
+                savedDatabase = entityManager.merge(savedDatabase);
                 entityManager.flush();
             }
             Optional<DatabaseRegistry> savedDatabaseRegistry = savedDatabase.getDatabaseRegistry().stream()
@@ -339,21 +312,6 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
             log.debug("saved classifier = {}", savedDatabaseRegistry);
             return savedDatabaseRegistry.orElseThrow();
         }
-    }
-
-    @Override
-    public List<DatabaseRegistry> findDatabasesByMicroserviceNameAndNamespace(String microserviceName, String namespace) {
-        log.debug("find DBs by microserviceName={} and namespace={}", microserviceName, namespace);
-        List<DatabaseRegistry> databaseRegistries = doGet(() -> databaseRegistryRepository.findByNamespace(namespace), ex -> {
-            log.debug("Catch exception = {} while trying to find logical databases by microservice name and namespace in Postgre, go to h2 database", ex.getMessage());
-            return h2DatabaseRegistryRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity).toList();
-        });
-        List<DatabaseRegistry> databasesList = databaseRegistries.stream()
-                .filter(database -> microserviceName.equals(database.getClassifier().get(MICROSERVICE_NAME)))
-                .filter(database -> !database.isMarkedForDrop())
-                .collect(Collectors.toList());
-        log.debug("Was found {} databases", databasesList.size());
-        return databasesList;
     }
 
     private <T> T doGet(Callable<T> action, Function<Exception, T> rollback) {

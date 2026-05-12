@@ -8,12 +8,18 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Data
 @AllArgsConstructor
 @Schema(description = "Logical backup details")
 public class LogicalBackupResponse {
-
+    @Schema(
+            description = "Identifier of the logical backup",
+            examples = {"550e8400-e29b-41d4-a716-446655440000"},
+            required = true
+    )
+    private UUID id;
     @Schema(description = "Name of the logical backup in adapter", required = true)
     String logicalBackupName;
     @Schema(

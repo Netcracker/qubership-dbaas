@@ -1,0 +1,13 @@
+# DatabaseDeclaration — synchronous success (HTTP 200)
+# apply-rules.json key: "dd-svc-sync" → httpCode=200 (no trackingId returned)
+# Expected: Phase=Succeeded, Ready=True, DatabaseProvisioned event
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: DatabaseDeclaration
+metadata:
+  name: dd-success-sync
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: dd-svc-sync
+      scope: service
+  type: postgresql

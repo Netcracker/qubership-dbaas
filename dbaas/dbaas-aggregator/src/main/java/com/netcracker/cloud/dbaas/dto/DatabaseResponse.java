@@ -4,7 +4,7 @@ import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.dto.role.Role;
-import com.netcracker.cloud.dbaas.exceptions.EmptyConnectionPropertiesException;
+import com.netcracker.cloud.dbaas.exceptions.InternalDbEmptyConnectionPropertiesException;
 import com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.Data;
@@ -88,7 +88,7 @@ public class DatabaseResponse {
         id = databaseRegistry.getId();
         classifier = Optional.ofNullable(databaseRegistry.getDatabase().getOldClassifier()).map(TreeMap::new).orElse(null);
         connectionProperties = Optional.of(ConnectionPropertiesUtils.getConnectionProperties(databaseRegistry.getDatabase().getConnectionProperties(), Role.ADMIN.toString()))
-                .map(HashMap::new).orElseThrow(EmptyConnectionPropertiesException::new);
+                .map(HashMap::new).orElseThrow(InternalDbEmptyConnectionPropertiesException::new);
         if (databaseRegistry.getClassifier() == null) {
             classifierV3Migrated = false;
         } else {

@@ -9,7 +9,6 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
-
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +23,6 @@ import java.util.concurrent.Callable;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-import static org.mockito.Mockito.doAnswer;
 
 @ExtendWith(MockitoExtension.class)
 class H2DatabaseRegistryRepositoryTest {
@@ -94,14 +92,6 @@ class H2DatabaseRegistryRepositoryTest {
         verify(databaseRegistryRepository, times(1)).findDatabaseRegistryByClassifierAndType(classifier, "someType");
         verify(h2DatabaseRegistryRepository, times(1)).findDatabaseRegistryByClassifierAndType(classifier, "someType");
 
-    }
-
-    @Test
-    void testFindDatabasesByMicroserviceNameAndNamespace() {
-        when(databaseRegistryRepository.findByNamespace("namespace")).thenThrow(NullPointerException.class);
-        databaseRegistryDbaasRepositoryImpl.findDatabasesByMicroserviceNameAndNamespace("microserviceName", "namespace");
-        verify(databaseRegistryRepository, times(1)).findByNamespace("namespace");
-        verify(h2DatabaseRegistryRepository, times(1)).findByNamespace("namespace");
     }
 
 

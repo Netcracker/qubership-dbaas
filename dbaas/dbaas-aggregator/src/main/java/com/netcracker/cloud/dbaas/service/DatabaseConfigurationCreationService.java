@@ -1,5 +1,18 @@
 package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.context.propagation.core.ContextManager;
+import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
+import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
+import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
+import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.service.processengine.processes.AllDatabasesCreationProcess;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import com.netcracker.core.scheduler.po.DataContext;
+import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
+import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
 import jakarta.annotation.Nullable;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -8,20 +21,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
-import com.netcracker.cloud.context.propagation.core.ContextManager;
-import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
-import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
-import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
-import com.netcracker.cloud.dbaas.entity.pg.BgNamespace;
-import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
-import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
-import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import com.netcracker.cloud.dbaas.service.processengine.processes.AllDatabasesCreationProcess;
-import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
-import com.netcracker.core.scheduler.po.DataContext;
-import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
 
 import java.util.*;
 
@@ -35,8 +34,6 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 @AllArgsConstructor
 public class DatabaseConfigurationCreationService {
 
-    @Inject
-    DBaaService dBaaService;
     @Inject
     LogicalDbDbaasRepository logicalDbDbaasRepository;
     @Inject
@@ -90,26 +87,6 @@ public class DatabaseConfigurationCreationService {
         }
 
         return subProcesses;
-    }
-
-    public void commitDatabases(SortedMap<String, Object> classifier, String type, String namespace) {
-        classifier.put(NAMESPACE, namespace);
-        List<DatabaseRegistry> databaseRegistries;
-        if (SCOPE_VALUE_TENANT.equals(classifier.get(SCOPE))) {
-            databaseRegistries = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllTenantDatabasesInNamespace(namespace)
-                    .stream().filter(dbr -> {
-                                classifier.put(TENANT_ID, dbr.getClassifier().get(TENANT_ID));
-                                return dbr.getBgVersion() != null && dbr.getClassifier().equals(classifier) && dbr.getType().equals(type);
-                            }
-                    ).toList();
-        } else {
-            Optional<DatabaseRegistry> databaseRegistry = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
-                    .getDatabaseByClassifierAndType(classifier, type);
-            databaseRegistries = databaseRegistry.stream().toList();
-        }
-        log.debug("Mark versioned databases for drop in namespace = {}", databaseRegistries);
-        dBaaService.markVersionedDatabasesAsOrphan(databaseRegistries);
-        dBaaService.dropDatabasesAsync(namespace, databaseRegistries);
     }
 
     private SortedMap<String, Object> convertClassifierConfigToClassifier

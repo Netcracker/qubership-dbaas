@@ -24,16 +24,16 @@
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
-        <quarkus.platform.version>3.27.1</quarkus.platform.version>
+        <quarkus.platform.version>3.27.3</quarkus.platform.version>
+        <qs.quarkus.core.version>9.1.4</qs.quarkus.core.version>
 
-        <compiler-plugin.version>3.14.1</compiler-plugin.version>
-        <surefire-plugin.version>3.5.4</surefire-plugin.version>
+        <compiler-plugin.version>3.15.0</compiler-plugin.version>
+        <surefire-plugin.version>3.5.5</surefire-plugin.version>
         <jacoco.plugin.version>0.8.14</jacoco.plugin.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
-        <jackson-bom.version>2.20.1</jackson-bom.version>
-        <qs.quarkus.core.version>8.1.1</qs.quarkus.core.version>
-        <lombok.version>1.18.42</lombok.version>
-        <junit.version>6.0.1</junit.version>
+        <jackson-bom.version>2.21.2</jackson-bom.version>
+        <lombok.version>1.18.46</lombok.version>
+        <junit.version>6.0.3</junit.version>
         <jaxb.version>4.0.6</jaxb.version>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${project.basedir}/../dbaas-report-aggregate/target/site/jacoco-aggregate/jacoco.xml
@@ -77,7 +77,7 @@
         <dependency>
             <groupId>jakarta.xml.bind</groupId>
             <artifactId>jakarta.xml.bind-api</artifactId>
-            <version>4.0.4</version>
+            <version>4.0.5</version>
         </dependency>
         <dependency>
             <groupId>org.glassfish.jaxb</groupId>

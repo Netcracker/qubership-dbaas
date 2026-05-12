@@ -34,6 +34,11 @@ public class ClassifierBuilder {
         return this;
     }
 
+    public ClassifierBuilder tenantId(String tenantId) {
+        this.classifier.put("tenantId", tenantId);
+        return this;
+    }
+
     public ClassifierBuilder tenant() {
         this.classifier.put("scope", "tenant");
         return this;
@@ -46,6 +51,11 @@ public class ClassifierBuilder {
 
     public ClassifierBuilder declarative() {
         this.classifier.remove("namespace");
+        return this;
+    }
+
+    public ClassifierBuilder markedForDrop() {
+        this.classifier.put(MARKED_FOR_DROP, MARKED_FOR_DROP);
         return this;
     }
 

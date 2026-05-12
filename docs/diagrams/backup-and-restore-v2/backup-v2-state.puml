@@ -1,0 +1,24 @@
+@startuml
+title Backup V2 State Diagram
+
+[*] --> NOT_STARTED : backup created
+
+NOT_STARTED --> IN_PROGRESS : backup starts/aggregation\n(has IN_PROGRESS/RETRYABLE_FAIL\nor mix of NOT_STARTED+others)
+NOT_STARTED --> COMPLETED : all tasks COMPLETED
+NOT_STARTED --> FAILED : all tasks FAILED
+
+IN_PROGRESS --> IN_PROGRESS : tracking continues
+IN_PROGRESS --> COMPLETED : all tasks COMPLETED
+IN_PROGRESS --> FAILED : no IN_PROGRESS/RETRYABLE_FAIL/NOT_STARTED\nand FAILED exists (final FAILED)\nor tracking attempts exceeded
+
+COMPLETED --> DELETED : deleteBackup(force=false)
+FAILED --> DELETED : deleteBackup(force=false)
+DELETED --> DELETED : repeated deleteBackup(force=false)
+
+COMPLETED --> DELETE_IN_PROGRESS : deleteBackup(force=true)
+FAILED --> DELETE_IN_PROGRESS : deleteBackup(force=true)
+DELETED --> DELETE_IN_PROGRESS : deleteBackup(force=true)
+
+DELETE_IN_PROGRESS --> DELETED : adapter deletion successful
+DELETE_IN_PROGRESS --> FAILED : adapter deletion errors
+@enduml

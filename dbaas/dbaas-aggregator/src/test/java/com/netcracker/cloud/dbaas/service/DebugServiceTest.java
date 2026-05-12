@@ -6,8 +6,11 @@ import com.netcracker.cloud.dbaas.dto.RuleType;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.Backup;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.Restore;
 import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
 import com.netcracker.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
+import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.indicators.AggregatedHealthResponse;
 import com.netcracker.cloud.dbaas.monitoring.indicators.HealthStatus;
@@ -18,11 +21,14 @@ import com.netcracker.cloud.dbaas.mapper.DebugLogicalDatabaseMapper;
 import com.netcracker.cloud.dbaas.entity.dto.DebugLogicalDatabasePersistenceDto;
 import com.netcracker.cloud.dbaas.repositories.queries.DebugLogicalDatabaseQueries;
 import com.netcracker.cloud.dbaas.test.data.provider.debug.DebugLogicalDatabaseTestDataProvider;
+import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import jakarta.ws.rs.core.StreamingOutput;
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mapstruct.factory.Mappers;
@@ -76,6 +82,12 @@ class DebugServiceTest {
     @Mock
     private DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     @Mock
+    private BackupRepository backupRepository;
+    @Mock
+    private RestoreRepository restoreRepository;
+    @Spy
+    private AsyncOperations asyncOperations = new AsyncOperations(1);
+    @Mock
     private HealthService healthService;
     @Spy
     private DebugLogicalDatabaseMapper debugLogicalDatabaseMapper =
@@ -91,6 +103,8 @@ class DebugServiceTest {
         var declarativeConfigs = List.of(getDeclarativeConfig());
         var blueGreenDomains = List.of(getBlueGreenDomain());
         var perMicroserviceRules = List.of(getPerMicroserviceRule());
+        var backups = List.of(getBackup());
+        var restores = List.of(getRestore());
 
         var perNamespaceRuleWithNamespaceRuleType = getPerNamespaceRuleWithNamespaceRuleType();
         var perNamespaceRuleWithPermanentRuleType = getPerNamespaceRuleWithPermanentRuleType();
@@ -101,6 +115,8 @@ class DebugServiceTest {
         Mockito.doReturn(blueGreenDomains).when(bgDomainRepository).listAll();
         Mockito.doReturn(List.of(perNamespaceRuleWithNamespaceRuleType, perNamespaceRuleWithPermanentRuleType)).when(namespaceRulesRepository).listAll();
         Mockito.doReturn(perMicroserviceRules).when(microserviceRulesRepository).listAll();
+        Mockito.doReturn(backups).when(backupRepository).listAll();
+        Mockito.doReturn(restores).when(restoreRepository).listAll();
 
         var actualDumpResponse = debugService.loadDumpV3();
 
@@ -110,10 +126,12 @@ class DebugServiceTest {
         Mockito.verify(bgDomainRepository).listAll();
         Mockito.verify(namespaceRulesRepository).listAll();
         Mockito.verify(microserviceRulesRepository).listAll();
+        Mockito.verify(backupRepository).listAll();
+        Mockito.verify(restoreRepository).listAll();
 
         Mockito.verifyNoMoreInteractions(physicalDatabasesRepository, databasesRepository,
             databaseDeclarativeConfigRepository, bgDomainRepository, namespaceRulesRepository,
-            microserviceRulesRepository
+            microserviceRulesRepository, backupRepository, restoreRepository
         );
 
         var defaultRules = List.of(getDefaultRule());
@@ -123,7 +141,7 @@ class DebugServiceTest {
                 List.of(perNamespaceRuleWithNamespaceRuleType),
                 perMicroserviceRules,
                 List.of(perNamespaceRuleWithPermanentRuleType)
-            ), logicalDatabases, physicalDatabases, declarativeConfigs, blueGreenDomains
+            ), logicalDatabases, physicalDatabases, declarativeConfigs, blueGreenDomains, backups, restores
         );
 
         var actualDumpResponseStr = objectMapper.writeValueAsString(actualDumpResponse);
@@ -136,7 +154,7 @@ class DebugServiceTest {
     void testGetStreamingOutputSerializingDumpToZippedJsonFile() throws Exception {
         DumpResponseV3 expectedDumpResponse = new DumpResponseV3(
             new DumpRulesV3(List.of(), List.of(), List.of(), List.of()),
-            List.of(), List.of(), List.of(), List.of()
+            List.of(), List.of(), List.of(), List.of(), List.of(), List.of()
         );
 
         StreamingOutput streamingOutput = debugService.getStreamingOutputSerializingDumpToZippedJsonFile(expectedDumpResponse);
@@ -396,6 +414,26 @@ class DebugServiceTest {
         microserviceRule.setGeneration(1);
 
         return microserviceRule;
+    }
+
+    protected Backup getBackup() {
+        var backup =  new Backup();
+        backup.setName("backupName");
+        backup.setStorageName("storageName");
+        backup.setBlobPath("blobPath");
+        backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
+
+        return backup;
+    }
+
+    protected Restore getRestore() {
+        var restore = new Restore();
+        restore.setName("restoreName");
+        restore.setStorageName("storageName");
+        restore.setBlobPath("blobPath");
+        restore.setExternalDatabaseStrategy(ExternalDatabaseStrategy.FAIL);
+
+        return restore;
     }
 
     protected DumpDefaultRuleV3 getDefaultRule() {

@@ -1,26 +1,20 @@
 package com.netcracker.cloud.dbaas.service;
 
-import com.netcracker.cloud.dbaas.dto.RestoreRequest;
-import com.netcracker.cloud.dbaas.dto.UpdateSettingsAdapterRequest;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
+import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
-import com.netcracker.cloud.dbaas.dto.EnsuredUser;
-import com.netcracker.cloud.dbaas.dto.Source;
-import com.netcracker.cloud.dbaas.dto.UserEnsureRequest;
-import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
+import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
+import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
 import com.netcracker.cloud.dbaas.exceptions.InteruptedPollingException;
 import com.netcracker.cloud.dbaas.exceptions.MultiValidationException;
 import com.netcracker.cloud.dbaas.exceptions.ValidationException;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
-import com.netcracker.cloud.dbaas.utils.DbaasBackupUtils;
-import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
-import com.netcracker.cloud.dbaas.dto.backup.Status;
-import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
-import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
-import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import jakarta.ws.rs.NotAllowedException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
@@ -114,7 +108,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
 
         backup.getDatabases().forEach(dbName -> {
             Optional<DatabaseRegistry> registry = databases.stream()
-                    .filter(r -> dbName.equals(DbaasBackupUtils.getDatabaseName(r)))
+                    .filter(r -> dbName.equals(DBaaService.getDatabaseName(r)))
                     .findFirst();
 
             String microserviceName = registry.isPresent()
@@ -254,25 +248,14 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
     @Override
     @TimeMeasure(value = METRIC_NAME, tags = {"operation", "DeleteDatabase"}, fieldTags = {"type", "identifier"})
     public void dropDatabase(DatabaseRegistry databaseRegistry) {
-        if (CollectionUtils.isEmpty(databaseRegistry.getResources())) {
-            log.error("Database with classifier {} have empty resources {}", databaseRegistry.getClassifier(), databaseRegistry.getResources());
+        List<DbResource> resources = databaseRegistry.getDatabase().getResources();
+        if (CollectionUtils.isEmpty(resources)) {
+            log.error("Database with classifier {} have empty resources {}", databaseRegistry.getClassifier(), resources);
             return;
         }
         log.info("Call adapter {} of type {} to drop db with classifier {} and resources {}",
-                adapterAddress, type, databaseRegistry.getClassifier(), databaseRegistry.getResources());
-        dropDatabase(databaseRegistry.getResources());
-    }
-
-    @Override
-    @TimeMeasure(value = METRIC_NAME, tags = {"operation", "DeleteDatabase"}, fieldTags = {"type", "identifier"})
-    public void dropDatabase(Database database) {
-        if (CollectionUtils.isEmpty(database.getResources())) {
-            log.error("Database have empty resources {}", database.getResources());
-            return;
-        }
-        log.info("Call adapter {} of type {} to drop db and resources {}",
-                adapterAddress, type, database.getResources());
-        dropDatabase(database.getResources());
+                adapterAddress, type, databaseRegistry.getClassifier(), resources);
+        dropDatabase(resources);
     }
 
     protected abstract EnsuredUser ensureUser(String username, UserEnsureRequest request);

@@ -1,0 +1,25 @@
+@startuml
+autonumber
+actor Client
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+
+Client -> DBaaS: POST /restore/{restoreName}/retry
+
+DBaaS -> DB: find restore by restoreName
+alt restore not found
+  DB --> DBaaS: empty
+  DBaaS --> Client: HTTP 404 (TmfErrorResponse)
+else found
+  DB --> DBaaS: Restore
+  alt status != FAILED
+    DBaaS --> Client: HTTP 422 (TmfErrorResponse)
+  else status == FAILED
+    DBaaS -> DBaaS: check lock
+    DBaaS -> DBaaS: reset attempts, set IN_PROGRESS,\nmark logical restores RETRYABLE_FAIL
+    DBaaS -> DBaaS: aggregate Restore status
+    DBaaS -> DB: save Restore
+    DBaaS --> Client: HTTP 202 Accepted (RestoreResponse)
+  end
+end
+@enduml

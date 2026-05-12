@@ -1,6 +1,5 @@
 package com.netcracker.it.dbaas.helpers;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.config.DatabaseDeclaration;
 import com.netcracker.it.dbaas.entity.config.DeclarativePayload;
@@ -14,6 +13,8 @@ import java.io.IOException;
 import java.util.*;
 
 import static com.netcracker.it.dbaas.entity.RuleBody.RuleType.perNamespace;
+import static com.netcracker.it.dbaas.helpers.BGHelper.TEST_NAMESPACE_CANDIDATE;
+import static com.netcracker.it.dbaas.helpers.BGHelper.TEST_NAMESPACE_CONTROLLER;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -21,11 +22,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Slf4j
 @AllArgsConstructor
 public class DbaasDebugHelperV3 {
-
-    private static final String TEST_NAMESPACE_CANDIDATE = "candidate-test-namespace";
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
     private final DbaasHelperV3 helperV3;
     private final DeclarativeConfigHelper declarativeHelper;
     private final BGHelper bgHelper;
@@ -103,7 +99,7 @@ public class DbaasDebugHelperV3 {
                 201
         );
 
-        try (Response initResponse = bgHelper.initDomain(DbaasHelperV3.TEST_NAMESPACE, TEST_NAMESPACE_CANDIDATE)) {
+        try (Response initResponse = bgHelper.initDomain(DbaasHelperV3.TEST_NAMESPACE, TEST_NAMESPACE_CANDIDATE, TEST_NAMESPACE_CONTROLLER)) {
             Assertions.assertEquals(200, initResponse.code());
         }
     }

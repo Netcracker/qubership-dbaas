@@ -7,6 +7,7 @@ mkdir -p "$OUT_DIR"
 # Map deployments to namespaces.
 DEPLOY_NS_PAIRS=(
   "dbaas-aggregator:dbaas"
+  "dbaas-operator:dbaas"
   "dbaas-postgres-adapter:postgres"
   "postgres-backup-daemon:postgres"
 )

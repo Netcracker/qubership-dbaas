@@ -25,6 +25,7 @@ import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.net.SocketException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -101,6 +102,7 @@ public abstract class AbstractIT {
     @BeforeEach
     public void parentBeforeEach(TestInfo testInfo) {
         DbaasHelperV3.regenerateRequestId();
+        ensureDbaasPortForward();
         log.info("Test started: {}#{}", testInfo.getTestClass().orElse(this.getClass()).getSimpleName(), testInfo.getDisplayName());
     }
 
@@ -124,6 +126,45 @@ public abstract class AbstractIT {
         return portForwardService.portForward(ServicePortForwardParams.builder(DBAAS_SERVICE_NAME, HTTP_PORT).build()).toHttpUrl();
     }
 
+    protected void ensureDbaasPortForward() {
+        try {
+            getHealth();
+        } catch (IOException e) {
+            if (isConnectionReset(e)) {
+                log.warn("DBaaS port-forward dropped, recreating it");
+                refreshDbaasPortForward();
+                return;
+            }
+            throw new RuntimeException("Failed to call DBaaS health endpoint", e);
+        }
+    }
+
+    protected static synchronized void refreshDbaasPortForward() {
+        if (dbaasServiceUrl != null) {
+            try {
+                portForwardService.closePortForward(new Endpoint(dbaasServiceUrl.getHost(), dbaasServiceUrl.getPort()));
+            } catch (RuntimeException e) {
+                log.debug("Failed to close stale DBaaS port-forward", e);
+            }
+        }
+        dbaasServiceUrl = createDbaasUrl(portForwardService);
+        if (helperV3 != null) {
+            helperV3.setDbaasServiceUrl(dbaasServiceUrl);
+        }
+    }
+
+    private static boolean isConnectionReset(IOException e) {
+        Throwable current = e;
+        while (current != null) {
+            if (current instanceof SocketException && current.getMessage() != null
+                    && current.getMessage().contains("Connection reset")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
     public static boolean isTLSEnabledInDbaas() {
         return DbaasHelperV3.readEnvVariable(pod, "INTERNAL_TLS_ENABLED").
                 map(Boolean::parseBoolean).orElse(false);
@@ -141,12 +182,7 @@ public abstract class AbstractIT {
     }
 
     protected static DbaasUsersData readDbaasUsersFromSecret() {
-        Optional<Volume> optional = pod.getSpec().getVolumes().stream()
-                .filter(volume -> volume.getName().equals("dbaas-security-configuration-volume"))
-                .findAny();
-        assertTrue(optional.isPresent());
-        String secretName = optional.get().getSecret().getSecretName();
-        Secret secret = kubernetesClient.secrets().withName(secretName).get();
+        Secret secret = kubernetesClient.secrets().withName("dbaas-security-configuration-secret").get();
 
 
         String usersJson;

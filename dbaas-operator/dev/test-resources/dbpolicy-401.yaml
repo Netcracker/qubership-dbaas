@@ -1,0 +1,12 @@
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: DbPolicy
+metadata:
+  name: dp-401
+  namespace: test-ns
+spec:
+  # microserviceName "svc-401" matches apply-rules.json → mock returns 401
+  # Expected result: Phase=BackingOff, Stalled=False, reason=Unauthorized (retrying)
+  microserviceName: svc-401
+  policy:
+    - type: postgresql
+      defaultRole: admin

@@ -1,0 +1,13 @@
+# DatabaseDeclaration — aggregator rejects with HTTP 400
+# apply-rules.json key: "dd-svc-400" → httpCode=400 CORE-DBAAS-4036
+# Expected: Phase=InvalidConfiguration, Ready=False/AggregatorRejected, Stalled=True
+apiVersion: dbaas.netcracker.com/v1alpha1
+kind: DatabaseDeclaration
+metadata:
+  name: dd-400-bad-request
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: dd-svc-400
+      scope: service
+  type: postgresql

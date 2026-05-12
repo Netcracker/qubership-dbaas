@@ -1,0 +1,130 @@
+@startuml
+title Backup V2 data model (actual)
+
+hide methods
+skinparam classAttributeIconSize 0
+
+class Backup <<entity>> {
+  +name : String <<PK>>
+  +storageName : String
+  +blobPath : String
+  +externalDatabaseStrategy : ExternalDatabaseStrategy
+  +filterCriteria : FilterCriteriaEntity <<jsonb>>
+  +status : BackupStatus
+  +total : Integer
+  +completed : Integer
+  +size : Long
+  +errorMessage : String
+  +attemptCount : int
+  +imported : boolean
+  +digest : String
+  +ignoreNotBackupableDatabases : boolean
+}
+
+class LogicalBackup <<entity>> {
+  +id : UUID <<PK>>
+  +logicalBackupName : String
+  +adapterId : String
+  +type : String
+  +status : BackupTaskStatus
+  +errorMessage : String
+  +creationTime : Instant
+  +completionTime : Instant
+}
+
+class BackupDatabase <<entity>> {
+  +id : UUID <<PK>>
+  +name : String
+  +classifiers : List<SortedMap<String,Object>> <<jsonb>>
+  +settings : Map<String,Object> <<jsonb>>
+  +users : List<User> <<jsonb>>
+  +configurational : boolean
+  +status : BackupTaskStatus
+  +size : long
+  +duration : long
+  +path : String
+  +errorMessage : String
+  +creationTime : Instant
+}
+
+class BackupExternalDatabase <<entity>> {
+  +id : UUID <<PK>>
+  +name : String
+  +type : String
+  +classifiers : List<SortedMap<String,Object>> <<jsonb>>
+}
+
+class FilterCriteriaEntity <<value>> {
+  +filter : List<FilterEntity>
+  +exclude : List<FilterEntity>
+}
+
+class FilterEntity <<value>> {
+  +namespace : List<String>
+  +microserviceName : List<String>
+  +databaseType : List<DatabaseType>
+  +databaseKind : List<DatabaseKind>
+}
+
+class User <<value>> {
+  +name : String
+  +role : String
+}
+
+enum BackupStatus
+enum BackupTaskStatus
+enum ExternalDatabaseStrategy
+enum DatabaseType
+enum DatabaseKind
+
+Backup "1" o-- "0..*" LogicalBackup : logicalBackups\n(mappedBy=backup)
+LogicalBackup "1" o-- "0..*" BackupDatabase : backupDatabases\n(mappedBy=logicalBackup)
+Backup "1" o-- "0..*" BackupExternalDatabase : externalDatabases\n(mappedBy=backup)
+
+Backup ..> FilterCriteriaEntity : filterCriteria (jsonb)
+FilterCriteriaEntity o-- "0..*" FilterEntity : filter/exclude
+BackupDatabase ..> User : users (jsonb)
+
+Backup ..> BackupStatus
+LogicalBackup ..> BackupTaskStatus
+BackupDatabase ..> BackupTaskStatus
+Backup ..> ExternalDatabaseStrategy
+FilterEntity ..> DatabaseType
+FilterEntity ..> DatabaseKind
+
+note right of BackupStatus
+NOT_STARTED
+IN_PROGRESS
+FAILED
+COMPLETED
+DELETE_IN_PROGRESS
+DELETED
+end note
+
+note right of BackupTaskStatus
+NOT_STARTED
+IN_PROGRESS
+FAILED
+RETRYABLE_FAIL
+COMPLETED
+end note
+
+note right of ExternalDatabaseStrategy
+FAIL ("fail")
+SKIP ("skip")
+INCLUDE ("include")
+end note
+
+note right of DatabaseType
+POSTGRESQL ("postgresql")
+ARANGODB ("arangodb")
+CLICKHOUSE ("clickhouse")
+MONGODB ("mongodb")
+CASSANDRA ("cassandra")
+end note
+
+note right of DatabaseKind
+CONFIGURATION ("configuration")
+TRANSACTIONAL ("transactional")
+end note
+@enduml

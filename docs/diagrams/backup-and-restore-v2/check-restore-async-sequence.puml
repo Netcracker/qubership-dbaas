@@ -1,0 +1,42 @@
+@startuml
+autonumber
+participant "DBaaS" as DBaaS
+database "DBaaS DB" as DB
+participant "DBaaS Adapter" as Adapter
+
+DBaaS -> DB: find restores for processing
+DB --> DBaaS: list of restores
+
+loop for each Restore
+
+  alt attemptCount > retryCount
+    DBaaS -> DBaaS: set restore status to FAILED\nset error message
+  else
+
+    loop for each LogicalRestore (not finished)
+      alt logicalRestoreName is null/blank
+        DBaaS -> Adapter: send request to initiate logical restore
+        Adapter --> DBaaS: recieve response
+        DBaaS -> DBaaS: refresh LogicalRestore state
+      end
+      DBaaS -> Adapter: track LogicalRestore state
+      Adapter --> DBaaS: recieve response
+      DBaaS -> DBaaS: refresh LogicalRestore state
+    end
+
+    DBaaS -> DBaaS: aggregate Restore status
+    DBaaS -> DBaaS: increment attempt
+  end
+
+  alt restore.status != COMPLETED
+    DBaaS -> DB: save(restore)
+  else COMPLETED
+    loop for each RestoreDatabase
+      DBaaS -> Adapter: ensure user
+      Adapter --> DBaaS: list of users
+    end
+    DBaaS -> DBaaS: initialize logical databases from restore
+    DBaaS -> DB: save(restore)
+  end
+end
+@enduml

@@ -3,8 +3,8 @@ package com.netcracker.cloud.dbaas.converter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.persistence.AttributeConverter;
+
 import java.io.IOException;
 import java.util.SortedMap;
 
@@ -24,7 +24,8 @@ public class ClassifierConverter implements AttributeConverter<SortedMap<Object,
     @Override
     public SortedMap<Object, Object> convertToEntityAttribute(String dbData) {
         try {
-            return objectMapper.readValue(dbData, new TypeReference<SortedMap<Object, Object>>() {});
+            return objectMapper.readValue(dbData, new TypeReference<SortedMap<Object, Object>>() {
+            });
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

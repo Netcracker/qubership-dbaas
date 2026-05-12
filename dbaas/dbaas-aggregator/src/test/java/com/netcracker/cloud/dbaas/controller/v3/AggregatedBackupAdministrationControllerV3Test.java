@@ -113,7 +113,7 @@ class AggregatedBackupAdministrationControllerV3Test {
                 .statusCode(BAD_REQUEST.getStatusCode());
 
         when(dbBackupsService.validateBackup(any())).thenReturn(true);
-        when(asyncOperations.getBackupPool()).thenReturn(new ThreadPoolExecutor(1, 1,
+        when(asyncOperations.getBackupExecutor()).thenReturn(new ThreadPoolExecutor(1, 1,
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceRestoration namespaceRestoration = new NamespaceRestoration();
         namespaceRestoration.setId(UUID.randomUUID());
@@ -227,7 +227,7 @@ class AggregatedBackupAdministrationControllerV3Test {
 
     @Test
     void testCollectBackupInNamespace() {
-        when(asyncOperations.getBackupPool()).thenReturn(new ThreadPoolExecutor(1, 1,
+        when(asyncOperations.getBackupExecutor()).thenReturn(new ThreadPoolExecutor(1, 1,
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         when(dbBackupsService.collectBackup(eq(TEST_NAMESPACE), any(), eq(ALLOW_EVICTION)))
@@ -272,7 +272,7 @@ class AggregatedBackupAdministrationControllerV3Test {
 
     @Test
     void testCollectBackupInNamespaceWithIgnoreNotBackupableDatabases() {
-        when(asyncOperations.getBackupPool()).thenReturn(new ThreadPoolExecutor(1, 1,
+        when(asyncOperations.getBackupExecutor()).thenReturn(new ThreadPoolExecutor(1, 1,
                 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()));
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         when(dbBackupsService.collectBackup(eq(TEST_NAMESPACE), any(), eq(ALLOW_EVICTION))).thenReturn(namespaceBackup);

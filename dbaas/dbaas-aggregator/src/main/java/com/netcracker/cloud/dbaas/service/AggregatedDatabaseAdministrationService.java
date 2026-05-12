@@ -65,6 +65,8 @@ public class AggregatedDatabaseAdministrationService {
     String podName;
     @Inject
     LogicalDbSettingsService logicalDbSettingsService;
+    @Inject
+    DeletionService deletionService;
 
     ExecutorService executorService;
 
@@ -262,7 +264,7 @@ public class AggregatedDatabaseAdministrationService {
         if (!dBaaService.isAdapterExists(createRequest, namespace, microserviceName)) {
             final UnregisteredPhysicalDatabaseException exception = new UnregisteredPhysicalDatabaseException(AggregatedDatabaseAdministrationServiceConst.NO_ADAPTER_MSG);
             exception.setStatus(Response.Status.NOT_FOUND.getStatusCode());
-            deleteDatabase(databaseRegistry, null);
+            rollbackDbCreation(databaseRegistry, exception);
             throw exception;
         }
 
@@ -287,7 +289,7 @@ public class AggregatedDatabaseAdministrationService {
                                        FunctionProvidePassword<Database, String> password,
                                        String serviceRole,
                                        DatabaseRegistry databaseRegistry) {
-        CreatedDatabaseV3 createdDatabase = null;
+        CreatedDatabaseV3 createdDatabase;
         try {
             log.debug("try to create database");
             String microserviceName = (String) databaseRegistry.getClassifier().get(MICROSERVICE_NAME);
@@ -303,10 +305,15 @@ public class AggregatedDatabaseAdministrationService {
             return AggregatedDatabaseAdministrationUtils.responseDatabaseCreated(responseDatabaseRegistry,
                     physicalDatabasesService.getByAdapterId(responseDatabaseRegistry.getDatabase().getAdapterId()).getPhysicalDatabaseIdentifier(), serviceRole);
         } catch (Exception e) {
-            log.error("Exception during database creation with classifier = {}", databaseRegistry.getClassifier(), e);
-            deleteDatabase(databaseRegistry, createdDatabase);
+            rollbackDbCreation(databaseRegistry, e);
             throw e;
         }
+    }
+
+    private void rollbackDbCreation(DatabaseRegistry databaseRegistry, Exception e) {
+        log.error("Exception occurred during database creation with classifier = {} and type = '{}'", databaseRegistry.getClassifier(), databaseRegistry.getType(), e);
+        log.info("Rollback creation of the database...");
+        deletionService.dropRegistrySafe(databaseRegistry, true);
     }
 
     private DatabaseRegistry createCopyForResponse(DatabaseRegistry databaseRegistry) {
@@ -362,7 +369,7 @@ public class AggregatedDatabaseAdministrationService {
         log.debug("enrich database = {} by createdDatabase = {}", databaseRegistry, createdDatabase);
         databaseRegistry.getDatabase().setAdapterId(createdDatabase.getAdapterId());
         databaseRegistry.getDatabase().setConnectionProperties(Optional.ofNullable(createdDatabase.getConnectionProperties())
-                .orElseThrow(EmptyConnectionPropertiesException::new));
+                .orElseThrow(InternalDbEmptyConnectionPropertiesException::new));
         ConnectionPropertiesUtils.getConnectionProperties(databaseRegistry.getDatabase().getConnectionProperties(), role)
                 .put(PASSWORD_FIELD, password.apply(databaseRegistry.getDatabase(), role));
         databaseRegistry.getDatabase().setResources(createdDatabase.getResources());
@@ -398,23 +405,6 @@ public class AggregatedDatabaseAdministrationService {
         databaseRegistry.getDatabase().getConnectionProperties().forEach(v -> v.put(PASSWORD_FIELD,
                 password.apply(databaseRegistry.getDatabase(), (String) v.get(ROLE))));
     }
-
-
-    private void deleteDatabase(DatabaseRegistry databaseRegistry, CreatedDatabaseV3 createdDatabase) {
-        try {
-            // check if db was created by adapter
-            if (createdDatabase != null && createdDatabase.getResources() != null) {
-                log.info("Rollback creation of database {}", createdDatabase.getName());
-                dBaaService.dropDatabase(databaseRegistry);
-                log.info("Database resources: {} were dropped via roll back operation", createdDatabase.getResources());
-            }
-            log.info("Rollback creation of registry {}", databaseRegistry.getId());
-            databaseRegistryDbaasRepository.delete(databaseRegistry);
-        } catch (Exception dropDbException) {
-            log.error("Failed to drop db as roll back action for create operation", dropDbException);
-        }
-    }
-
 
     public void updateDatabase(DatabaseRegistry databaseRegistry, AbstractDatabaseCreateRequest createRequest) {
         logicalDbSettingsService.updateSettings(databaseRegistry, createRequest.getSettings());

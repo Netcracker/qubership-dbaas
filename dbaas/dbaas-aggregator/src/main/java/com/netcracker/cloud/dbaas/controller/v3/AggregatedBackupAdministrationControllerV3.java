@@ -129,7 +129,7 @@ public class AggregatedBackupAdministrationControllerV3 {
 
             var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
-            NamespaceRestoration result = asyncOperations.getBackupPool().submit(() -> {
+            NamespaceRestoration result = asyncOperations.getBackupExecutor().submit(() -> {
                 ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
 
                 return dbBackupsService.restore(backup, restorationId, targetNamespace, false, null);
@@ -292,7 +292,7 @@ public class AggregatedBackupAdministrationControllerV3 {
 
             var requestId = ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId();
 
-            Future<NamespaceBackup> futureBackup = asyncOperations.getBackupPool().submit(() -> {
+            Future<NamespaceBackup> futureBackup = asyncOperations.getBackupExecutor().submit(() -> {
                 ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject(requestId));
 
                 return dbBackupsService.collectBackup(namespace, id, allowEviction);

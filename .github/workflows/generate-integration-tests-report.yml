@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download Surefire reports artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: surefire-reports
           path: artifacts
@@ -103,13 +103,13 @@ jobs:
           cp .github/assets/report-template.html report/index.html
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact for Pages
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: './report'
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

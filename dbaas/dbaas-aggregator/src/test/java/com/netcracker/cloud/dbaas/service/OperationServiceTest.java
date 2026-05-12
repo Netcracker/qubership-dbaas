@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
-import static com.netcracker.cloud.dbaas.service.DBaaService.MARKED_FOR_DROP;
+import static com.netcracker.cloud.dbaas.service.DeletionService.MARKED_FOR_DROP;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -28,20 +28,28 @@ class OperationServiceTest {
     private PhysicalDatabasesService physicalDatabasesService;
     private LogicalDbDbaasRepository logicalDbDbaasRepository;
     private OperationService operationService;
+    private DeletionService deletionService;
+    private DatabaseRegistryDbaasRepository drdr;
+    private DatabaseDbaasRepository ddr;
 
     @BeforeEach
     void setup() {
         dBaaService = mock(DBaaService.class);
         physicalDatabasesService = mock(PhysicalDatabasesService.class);
         logicalDbDbaasRepository = mock(LogicalDbDbaasRepository.class);
-        operationService = new OperationService(dBaaService, physicalDatabasesService, logicalDbDbaasRepository);
+        deletionService = mock(DeletionService.class);
+        operationService = new OperationService(dBaaService, physicalDatabasesService, logicalDbDbaasRepository, deletionService);
+        drdr = mock(DatabaseRegistryDbaasRepository.class);
+        ddr = mock(DatabaseDbaasRepository.class);
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(drdr);
+        when(logicalDbDbaasRepository.getDatabaseDbaasRepository()).thenReturn(ddr);
     }
 
     @Test
     void testChangeHost_ValidRequests_onCopy() {
         testOnCopy(true);
-        verify(dBaaService, times(2)).saveDatabaseRegistry(any(DatabaseRegistry.class));
-        verify(dBaaService, times(1)).markDatabasesAsOrphan(any(DatabaseRegistry.class));
+        verify(drdr, times(1)).saveAnyTypeLogDb(any(DatabaseRegistry.class));
+        verify(deletionService, times(1)).markDatabaseAsOrphan(any(DatabaseRegistry.class));
     }
 
     @Test
@@ -89,10 +97,6 @@ class OperationServiceTest {
         when(physicalDatabasesService.getAdapterByPhysDbId(eq("physicalDatabaseId2")))
                 .thenReturn(adapter);
 
-        DatabaseRegistryDbaasRepository drdr = mock(DatabaseRegistryDbaasRepository.class);
-        DatabaseDbaasRepository ddr = mock(DatabaseDbaasRepository.class);
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(drdr);
-        when(logicalDbDbaasRepository.getDatabaseDbaasRepository()).thenReturn(ddr);
         when(ddr.findByNameAndAdapterId(eq(databaseRegistry.getName()), eq(newAdapterId)))
                 .thenReturn(Optional.of(databaseRegistryOrphan.getDatabase()));
 
@@ -112,17 +116,16 @@ class OperationServiceTest {
         verify(adapter, times(1)).deleteUser(argThat(
                 dbResources -> dbResources.size() == 1 && dbResources.getFirst().getName().equals("user3")));
         verify(adapter, times(0)).dropDatabase(any(DatabaseRegistry.class));
-        verify(adapter, times(0)).dropDatabase(any(Database.class));
-        verify(drdr, times(1)).deleteById(eq(databaseRegistryOrphan.getId()));
+        verify(drdr, times(1)).delete(eq(databaseRegistryOrphan));
         verify(dBaaService, times(1)).makeCopy(any(DatabaseRegistry.class));
-        verify(dBaaService, times(1)).markDatabasesAsOrphan(eq(databaseRegistry));
-        verify(dBaaService, times(2)).saveDatabaseRegistry(any(DatabaseRegistry.class));
+        verify(deletionService, times(1)).markDatabaseAsOrphan(eq(databaseRegistry));
+        verify(drdr, times(1)).saveAnyTypeLogDb(any(DatabaseRegistry.class));
     }
 
     @Test
     void testChangeHost_ValidRequests_inPlace() {
         testOnCopy(false);
-        verify(dBaaService, times(1)).saveDatabaseRegistry(any(DatabaseRegistry.class));
+        verify(drdr, times(1)).saveAnyTypeLogDb(any(DatabaseRegistry.class));
     }
 
     private void testOnCopy(Boolean copy) {
@@ -161,7 +164,6 @@ class OperationServiceTest {
         assertEquals("newHost", result.getConnectionProperties().getFirst().get("host"));
         assertEquals("jdbc:postgresql://newHost:5432/dbaas_d11b5fd935e548a6bf8574d35db45555", result.getConnectionProperties().getFirst().get("url"));
         verify(adapter, times(0)).dropDatabase(any(DatabaseRegistry.class));
-        verify(adapter, times(0)).dropDatabase(any(Database.class));
     }
 
     @Test

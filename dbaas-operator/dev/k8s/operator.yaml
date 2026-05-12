@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dbaas-operator
+rules:
+  # dbaas CRs
+  # Read-only access (Get/List/Watch) is sufficient for all workload resources;
+  # none of the controllers call Create, Update, or Delete on the main resource.
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - databasedeclarations
+      - dbpolicies
+      - externaldatabases
+    verbs: [get, list, watch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - databasedeclarations/status
+      - dbpolicies/status
+      - externaldatabases/status
+    verbs: [get, update, patch]
+  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
+  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [namespacebindings]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [namespacebindings/finalizers]
+    verbs: [update]
+  # Secrets (for credentials in ExternalDatabase)
+  # Fetched directly from the API server on each reconcile; no cache.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dbaas-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dbaas-operator
+subjects:
+  - kind: ServiceAccount
+    name: dbaas-operator
+    namespace: dbaas-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+rules:
+  # Leader election — leases are always in the operator's own namespace
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Event recording
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dbaas-operator
+subjects:
+  - kind: ServiceAccount
+    name: dbaas-operator
+    namespace: dbaas-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+  labels:
+    app: dbaas-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbaas-operator
+  template:
+    metadata:
+      labels:
+        app: dbaas-operator
+    spec:
+      serviceAccountName: dbaas-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: projected-tokens
+          projected:
+            defaultMode: 292
+            sources:
+              - serviceAccountToken:
+                  path: dbaas/token
+                  audience: dbaas
+                  expirationSeconds: 600
+      containers:
+        - name: manager
+          image: dbaas-operator:dev
+          imagePullPolicy: Never   # image is loaded into kind locally
+          env:
+            - name: ALPHA_APIS_ENABLED
+              value: "true"
+            - name: CLOUD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          args:
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8080
+            - --leader-elect
+          volumeMounts:
+            - name: projected-tokens
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi

@@ -1,0 +1,34 @@
+{{- if and .Values.DBAAS_OPERATOR_ENABLED (not .Values.restrictedEnvironment) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
+rules:
+  # dbaas CRs
+  # externaldatabases: operator only reads (Get/List) and watches; status is updated via the /status subresource.
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ externaldatabases ]
+    verbs: [ get, list, watch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ externaldatabases/status ]
+    verbs: [ get, update, patch ]
+  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
+  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ namespacebindings ]
+    verbs: [ get, list, watch, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ namespacebindings/finalizers ]
+    verbs: [ update ]
+  # Secrets (for credentials in ExternalDatabase)
+  # Secrets are fetched directly from the API server on each reconcile (no cache).
+  # list and watch are not required.
+  - apiGroups: [ "" ]
+    resources: [ secrets ]
+    verbs: [ get ]
+{{- end }}

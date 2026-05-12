@@ -19,7 +19,7 @@ public class ExternalDatabaseRequestV3 {
     @Schema(required = true, description = "See the description of \"classifier\" properties of DatabaseCreateRequest entity")
     private SortedMap<String, Object> classifier;
     @NonNull
-    @Schema(required = true, description = "There is an information about connection to database. It contains such keys as url, authDbName, port, host. username and password do not need to specify here." +
+    @Schema(required = true, description = "There is an information about connection to database. It contains such keys as url, authDbName, username, password, port, host, etc. " +
             "You should specify them in order for the client to be able to connect to the database.")
     private List<Map<String, Object>> connectionProperties;
     @NonNull

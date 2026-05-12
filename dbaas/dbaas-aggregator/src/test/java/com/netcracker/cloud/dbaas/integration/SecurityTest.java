@@ -8,35 +8,46 @@ import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
 import com.netcracker.cloud.dbaas.dto.UpdateConnectionPropertiesRequest;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.UpdateClassifierRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.integration.config.JwtUtilsTestResource;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.integration.config.SecurityTestProfile;
+import com.netcracker.cloud.dbaas.integration.utils.TestJwtUtils;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.utils.JwtUtils;
+import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.junit.mockito.MockitoConfig;
+import io.quarkus.test.oidc.server.OidcWiremockTestResource;
 import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
 
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.DATABASE_OPERATION_PATH_V3;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.LIST_DATABASES_PATH;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
+import static com.netcracker.cloud.framework.contexts.tenant.TenantContextObject.TENANT_HEADER;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.CREATED;
 import static jakarta.ws.rs.core.Response.Status.FORBIDDEN;
@@ -49,6 +60,8 @@ import static org.mockito.Mockito.when;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
+@QuarkusTestResource(JwtUtilsTestResource.class)
+@TestProfile(SecurityTestProfile.class)
 class SecurityTest {
 
     private static final String TEST_TYPE = "mongodbtest";
@@ -77,8 +90,12 @@ class SecurityTest {
     @Inject
     PasswordEncryption passwordEncryption;
 
+    TestJwtUtils jwtUtils;
+
     @BeforeEach
     void prepareMock() {
+        jwtUtils = JwtUtilsTestResource.JWT_UTILS;
+
         testDbaasAdapter = mock(DbaasAdapter.class);
         when(dbaasAdapterRESTClientFactory.createDbaasAdapterClientV2(any(), any(), any(), any(), any(), any(), any())).thenReturn(testDbaasAdapter);
         CreatedDatabaseV3 testDatabase = new CreatedDatabaseV3();
@@ -245,6 +262,75 @@ class SecurityTest {
         getByClassifier("discr-tool-user", "someDefaultPassword", classifier).statusCode(OK.getStatusCode());
     }
 
+    @Test
+    void testCreateDatabaseWithKubernetesToken() {
+        createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace"))
+                .statusCode(CREATED.getStatusCode());
+    }
+
+    @Test
+    void testCreateDatabaseWithInvalidKubernetesToken() {
+        createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace")+"pad-to-make-invalid-signature")
+                .statusCode(UNAUTHORIZED.getStatusCode());
+    }
+
+    @Test
+    void testCreateDatabaseWithKubernetesTokenAndTenantScope() throws JsonProcessingException {
+        String token = jwtUtils.getJwt("test-name", "unit-test-namespace");
+        String tenantId = UUID.randomUUID().toString();
+
+        var classifier = new HashMap<String, Object>();
+        classifier.put("scope", SCOPE_VALUE_TENANT);
+        classifier.put("tenantId", tenantId);
+        classifier.put("microserviceName", "test-name");
+        classifier.put("namespace", "unit-test-namespace");
+
+        var req = new DatabaseCreateRequestV3();
+        req.setOriginService("test-name");
+        req.setType(TEST_TYPE);
+        req.setClassifier(classifier);
+
+        given().auth().preemptive().oauth2(token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, tenantId)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(CREATED.getStatusCode());
+
+        String tenantIdDifferentFromHeader = UUID.randomUUID().toString();
+        req.getClassifier().put(TENANT_ID, tenantIdDifferentFromHeader);
+        given().auth().preemptive().oauth2(token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, tenantId)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(FORBIDDEN.getStatusCode());
+
+        req.getClassifier().put(TENANT_ID, tenantId);
+        given().auth().preemptive().oauth2(token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(FORBIDDEN.getStatusCode());
+
+        tenantIdDifferentFromHeader = UUID.randomUUID().toString();
+        req.getClassifier().put(TENANT_ID, tenantIdDifferentFromHeader);
+        given().auth().preemptive().basic("test_only_db_client", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody(req))
+                .accept(MediaType.APPLICATION_JSON)
+                .header(TENANT_HEADER, tenantId)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(CREATED.getStatusCode());
+    }
+
     private ValidatableResponse updateClassifier(String user, String password, UpdateClassifierRequestV3 updateClassifierRequest, String namespace, String type) throws JsonProcessingException {
         return given().auth().preemptive().basic(user, password)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -265,6 +351,15 @@ class SecurityTest {
 
     private ValidatableResponse createDatabase(String user, String password) {
         return given().auth().preemptive().basic(user, password)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"type\":\"" + TEST_TYPE + "\", \"classifier\":{\"scope\":\"service\", \"microserviceName\":\"test-name\", \"namespace\":\"unit-test-namespace\"}, \"originService\":\"test-name\"}")
+                .accept(MediaType.APPLICATION_JSON)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then();
+    }
+
+    private ValidatableResponse createDatabaseWithKubernetesToken(String token) {
+        return given().auth().preemptive().oauth2(token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"type\":\"" + TEST_TYPE + "\", \"classifier\":{\"scope\":\"service\", \"microserviceName\":\"test-name\", \"namespace\":\"unit-test-namespace\"}, \"originService\":\"test-name\"}")
                 .accept(MediaType.APPLICATION_JSON)

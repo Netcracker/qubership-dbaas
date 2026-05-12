@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- dbaas_v1_externaldatabase.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
