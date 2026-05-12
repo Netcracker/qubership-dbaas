@@ -81,6 +81,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 - Namespace ownership is determined dynamically via `NamespaceBinding` CRs.
 - Workload CRs in namespaces without a matching `NamespaceBinding` are silently skipped.
 - Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time.
+- The operator watches referenced Secrets and automatically reconciles affected `ExternalDatabase` CRs when their credentials rotate — no manual spec change required.
 - Authentication to dbaas-aggregator uses a projected service account token (rotated automatically by Kubernetes).
 
 ---
@@ -244,11 +245,13 @@ rules:
     verbs: ["update"]
 
   # Read Secrets to resolve credentials referenced by ExternalDatabase CRs.
-  # Secrets are fetched directly from the API server on each reconcile (not cached),
-  # so only get is required — list and watch are not needed.
+  # get is required to read Secret data during reconcile.
+  # list and watch are required for the metadata-only Secret watch that triggers
+  # automatic reconciliation when a referenced Secret changes (credential rotation).
+  # Only metadata (not data) is cached — Secret bodies are fetched on demand.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get"]
+    verbs: ["get", "list", "watch"]
 ```
 
 #### Required ClusterRoleBinding
@@ -319,7 +322,7 @@ subjects:
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
 | `dbaas.netcracker.com` | `namespacebindings/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `""` (core) | `secrets` | `get` | Read credential Secrets referenced by `ExternalDatabase` CRs (fetched directly, not cached) |
+| `""` (core) | `secrets` | `get`, `list`, `watch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). Secret bodies are not cached. |
 
 **Role** (operator namespace only):
 
@@ -519,11 +522,18 @@ spec:
 | `keys[].key` | Yes | Key in `Secret.data` to read (e.g., `db-user`) |
 | `keys[].name` | Yes | Target field name in the aggregator request (e.g., `username`) |
 
-> **Important:** The operator does **not** watch Secrets for changes. Secrets are read once per reconcile, which is triggered only by a change to the `ExternalDatabase` spec (i.e., when `metadata.generation` increments). If you rotate credentials in a Secret, you must also make a change to the `ExternalDatabase` spec — for example, add or update an annotation — to trigger a new reconcile and push the updated credentials to dbaas-aggregator.
+> **Credential rotation:** the operator watches every Secret referenced by any `ExternalDatabase` CR and automatically reconciles affected CRs when a referenced Secret changes (e.g., during credential rotation). Updated credentials are pushed to dbaas-aggregator without any manual spec change. The watch is metadata-only — Secret bodies are not cached in operator memory; the full content is fetched from the API server only at reconcile time.
 
 #### How ExternalDatabase Works
 
-Each time the spec changes (i.e., `metadata.generation` increments), the controller:
+A reconcile is triggered when any of the following happens:
+
+- The CR is created.
+- The CR spec changes (i.e., `metadata.generation` increments).
+- A Secret referenced via `credentialsSecretRef` changes (credential rotation) — the operator watches every referenced Secret and re-enqueues all `ExternalDatabase` CRs that reference it.
+- The covering `NamespaceBinding` is created or updated (e.g., the namespace is being claimed for the first time).
+
+On each reconcile, the controller:
 
 1. Checks namespace ownership via `NamespaceBinding` (skips if not owned).
 2. Validates that `spec.classifier["namespace"]`, if set, equals `metadata.namespace`.
@@ -532,7 +542,7 @@ Each time the spec changes (i.e., `metadata.generation` increments), the control
 5. Updates `status.phase` and `status.conditions` based on the outcome.
 
 ```
-CR created / spec changed
+CR created / spec changed / referenced Secret changed
         │
         ▼
   Ownership check (NamespaceBinding)
