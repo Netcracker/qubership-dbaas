@@ -13,7 +13,7 @@ jobs:
     if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Validate version
         run: |
@@ -36,3 +36,4 @@ jobs:
       java-version: 21
       pom-file: dbaas/dbaas-integration-tests/pom.xml
       maven-command: 'deploy'
+      skip-docker: true
