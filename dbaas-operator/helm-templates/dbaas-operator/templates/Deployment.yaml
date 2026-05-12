@@ -70,6 +70,12 @@ spec:
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
               readOnly: true
+          # The base image's ENTRYPOINT is /usr/bin/entrypoint.sh (cert loading, signal
+          # handling, init.d hooks). The Dockerfile sets CMD=["/app/dbaas-operator"], but
+          # a Pod's `args` field REPLACES image CMD entirely, so we must restate the binary
+          # in `command` here. Otherwise entrypoint.sh tries to exec the flags as a command.
+          command:
+            - /app/dbaas-operator
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
