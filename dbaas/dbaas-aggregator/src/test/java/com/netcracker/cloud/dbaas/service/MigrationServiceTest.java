@@ -15,6 +15,7 @@ import jakarta.ws.rs.core.Response;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -446,6 +447,32 @@ public class MigrationServiceTest {
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
+    }
+
+    @Test
+    void testRegisterDatabasesShouldPreservePassedResources() {
+        when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
+        when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
+        when(dbaasAdapter.getDatabases()).thenReturn(Collections.singleton(TEST_DB_NAME));
+        when(dbaasAdapter.identifier()).thenReturn(TEST_ADAPTER_ID);
+        mockConnectionPropertiesResponse(dBaaService);
+
+        DbResource userResource = new DbResource("user", TEST_DB_NAME + ":test-user");
+        DbResource dbResource = new DbResource("database", TEST_DB_NAME);
+        List<DbResource> expectedResources = Arrays.asList(userResource, dbResource);
+
+        RegisterDatabaseRequestV3 request = getRegisterDatabaseRequestSample();
+        request.setResources(expectedResources);
+
+        migrationService.registerDatabases(Collections.singletonList(request), API_VERSION.V3, false);
+        ArgumentCaptor<DatabaseRegistry> dbCaptor = ArgumentCaptor.forClass(DatabaseRegistry.class);
+        verify(dBaaService).encryptAndSaveDatabaseEntity(dbCaptor.capture());
+        DatabaseRegistry savedDb = dbCaptor.getValue();
+        assertEquals(2, savedDb.getResources().size(), "Resources from request should be preserved");
+        boolean hasUser = savedDb
+                .getResources().stream()
+                .anyMatch(r -> "user".equals(r.getKind()) && r.getName().contains("test-user"));
+        assertEquals(true, hasUser, "User resource should be present in saved entity");
     }
 
     private RegisterDatabaseRequestV3 getRegisterDatabaseRequestSample() {
