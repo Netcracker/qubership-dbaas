@@ -187,15 +187,19 @@ ARG TARGETARCH
 
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o myservice ./cmd/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -a -o myservice ./cmd/
 
-FROM ghcr.io/netcracker/qubership-core-base:2.2.11
+FROM ghcr.io/netcracker/qubership-core-base:2.2.13
 WORKDIR /app
 COPY --chown=10001:0 --chmod=555 --from=builder /app/myservice /app/myservice
 USER 10001:10001
-ENTRYPOINT ["/app/myservice"]
+CMD ["/app/myservice"]
 ```
 
 ### Rules
