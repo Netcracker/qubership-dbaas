@@ -711,7 +711,7 @@ public class DbaasHelperV3 {
                         key String,
                         value String
                     )
-                    ENGINE = ReplicatedMergeTree
+                    ENGINE = ReplicatedReplacingMergeTree
                     ORDER BY (key)""", tableName);
 
             stmt.execute(createQuery);
@@ -719,21 +719,14 @@ public class DbaasHelperV3 {
             if (setData != null) {
                 var key = "test_key";
                 var value = setData + "_value";
-
-                var rs = stmt.executeQuery(String.format("SELECT 1 FROM autotests WHERE key = '%s'", key));
-
-                if (rs.next()) {
-                    stmt.execute(String.format("UPDATE autotests SET value = '%s' WHERE key = '%s'", value, key));
-                } else {
-                    stmt.execute(String.format("INSERT INTO autotests (*) values ('%s', '%s')", key, value));
-                }
+                stmt.execute(String.format("INSERT INTO autotests (*) values ('%s', '%s')", key, value));
             }
 
             try {
                 if (checkData != null) {
                     var key = "test_key";
                     var value = checkData + "_value";
-                    var query = String.format("SELECT * FROM autotests WHERE key = '%s'", key);
+                    var query = String.format("SELECT * FROM autotests FINAL WHERE key = '%s'", key);
 
                     var rs = stmt.executeQuery(query);
                     int counter = 0;
