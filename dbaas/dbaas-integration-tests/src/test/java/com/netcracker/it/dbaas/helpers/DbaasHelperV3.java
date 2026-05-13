@@ -720,7 +720,7 @@ public class DbaasHelperV3 {
                 var rs = stmt.executeQuery(String.format("SELECT 1 FROM autotests WHERE key = '%s'", key));
 
                 if (rs.next()) {
-                    stmt.execute(String.format("UPDATE autotests SET value = '%s' WHERE key = '%s'", value, key));
+                    stmt.execute(String.format("ALTER TABLE autotests UPDATE value = '%s' WHERE key = '%s'", value, key));
                 } else {
                     stmt.execute(String.format("INSERT INTO autotests (*) values ('%s', '%s')", key, value));
                 }
