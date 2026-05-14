@@ -28,6 +28,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
@@ -120,7 +121,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseSecretRotation() throws IOException {
+            void testExternalDatabaseSecretRotation() {
                 String crName = generateName();
                 String secretName = generateName();
                 String microserviceName = generateName();
@@ -155,7 +156,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseSecretCreatedAfterEDB() throws IOException {
+            void testExternalDatabaseSecretCreatedAfterEDB() {
                 String crName = generateName();
                 String secretName = generateName();
                 String microserviceName = generateName();
@@ -165,7 +166,7 @@ public class OperatorIT extends AbstractIT {
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
                 waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
-                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), classifier, NAMESPACE, "postgresql", 404);
+                waitForDatabaseNotFound(classifier);
 
                 applySecret(secretName, Map.of(
                         "username", "recovered-username",
@@ -180,7 +181,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseSecretDeleted() throws IOException {
+            void testExternalDatabaseSecretDeleted() {
                 String crName = generateName();
                 String secretName = generateName();
                 String microserviceName = generateName();
@@ -206,7 +207,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseSecretSharedByMultipleEDBs() throws IOException {
+            void testExternalDatabaseSecretSharedByMultipleEDBs() {
                 String secretName = generateName();
                 String crName1 = generateName();
                 String crName2 = generateName();
@@ -246,7 +247,7 @@ public class OperatorIT extends AbstractIT {
             }
 
             @Test
-            void testExternalDatabaseMultipleSecretsInConnectionProperties() throws IOException {
+            void testExternalDatabaseMultipleSecretsInConnectionProperties() {
                 String crName = generateName();
                 String secretNameA = generateName();
                 String secretNameB = generateName();
@@ -1148,6 +1149,16 @@ public class OperatorIT extends AbstractIT {
             assertConnectionPropertiesContains(db, expected);
             return db;
         });
+    }
+
+    private void waitForDatabaseNotFound(Map<String, Object> classifier) {
+        Failsafe.with(DEFAULT_RETRY_POLICY).run(() ->
+                helperV3.getDatabaseByClassifierAsPOJO(
+                        helperV3.getClusterDbaAuthorization(),
+                        classifier,
+                        NAMESPACE,
+                        "postgresql",
+                        404));
     }
 
     private DatabaseResponse waitForDatabaseConnectionProperties(Map<String, Object> classifier, String role, Map<String, Object> expected) {
