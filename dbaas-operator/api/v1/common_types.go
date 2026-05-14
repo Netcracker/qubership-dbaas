@@ -33,6 +33,11 @@ type ObservedGenerationSetter interface {
 //	                     ↘ BackingOff (transient error, will retry)
 //	                     ↘ InvalidConfiguration (permanent error, no retry)
 //
+// DatabaseDeclaration additionally uses WaitingForDependency while polling
+// an asynchronous provisioning operation in dbaas-aggregator.
+// ExternalDatabase and DbPolicy never transition into WaitingForDependency —
+// their reconcile flows are fully synchronous.
+//
 // +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
 type Phase string
 
@@ -45,8 +50,10 @@ const (
 	// resource with dbaas-aggregator.
 	PhaseProcessing Phase = "Processing"
 
-	// PhaseWaitingForDependency is reserved for future use by resources that
-	// have asynchronous provisioning dependencies.
+	// PhaseWaitingForDependency indicates the controller is polling an
+	// asynchronous provisioning operation in dbaas-aggregator (HTTP 202 +
+	// trackingId flow). Used only by DatabaseDeclaration — ExternalDatabase
+	// and DbPolicy have synchronous reconcile flows and never use this phase.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
 	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.
