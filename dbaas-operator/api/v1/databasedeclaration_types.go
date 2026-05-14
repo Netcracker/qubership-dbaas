@@ -24,7 +24,7 @@ import (
 // Classifier uniquely identifies a database in dbaas-aggregator.
 // All keys are sorted alphabetically by the aggregator for identity comparison.
 type Classifier struct {
-	// name is the microservice name that owns the database.
+	// microserviceName is the name of the microservice that owns the database.
 	// Must match metadata.microserviceName sent in the declarative payload.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1

@@ -75,7 +75,7 @@ spec:
                     type: object
                   microserviceName:
                     description: |-
-                      name is the microservice name that owns the database.
+                      microserviceName is the name of the microservice that owns the database.
                       Must match metadata.microserviceName sent in the declarative payload.
                     minLength: 1
                     type: string
@@ -127,7 +127,7 @@ spec:
                         type: object
                       microserviceName:
                         description: |-
-                          name is the microservice name that owns the database.
+                          microserviceName is the name of the microservice that owns the database.
                           Must match metadata.microserviceName sent in the declarative payload.
                         minLength: 1
                         type: string
