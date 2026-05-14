@@ -95,4 +95,10 @@ type OperatorStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
+	// Use this value to correlate operator logs with dbaas-aggregator logs when
+	// investigating issues for a specific resource.
+	// +optional
+	LastRequestID string `json:"lastRequestId,omitempty"`
 }
