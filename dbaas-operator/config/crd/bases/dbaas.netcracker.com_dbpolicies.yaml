@@ -12,7 +12,7 @@ spec:
     listKind: DbPolicyList
     plural: dbpolicies
     shortNames:
-    - dbbp
+    - dbdp
     singular: dbpolicy
   scope: Namespaced
   versions:

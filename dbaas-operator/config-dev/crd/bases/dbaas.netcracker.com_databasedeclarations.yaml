@@ -11,6 +11,8 @@ spec:
     kind: DatabaseDeclaration
     listKind: DatabaseDeclarationList
     plural: databasedeclarations
+    shortNames:
+    - dbdd
     singular: databasedeclaration
   scope: Namespaced
   versions:

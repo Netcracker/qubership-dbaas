@@ -97,7 +97,7 @@ type DbPolicyStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=dbpolicies,singular=dbpolicy,shortName=dbbp
+// +kubebuilder:resource:scope=Namespaced,path=dbpolicies,singular=dbpolicy,shortName=dbdp
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
