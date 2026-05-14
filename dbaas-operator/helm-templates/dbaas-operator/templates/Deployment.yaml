@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
     app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
     app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
-    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/part-of: 'dbaas'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
     app.kubernetes.io/component: 'operator'
     app.kubernetes.io/technology: 'go'
@@ -42,9 +42,14 @@ spec:
   template:
     metadata:
       labels:
-        name: '{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}'
-        app.kubernetes.io/name: '{{ $.Values.SERVICE_NAME }}'
-        app.kubernetes.io/part-of: '{{ $.Values.APPLICATION_NAME }}'
+        app: '{{ .Values.SERVICE_NAME }}'
+        name: '{{ .Values.SERVICE_NAME }}'
+        app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+        app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+        app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
+        app.kubernetes.io/component: 'operator'
+        app.kubernetes.io/part-of: 'dbaas'
+        app.kubernetes.io/technology: 'go'
     spec:
       nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
@@ -65,9 +70,10 @@ spec:
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
               readOnly: true
-          # A Pod's `args` field REPLACES image CMD entirely. State the binary path in
-          # `command` so the deployment keeps working regardless of whether the Dockerfile
-          # uses ENTRYPOINT or CMD for /app/dbaas-operator.
+          # The base image's ENTRYPOINT is /usr/bin/entrypoint.sh (cert loading, signal
+          # handling, init.d hooks). The Dockerfile sets CMD=["/app/dbaas-operator"], but
+          # a Pod's `args` field REPLACES image CMD entirely, so we must restate the binary
+          # in `command` here. Otherwise entrypoint.sh tries to exec the flags as a command.
           command:
             - /app/dbaas-operator
           args:

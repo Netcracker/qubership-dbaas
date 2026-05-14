@@ -1,4 +1,4 @@
-gapiVersion: v1
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: dbaas-operator
@@ -120,9 +120,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-          # A Pod's `args` field REPLACES image CMD entirely. State the binary path in
-          # `command` so the deployment keeps working regardless of whether the Dockerfile
-          # uses ENTRYPOINT or CMD for /app/dbaas-operator.
+          # The base image's ENTRYPOINT is /usr/bin/entrypoint.sh. Dockerfile sets
+          # CMD=["/app/dbaas-operator"], but a Pod's `args` field REPLACES image CMD,
+          # so the binary path must be repeated here in `command`.
           command:
             - /app/dbaas-operator
           args:

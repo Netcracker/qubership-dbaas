@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Slf4j
 @AllArgsConstructor
 public class BackupHelperV1 {
-    public static final String STORAGE_NAME = "minio";
+    public static final String STORAGE_NAME = "default";
     public static final String BLOB_PATH = "tmp/a/b/c";
     public static final String DIGEST = "digest";
     public static final String BACKUP_METADATA = "metadata";
