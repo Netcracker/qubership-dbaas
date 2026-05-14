@@ -732,7 +732,7 @@ kubectl get dbedb my-postgres-external -n my-namespace -o jsonpath='{.status.las
 
 Short name: `dbdp`
 
-`kubectl get dbdp` columns: `PHASE`, `AGE`
+`kubectl get dbdp` columns: `PHASE`, `MICROSERVICENAME`, `AGE`
 
 #### DbPolicy Resource Fields
 
@@ -909,8 +909,8 @@ spec:
 
 ```bash
 kubectl get dbdp -n my-namespace
-# NAME        PHASE       AGE
-# my-policy   Succeeded   1m
+# NAME        PHASE       MICROSERVICENAME   AGE
+# my-policy   Succeeded   my-service         1m
 
 kubectl describe dbdp my-policy -n my-namespace
 ```
@@ -935,7 +935,7 @@ Provisioning is **asynchronous**: the aggregator returns `202 Accepted` with a `
 
 Short name: `dbdd`
 
-`kubectl get dbdd` columns: `PHASE`, `TYPE`, `AGE`
+`kubectl get dbdd` columns: `PHASE`, `MICROSERVICENAME`, `TYPE`, `AGE`
 
 #### DatabaseDeclaration Resource Fields
 
@@ -1179,9 +1179,9 @@ spec:
 
 ```bash
 kubectl get dbdd -n my-namespace
-# NAME              PHASE                  TYPE         AGE
-# my-app-db         Succeeded              postgresql   2m
-# my-app-db-clone   WaitingForDependency   postgresql   10s
+# NAME              PHASE                  MICROSERVICENAME   TYPE         AGE
+# my-app-db         Succeeded              payments           postgresql   2m
+# my-app-db-clone   WaitingForDependency   payments           postgresql   10s
 ```
 
 **Watch async progress:**

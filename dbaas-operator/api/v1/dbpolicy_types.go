@@ -99,6 +99,7 @@ type DbPolicyStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=dbpolicies,singular=dbpolicy,shortName=dbdp
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.microserviceName"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // DbPolicy is the Schema for the dbpolicies API.
