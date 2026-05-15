@@ -33,10 +33,10 @@ rules:
     resources: [namespacebindings/finalizers]
     verbs: [update]
   # Secrets (for credentials in ExternalDatabase)
-  # Fetched directly from the API server on each reconcile; no cache.
+  # list + watch required for WatchesMetadata; get required for reconcile reads.
   - apiGroups: [""]
     resources: [secrets]
-    verbs: [get]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -120,6 +120,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          # The base image's ENTRYPOINT is /usr/bin/entrypoint.sh. Dockerfile sets
+          # CMD=["/app/dbaas-operator"], but a Pod's `args` field REPLACES image CMD,
+          # so the binary path must be repeated here in `command`.
+          command:
+            - /app/dbaas-operator
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080

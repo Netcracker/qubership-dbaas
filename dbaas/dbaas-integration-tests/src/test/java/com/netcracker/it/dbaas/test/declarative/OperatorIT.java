@@ -27,6 +27,8 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.jodah.failsafe.Failsafe;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
@@ -105,8 +107,190 @@ public class OperatorIT extends AbstractIT {
                 var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-with-secret", secretName);
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
+                var db = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
+                assertConnectionPropertiesContains(db, Map.of(
+                        "username", "username",
+                        "password", "password"
+                ));
+            }
+
+            @Test
+            void testExternalDatabaseSecretRotation() {
+                String crName = generateName();
+                String secretName = generateName();
+                String microserviceName = generateName();
+                var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+
+                applySecret(secretName, Map.of(
+                        "username", "username",
+                        "password", "A"
+                ));
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-secret-rotation", secretName);
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
+                waitForDatabaseConnectionProperties(classifier, Map.of(
+                        "username", "username",
+                        "password", "A"
+                ));
+                String previousLastRequestId = getLastRequestId(CRD_EXTERNAL_DATABASE, cr);
+
+                updateSecret(secretName, Map.of(
+                        "username", "username",
+                        "password", "B"
+                ));
+
+                waitForLastRequestIdChange(CRD_EXTERNAL_DATABASE, cr, previousLastRequestId,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForDatabaseConnectionProperties(classifier, Map.of(
+                        "username", "username",
+                        "password", "B"
+                ));
+            }
+
+            @Test
+            void testExternalDatabaseSecretCreatedAfterEDB() {
+                String crName = generateName();
+                String secretName = generateName();
+                String microserviceName = generateName();
+                var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-secret-recovery", secretName);
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
+                waitForDatabaseNotFound(classifier);
+
+                applySecret(secretName, Map.of(
+                        "username", "recovered-username",
+                        "password", "recovered-password"
+                ));
+
                 waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
-                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
+                waitForDatabaseConnectionProperties(classifier, Map.of(
+                        "username", "recovered-username",
+                        "password", "recovered-password"
+                ));
+            }
+
+            @Test
+            void testExternalDatabaseSecretDeleted() {
+                String crName = generateName();
+                String secretName = generateName();
+                String microserviceName = generateName();
+                var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+
+                applySecret(secretName, Map.of(
+                        "username", "username",
+                        "password", "password"
+                ));
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-secret-delete", secretName);
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
+                waitForDatabaseConnectionProperties(classifier, Map.of(
+                        "username", "username",
+                        "password", "password"
+                ));
+
+                deleteSecret(secretName);
+
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_BACKING_OFF, STATUS_FALSE, REASON_SECRET_ERROR, STATUS_FALSE);
+            }
+
+            @Test
+            void testExternalDatabaseSecretSharedByMultipleEDBs() {
+                String secretName = generateName();
+                String crName1 = generateName();
+                String crName2 = generateName();
+                String microserviceName1 = generateName();
+                String microserviceName2 = generateName();
+                var classifier1 = new ClassifierBuilder().ms(microserviceName1).ns(NAMESPACE).build();
+                var classifier2 = new ClassifierBuilder().ms(microserviceName2).ns(NAMESPACE).build();
+
+                applySecret(secretName, Map.of(
+                        "username", "shared-user",
+                        "password", "A"
+                ));
+
+                var cr1 = buildExternalDatabaseCR(crName1, microserviceName1, NAMESPACE, "db-shared-secret-1", secretName);
+                var cr2 = buildExternalDatabaseCR(crName2, microserviceName2, NAMESPACE, "db-shared-secret-2", secretName);
+
+                createCR(CRD_EXTERNAL_DATABASE, cr1);
+                createCR(CRD_EXTERNAL_DATABASE, cr2);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
+                waitForDatabaseConnectionProperties(classifier1, Map.of("username", "shared-user", "password", "A"));
+                waitForDatabaseConnectionProperties(classifier2, Map.of("username", "shared-user", "password", "A"));
+                String previousLastRequestId1 = getLastRequestId(CRD_EXTERNAL_DATABASE, cr1);
+                String previousLastRequestId2 = getLastRequestId(CRD_EXTERNAL_DATABASE, cr2);
+
+                updateSecret(secretName, Map.of(
+                        "username", "shared-user",
+                        "password", "B"
+                ));
+
+                waitForLastRequestIdChange(CRD_EXTERNAL_DATABASE, cr1, previousLastRequestId1,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForLastRequestIdChange(CRD_EXTERNAL_DATABASE, cr2, previousLastRequestId2,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForDatabaseConnectionProperties(classifier1, Map.of("username", "shared-user", "password", "B"));
+                waitForDatabaseConnectionProperties(classifier2, Map.of("username", "shared-user", "password", "B"));
+            }
+
+            @Test
+            void testExternalDatabaseMultipleSecretsInConnectionProperties() {
+                String crName = generateName();
+                String secretNameA = generateName();
+                String secretNameB = generateName();
+                String microserviceName = generateName();
+                var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+
+                applySecret(secretNameA, Map.of(
+                        "username", "admin-user",
+                        "password", "admin-A"
+                ));
+                applySecret(secretNameB, Map.of(
+                        "username", "rw-user",
+                        "password", "rw-A"
+                ));
+
+                var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "db-multiple-secrets", null);
+                Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                spec.put("connectionProperties", List.of(
+                        buildSecretConnectionProperties("admin", secretNameA),
+                        buildSecretConnectionProperties("rw", secretNameB)
+                ));
+
+                createCR(CRD_EXTERNAL_DATABASE, cr);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
+                waitForDatabaseConnectionProperties(classifier, "admin", Map.of("username", "admin-user", "password", "admin-A"));
+                waitForDatabaseConnectionProperties(classifier, "rw", Map.of("username", "rw-user", "password", "rw-A"));
+                String previousLastRequestId = getLastRequestId(CRD_EXTERNAL_DATABASE, cr);
+
+                updateSecret(secretNameA, Map.of(
+                        "username", "admin-user",
+                        "password", "admin-B"
+                ));
+
+                waitForLastRequestIdChange(CRD_EXTERNAL_DATABASE, cr, previousLastRequestId,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForDatabaseConnectionProperties(classifier, "admin", Map.of("username", "admin-user", "password", "admin-B"));
+                waitForDatabaseConnectionProperties(classifier, "rw", Map.of("username", "rw-user", "password", "rw-A"));
+                previousLastRequestId = getLastRequestId(CRD_EXTERNAL_DATABASE, cr);
+
+                updateSecret(secretNameB, Map.of(
+                        "username", "rw-user",
+                        "password", "rw-B"
+                ));
+
+                waitForLastRequestIdChange(CRD_EXTERNAL_DATABASE, cr, previousLastRequestId,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+                waitForDatabaseConnectionProperties(classifier, "admin", Map.of("username", "admin-user", "password", "admin-B"));
+                waitForDatabaseConnectionProperties(classifier, "rw", Map.of("username", "rw-user", "password", "rw-B"));
             }
 
             @Test
@@ -378,8 +562,9 @@ public class OperatorIT extends AbstractIT {
                 assertNotEquals(updatedConnectionProperties, connectionProperties);
 
                 createCR(CRD_EXTERNAL_DATABASE, cr);
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
 
-                kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
+                var updatedResource = kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
                         .inNamespace(NAMESPACE)
                         .resource(cr)
                         .edit(r -> {
@@ -387,6 +572,7 @@ public class OperatorIT extends AbstractIT {
                             currSpec.put("connectionProperties", updatedConnectionProperties);
                             return r;
                         });
+                waitForDesiredState(CRD_EXTERNAL_DATABASE, updatedResource, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE, true);
 
                 var updatedCR = kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
                         .inNamespace(NAMESPACE)
@@ -953,6 +1139,29 @@ public class OperatorIT extends AbstractIT {
                 .create();
     }
 
+    private void updateSecret(String secretName, Map<String, String> keyToValue) {
+        Secret existing = kubernetesClient.secrets()
+                .inNamespace(NAMESPACE)
+                .withName(secretName)
+                .get();
+        assertNotNull(existing, "secret must exist before update");
+
+        existing.setStringData(keyToValue);
+
+        kubernetesClient.secrets()
+                .inNamespace(NAMESPACE)
+                .resource(existing)
+                .update();
+    }
+
+    private void deleteSecret(String secretName) {
+        kubernetesClient.secrets()
+                .inNamespace(NAMESPACE)
+                .withName(secretName)
+                .delete();
+    }
+
+
     private Secret getSecret(String secretName) {
         ObjectMeta meta = new ObjectMeta();
         meta.setName(secretName);
@@ -977,12 +1186,30 @@ public class OperatorIT extends AbstractIT {
         return r;
     }
 
+    private Map<String, Object> buildSecretConnectionProperties(String role, String secretName) {
+        return Map.of(
+                "role", role,
+                "credentialsSecretRef", Map.of(
+                        "name", secretName,
+                        "keys", List.of(
+                                Map.of("key", "username", "name", "username"),
+                                Map.of("key", "password", "name", "password")
+                        )
+                )
+        );
+    }
+
     private void waitForDesiredState(CustomResourceDefinitionContext crd, GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) {
+        waitForDesiredState(crd, cr, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling, false);
+    }
+
+    private void waitForDesiredState(CustomResourceDefinitionContext crd, GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling, boolean waitForObservedGeneration) {
         try {
             kubernetesClient.genericKubernetesResources(crd)
                     .inNamespace(NAMESPACE)
                     .resource(cr)
-                    .waitUntilCondition(r -> isDesiredState(r, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling),
+                    .waitUntilCondition(r -> isDesiredState(r, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling)
+                                    && (!waitForObservedGeneration || isCurrentGenerationObserved(r)),
                             2, TimeUnit.MINUTES);
         } catch (Exception e) {
             // Catch later
@@ -992,6 +1219,107 @@ public class OperatorIT extends AbstractIT {
                 .resource(cr)
                 .get();
         assertDesiredState(resultCR, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling);
+        if (waitForObservedGeneration) {
+            assertTrue(isCurrentGenerationObserved(resultCR), "current generation must be observed");
+        }
+    }
+
+    private void waitForLastRequestIdChange(CustomResourceDefinitionContext crd, GenericKubernetesResource cr, String previousLastRequestId,
+                                            String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) {
+        try {
+            kubernetesClient.genericKubernetesResources(crd)
+                    .inNamespace(NAMESPACE)
+                    .resource(cr)
+                    .waitUntilCondition(r -> isDesiredState(r, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling)
+                                    && !Objects.equals(previousLastRequestId, getLastRequestId(r)),
+                            2, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            // Catch later
+        }
+        GenericKubernetesResource resultCR = kubernetesClient.genericKubernetesResources(crd)
+                .inNamespace(NAMESPACE)
+                .resource(cr)
+                .get();
+        assertDesiredState(resultCR, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling);
+        assertNotEquals(previousLastRequestId, getLastRequestId(resultCR), "lastRequestId must change after Secret event");
+    }
+
+    private String getLastRequestId(CustomResourceDefinitionContext crd, GenericKubernetesResource cr) {
+        GenericKubernetesResource currentCR = kubernetesClient.genericKubernetesResources(crd)
+                .inNamespace(NAMESPACE)
+                .resource(cr)
+                .get();
+        return getLastRequestId(currentCR);
+    }
+
+    private String getLastRequestId(GenericKubernetesResource cr) {
+        if (cr == null || cr.getAdditionalProperties() == null) {
+            return null;
+        }
+
+        Map<String, Object> status =
+                (Map<String, Object>) cr.getAdditionalProperties().get("status");
+        if (status == null) {
+            return null;
+        }
+
+        return (String) status.get("lastRequestId");
+    }
+
+    private boolean isCurrentGenerationObserved(GenericKubernetesResource cr) {
+        if (cr == null || cr.getMetadata() == null || cr.getAdditionalProperties() == null) {
+            return false;
+        }
+
+        Map<String, Object> status =
+                (Map<String, Object>) cr.getAdditionalProperties().get("status");
+        if (status == null || !(status.get("observedGeneration") instanceof Number observedGeneration)) {
+            return false;
+        }
+
+        return observedGeneration.longValue() == cr.getMetadata().getGeneration();
+    }
+
+    private DatabaseResponse waitForDatabaseConnectionProperties(Map<String, Object> classifier, Map<String, Object> expected) {
+        return (DatabaseResponse) Failsafe.with(DEFAULT_RETRY_POLICY).get(() -> {
+            var db = helperV3.getDatabaseByClassifierAsPOJO(
+                    helperV3.getClusterDbaAuthorization(),
+                    classifier,
+                    NAMESPACE,
+                    "postgresql",
+                    200);
+            assertConnectionPropertiesContains(db, expected);
+            return db;
+        });
+    }
+
+    private void waitForDatabaseNotFound(Map<String, Object> classifier) {
+        Failsafe.with(DEFAULT_RETRY_POLICY).run(() ->
+                helperV3.getDatabaseByClassifierAsPOJO(
+                        helperV3.getClusterDbaAuthorization(),
+                        classifier,
+                        NAMESPACE,
+                        "postgresql",
+                        404));
+    }
+
+    private DatabaseResponse waitForDatabaseConnectionProperties(Map<String, Object> classifier, String role, Map<String, Object> expected) {
+        return (DatabaseResponse) Failsafe.with(DEFAULT_RETRY_POLICY).get(() -> {
+            var db = helperV3.getDatabaseByClassifierAsPOJO(
+                    helperV3.getClusterDbaAuthorization(),
+                    classifier,
+                    NAMESPACE,
+                    "postgresql",
+                    200,
+                    role);
+            assertConnectionPropertiesContains(db, expected);
+            return db;
+        });
+    }
+
+    private void assertConnectionPropertiesContains(DatabaseResponse db, Map<String, Object> expected) {
+        expected.forEach((key, value) ->
+                assertEquals(value, db.getConnectionProperties().get(key), "connection property '" + key + "'"));
     }
 
     private static void dbaasOperatorExistOrSkipTests() {

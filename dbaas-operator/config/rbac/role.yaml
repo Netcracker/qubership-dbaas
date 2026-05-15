@@ -14,11 +14,11 @@ rules:
   - list
   - patch
   - update
+  - watch
 - apiGroups:
   - dbaas.netcracker.com
   resources:
   - databasedeclarations
-  - databasesecrets
   - dbpolicies
   - externaldatabases
   verbs:
@@ -29,7 +29,6 @@ rules:
   - dbaas.netcracker.com
   resources:
   - databasedeclarations/status
-  - databasesecrets/status
   - dbpolicies/status
   - externaldatabases/status
   verbs:

@@ -18,7 +18,7 @@ package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 import (
 	"context"
@@ -251,6 +251,19 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 // Reconcile returns an error (BackingOff phase).  Pass
 // ctrlcontroller.Options{} to keep the controller-runtime defaults.
 func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+	// Register the field index before building the controller.
+	// controller-runtime calls indexSecretNames for every ExternalDatabase to
+	// build the reverse map ("namespace/secretName" → EDBs), then keeps it up to date
+	// automatically as EDBs are created, updated, or deleted.
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&dbaasv1.ExternalDatabase{},
+		secretNamesIndex,
+		indexSecretNames,
+	); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.ExternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
@@ -259,6 +272,13 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+		// Re-enqueue ExternalDatabases that reference a Secret when that Secret
+		// changes, so credential rotations take effect without a spec change.
+		// WatchesMetadata avoids caching Secret data (credentials) in operator memory —
+		// enqueueForSecret only needs the name/namespace to query the field index.
+		WatchesMetadata(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForSecret),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		WithOptions(opts).
 		Named("externaldatabase").
 		Complete(r)
@@ -270,6 +290,46 @@ func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj 
 	list := &dbaasv1.ExternalDatabaseList{}
 	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
 		log.ErrorC(ctx, "enqueueForBinding: list ExternalDatabases in %s: %v", obj.GetNamespace(), err)
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return reqs
+}
+
+// indexSecretNames is the indexer function registered at startup.
+// controller-runtime calls it for every ExternalDatabase to populate and
+// maintain the reverse map: "namespace/secretName" → []ExternalDatabase.
+// The key includes the namespace to prevent spurious cross-namespace reconciles
+// when two namespaces have secrets with the same name.
+func indexSecretNames(obj client.Object) []string {
+	edb, ok := obj.(*dbaasv1.ExternalDatabase)
+	if !ok {
+		log.Warnf("indexSecretNames: unexpected object type %T", obj)
+		return nil
+	}
+	var keys []string
+	for _, cp := range edb.Spec.ConnectionProperties {
+		if cp.CredentialsSecretRef != nil {
+			keys = append(keys, edb.Namespace+"/"+cp.CredentialsSecretRef.Name)
+		}
+	}
+	return keys
+}
+
+// enqueueForSecret maps a Secret event to reconcile requests for ExternalDatabases
+// that reference it. Uses the field index for an O(1) lookup — no full list scan.
+func (r *ExternalDatabaseReconciler) enqueueForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &dbaasv1.ExternalDatabaseList{}
+	if err := r.List(ctx, list,
+		// MatchingFields resolves against the in-memory index — no API server call, no scan.
+		// The key encodes namespace+name so results are already namespace-scoped.
+		client.MatchingFields{secretNamesIndex: obj.GetNamespace() + "/" + obj.GetName()},
+	); err != nil {
+		log.ErrorC(ctx, "enqueueForSecret: index lookup for Secret %s/%s: %v",
+			obj.GetNamespace(), obj.GetName(), err)
 		return nil
 	}
 	reqs := make([]reconcile.Request, 0, len(list.Items))
