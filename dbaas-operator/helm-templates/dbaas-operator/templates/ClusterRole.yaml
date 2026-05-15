@@ -23,6 +23,13 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ dbpolicies/status ]
     verbs: [ get, update, patch ]
+  # databasesecrets: operator reads and watches; creates/updates the target core v1.Secret; status via /status subresource.
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ databasesecrets ]
+    verbs: [ get, list, watch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ databasesecrets/status ]
+    verbs: [ get, update, patch ]
   # externaldatabases: operator only reads (Get/List) and watches; status is updated via the /status subresource.
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ externaldatabases ]
@@ -38,10 +45,9 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ namespacebindings/finalizers ]
     verbs: [ update ]
-  # Secrets (for credentials in ExternalDatabase)
-  # Secrets are fetched directly from the API server on each reconcile (no cache).
-  # list and watch are not required.
+  # Secrets: read for ExternalDatabase credentials; create/update/patch for DatabaseSecret materialization.
+  # Fetched directly from the API server on each reconcile (no cache). list required for pre-flight sibling check.
   - apiGroups: [ "" ]
     resources: [ secrets ]
-    verbs: [ get ]
+    verbs: [ get, list, create, update, patch ]
 {{- end }}

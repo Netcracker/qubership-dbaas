@@ -140,6 +140,22 @@ type InitialInstantiationWire struct {
 	SourceClassifier map[string]any `json:"sourceClassifier,omitempty"`
 }
 
+// ─── get-by-classifier ────────────────────────────────────────────────────────
+
+// GetByClassifierRequest is the body for
+// POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}.
+type GetByClassifierRequest struct {
+	Classifier    map[string]any `json:"classifier"`
+	OriginService string         `json:"originService,omitempty"`
+	UserRole      string         `json:"userRole,omitempty"`
+}
+
+// DatabaseResponseSingleCP is the response from GetDatabaseByClassifier.
+// ConnectionProperties keys are dynamic (host, port, username, password, name, url, role, roHost, …).
+type DatabaseResponseSingleCP struct {
+	ConnectionProperties map[string]any `json:"connectionProperties,omitempty"`
+}
+
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.

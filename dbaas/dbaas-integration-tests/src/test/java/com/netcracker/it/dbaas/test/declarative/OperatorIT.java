@@ -30,14 +30,6 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.CRD_DATABASE_DECLARATION;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.CRD_DB_POLICY;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.PHASE_WAITING_FOR_DEPENDENCY;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.REASON_DATABASE_PROVISIONED;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.REASON_POLICY_APPLIED;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.REASON_PROVISIONING_STARTED;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.buildDatabaseDeclarationCR;
-import static com.netcracker.it.dbaas.helpers.OperatorHelper.buildDbPolicyCR;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -61,6 +53,9 @@ public class OperatorIT extends AbstractIT {
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
@@ -809,6 +804,136 @@ public class OperatorIT extends AbstractIT {
                 assertEquals(service.get("roles"), actualService.getRoles());
             }
         }
+
+        @Nested
+        @EnableExtension
+        class DatabaseSecret {
+            @Test
+            void testDatabaseSecretCreatedSuccessfully() throws IOException {
+                String dbDeclarationCRName = generateName();
+                String dbSecretCRName = generateName();
+                String microserviceName = generateName();
+                String secretName = generateName();
+                String connectionFileKey = "connectionProperties";
+
+                var databaseDeclarationCR = buildDatabaseDeclarationCR(dbDeclarationCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
+                createCR(CRD_DATABASE_DECLARATION, databaseDeclarationCR);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, databaseDeclarationCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                var expectedConnections = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, POSTGRES_TYPE, 200).getConnectionProperties();
+
+                var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                var secret = getSecret(secretName);
+                assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
+                assertSecretContainsConnectionProperties(secret, connectionFileKey, expectedConnections);
+            }
+
+            @Test
+            void testDatabaseSecretSecretAlreadyExistsNoOwnerRef() {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String secretName = generateName();
+
+                applySecret(secretName, Map.of(
+                        "key", "value"
+                ));
+
+                var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
+            }
+
+            @Test
+            void testDatabaseSecretSharedSecretName() {
+                String crName1 = generateName();
+                String crName2 = generateName();
+                String microserviceName = generateName();
+                String secretName = generateName();
+
+                var databaseSecretCR1 = buildDatabaseSecretCR(crName1, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
+                waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR1, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_READY, STATUS_FALSE);
+
+                var databaseSecretCR2 = buildDatabaseSecretCR(crName2, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                createCR(CRD_DATABASE_SECRET, databaseSecretCR2);
+                waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR2, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
+
+                waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR1, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
+            }
+
+            @Test
+            void testDatabaseSecretMissingLabel() {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String secretName = generateName();
+                String requiredLabel = "app.kubernetes.io/name";
+
+                var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                databaseSecretCR.getMetadata().getLabels().remove(requiredLabel);
+
+                createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+
+                var secret = getSecret(secretName);
+                assertNull(secret);
+            }
+
+            @Test
+            void testDatabaseSecretDbNotExist() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String secretName = generateName();
+                String secretFileKey = "connectionProperties";
+
+                helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                        new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(),
+                        NAMESPACE, POSTGRES_TYPE, 404);
+
+                var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_READY, STATUS_FALSE);
+
+                assertNull(getSecret(secretName));
+
+                var expectedConnections = helperV3.createDatabase(new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), POSTGRES_TYPE, 201).getConnectionProperties();
+                waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                var secret = getSecret(secretName);
+                assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
+                assertSecretContainsConnectionProperties(secret, secretFileKey, expectedConnections);
+            }
+
+            @Test
+            void testDatabaseSecretCascadeDeleting() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String secretName = generateName();
+
+                helperV3.createDatabase(new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), POSTGRES_TYPE, 201);
+
+                var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                var secret = getSecret(secretName);
+                assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
+
+                kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
+                        .withName(crName)
+                        .delete();
+
+                var deletedDatabaseSecretCR = kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
+                        .inNamespace(NAMESPACE)
+                        .withName(crName)
+                        .delete();
+                assertTrue(deletedDatabaseSecretCR.isEmpty());
+
+                var deletedSecret = getSecret(secretName);
+                assertNull(deletedSecret);
+            }
+        }
     }
 
     private void applySecret(String secretName, Map<String, String> keyToValue) {
@@ -828,12 +953,28 @@ public class OperatorIT extends AbstractIT {
                 .create();
     }
 
-    private void createCR(CustomResourceDefinitionContext crd, GenericKubernetesResource cr) {
+    private Secret getSecret(String secretName) {
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName(secretName);
+        meta.setNamespace(NAMESPACE);
+
+        Secret secret = new SecretBuilder()
+                .withMetadata(meta)
+                .build();
+
+        return kubernetesClient.secrets()
+                .inNamespace(NAMESPACE)
+                .resource(secret)
+                .get();
+    }
+
+    private GenericKubernetesResource createCR(CustomResourceDefinitionContext crd, GenericKubernetesResource cr) {
         GenericKubernetesResource r = kubernetesClient.genericKubernetesResources(crd)
                 .inNamespace(NAMESPACE)
                 .resource(cr)
                 .create();
         log.info("CR created: {}", r);
+        return r;
     }
 
     private void waitForDesiredState(CustomResourceDefinitionContext crd, GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling) {

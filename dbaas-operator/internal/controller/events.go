@@ -88,4 +88,19 @@ const (
 	// deferred because the namespace still contains dbaas workload resources
 	// (ExternalDatabase, DatabaseDeclaration, or DbPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
+
+	// EventReasonSecretCreated is emitted when a DatabaseSecret successfully
+	// creates or updates the target Kubernetes Secret with connection properties.
+	// Type: Normal.
+	EventReasonSecretCreated = "SecretCreated"
+
+	// EventReasonSecretConflict is emitted when the target Kubernetes Secret
+	// already exists but its ownerReference points to a different resource or
+	// has no ownerReference at all. Type: Warning.
+	EventReasonSecretConflict = "SecretConflict"
+
+	// EventReasonDatabaseNotReady is emitted when dbaas-aggregator returns HTTP 404
+	// for a get-by-classifier request, meaning the database has not been provisioned
+	// yet. The controller retries with exponential backoff. Type: Warning.
+	EventReasonDatabaseNotReady = "DatabaseNotReady"
 )

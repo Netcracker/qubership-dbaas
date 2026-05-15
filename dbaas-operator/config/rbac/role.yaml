@@ -9,11 +9,16 @@ rules:
   resources:
   - secrets
   verbs:
+  - create
   - get
+  - list
+  - patch
+  - update
 - apiGroups:
   - dbaas.netcracker.com
   resources:
   - databasedeclarations
+  - databasesecrets
   - dbpolicies
   - externaldatabases
   verbs:
@@ -24,6 +29,7 @@ rules:
   - dbaas.netcracker.com
   resources:
   - databasedeclarations/status
+  - databasesecrets/status
   - dbpolicies/status
   - externaldatabases/status
   verbs:
