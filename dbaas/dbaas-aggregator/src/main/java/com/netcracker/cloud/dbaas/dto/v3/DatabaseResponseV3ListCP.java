@@ -38,5 +38,6 @@ public class DatabaseResponseV3ListCP extends DatabaseResponseV3 {
     public DatabaseResponseV3ListCP(DatabaseRegistry databaseRegistry, String physicalDatabaseId) {
         super(databaseRegistry, physicalDatabaseId);
         connectionProperties = databaseRegistry.getDatabase().getConnectionProperties();
+
     }
 }
