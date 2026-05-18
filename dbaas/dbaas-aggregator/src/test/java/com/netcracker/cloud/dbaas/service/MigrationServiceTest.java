@@ -57,7 +57,9 @@ public class MigrationServiceTest {
     private final String TEST_SECOND_ADAPTER_ID = "test-second-adapter-id";
     private final String TEST_SECOND_PHYDBID = "test-second-phydbid";
     private final String TEST_DB_NAME = "test-db";
+    private final String TEST_USER = "test-user";
     private final String TEST_TYPE = "test-type";
+    private final int EXPECTED_RESOURCE_AMOUNT = 2;
 
     @Test
     void testRegisterRequestValidation() {
@@ -457,7 +459,7 @@ public class MigrationServiceTest {
         when(dbaasAdapter.identifier()).thenReturn(TEST_ADAPTER_ID);
         mockConnectionPropertiesResponse(dBaaService);
 
-        DbResource userResource = new DbResource("user", TEST_DB_NAME + ":test-user");
+        DbResource userResource = new DbResource("user", TEST_USER);
         DbResource dbResource = new DbResource("database", TEST_DB_NAME);
         List<DbResource> expectedResources = Arrays.asList(userResource, dbResource);
 
@@ -468,11 +470,14 @@ public class MigrationServiceTest {
         ArgumentCaptor<DatabaseRegistry> dbCaptor = ArgumentCaptor.forClass(DatabaseRegistry.class);
         verify(dBaaService).encryptAndSaveDatabaseEntity(dbCaptor.capture());
         DatabaseRegistry savedDb = dbCaptor.getValue();
-        assertEquals(2, savedDb.getResources().size(), "Resources from request should be preserved");
+        assertEquals(EXPECTED_RESOURCE_AMOUNT, savedDb.getResources().size(), "Resources from request should be preserved");
         boolean hasUser = savedDb
                 .getResources().stream()
-                .anyMatch(r -> "user".equals(r.getKind()) && r.getName().contains("test-user"));
+                .anyMatch(r -> "user".equals(r.getKind()) && r.getName().contains(TEST_USER));
+        boolean hasDatabase = savedDb.getResources().stream().anyMatch(r -> "database".equals(r.getKind())
+                && r.getName().contains(TEST_DB_NAME));
         assertEquals(true, hasUser, "User resource should be present in saved entity");
+        assertEquals(true, hasDatabase, "Database resource should be present in saved entity");
     }
 
     private RegisterDatabaseRequestV3 getRegisterDatabaseRequestSample() {
