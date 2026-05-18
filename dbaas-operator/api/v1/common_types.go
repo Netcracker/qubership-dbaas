@@ -62,9 +62,6 @@ type Classifier struct {
 	// Values can be any valid JSON type (string, number, boolean,
 	// nested object, array). Not validated by the aggregator — passed
 	// through as-is.
-	//
-	// How customKeys are merged into the aggregator wire payload is
-	// resource-specific; see the corresponding *_controller.go.
 	// +optional
 	CustomKeys map[string]apiextensionsv1.JSON `json:"customKeys,omitempty"`
 }
