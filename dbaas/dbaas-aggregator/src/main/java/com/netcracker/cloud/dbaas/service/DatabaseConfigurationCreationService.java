@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
 
-import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
@@ -9,10 +8,7 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.service.processengine.processes.AllDatabasesCreationProcess;
-import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
-import com.netcracker.core.scheduler.po.DataContext;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
-import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
 import jakarta.annotation.Nullable;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -25,8 +21,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
-import static com.netcracker.cloud.dbaas.service.processengine.Const.UPDATE_BG_STATE_TASK;
-import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
 
 @ApplicationScoped
 @Slf4j
@@ -47,22 +41,7 @@ public class DatabaseConfigurationCreationService {
     public ProcessInstanceImpl createProcessInstance(List<AbstractDatabaseProcessObject> processObjects, String operation,
                                                      String namespace, @Nullable String version) {
         log.debug("Process creation started for {} in namespace {}", operation, namespace);
-        ProcessInstanceImpl process = processService.createProcess(new AllDatabasesCreationProcess(processObjects), namespace, operation);
-        log.debug("Context filling started");
-        for (TaskInstanceImpl task : process.getTasks()) {
-            task.getContext().apply((DataContext c) -> {
-                c.put(X_REQUEST_ID, ((XRequestIdContextObject) ContextManager.get(X_REQUEST_ID)).getRequestId());
-                if (UPDATE_BG_STATE_TASK.equals(task.getName())) {
-                    c.put("operation", operation);
-                    c.put("namespace", namespace);
-                    c.put("version", version);
-                } else {
-                    c.put("processObject", processObjects.stream()
-                            .filter(p -> p.getId().toString().equals(task.getName().split(":")[1]))
-                            .findFirst().get());
-                }
-            });
-        }
+        ProcessInstanceImpl process = processService.createProcess(new AllDatabasesCreationProcess(processObjects, namespace, operation, version), namespace, operation);
         log.debug("Process creation finished");
         return process;
     }
