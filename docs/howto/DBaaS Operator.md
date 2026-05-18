@@ -730,9 +730,9 @@ kubectl get dbedb my-postgres-external -n my-namespace -o jsonpath='{.status.las
 
 `DbPolicy` declares the database role assignments for microservices in a namespace. The operator forwards this declaration to dbaas-aggregator, which applies the role grants when provisioning or connecting databases for those microservices.
 
-Short name: `dbbp`
+Short name: `dbdp`
 
-`kubectl get dbbp` columns: `PHASE`, `AGE`
+`kubectl get dbdp` columns: `PHASE`, `MICROSERVICENAME`, `AGE`
 
 #### DbPolicy Resource Fields
 
@@ -819,7 +819,7 @@ CR created / spec changed
 
 #### DbPolicy Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbbp`.
+**`status.phase`** — human-readable summary for `kubectl get dbdp`.
 
 | Phase | Meaning |
 |-------|---------|
@@ -908,21 +908,21 @@ spec:
 **Check status:**
 
 ```bash
-kubectl get dbbp -n my-namespace
-# NAME        PHASE       AGE
-# my-policy   Succeeded   1m
+kubectl get dbdp -n my-namespace
+# NAME        PHASE       MICROSERVICENAME   AGE
+# my-policy   Succeeded   my-service         1m
 
-kubectl describe dbbp my-policy -n my-namespace
+kubectl describe dbdp my-policy -n my-namespace
 ```
 
 **Troubleshoot a stuck resource:**
 
 ```bash
 # Check conditions
-kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.conditions}' | jq .
 
 # Use lastRequestId to correlate with aggregator logs
-kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
+kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---
@@ -933,9 +933,9 @@ kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 
 Provisioning is **asynchronous**: the aggregator returns `202 Accepted` with a `trackingId`, and the operator polls the operation status until it reaches a terminal state.
 
-Short name: `dbedd`
+Short name: `dbdd`
 
-`kubectl get dbedd` columns: `PHASE`, `TYPE`, `AGE`
+`kubectl get dbdd` columns: `PHASE`, `MICROSERVICENAME`, `TYPE`, `AGE`
 
 #### DatabaseDeclaration Resource Fields
 
@@ -1058,7 +1058,7 @@ CR created / spec changed
 
 #### DatabaseDeclaration Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbedd`.
+**`status.phase`** — human-readable summary for `kubectl get dbdd`.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1178,30 +1178,30 @@ spec:
 **Check status:**
 
 ```bash
-kubectl get dbedd -n my-namespace
-# NAME              PHASE                  TYPE         AGE
-# my-app-db         Succeeded              postgresql   2m
-# my-app-db-clone   WaitingForDependency   postgresql   10s
+kubectl get dbdd -n my-namespace
+# NAME              PHASE                  MICROSERVICENAME   TYPE         AGE
+# my-app-db         Succeeded              payments           postgresql   2m
+# my-app-db-clone   WaitingForDependency   payments           postgresql   10s
 ```
 
 **Watch async progress:**
 
 ```bash
 # The trackingID field is populated while async provisioning is in progress
-kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
+kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
 
 # Full status (phase, conditions, trackingID, lastRequestId)
-kubectl get dbedd my-app-db -n my-namespace -o yaml
+kubectl get dbdd my-app-db -n my-namespace -o yaml
 ```
 
 **Troubleshoot a stuck resource:**
 
 ```bash
 # Check conditions for the human-readable error message
-kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.conditions}' | jq .
 
 # Use lastRequestId to correlate with aggregator logs
-kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
+kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---

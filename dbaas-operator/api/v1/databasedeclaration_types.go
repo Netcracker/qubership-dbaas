@@ -24,7 +24,7 @@ import (
 // Classifier uniquely identifies a database in dbaas-aggregator.
 // All keys are sorted alphabetically by the aggregator for identity comparison.
 type Classifier struct {
-	// name is the microservice name that owns the database.
+	// microserviceName is the name of the microservice that owns the database.
 	// Must match metadata.microserviceName sent in the declarative payload.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -146,17 +146,13 @@ type DatabaseDeclarationStatus struct {
 	// Zero means no pending async operation.
 	// +optional
 	PendingOperationGeneration int64 `json:"pendingOperationGeneration,omitempty"`
-
-	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-	// Use this to correlate operator logs with dbaas-aggregator logs for debugging.
-	// +optional
-	LastRequestID string `json:"lastRequestId,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=databasedeclarations,singular=databasedeclaration
+// +kubebuilder:resource:scope=Namespaced,path=databasedeclarations,singular=databasedeclaration,shortName=dbdd
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.classifier.microserviceName"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

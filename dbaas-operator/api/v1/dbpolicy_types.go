@@ -93,17 +93,13 @@ type DbPolicySpec struct {
 // DbPolicyStatus defines the observed state of DbPolicy.
 type DbPolicyStatus struct {
 	OperatorStatus `json:",inline"`
-
-	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-	// Use this to correlate operator logs with dbaas-aggregator logs for debugging.
-	// +optional
-	LastRequestID string `json:"lastRequestId,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=dbpolicies,singular=dbpolicy,shortName=dbbp
+// +kubebuilder:resource:scope=Namespaced,path=dbpolicies,singular=dbpolicy,shortName=dbdp
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.microserviceName"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // DbPolicy is the Schema for the dbpolicies API.

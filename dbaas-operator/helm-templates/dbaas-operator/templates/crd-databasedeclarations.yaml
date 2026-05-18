@@ -12,12 +12,17 @@ spec:
     kind: DatabaseDeclaration
     listKind: DatabaseDeclarationList
     plural: databasedeclarations
+    shortNames:
+    - dbdd
     singular: databasedeclaration
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
+      type: string
+    - jsonPath: .spec.classifier.microserviceName
+      name: MicroserviceName
       type: string
     - jsonPath: .spec.type
       name: Type
@@ -70,7 +75,7 @@ spec:
                     type: object
                   microserviceName:
                     description: |-
-                      name is the microservice name that owns the database.
+                      microserviceName is the name of the microservice that owns the database.
                       Must match metadata.microserviceName sent in the declarative payload.
                     minLength: 1
                     type: string
@@ -122,7 +127,7 @@ spec:
                         type: object
                       microserviceName:
                         description: |-
-                          name is the microservice name that owns the database.
+                          microserviceName is the name of the microservice that owns the database.
                           Must match metadata.microserviceName sent in the declarative payload.
                         minLength: 1
                         type: string
@@ -265,7 +270,8 @@ spec:
               lastRequestId:
                 description: |-
                   lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-                  Use this to correlate operator logs with dbaas-aggregator logs for debugging.
+                  Use this value to correlate operator logs with dbaas-aggregator logs when
+                  investigating issues for a specific resource.
                 type: string
               observedGeneration:
                 description: |-
