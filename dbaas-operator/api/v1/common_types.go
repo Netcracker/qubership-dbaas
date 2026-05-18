@@ -16,7 +16,10 @@ limitations under the License.
 
 package v1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // ObservedGenerationSetter is implemented by CR root types whose status embeds
 // OperatorStatus and therefore can persist the latest reconciled generation.
@@ -24,6 +27,46 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:object:generate=false
 type ObservedGenerationSetter interface {
 	SetObservedGeneration(int64)
+}
+
+// Classifier uniquely identifies a database in dbaas-aggregator.
+// All keys are sorted alphabetically by the aggregator for identity comparison.
+//
+// Shared by dbaas operator resources that reference a database by its
+// dbaas-aggregator identity.
+type Classifier struct {
+	// microserviceName is the name of the microservice that owns the database.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	MicroserviceName string `json:"microserviceName"`
+
+	// scope defines the logical scope of the database, e.g. "service" or "tenant".
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Scope string `json:"scope"`
+
+	// namespace is the Kubernetes namespace of the owning service.
+	// If omitted, the aggregator uses metadata.namespace from the request.
+	// If set, it must equal the CR's metadata.namespace — a mismatch causes
+	// InvalidConfiguration at the controller level.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// tenantId is the tenant identifier for multi-tenant deployments.
+	// Only relevant when scope="tenant".
+	// +optional
+	TenantId string `json:"tenantId,omitempty"`
+
+	// customKeys is an optional nested map for adapter-specific or
+	// application-specific identifiers (e.g. logicalDBName).
+	// Values can be any valid JSON type (string, number, boolean,
+	// nested object, array). Not validated by the aggregator — passed
+	// through as-is.
+	//
+	// How customKeys are merged into the aggregator wire payload is
+	// resource-specific; see the corresponding *_controller.go.
+	// +optional
+	CustomKeys map[string]apiextensionsv1.JSON `json:"customKeys,omitempty"`
 }
 
 // Phase represents the processing phase of a dbaas operator resource.

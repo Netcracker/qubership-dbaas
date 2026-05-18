@@ -87,7 +87,7 @@ The operator calls the following dbaas-aggregator endpoint:
 
 **`PUT /api/v3/dbaas/{namespace}/databases/registration/externally_manageable`**
 
-The `{namespace}` segment is taken from `spec.classifier["namespace"]` if that key is set; otherwise from `metadata.namespace`.
+The `{namespace}` segment is taken from `spec.classifier.namespace` if that field is set; otherwise from `metadata.namespace`.
 
 The operator always sends `updateConnectionProperties: true`, which means the request creates the database registration if it does not exist, or updates the connection properties if it does.
 
@@ -425,10 +425,16 @@ metadata:
   namespace: my-namespace
 spec:
   classifier:
+    microserviceName: my-service   # required, minLength: 1
+    scope: service                 # required, minLength: 1; "service" or "tenant"
     namespace: my-namespace        # optional; if set, must equal metadata.namespace
-    microserviceName: my-service   # required
-    scope: service                 # required; "service" or "tenant"
     # tenantId: my-tenant          # required when scope=tenant
+    # customKeys:                  # optional, adapter-specific identifiers
+    #   logicalDBName: mydb        # string
+    #   shardCount: 5              # number — preserved as JSON number on the wire
+    #   region:                    # nested object — preserved as JSON object
+    #     name: us-east
+    #     az: a
   type: postgresql
   dbName: my_application_db
   connectionProperties:
@@ -444,14 +450,70 @@ spec:
         sslMode: "require"
 ```
 
-**`spec.classifier`** — uniquely identifies the database in dbaas-aggregator. A sorted map of key-value pairs.
+**`spec.classifier`** — uniquely identifies the database in dbaas-aggregator. A typed struct (CRD-validated).
 
-| Key | Required | Notes |
-|-----|:--------:|-------|
-| `microserviceName` | Yes | Name of the owning microservice |
-| `scope` | Yes | `service` or `tenant` |
-| `tenantId` | When `scope=tenant` | Must be present when scope is `tenant` |
-| `namespace` | No | If set, must equal `metadata.namespace`. If absent, `metadata.namespace` is used in the aggregator URL. |
+| Field | Required | Notes |
+|-------|:--------:|-------|
+| `microserviceName` | Yes | Name of the owning microservice. `minLength: 1`. CRD admission rejects missing/empty values. |
+| `scope` | Yes | `service` or `tenant`. `minLength: 1`. |
+| `tenantId` | When `scope=tenant` | Tenant identifier for multi-tenant deployments. |
+| `namespace` | No | If set, must equal `metadata.namespace` (controller-side check); if absent, `metadata.namespace` is used in the aggregator URL. |
+| `customKeys` | No | Adapter-specific identifiers (e.g. `logicalDBName`). Values can be any valid JSON type (string, number, boolean, nested object, array); not validated by the aggregator. See the mapping rules below. |
+
+##### `customKeys` → aggregator wire mapping
+
+The aggregator declares `ExternalDatabaseRequestV3.classifier` as
+`SortedMap<String, Object>` and stores it as JSONB, so the wire format supports
+any JSON value — including nested objects and arrays. The controller's
+`classifierToFlatMap` builds the wire payload from `spec.classifier` like this:
+
+1. **Structured fields first.** `microserviceName` and `scope` are always
+   emitted at the top level of the classifier map. `namespace` and `tenantId`
+   are emitted at the top level when set (empty strings are skipped).
+2. **`customKeys` are flattened to the same top level.** Every entry in
+   `customKeys` becomes a top-level key in the wire classifier — there is no
+   nested `customKeys` envelope on the wire.
+3. **Native JSON types are preserved.** A string stays a JSON string, a number
+   stays a number, a boolean stays a boolean, a nested object/array is sent
+   as-is. The controller does not stringify non-string values.
+4. **Structured fields win on key collision.** If a user puts
+   `customKeys.microserviceName` (or `scope` / `namespace` / `tenantId`) into
+   the spec, the explicit structured field always wins. This prevents
+   accidentally overriding the identity fields from `customKeys`.
+
+Example. For the spec snippet:
+
+```yaml
+spec:
+  classifier:
+    microserviceName: my-service
+    scope: service
+    namespace: my-namespace
+    customKeys:
+      logicalDBName: configs
+      shardCount: 5
+      region:
+        name: us-east
+        az: a
+```
+
+the controller sends the following `classifier` to dbaas-aggregator:
+
+```json
+{
+  "microserviceName": "my-service",
+  "scope": "service",
+  "namespace": "my-namespace",
+  "logicalDBName": "configs",
+  "shardCount": 5,
+  "region": { "name": "us-east", "az": "a" }
+}
+```
+
+> The aggregator sorts classifier keys alphabetically for identity comparison.
+> Two classifiers with the same set of keys and JSON-equal values resolve to
+> the same database; differing values in any nested object yield different
+> identities (JSONB deep-compare).
 
 **Top-level spec fields:**
 
@@ -488,7 +550,7 @@ spec:
 Each time the spec changes (i.e., `metadata.generation` increments), the controller:
 
 1. Checks namespace ownership via `NamespaceBinding` (skips if not owned).
-2. Validates that `spec.classifier["namespace"]`, if set, equals `metadata.namespace`.
+2. Validates that `spec.classifier.namespace`, if set, equals `metadata.namespace`.
 3. Reads credentials from all referenced Kubernetes Secrets.
 4. Sends a `PUT` request to dbaas-aggregator to register or update the database.
 5. Updates `status.phase` and `status.conditions` based on the outcome.
@@ -504,7 +566,7 @@ CR created / spec changed
         │
         ▼
   Pre-flight validation
-    classifier["namespace"] ≠ metadata.namespace? ──▶ InvalidConfiguration (InvalidSpec)
+    classifier.namespace ≠ metadata.namespace? ──▶ InvalidConfiguration (InvalidSpec)
         │
         ▼
   Read Secrets
@@ -568,7 +630,7 @@ CR created / spec changed
 | Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
 |----------|---------|:-------:|----------|:---------:|
 | Registered (201) | `Succeeded` | `True` | `DatabaseRegistered` | `False` |
-| `classifier["namespace"]` mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| `classifier.namespace` mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
 | Secret not found | `BackingOff` | `False` | `SecretError` | `False` |
 | Secret key missing or empty | `BackingOff` | `False` | `SecretError` | `False` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
