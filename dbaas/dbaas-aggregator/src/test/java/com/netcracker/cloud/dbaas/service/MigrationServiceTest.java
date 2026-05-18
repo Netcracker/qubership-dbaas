@@ -59,7 +59,6 @@ public class MigrationServiceTest {
     private final String TEST_DB_NAME = "test-db";
     private final String TEST_USER = "test-user";
     private final String TEST_TYPE = "test-type";
-    private final int EXPECTED_RESOURCE_AMOUNT = 2;
 
     @Test
     void testRegisterRequestValidation() {
@@ -470,7 +469,7 @@ public class MigrationServiceTest {
         ArgumentCaptor<DatabaseRegistry> dbCaptor = ArgumentCaptor.forClass(DatabaseRegistry.class);
         verify(dBaaService).encryptAndSaveDatabaseEntity(dbCaptor.capture());
         DatabaseRegistry savedDb = dbCaptor.getValue();
-        assertEquals(EXPECTED_RESOURCE_AMOUNT, savedDb.getResources().size(), "Resources from request should be preserved");
+        assertEquals(expectedResources.size(), savedDb.getResources().size(), "Resources from request should be preserved");
         boolean hasUser = savedDb
                 .getResources().stream()
                 .anyMatch(r -> "user".equals(r.getKind()) && r.getName().contains(TEST_USER));
