@@ -21,8 +21,11 @@ package controller
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,6 +52,9 @@ type DbPolicyReconciler struct {
 	Aggregator *aggregatorclient.AggregatorClient
 	Recorder   record.EventRecorder
 	Ownership  *ownership.OwnershipResolver
+
+	bindingTriggerMu     sync.Mutex
+	bindingTriggerStamps map[string]struct{}
 }
 
 func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -56,8 +62,14 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 
 	dp := &dbaasv1.DbPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, dp); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.clearBindingTrigger(req.Namespace + "/" + req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	key := req.Namespace + "/" + req.Name
+	bindingTriggered := r.consumeBindingTrigger(key)
 
 	owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DbPolicy")
 	if err != nil {
@@ -66,6 +78,12 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	if !owned {
 		return result, nil
 	}
+
+	trigger := triggerSpecChange
+	if bindingTriggered {
+		trigger = triggerNamespaceBindingChange
+	}
+	recordReconcileTrigger(controllerDP, trigger)
 
 	// Snapshot for the status patch at the end of reconcile.
 	original := dp.DeepCopy()
@@ -92,9 +110,12 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 
 	payload := r.buildPayload(dp)
 	dp.Status.LastRequestID = requestID
-	if _, err := r.Aggregator.ApplyConfig(ctx, payload); err != nil {
-		log.ErrorC(ctx, "failed to apply DbPolicy to dbaas-aggregator: %v", err)
-		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, err, requestID)
+	aggStart := time.Now()
+	_, aggErr := r.Aggregator.ApplyConfig(ctx, payload)
+	recordAggregatorCall(controllerDP, operationApplyConfig, aggStart, aggErr)
+	if aggErr != nil {
+		log.ErrorC(ctx, "failed to apply DbPolicy to dbaas-aggregator: %v", aggErr)
+		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, aggErr, requestID)
 	}
 
 	log.InfoC(ctx, "DbPolicy applied successfully microserviceName=%v", dp.Spec.MicroserviceName)
@@ -164,7 +185,33 @@ func (r *DbPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.O
 	}
 	reqs := make([]reconcile.Request, 0, len(list.Items))
 	for i := range list.Items {
+		r.stampBindingTrigger(list.Items[i].Namespace + "/" + list.Items[i].Name)
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
+}
+
+func (r *DbPolicyReconciler) stampBindingTrigger(key string) {
+	r.bindingTriggerMu.Lock()
+	defer r.bindingTriggerMu.Unlock()
+	if r.bindingTriggerStamps == nil {
+		r.bindingTriggerStamps = make(map[string]struct{})
+	}
+	r.bindingTriggerStamps[key] = struct{}{}
+}
+
+func (r *DbPolicyReconciler) consumeBindingTrigger(key string) bool {
+	r.bindingTriggerMu.Lock()
+	defer r.bindingTriggerMu.Unlock()
+	if _, ok := r.bindingTriggerStamps[key]; !ok {
+		return false
+	}
+	delete(r.bindingTriggerStamps, key)
+	return true
+}
+
+func (r *DbPolicyReconciler) clearBindingTrigger(key string) {
+	r.bindingTriggerMu.Lock()
+	defer r.bindingTriggerMu.Unlock()
+	delete(r.bindingTriggerStamps, key)
 }

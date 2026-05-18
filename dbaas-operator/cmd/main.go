@@ -95,15 +95,15 @@ func main() {
 		BindAddress: metricsAddr,
 	}
 
-	// ── Operator namespace ────────────────────────────────────────────────────
+	// Operator namespace.
 	cloudNamespace := os.Getenv("CLOUD_NAMESPACE")
 	if cloudNamespace == "" {
-		setupLog.Errorf("CLOUD_NAMESPACE env var is not set — ownership checks will not work correctly")
+		setupLog.Errorf("CLOUD_NAMESPACE env var is not set - ownership checks will not work correctly")
 		os.Exit(1)
 	}
 	setupLog.Infof("operator namespace cloud-namespace=%v", cloudNamespace)
 
-	// ── dbaas-aggregator client ───────────────────────────────────────────────
+	// dbaas-aggregator client.
 	aggregatorURL := os.Getenv("DBAAS_AGGREGATOR_URL")
 	if aggregatorURL == "" {
 		aggregatorURL = "http://dbaas-aggregator:8080"
@@ -165,14 +165,14 @@ func main() {
 	}
 	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
 
-	// ── Ownership resolver ────────────────────────────────────────────────────
+	// Ownership resolver.
 	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
 	if err := mgr.Add(&ownershipWarmupRunnable{resolver: ownershipResolver}); err != nil {
 		setupLog.Errorf("Failed to register ownership warmup runnable: %v", err)
 		os.Exit(1)
 	}
 
-	// ── NamespaceBinding controller (always enabled) ───────────────────────────
+	// NamespaceBinding controller (always enabled).
 	edbChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
 		func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} },
