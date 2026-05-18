@@ -6,18 +6,17 @@ import com.netcracker.cloud.dbaas.dto.API_VERSION;
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
+import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
-import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
 import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.lang3.StringUtils;
 import org.hibernate.exception.ConstraintViolationException;
 
@@ -207,11 +206,20 @@ public class MigrationService {
             DatabaseRegistry db = isProcessExternalAsInternal ?
                     existingDatabase :
                     newDatabaseByRequest(requestsWithAdapterId);
-            db.setResources(new ArrayList<>());
+            
+            if (requestsWithAdapterId.getResources() != null && !requestsWithAdapterId.getResources().isEmpty()) {
+                db.setResources(new ArrayList<>(requestsWithAdapterId.getResources()));
+            } else {
+                db.setResources(new ArrayList<>());
+            }
             if (isUserCreation) {
                 recreateUserResources(dbName, db);
             }
-            db.getResources().add(new DbResource(DbResource.DATABASE_KIND, db.getName()));
+            boolean hasDatabaseKind = db.getResources().stream().anyMatch(res -> DbResource.DATABASE_KIND.equals(res.getKind()));
+            if (!hasDatabaseKind) {
+                db.getResources().add(new DbResource(DbResource.DATABASE_KIND, db.getName()));
+            }
+
             List<Object> passwords = db.getConnectionProperties().stream().
                     map(properties -> properties.getOrDefault(PASSWORD_FIELD, null)).collect(Collectors.toList());
             if (passwords.contains(null) || passwords.contains("")) {
