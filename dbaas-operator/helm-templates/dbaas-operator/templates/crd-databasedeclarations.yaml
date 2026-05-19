@@ -70,30 +70,31 @@ spec:
                     description: |-
                       customKeys is an optional nested map for adapter-specific or
                       application-specific identifiers (e.g. logicalDBName).
-                      Values can be any valid JSON type (string, number, boolean, nested object).
-                      Not validated by the aggregator — passed through as-is.
+                      Values can be any valid JSON type (string, number, boolean,
+                      nested object, array). Not validated by the aggregator — passed
+                      through as-is.
                     type: object
                   microserviceName:
-                    description: |-
-                      microserviceName is the name of the microservice that owns the database.
-                      Must match metadata.microserviceName sent in the declarative payload.
+                    description: microserviceName is the name of the microservice
+                      that owns the database.
                     minLength: 1
                     type: string
                   namespace:
                     description: |-
                       namespace is the Kubernetes namespace of the owning service.
                       If omitted, the aggregator uses metadata.namespace from the request.
+                      If set, it must equal the CR's metadata.namespace — a mismatch causes
+                      InvalidConfiguration at the controller level.
                     type: string
                   scope:
-                    description: scope defines the logical scope of the database, e.g.
-                      "service" or "tenant".
+                    description: scope defines the logical scope of the database,
+                      e.g. "service" or "tenant".
                     minLength: 1
                     type: string
                   tenantId:
                     description: |-
                       tenantId is the tenant identifier for multi-tenant deployments.
-                      Only relevant when scope="tenant". When absent, the aggregator applies
-                      the declaration for every tenant already registered in the namespace.
+                      Only relevant when scope="tenant".
                     type: string
                 required:
                 - microserviceName
@@ -122,19 +123,21 @@ spec:
                         description: |-
                           customKeys is an optional nested map for adapter-specific or
                           application-specific identifiers (e.g. logicalDBName).
-                          Values can be any valid JSON type (string, number, boolean, nested object).
-                          Not validated by the aggregator — passed through as-is.
+                          Values can be any valid JSON type (string, number, boolean,
+                          nested object, array). Not validated by the aggregator — passed
+                          through as-is.
                         type: object
                       microserviceName:
-                        description: |-
-                          microserviceName is the name of the microservice that owns the database.
-                          Must match metadata.microserviceName sent in the declarative payload.
+                        description: microserviceName is the name of the microservice
+                          that owns the database.
                         minLength: 1
                         type: string
                       namespace:
                         description: |-
                           namespace is the Kubernetes namespace of the owning service.
                           If omitted, the aggregator uses metadata.namespace from the request.
+                          If set, it must equal the CR's metadata.namespace — a mismatch causes
+                          InvalidConfiguration at the controller level.
                         type: string
                       scope:
                         description: scope defines the logical scope of the database,
@@ -144,8 +147,7 @@ spec:
                       tenantId:
                         description: |-
                           tenantId is the tenant identifier for multi-tenant deployments.
-                          Only relevant when scope="tenant". When absent, the aggregator applies
-                          the declaration for every tenant already registered in the namespace.
+                          Only relevant when scope="tenant".
                         type: string
                     required:
                     - microserviceName
