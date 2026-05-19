@@ -524,6 +524,22 @@ the controller sends the following `classifier` to dbaas-aggregator:
 | `spec.dbName` | Yes | No | Logical database name. Included in the aggregator request URL. Immutable after creation. |
 | `spec.connectionProperties` | Yes | Yes | List of connection entries, one per access role. At least one entry required. |
 
+> **Note on `spec.classifier` immutability.** The CRD enforces immutability with the CEL rule
+> `self == oldSelf` — a strict structural comparison. Once an `ExternalDatabase` is created, the
+> exact shape of `spec.classifier` is frozen: you can neither add an optional field that was
+> initially omitted (e.g. `namespace`, `tenantId`, `customKeys`) nor remove one that was present.
+>
+> In particular, `spec.classifier.namespace` defaults to `metadata.namespace` at the controller
+> level *only when the field is absent from the spec*. After creation, this defaulting is
+> effectively frozen — adding an explicit `spec.classifier.namespace` later (even with the same
+> value as `metadata.namespace`) will be rejected by `kube-apiserver` with
+> `"spec.classifier is immutable after creation"`. If you want an explicit namespace in the
+> classifier, set it at creation time.
+>
+> Functionally this is not a limitation: the controller always uses `metadata.namespace` as the
+> default when `spec.classifier.namespace` is empty, so the aggregator receives the correct
+> namespace in either form. The constraint only applies to refactoring an existing CR's YAML.
+
 **`spec.connectionProperties[]` fields:**
 
 | Field | Required | Description |
