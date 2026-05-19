@@ -72,18 +72,24 @@ type ExternalDatabaseReconciler struct {
 func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
+	edbKey := req.Namespace + "/" + req.Name
 	edb := &dbaasv1.ExternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.clearSecretTrigger(req.Namespace + "/" + req.Name)
+			r.clearSecretTrigger(edbKey)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// Determine whether this reconcile was triggered by a Secret change or a
 	// spec change, and record the trigger counter.
-	edbKey := req.Namespace + "/" + req.Name
 	fromSecret := r.consumeSecretTrigger(edbKey)
+	defer func() {
+		secretStart, ok := r.consumeSecretPropagation(edbKey)
+		if ok && edb.Status.Phase == dbaasv1.PhaseSucceeded {
+			dbaasSecretRotationPropagationSeconds.Observe(time.Since(secretStart).Seconds())
+		}
+	}()
 
 	trigger := triggerSpecChange
 	if fromSecret {
@@ -115,13 +121,13 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}()
 
 	// Mark as Processing while we work.
-	// Conditions are NOT cleared here - setCondition upserts each type in place,
+	// Conditions are NOT cleared here — setCondition upserts each type in place,
 	// preserving LastTransitionTime when Status has not changed.
 	// This makes conditions durable API state across reconcile cycles.
 	edb.Status.Phase = dbaasv1.PhaseProcessing
 
 	// Validate that classifier.namespace, if set, matches the CR's own namespace.
-	// A mismatch is a permanent misconfiguration - no retry.
+	// A mismatch is a permanent misconfiguration — no retry.
 	if ns := edb.Spec.Classifier["namespace"]; ns != "" && ns != edb.Namespace {
 		return invalidSpec(ctx, &edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
 			r.Recorder, edb,
@@ -173,9 +179,6 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	log.InfoC(ctx, "external database registered successfully. type: %v, dbName: %v", edb.Spec.Type, edb.Spec.DbName)
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
-	if secretStart, ok := r.consumeSecretPropagation(edbKey); ok {
-		dbaasSecretRotationPropagationSeconds.Observe(time.Since(secretStart).Seconds())
-	}
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
 	return ctrl.Result{}, nil
@@ -262,7 +265,7 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 		}
 	}
 
-	// Defence-in-depth duplicate name check - CRD CEL validation should catch this
+	// Defence-in-depth duplicate name check — CRD CEL validation should catch this
 	// first, but we guard here too in case validation is bypassed.
 	seen := make(map[string]string, len(ref.Keys))
 	for _, km := range ref.Keys {
@@ -299,14 +302,14 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 // GenerationChangedPredicate ensures the controller reconciles only when the
 // spec changes (metadata.generation increments), not on its own status updates.
 //
-// opts allows callers to customise the controller's behaviour - most notably
+// opts allows callers to customise the controller's behaviour — most notably
 // the RateLimiter, which controls the exponential backoff applied when
 // Reconcile returns an error (BackingOff phase).  Pass
 // ctrlcontroller.Options{} to keep the controller-runtime defaults.
 func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	// Register the field index before building the controller.
 	// controller-runtime calls indexSecretNames for every ExternalDatabase to
-	// build the reverse map ("namespace/secretName" -> EDBs), then keeps it up to date
+	// build the reverse map ("namespace/secretName" → EDBs), then keeps it up to date
 	// automatically as EDBs are created, updated, or deleted.
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
@@ -327,7 +330,7 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		// Re-enqueue ExternalDatabases that reference a Secret when that Secret
 		// changes, so credential rotations take effect without a spec change.
-		// WatchesMetadata avoids caching Secret data (credentials) in operator memory -
+		// WatchesMetadata avoids caching Secret data (credentials) in operator memory —
 		// enqueueForSecret only needs the name/namespace to query the field index.
 		WatchesMetadata(&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForSecret),
@@ -353,6 +356,10 @@ func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj 
 	return reqs
 }
 
+// stampBindingTrigger records that the next reconcile for key was most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// for the same key can swap labels between queued reconciles, so the metric is
+// informational and should not be used as exact causal tracing.
 func (r *ExternalDatabaseReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
@@ -362,6 +369,10 @@ func (r *ExternalDatabaseReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerStamps[key] = struct{}{}
 }
 
+// consumeBindingTrigger classifies the next reconcile for key as most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// for the same key can swap labels between queued reconciles, so the metric is
+// informational and should not be used as exact causal tracing.
 func (r *ExternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
@@ -372,6 +383,10 @@ func (r *ExternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
 	return true
 }
 
+// stampSecretTrigger records that the next reconcile for key was most likely
+// caused by a Secret change. This is best-effort: overlapping triggers for the
+// same key can swap labels between queued reconciles, so the metric is
+// informational and should not be used as exact causal tracing.
 func (r *ExternalDatabaseReconciler) stampSecretTrigger(key string, startedAt time.Time) {
 	r.secretTriggerMu.Lock()
 	defer r.secretTriggerMu.Unlock()
@@ -416,7 +431,7 @@ func (r *ExternalDatabaseReconciler) clearSecretTrigger(key string) {
 
 // indexSecretNames is the indexer function registered at startup.
 // controller-runtime calls it for every ExternalDatabase to populate and
-// maintain the reverse map: "namespace/secretName" -> []ExternalDatabase.
+// maintain the reverse map: "namespace/secretName" → []ExternalDatabase.
 // The key includes the namespace to prevent spurious cross-namespace reconciles
 // when two namespaces have secrets with the same name.
 func indexSecretNames(obj client.Object) []string {
@@ -435,11 +450,11 @@ func indexSecretNames(obj client.Object) []string {
 }
 
 // enqueueForSecret maps a Secret event to reconcile requests for ExternalDatabases
-// that reference it. Uses the field index for an O(1) lookup - no full list scan.
+// that reference it. Uses the field index for an O(1) lookup — no full list scan.
 func (r *ExternalDatabaseReconciler) enqueueForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
 	list := &dbaasv1.ExternalDatabaseList{}
 	if err := r.List(ctx, list,
-		// MatchingFields resolves against the in-memory index - no API server call, no scan.
+		// MatchingFields resolves against the in-memory index — no API server call, no scan.
 		// The key encodes namespace+name so results are already namespace-scoped.
 		client.MatchingFields{secretNamesIndex: obj.GetNamespace() + "/" + obj.GetName()},
 	); err != nil {

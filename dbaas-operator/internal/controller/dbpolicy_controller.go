@@ -191,6 +191,10 @@ func (r *DbPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.O
 	return reqs
 }
 
+// stampBindingTrigger records that the next reconcile for key was most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// for the same key can swap labels between queued reconciles, so the metric is
+// informational and should not be used as exact causal tracing.
 func (r *DbPolicyReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
@@ -200,6 +204,10 @@ func (r *DbPolicyReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerStamps[key] = struct{}{}
 }
 
+// consumeBindingTrigger classifies the next reconcile for key as most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// for the same key can swap labels between queued reconciles, so the metric is
+// informational and should not be used as exact causal tracing.
 func (r *DbPolicyReconciler) consumeBindingTrigger(key string) bool {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()

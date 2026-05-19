@@ -45,6 +45,9 @@ const (
 	resultServerError   = "server_error"
 	resultNetworkError  = "network_error"
 
+	asyncResultFailed     = "failed"
+	asyncResultTerminated = "terminated"
+
 	secretReasonNotFound   = "secret_not_found"
 	secretReasonKeyMissing = "key_missing"
 	secretReasonKeyEmpty   = "key_empty"

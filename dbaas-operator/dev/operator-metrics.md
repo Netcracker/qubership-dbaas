@@ -18,6 +18,8 @@ Each metric is registered at startup and scraped by Prometheus.
 
 Counts every reconcile invocation, tagged by what caused it. A `secret_change` increment means the watcher detected a credential rotation and re-registered the database automatically without a CR spec change.
 
+Trigger classification is best-effort under overlapping events for the same object. The metric is useful for dashboard-level distribution and feature proof, but it should not be used as exact causal tracing or as an alert source.
+
 **Dashboard:** Stacked time series by trigger. A spike in `secret_change` is direct proof the feature fired.
 
 ---
@@ -172,5 +174,7 @@ End-to-end provisioning time from async submission (HTTP 202) to a terminal stat
 `terminated` means the aggregator cancelled the operation mid-flight; the operator resubmits automatically.
 
 The start timestamp is kept in memory after the operator submits an async operation. If the operator restarts before the terminal poll result, that operation is still reconciled correctly, but its duration sample is not recorded.
+
+Operational note: alerts on this histogram should rely on absolute latency percentiles, not on sample-rate dips. A drop in `rate(dbaas_async_operation_duration_seconds_count[...])` after an operator restart usually reflects lost samples, not a slowdown in actual provisioning.
 
 **Dashboard:** P50 / P90 / P99 per result label. Completion rate (operations/s) as a secondary panel.

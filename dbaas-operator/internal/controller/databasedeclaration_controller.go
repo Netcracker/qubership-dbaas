@@ -464,7 +464,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		log.InfoC(ctx, "database provisioning failed trackingId=%v status=%v reason=%v",
 			trackingID, resp.Status, reason)
 		clearPendingOperation(dd)
-		r.observeAsyncCompletion(dd, "failed")
+		r.observeAsyncCompletion(dd, asyncResultFailed)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonAggregatorRejected, reason)
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorRejected,
@@ -478,7 +478,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		// Clear the stale trackingID so the next reconcile enters the SUBMIT branch.
 		log.InfoC(ctx, "provisioning was terminated, clearing trackingId for resubmit trackingId=%v", trackingID)
 		clearPendingOperation(dd)
-		r.observeAsyncCompletion(dd, "terminated")
+		r.observeAsyncCompletion(dd, asyncResultTerminated)
 		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonOperationTerminated, "provisioning was terminated by the aggregator, resubmitting")
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonOperationTerminated,
@@ -539,6 +539,10 @@ func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, o
 	return reqs
 }
 
+// stampBindingTrigger records that the next reconcile for key was most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// for the same key can swap labels between queued reconciles, so the metric is
+// informational and should not be used as exact causal tracing.
 func (r *DatabaseDeclarationReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
@@ -548,6 +552,10 @@ func (r *DatabaseDeclarationReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerStamps[key] = struct{}{}
 }
 
+// consumeBindingTrigger classifies the next reconcile for key as most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// for the same key can swap labels between queued reconciles, so the metric is
+// informational and should not be used as exact causal tracing.
 func (r *DatabaseDeclarationReconciler) consumeBindingTrigger(key string) bool {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
