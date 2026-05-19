@@ -84,7 +84,12 @@ type DeclarativeResponse struct {
 // controller from a ConnectionProperty struct plus credentials read from a
 // Kubernetes Secret. Every entry must contain a "role" key.
 type ExternalDatabaseRequest struct {
-	Classifier                 map[string]string   `json:"classifier"`
+	// Classifier is sent to dbaas-aggregator as the request body's "classifier"
+	// field. The aggregator declares it as SortedMap<String, Object> in
+	// ExternalDatabaseRequestV3.java — values may be any JSON type
+	// (string, number, boolean, nested object, array). Use map[string]any
+	// rather than map[string]string to preserve the wire-side fidelity.
+	Classifier                 map[string]any      `json:"classifier"`
 	Type                       string              `json:"type"`
 	DbName                     string              `json:"dbName"`
 	ConnectionProperties       []map[string]string `json:"connectionProperties"`
