@@ -59,13 +59,49 @@ spec:
             description: spec defines the desired state of ExternalDatabase.
             properties:
               classifier:
-                additionalProperties:
-                  type: string
                 description: |-
-                  classifier is a map of key-value pairs that uniquely identifies the database
-                  in dbaas-aggregator. All keys are sorted alphabetically by the aggregator
-                  for identity comparison. Typical keys: microserviceName, scope, namespace.
+                  classifier uniquely identifies the database in dbaas-aggregator.
+                  Required keys: microserviceName, scope.
+                  If scope=tenant — tenantId is also required.
+                  If namespace is set, it must equal metadata.namespace (controller-side check);
+                  if omitted, metadata.namespace is used for the aggregator URL.
                   Immutable after creation.
+                properties:
+                  customKeys:
+                    additionalProperties:
+                      x-kubernetes-preserve-unknown-fields: true
+                    description: |-
+                      customKeys is an optional nested map for adapter-specific or
+                      application-specific identifiers (e.g. logicalDBName).
+                      Values can be any valid JSON type (string, number, boolean,
+                      nested object, array). Not validated by the aggregator — passed
+                      through as-is.
+                    type: object
+                  microserviceName:
+                    description: microserviceName is the name of the microservice
+                      that owns the database.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: |-
+                      namespace is the Kubernetes namespace of the owning service.
+                      If omitted, the aggregator uses metadata.namespace from the request.
+                      If set, it must equal the CR's metadata.namespace — a mismatch causes
+                      InvalidConfiguration at the controller level.
+                    type: string
+                  scope:
+                    description: scope defines the logical scope of the database,
+                      e.g. "service" or "tenant".
+                    minLength: 1
+                    type: string
+                  tenantId:
+                    description: |-
+                      tenantId is the tenant identifier for multi-tenant deployments.
+                      Only relevant when scope="tenant".
+                    type: string
+                required:
+                - microserviceName
+                - scope
                 type: object
                 x-kubernetes-validations:
                 - message: spec.classifier is immutable after creation
@@ -244,7 +280,8 @@ spec:
               lastRequestId:
                 description: |-
                   lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-                  Use this to correlate operator logs with dbaas-aggregator logs for debugging.
+                  Use this value to correlate operator logs with dbaas-aggregator logs when
+                  investigating issues for a specific resource.
                 type: string
               observedGeneration:
                 description: |-

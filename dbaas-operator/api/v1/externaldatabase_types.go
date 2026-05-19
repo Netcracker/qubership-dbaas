@@ -77,13 +77,15 @@ type ConnectionProperty struct {
 //
 //	PUT /api/v3/dbaas/<namespace>/databases/<dbName>/externally_manageable
 type ExternalDatabaseSpec struct {
-	// classifier is a map of key-value pairs that uniquely identifies the database
-	// in dbaas-aggregator. All keys are sorted alphabetically by the aggregator
-	// for identity comparison. Typical keys: microserviceName, scope, namespace.
+	// classifier uniquely identifies the database in dbaas-aggregator.
+	// Required keys: microserviceName, scope.
+	// If scope=tenant — tenantId is also required.
+	// If namespace is set, it must equal metadata.namespace (controller-side check);
+	// if omitted, metadata.namespace is used for the aggregator URL.
 	// Immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.classifier is immutable after creation"
-	Classifier map[string]string `json:"classifier"`
+	Classifier Classifier `json:"classifier"`
 
 	// type is the database engine type, e.g. "postgresql", "mongodb", "opensearch".
 	// Must match a type known to dbaas-aggregator.
@@ -112,11 +114,6 @@ type ExternalDatabaseSpec struct {
 // ExternalDatabaseStatus defines the observed state of ExternalDatabase.
 type ExternalDatabaseStatus struct {
 	OperatorStatus `json:",inline"`
-
-	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-	// Use this to correlate operator logs with dbaas-aggregator logs for debugging.
-	// +optional
-	LastRequestID string `json:"lastRequestId,omitempty"`
 }
 
 // +kubebuilder:object:root=true

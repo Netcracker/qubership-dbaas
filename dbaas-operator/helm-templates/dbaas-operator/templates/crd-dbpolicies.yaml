@@ -13,13 +13,16 @@ spec:
     listKind: DbPolicyList
     plural: dbpolicies
     shortNames:
-    - dbbp
+    - dbdp
     singular: dbpolicy
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
+      type: string
+    - jsonPath: .spec.microserviceName
+      name: MicroserviceName
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -209,7 +212,8 @@ spec:
               lastRequestId:
                 description: |-
                   lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-                  Use this to correlate operator logs with dbaas-aggregator logs for debugging.
+                  Use this value to correlate operator logs with dbaas-aggregator logs when
+                  investigating issues for a specific resource.
                 type: string
               observedGeneration:
                 description: |-

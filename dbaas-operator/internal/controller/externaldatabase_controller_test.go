@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
@@ -56,10 +57,10 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	// Suitable for tests that only care about the aggregator response.
 	baseSpec := func() dbaasv1.ExternalDatabaseSpec {
 		return dbaasv1.ExternalDatabaseSpec{
-			Classifier: map[string]string{
-				"microserviceName": "test-service",
-				"namespace":        ns,
-				"scope":            "service",
+			Classifier: dbaasv1.Classifier{
+				MicroserviceName: "test-service",
+				Namespace:        ns,
+				Scope:            "service",
 			},
 			Type:   "postgresql",
 			DbName: "testdb",
@@ -144,7 +145,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	Context("classifier.namespace absent — falls back to metadata.namespace", func() {
 		It("uses CR namespace in the aggregator URL and succeeds", func() {
 			spec := baseSpec()
-			delete(spec.Classifier, "namespace")
+			spec.Classifier.Namespace = ""
 			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -161,7 +162,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	Context("classifier.namespace matches metadata.namespace", func() {
 		It("proceeds normally and succeeds", func() {
 			spec := baseSpec()
-			spec.Classifier["namespace"] = ns // same as metadata.namespace
+			spec.Classifier.Namespace = ns // same as metadata.namespace
 			fixture.statusCode = http.StatusOK
 			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
@@ -178,7 +179,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	Context("classifier.namespace does not match metadata.namespace", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue, never calls aggregator", func() {
 			spec := baseSpec()
-			spec.Classifier["namespace"] = "other-namespace"
+			spec.Classifier.Namespace = "other-namespace"
 			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
@@ -962,7 +963,7 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		return &dbaasv1.ExternalDatabase{
 			ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 			Spec: dbaasv1.ExternalDatabaseSpec{
-				Classifier:           map[string]string{"namespace": ns, "microserviceName": "svc", "scope": "service"},
+				Classifier:           dbaasv1.Classifier{Namespace: ns, MicroserviceName: "svc", Scope: "service"},
 				Type:                 "postgresql",
 				DbName:               "testdb",
 				ConnectionProperties: []dbaasv1.ConnectionProperty{{Role: "admin"}},
@@ -1218,7 +1219,7 @@ var _ = Describe("ExternalDatabase Controller — secret watch", func() {
 		edb := &dbaasv1.ExternalDatabase{
 			ObjectMeta: metav1.ObjectMeta{Name: edbName, Namespace: ns},
 			Spec: dbaasv1.ExternalDatabaseSpec{
-				Classifier: map[string]string{"namespace": ns, "microserviceName": "svc", "scope": "service"},
+				Classifier: dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service", Namespace: ns},
 				Type:       "postgresql",
 				DbName:     "testdb",
 				ConnectionProperties: []dbaasv1.ConnectionProperty{
@@ -1256,7 +1257,7 @@ var _ = Describe("ExternalDatabase Controller — secret watch", func() {
 			return &dbaasv1.ExternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
 				Spec: dbaasv1.ExternalDatabaseSpec{
-					Classifier: map[string]string{"namespace": ns, "microserviceName": name, "scope": "service"},
+					Classifier: dbaasv1.Classifier{MicroserviceName: name, Scope: "service", Namespace: ns},
 					Type:       "postgresql",
 					DbName:     name + "-db",
 					ConnectionProperties: []dbaasv1.ConnectionProperty{
@@ -1290,5 +1291,119 @@ var _ = Describe("ExternalDatabase Controller — secret watch", func() {
 		for _, r := range reqs {
 			Expect(r.NamespacedName.Namespace).To(Equal(ns))
 		}
+	})
+})
+
+var _ = Describe("classifierToFlatMap", func() {
+	jsonVal := func(raw string) apiextensionsv1.JSON {
+		return apiextensionsv1.JSON{Raw: []byte(raw)}
+	}
+
+	It("emits required scalar fields only when customKeys are absent", func() {
+		c := dbaasv1.Classifier{
+			MicroserviceName: "svc",
+			Scope:            "service",
+		}
+		Expect(classifierToFlatMap(c)).To(Equal(map[string]any{
+			"microserviceName": "svc",
+			"scope":            "service",
+		}))
+	})
+
+	It("includes namespace and tenantId when set", func() {
+		c := dbaasv1.Classifier{
+			MicroserviceName: "svc",
+			Scope:            "tenant",
+			Namespace:        "ns",
+			TenantId:         "t-1",
+		}
+		Expect(classifierToFlatMap(c)).To(Equal(map[string]any{
+			"microserviceName": "svc",
+			"scope":            "tenant",
+			"namespace":        "ns",
+			"tenantId":         "t-1",
+		}))
+	})
+
+	It("flattens string customKeys as Go strings", func() {
+		c := dbaasv1.Classifier{
+			MicroserviceName: "svc",
+			Scope:            "service",
+			CustomKeys: map[string]apiextensionsv1.JSON{
+				"logicalDBName": jsonVal(`"configs"`),
+			},
+		}
+		Expect(classifierToFlatMap(c)).To(HaveKeyWithValue("logicalDBName", "configs"))
+	})
+
+	It("preserves native JSON types for non-string customKeys", func() {
+		c := dbaasv1.Classifier{
+			MicroserviceName: "svc",
+			Scope:            "service",
+			CustomKeys: map[string]apiextensionsv1.JSON{
+				"shardCount": jsonVal(`5`),
+				"enabled":    jsonVal(`true`),
+				"tags":       jsonVal(`["a","b"]`),
+				"meta":       jsonVal(`{"region":"us-east","zone":"a"}`),
+			},
+		}
+		out := classifierToFlatMap(c)
+		// json.Unmarshal decodes numbers as float64 by default.
+		Expect(out).To(HaveKeyWithValue("shardCount", float64(5)))
+		Expect(out).To(HaveKeyWithValue("enabled", true))
+		Expect(out).To(HaveKeyWithValue("tags", []any{"a", "b"}))
+		Expect(out).To(HaveKeyWithValue("meta", map[string]any{
+			"region": "us-east",
+			"zone":   "a",
+		}))
+	})
+
+	It("round-trips through JSON encoding without losing fidelity", func() {
+		c := dbaasv1.Classifier{
+			MicroserviceName: "svc",
+			Scope:            "service",
+			CustomKeys: map[string]apiextensionsv1.JSON{
+				"shardCount": jsonVal(`5`),
+				"meta":       jsonVal(`{"region":"us-east"}`),
+			},
+		}
+		encoded, err := json.Marshal(classifierToFlatMap(c))
+		Expect(err).ToNot(HaveOccurred())
+		var roundTripped map[string]any
+		Expect(json.Unmarshal(encoded, &roundTripped)).To(Succeed())
+		Expect(roundTripped["shardCount"]).To(Equal(float64(5)))
+		Expect(roundTripped["meta"]).To(Equal(map[string]any{"region": "us-east"}))
+	})
+
+	It("prefers explicit scalar fields over colliding customKeys", func() {
+		// User-supplied customKeys must not silently overwrite microserviceName,
+		// scope, namespace, or tenantId — these are the identity fields.
+		c := dbaasv1.Classifier{
+			MicroserviceName: "real-svc",
+			Scope:            "service",
+			Namespace:        "real-ns",
+			CustomKeys: map[string]apiextensionsv1.JSON{
+				"microserviceName": jsonVal(`"impostor"`),
+				"namespace":        jsonVal(`"impostor-ns"`),
+				"scope":            jsonVal(`"impostor"`),
+			},
+		}
+		out := classifierToFlatMap(c)
+		Expect(out).To(HaveKeyWithValue("microserviceName", "real-svc"))
+		Expect(out).To(HaveKeyWithValue("namespace", "real-ns"))
+		Expect(out).To(HaveKeyWithValue("scope", "service"))
+	})
+
+	It("treats an empty Raw payload as JSON null", func() {
+		c := dbaasv1.Classifier{
+			MicroserviceName: "svc",
+			Scope:            "service",
+			CustomKeys: map[string]apiextensionsv1.JSON{
+				"empty": {Raw: nil},
+			},
+		}
+		out := classifierToFlatMap(c)
+		Expect(out).To(HaveKey("empty"))
+		Expect(out["empty"]).To(BeNil())
 	})
 })

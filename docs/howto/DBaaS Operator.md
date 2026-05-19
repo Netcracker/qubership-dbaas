@@ -108,7 +108,7 @@ The operator calls the following dbaas-aggregator endpoints:
 
 **`PUT /api/v3/dbaas/{namespace}/databases/registration/externally_manageable`**
 
-The `{namespace}` segment is taken from `spec.classifier["namespace"]` if that key is set; otherwise from `metadata.namespace`.
+The `{namespace}` segment is taken from `spec.classifier.namespace` if that field is set; otherwise from `metadata.namespace`.
 
 The operator always sends `updateConnectionProperties: true`, which means the request creates the database registration if it does not exist, or updates the connection properties if it does.
 
@@ -487,10 +487,16 @@ metadata:
   namespace: my-namespace
 spec:
   classifier:
+    microserviceName: my-service   # required, minLength: 1
+    scope: service                 # required, minLength: 1; "service" or "tenant"
     namespace: my-namespace        # optional; if set, must equal metadata.namespace
-    microserviceName: my-service   # required
-    scope: service                 # required; "service" or "tenant"
     # tenantId: my-tenant          # required when scope=tenant
+    # customKeys:                  # optional, adapter-specific identifiers
+    #   logicalDBName: mydb        # string
+    #   shardCount: 5              # number — preserved as JSON number on the wire
+    #   region:                    # nested object — preserved as JSON object
+    #     name: us-east
+    #     az: a
   type: postgresql
   dbName: my_application_db
   connectionProperties:
@@ -506,14 +512,70 @@ spec:
         sslMode: "require"
 ```
 
-**`spec.classifier`** — uniquely identifies the database in dbaas-aggregator. A sorted map of key-value pairs.
+**`spec.classifier`** — uniquely identifies the database in dbaas-aggregator. A typed struct (CRD-validated).
 
-| Key | Required | Notes |
-|-----|:--------:|-------|
-| `microserviceName` | Yes | Name of the owning microservice |
-| `scope` | Yes | `service` or `tenant` |
-| `tenantId` | When `scope=tenant` | Must be present when scope is `tenant` |
-| `namespace` | No | If set, must equal `metadata.namespace`. If absent, `metadata.namespace` is used in the aggregator URL. |
+| Field | Required | Notes |
+|-------|:--------:|-------|
+| `microserviceName` | Yes | Name of the owning microservice. `minLength: 1`. CRD admission rejects missing/empty values. |
+| `scope` | Yes | `service` or `tenant`. `minLength: 1`. |
+| `tenantId` | When `scope=tenant` | Tenant identifier for multi-tenant deployments. |
+| `namespace` | No | If set, must equal `metadata.namespace` (controller-side check); if absent, `metadata.namespace` is used in the aggregator URL. |
+| `customKeys` | No | Adapter-specific identifiers (e.g. `logicalDBName`). Values can be any valid JSON type (string, number, boolean, nested object, array); not validated by the aggregator. See the mapping rules below. |
+
+##### `customKeys` → aggregator wire mapping
+
+The aggregator declares `ExternalDatabaseRequestV3.classifier` as
+`SortedMap<String, Object>` and stores it as JSONB, so the wire format supports
+any JSON value — including nested objects and arrays. The controller's
+`classifierToFlatMap` builds the wire payload from `spec.classifier` like this:
+
+1. **Structured fields first.** `microserviceName` and `scope` are always
+   emitted at the top level of the classifier map. `namespace` and `tenantId`
+   are emitted at the top level when set (empty strings are skipped).
+2. **`customKeys` are flattened to the same top level.** Every entry in
+   `customKeys` becomes a top-level key in the wire classifier — there is no
+   nested `customKeys` envelope on the wire.
+3. **Native JSON types are preserved.** A string stays a JSON string, a number
+   stays a number, a boolean stays a boolean, a nested object/array is sent
+   as-is. The controller does not stringify non-string values.
+4. **Structured fields win on key collision.** If a user puts
+   `customKeys.microserviceName` (or `scope` / `namespace` / `tenantId`) into
+   the spec, the explicit structured field always wins. This prevents
+   accidentally overriding the identity fields from `customKeys`.
+
+Example. For the spec snippet:
+
+```yaml
+spec:
+  classifier:
+    microserviceName: my-service
+    scope: service
+    namespace: my-namespace
+    customKeys:
+      logicalDBName: configs
+      shardCount: 5
+      region:
+        name: us-east
+        az: a
+```
+
+the controller sends the following `classifier` to dbaas-aggregator:
+
+```json
+{
+  "microserviceName": "my-service",
+  "scope": "service",
+  "namespace": "my-namespace",
+  "logicalDBName": "configs",
+  "shardCount": 5,
+  "region": { "name": "us-east", "az": "a" }
+}
+```
+
+> The aggregator sorts classifier keys alphabetically for identity comparison.
+> Two classifiers with the same set of keys and JSON-equal values resolve to
+> the same database; differing values in any nested object yield different
+> identities (JSONB deep-compare).
 
 **Top-level spec fields:**
 
@@ -523,6 +585,22 @@ spec:
 | `spec.type` | Yes | No | Database engine type (e.g., `postgresql`, `mongodb`). Must match a type known to dbaas-aggregator. Immutable after creation. |
 | `spec.dbName` | Yes | No | Logical database name. Included in the aggregator request URL. Immutable after creation. |
 | `spec.connectionProperties` | Yes | Yes | List of connection entries, one per access role. At least one entry required. |
+
+> **Note on `spec.classifier` immutability.** The CRD enforces immutability with the CEL rule
+> `self == oldSelf` — a strict structural comparison. Once an `ExternalDatabase` is created, the
+> exact shape of `spec.classifier` is frozen: you can neither add an optional field that was
+> initially omitted (e.g. `namespace`, `tenantId`, `customKeys`) nor remove one that was present.
+>
+> In particular, `spec.classifier.namespace` defaults to `metadata.namespace` at the controller
+> level *only when the field is absent from the spec*. After creation, this defaulting is
+> effectively frozen — adding an explicit `spec.classifier.namespace` later (even with the same
+> value as `metadata.namespace`) will be rejected by `kube-apiserver` with
+> `"spec.classifier is immutable after creation"`. If you want an explicit namespace in the
+> classifier, set it at creation time.
+>
+> Functionally this is not a limitation: the controller always uses `metadata.namespace` as the
+> default when `spec.classifier.namespace` is empty, so the aggregator receives the correct
+> namespace in either form. The constraint only applies to refactoring an existing CR's YAML.
 
 **`spec.connectionProperties[]` fields:**
 
@@ -557,7 +635,7 @@ A reconcile is triggered when any of the following happens:
 On each reconcile, the controller:
 
 1. Checks namespace ownership via `NamespaceBinding` (skips if not owned).
-2. Validates that `spec.classifier["namespace"]`, if set, equals `metadata.namespace`.
+2. Validates that `spec.classifier.namespace`, if set, equals `metadata.namespace`.
 3. Reads credentials from all referenced Kubernetes Secrets.
 4. Sends a `PUT` request to dbaas-aggregator to register or update the database.
 5. Updates `status.phase` and `status.conditions` based on the outcome.
@@ -573,7 +651,7 @@ CR created / spec changed / referenced Secret changed
         │
         ▼
   Pre-flight validation
-    classifier["namespace"] ≠ metadata.namespace? ──▶ InvalidConfiguration (InvalidSpec)
+    classifier.namespace ≠ metadata.namespace? ──▶ InvalidConfiguration (InvalidSpec)
         │
         ▼
   Read Secrets
@@ -637,7 +715,7 @@ CR created / spec changed / referenced Secret changed
 | Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
 |----------|---------|:-------:|----------|:---------:|
 | Registered (201) | `Succeeded` | `True` | `DatabaseRegistered` | `False` |
-| `classifier["namespace"]` mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| `classifier.namespace` mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
 | Secret not found | `BackingOff` | `False` | `SecretError` | `False` |
 | Secret key missing or empty | `BackingOff` | `False` | `SecretError` | `False` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
@@ -730,9 +808,9 @@ kubectl get dbedb my-postgres-external -n my-namespace -o jsonpath='{.status.las
 
 `DbPolicy` declares the database role assignments for microservices in a namespace. The operator forwards this declaration to dbaas-aggregator, which applies the role grants when provisioning or connecting databases for those microservices.
 
-Short name: `dbbp`
+Short name: `dbdp`
 
-`kubectl get dbbp` columns: `PHASE`, `AGE`
+`kubectl get dbdp` columns: `PHASE`, `MICROSERVICENAME`, `AGE`
 
 #### DbPolicy Resource Fields
 
@@ -819,7 +897,7 @@ CR created / spec changed
 
 #### DbPolicy Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbbp`.
+**`status.phase`** — human-readable summary for `kubectl get dbdp`.
 
 | Phase | Meaning |
 |-------|---------|
@@ -908,21 +986,21 @@ spec:
 **Check status:**
 
 ```bash
-kubectl get dbbp -n my-namespace
-# NAME        PHASE       AGE
-# my-policy   Succeeded   1m
+kubectl get dbdp -n my-namespace
+# NAME        PHASE       MICROSERVICENAME   AGE
+# my-policy   Succeeded   my-service         1m
 
-kubectl describe dbbp my-policy -n my-namespace
+kubectl describe dbdp my-policy -n my-namespace
 ```
 
 **Troubleshoot a stuck resource:**
 
 ```bash
 # Check conditions
-kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.conditions}' | jq .
 
 # Use lastRequestId to correlate with aggregator logs
-kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
+kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---
@@ -933,9 +1011,9 @@ kubectl get dbbp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 
 Provisioning is **asynchronous**: the aggregator returns `202 Accepted` with a `trackingId`, and the operator polls the operation status until it reaches a terminal state.
 
-Short name: `dbedd`
+Short name: `dbdd`
 
-`kubectl get dbedd` columns: `PHASE`, `TYPE`, `AGE`
+`kubectl get dbdd` columns: `PHASE`, `MICROSERVICENAME`, `TYPE`, `AGE`
 
 #### DatabaseDeclaration Resource Fields
 
@@ -1058,7 +1136,7 @@ CR created / spec changed
 
 #### DatabaseDeclaration Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbedd`.
+**`status.phase`** — human-readable summary for `kubectl get dbdd`.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1178,30 +1256,30 @@ spec:
 **Check status:**
 
 ```bash
-kubectl get dbedd -n my-namespace
-# NAME              PHASE                  TYPE         AGE
-# my-app-db         Succeeded              postgresql   2m
-# my-app-db-clone   WaitingForDependency   postgresql   10s
+kubectl get dbdd -n my-namespace
+# NAME              PHASE                  MICROSERVICENAME   TYPE         AGE
+# my-app-db         Succeeded              payments           postgresql   2m
+# my-app-db-clone   WaitingForDependency   payments           postgresql   10s
 ```
 
 **Watch async progress:**
 
 ```bash
 # The trackingID field is populated while async provisioning is in progress
-kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
+kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
 
 # Full status (phase, conditions, trackingID, lastRequestId)
-kubectl get dbedd my-app-db -n my-namespace -o yaml
+kubectl get dbdd my-app-db -n my-namespace -o yaml
 ```
 
 **Troubleshoot a stuck resource:**
 
 ```bash
 # Check conditions for the human-readable error message
-kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.conditions}' | jq .
 
 # Use lastRequestId to correlate with aggregator logs
-kubectl get dbedd my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
+kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---

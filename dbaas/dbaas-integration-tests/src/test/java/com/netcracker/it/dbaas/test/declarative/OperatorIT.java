@@ -495,7 +495,12 @@ public class OperatorIT extends AbstractIT {
                                 .resource(cr)
                                 .edit(r -> {
                                     Map<String, Object> spec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
-                                    spec.put("classifier", Map.of("microserviceName", "updatedMicroservice"));
+                                    // Provide all CRD-required fields so the schema validation passes
+                                    // and the XValidation immutability rule is the one that fires.
+                                    spec.put("classifier", Map.of(
+                                            "microserviceName", "updatedMicroservice",
+                                            "scope", "service"
+                                    ));
 
                                     return r;
                                 }));
