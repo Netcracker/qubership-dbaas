@@ -29,8 +29,8 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -79,6 +79,7 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
 		if apierrors.IsNotFound(err) {
 			r.clearSecretTrigger(edbKey)
+			r.clearBindingTrigger(edbKey)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -107,6 +108,7 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	if !owned {
 		r.clearSecretTrigger(edbKey)
+		r.clearBindingTrigger(edbKey)
 		return result, nil
 	}
 	recordReconcileTrigger(controllerEDB, trigger)
@@ -431,6 +433,12 @@ func (r *ExternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
 	}
 	delete(r.bindingTriggerStamps, key)
 	return true
+}
+
+func (r *ExternalDatabaseReconciler) clearBindingTrigger(key string) {
+	r.bindingTriggerMu.Lock()
+	defer r.bindingTriggerMu.Unlock()
+	delete(r.bindingTriggerStamps, key)
 }
 
 // stampSecretTrigger records that the next reconcile for key was most likely
