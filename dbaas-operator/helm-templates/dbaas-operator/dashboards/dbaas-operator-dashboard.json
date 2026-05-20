@@ -1,0 +1,631 @@
+{
+    "title":  "DBaaS Operator",
+    "uid":  "dbaas-operator",
+    "schemaVersion":  39,
+    "version":  3,
+    "refresh":  "30s",
+    "time":  {
+                 "from":  "now-15m",
+                 "to":  "now"
+             },
+    "timezone":  "browser",
+    "templating":  {
+                       "list":  [
+                                    {
+                                        "current":  {
+                                                        "selected":  false,
+                                                        "text":  "Platform Monitoring Prometheus",
+                                                        "value":  "Platform Monitoring Prometheus"
+                                                    },
+                                        "hide":  0,
+                                        "includeAll":  false,
+                                        "label":  "Cloud",
+                                        "multi":  false,
+                                        "name":  "datasource",
+                                        "options":  [
+
+                                                    ],
+                                        "query":  "prometheus",
+                                        "refresh":  1,
+                                        "regex":  "",
+                                        "skipUrlSync":  false,
+                                        "type":  "datasource"
+                                    }
+                                ]
+                   },
+    "panels":  [
+                   {
+                       "id":  1,
+                       "type":  "row",
+                       "title":  "Secret Watcher - Credential Rotation",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  0
+                                   }
+                   },
+                   {
+                       "id":  2,
+                       "type":  "timeseries",
+                       "title":  "Reconcile Triggers by Source (EDB)",
+                       "description":  "Compares how many reconciles are driven by Secret rotations vs spec changes. A spike in secret_change confirms the watcher is firing.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  1
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "secret_change"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "orange",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "spec_change"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "blue",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (trigger) (rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"externaldatabase\"}[1m]))",
+                                           "legendFormat":  "{{trigger}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  3,
+                       "type":  "timeseries",
+                       "title":  "Secret Rotation Propagation Time (seconds)",
+                       "description":  "End-to-end time from a Secret change being detected to the ExternalDatabase reaching Succeeded. This is the SLO metric for credential rotation.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  1
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "histogram_quantile(0.50, rate(dbaas_secret_rotation_propagation_seconds_bucket{namespace=\"#namespace#\"}[5m]))",
+                                           "legendFormat":  "P50"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.90, rate(dbaas_secret_rotation_propagation_seconds_bucket{namespace=\"#namespace#\"}[5m]))",
+                                           "legendFormat":  "P90"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.99, rate(dbaas_secret_rotation_propagation_seconds_bucket{namespace=\"#namespace#\"}[5m]))",
+                                           "legendFormat":  "P99"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  4,
+                       "type":  "timeseries",
+                       "title":  "Secret Resolution Errors",
+                       "description":  "Failures reading a credentials Secret. Reasons are actionable: secret_not_found, key_missing, key_empty, forbidden, or secret_read_failed.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  9
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "color":  {
+                                                                          "fixedColor":  "red",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[1m]))",
+                                           "legendFormat":  "{{exported_namespace}} / {{reason}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  5,
+                       "type":  "row",
+                       "title":  "Aggregator Interaction Health",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  17
+                                   }
+                   },
+                   {
+                       "id":  6,
+                       "type":  "timeseries",
+                       "title":  "Aggregator Call Latency (seconds)",
+                       "description":  "P50/P90/P99 latency per controller and operation. Feeds into SLO alerting - if P99 rises, the aggregator is slow.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  18
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "histogram_quantile(0.50, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P50 {{controller}}/{{operation}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.90, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P90 {{controller}}/{{operation}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.99, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P99 {{controller}}/{{operation}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  7,
+                       "type":  "timeseries",
+                       "title":  "Aggregator Call Outcomes (calls/s)",
+                       "description":  "Result breakdown: spec_rejection = CR/spec owner, auth_error = operator credentials/RBAC, server_error = aggregator, network_error = connectivity/platform.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  18
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "success"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "green",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "spec_rejection"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "yellow",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "auth_error"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "orange",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "server_error"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "red",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "network_error"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "purple",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\"}[1m]))",
+                                           "legendFormat":  "{{result}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  8,
+                       "type":  "row",
+                       "title":  "Dashboard-Only Resource Health Substitutes",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  26
+                                   }
+                   },
+                   {
+                       "id":  9,
+                       "type":  "timeseries",
+                       "title":  "Recent Failed Operations by Owner",
+                       "description":  "Dashboard-only substitute for resource phase health. Shows recent failed operations by owner bucket instead of exact current CR phase counts.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  27
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "mode":  "multi",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (controller, result) (increase(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!=\"success\"}[$__range]))",
+                                           "legendFormat":  "aggregator {{controller}} / {{result}}",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                           "expr":  "sum by (exported_namespace, reason) (increase(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[$__range]))",
+                                           "legendFormat":  "secret {{exported_namespace}} / {{reason}}",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  10,
+                       "type":  "timeseries",
+                       "title":  "Sustained Failure Signals",
+                       "description":  "Dashboard-only substitute for stuck resources. Shows failure signals that continue over the recent window; it is event-based, not an exact stuck CR count.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  27
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "mode":  "multi",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (controller, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!=\"success\"}[15m])) \u003e 0",
+                                           "legendFormat":  "aggregator {{controller}} / {{result}}",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[15m])) \u003e 0",
+                                           "legendFormat":  "secret {{exported_namespace}} / {{reason}}",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  11,
+                       "type":  "timeseries",
+                       "title":  "Async Provisioning Activity",
+                       "description":  "Dashboard-only substitute for async operations in flight. Compares DatabaseDeclaration polling activity with terminal completions.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  35
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "mode":  "multi",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum(rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"databasedeclaration\",trigger=\"polling\"}[15m]))",
+                                           "legendFormat":  "polling rate",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                           "expr":  "sum(rate(dbaas_async_operation_duration_seconds_count{namespace=\"#namespace#\"}[15m]))",
+                                           "legendFormat":  "completion rate",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  15,
+                       "type":  "timeseries",
+                       "title":  "Async Provisioning End-to-End Duration (seconds)",
+                       "description":  "How long it takes from HTTP 202 (async accepted) to a terminal state (completed / failed / terminated). This is the user-visible provisioning SLO.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  18,
+                                       "x":  6,
+                                       "y":  44
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "histogram_quantile(0.50, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P50 {{result}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.90, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P90 {{result}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.99, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P99 {{result}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  16,
+                       "type":  "timeseries",
+                       "title":  "Async Completion Rate by Outcome",
+                       "description":  "Rate of async operations completing per second, split by result (success / failed / terminated). Terminated means the aggregator cancelled and the operator will resubmit.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  52
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "success"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "green",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "failed"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "red",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "terminated"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "orange",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (result) (rate(dbaas_async_operation_duration_seconds_count{namespace=\"#namespace#\"}[1m]))",
+                                           "legendFormat":  "{{result}}"
+                                       }
+                                   ]
+                   }
+               ]
+}
+

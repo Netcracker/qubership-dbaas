@@ -25,9 +25,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -60,6 +62,16 @@ type DatabaseDeclarationReconciler struct {
 	Aggregator *aggregatorclient.AggregatorClient
 	Recorder   record.EventRecorder
 	Ownership  *ownership.OwnershipResolver
+
+	// asyncStartMu guards asyncStartTimes.
+	asyncStartMu sync.Mutex
+	// asyncStartTimes records the wall-clock time when an async operation was
+	// submitted (HTTP 202), keyed by "namespace/name". Consumed when the
+	// operation reaches a terminal state (COMPLETED, FAILED, TERMINATED).
+	asyncStartTimes map[string]time.Time
+
+	bindingTriggerMu     sync.Mutex
+	bindingTriggerStamps map[string]struct{}
 }
 
 func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -68,14 +80,24 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	dd := &dbaasv1.DatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
+		if apierrors.IsNotFound(err) {
+			key := req.Namespace + "/" + req.Name
+			r.clearBindingTrigger(key)
+			r.clearAsyncStart(key)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	key := req.Namespace + "/" + req.Name
+	bindingTriggered := r.consumeBindingTrigger(key)
 
 	owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "DatabaseDeclaration")
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !owned {
+		r.clearBindingTrigger(key)
+		r.clearAsyncStart(key)
 		return result, nil
 	}
 
@@ -100,7 +122,16 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 			dd.Status.PendingOperationGeneration, dd.Generation, dd.Status.TrackingID)
 		dd.Status.TrackingID = ""
 		dd.Status.PendingOperationGeneration = 0
+		r.clearAsyncStart(key)
 	}
+
+	trigger := triggerSpecChange
+	if bindingTriggered {
+		trigger = triggerNamespaceBindingChange
+	} else if dd.Status.TrackingID != "" {
+		trigger = triggerPolling
+	}
+	recordReconcileTrigger(controllerDD, trigger)
 
 	if dd.Status.TrackingID != "" {
 		return r.reconcilePoll(ctx, dd)
@@ -120,7 +151,9 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	// ── Call aggregator ───────────────────────────────────────────────────────
 	payload := r.buildPayload(dd)
 	dd.Status.LastRequestID = requestID
+	aggStart := time.Now()
 	resp, err := r.Aggregator.ApplyConfig(ctx, payload)
+	recordAggregatorCall(controllerDD, operationApplyConfig, aggStart, err)
 	if err != nil {
 		log.ErrorC(ctx, "failed to apply DatabaseDeclaration to dbaas-aggregator: %v", err)
 		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
@@ -129,6 +162,13 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	if resp.TrackingID != "" {
 		// HTTP 202 Accepted — async operation started.
 		log.InfoC(ctx, "database provisioning started asynchronously. trackingId = %v, microserviceName = %v", resp.TrackingID, dd.Spec.Classifier.MicroserviceName)
+		ddKey := dd.Namespace + "/" + dd.Name
+		r.asyncStartMu.Lock()
+		if r.asyncStartTimes == nil {
+			r.asyncStartTimes = make(map[string]time.Time)
+		}
+		r.asyncStartTimes[ddKey] = time.Now()
+		r.asyncStartMu.Unlock()
 		markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s, requestId=%s)",
@@ -155,7 +195,9 @@ func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *d
 	dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 	dd.Status.LastRequestID = requestID
 
+	aggStart := time.Now()
 	resp, err := r.Aggregator.GetOperationStatus(ctx, trackingID)
+	recordAggregatorCall(controllerDD, operationPollStatus, aggStart, err)
 	if err != nil {
 		return r.handlePollError(ctx, dd, trackingID, requestID, err)
 	}
@@ -343,6 +385,29 @@ func clearPendingOperation(dd *dbaasv1.DatabaseDeclaration) {
 	dd.Status.PendingOperationGeneration = 0
 }
 
+// observeAsyncCompletion records the end-to-end async operation duration and
+// consumes the in-memory start stamp. Safe to call even when no start stamp exists
+// (e.g. operator restarted mid-operation — in that case duration is not recorded).
+func (r *DatabaseDeclarationReconciler) observeAsyncCompletion(dd *dbaasv1.DatabaseDeclaration, result string) {
+	ddKey := dd.Namespace + "/" + dd.Name
+	r.asyncStartMu.Lock()
+	start, ok := r.asyncStartTimes[ddKey]
+	if ok {
+		delete(r.asyncStartTimes, ddKey)
+	}
+	r.asyncStartMu.Unlock()
+	if ok {
+		dbaasAsyncOperationDurationSeconds.WithLabelValues(result).Observe(time.Since(start).Seconds())
+	}
+}
+
+// clearAsyncStart drops any pending async-operation start stamp for key.
+func (r *DatabaseDeclarationReconciler) clearAsyncStart(key string) {
+	r.asyncStartMu.Lock()
+	defer r.asyncStartMu.Unlock()
+	delete(r.asyncStartTimes, key)
+}
+
 func (r *DatabaseDeclarationReconciler) handlePollError(
 	ctx context.Context,
 	dd *dbaasv1.DatabaseDeclaration,
@@ -366,6 +431,7 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 			// 404 — trackingId expired or never existed; clear it so the next
 			// reconcile re-submits the operation.
 			log.InfoC(ctx, "trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
+			r.clearAsyncStart(dd.Namespace + "/" + dd.Name)
 			clearPendingOperation(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
@@ -399,6 +465,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		log.InfoC(ctx, "database provisioned. trackingId = %v, microserviceName = %v",
 			trackingID, dd.Spec.Classifier.MicroserviceName)
 		clearPendingOperation(dd)
+		r.observeAsyncCompletion(dd, resultSuccess)
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 			"database provisioned (microserviceName=%s, trackingId=%s)",
@@ -410,6 +477,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		log.InfoC(ctx, "database provisioning failed trackingId=%v status=%v reason=%v",
 			trackingID, resp.Status, reason)
 		clearPendingOperation(dd)
+		r.observeAsyncCompletion(dd, asyncResultFailed)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonAggregatorRejected, reason)
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorRejected,
@@ -423,6 +491,7 @@ func (r *DatabaseDeclarationReconciler) handlePollResponse(
 		// Clear the stale trackingID so the next reconcile enters the SUBMIT branch.
 		log.InfoC(ctx, "provisioning was terminated, clearing trackingId for resubmit trackingId=%v", trackingID)
 		clearPendingOperation(dd)
+		r.observeAsyncCompletion(dd, asyncResultTerminated)
 		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonOperationTerminated, "provisioning was terminated by the aggregator, resubmitting")
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonOperationTerminated,
@@ -477,7 +546,42 @@ func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, o
 	}
 	reqs := make([]reconcile.Request, 0, len(list.Items))
 	for i := range list.Items {
+		r.stampBindingTrigger(list.Items[i].Namespace + "/" + list.Items[i].Name)
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
+}
+
+// stampBindingTrigger records that the next reconcile for key was most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// or ownership skips can swap or drop labels between queued reconciles, so the
+// metric is informational and should not be used as exact causal tracing.
+func (r *DatabaseDeclarationReconciler) stampBindingTrigger(key string) {
+	r.bindingTriggerMu.Lock()
+	defer r.bindingTriggerMu.Unlock()
+	if r.bindingTriggerStamps == nil {
+		r.bindingTriggerStamps = make(map[string]struct{})
+	}
+	r.bindingTriggerStamps[key] = struct{}{}
+}
+
+// consumeBindingTrigger classifies the next reconcile for key as most likely
+// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
+// or ownership skips can swap or drop labels between queued reconciles, so the
+// metric is informational and should not be used as exact causal tracing.
+func (r *DatabaseDeclarationReconciler) consumeBindingTrigger(key string) bool {
+	r.bindingTriggerMu.Lock()
+	defer r.bindingTriggerMu.Unlock()
+	if _, ok := r.bindingTriggerStamps[key]; !ok {
+		return false
+	}
+	delete(r.bindingTriggerStamps, key)
+	return true
+}
+
+// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
+func (r *DatabaseDeclarationReconciler) clearBindingTrigger(key string) {
+	r.bindingTriggerMu.Lock()
+	defer r.bindingTriggerMu.Unlock()
+	delete(r.bindingTriggerStamps, key)
 }
