@@ -18,7 +18,7 @@ Each metric is registered at startup and scraped by Prometheus.
 
 Counts every reconcile invocation, tagged by what caused it. A `secret_change` increment means the watcher detected a credential rotation and re-registered the database automatically without a CR spec change.
 
-Trigger classification is best-effort under overlapping events for the same object. The metric is useful for dashboard-level distribution and feature proof, but it should not be used as exact causal tracing or as an alert source.
+Trigger classification is best-effort. Overlapping events for the same object can swap labels between queued reconciles. A stamped trigger can also be consumed by a reconcile that is later skipped on namespace ownership, for example while a matching `NamespaceBinding` has not yet propagated to the informer cache; the follow-up reconcile then falls back to `spec_change`. The metric is useful for dashboard-level distribution and feature proof, but it should not be used as exact causal tracing or as an alert source.
 
 **Dashboard:** Stacked time series by trigger. A spike in `secret_change` is direct proof the feature fired.
 
@@ -101,8 +101,8 @@ sum by (controller, result) (
 ```
 
 ```promql
-sum by (namespace, reason) (
-  increase(dbaas_secret_resolution_errors_total[$__range])
+sum by (exported_namespace, reason) (
+  increase(dbaas_secret_resolution_errors_total{namespace="<operator-namespace>"}[$__range])
 )
 ```
 
@@ -123,8 +123,8 @@ sum by (controller, result) (
 ```
 
 ```promql
-sum by (namespace, reason) (
-  rate(dbaas_secret_resolution_errors_total[15m])
+sum by (exported_namespace, reason) (
+  rate(dbaas_secret_resolution_errors_total{namespace="<operator-namespace>"}[15m])
 ) > 0
 ```
 

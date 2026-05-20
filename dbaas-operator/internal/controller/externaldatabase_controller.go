@@ -88,9 +88,10 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Determine whether this reconcile was triggered by a Secret change or a
 	// spec change, and record the trigger counter.
 	fromSecret := r.consumeSecretTrigger(edbKey)
+	observeSecretPropagation := false
 	defer func() {
 		secretStart, ok := r.consumeSecretPropagation(edbKey)
-		if ok && edb.Status.Phase == dbaasv1.PhaseSucceeded {
+		if ok && observeSecretPropagation {
 			dbaasSecretRotationPropagationSeconds.Observe(time.Since(secretStart).Seconds())
 		}
 	}()
@@ -184,6 +185,7 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	log.InfoC(ctx, "external database registered successfully. type: %v, dbName: %v", edb.Spec.Type, edb.Spec.DbName)
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
+	observeSecretPropagation = true
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
 	return ctrl.Result{}, nil
@@ -210,11 +212,6 @@ func (r *ExternalDatabaseReconciler) buildRequest(
 	}, nil
 }
 
-// classifierToFlatMap converts the typed Classifier struct into the flat
-// string-to-string map expected by dbaas-aggregator on the wire.
-// The aggregator treats the classifier as SortedMap<String, Object> with
-// top-level keys: microserviceName, scope, namespace, tenantId, plus any
-// additional adapter-specific entries from customKeys merged into the top level.
 // classifierToFlatMap converts a typed Classifier into the map expected by
 // dbaas-aggregator's ExternalDatabaseRequestV3.classifier (declared on the
 // Java side as SortedMap<String, Object>). Scalar fields are emitted as
@@ -411,8 +408,8 @@ func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj 
 
 // stampBindingTrigger records that the next reconcile for key was most likely
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// for the same key can swap labels between queued reconciles, so the metric is
-// informational and should not be used as exact causal tracing.
+// or ownership skips can swap or drop labels between queued reconciles, so the
+// metric is informational and should not be used as exact causal tracing.
 func (r *ExternalDatabaseReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
@@ -424,8 +421,8 @@ func (r *ExternalDatabaseReconciler) stampBindingTrigger(key string) {
 
 // consumeBindingTrigger classifies the next reconcile for key as most likely
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// for the same key can swap labels between queued reconciles, so the metric is
-// informational and should not be used as exact causal tracing.
+// or ownership skips can swap or drop labels between queued reconciles, so the
+// metric is informational and should not be used as exact causal tracing.
 func (r *ExternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
@@ -444,9 +441,9 @@ func (r *ExternalDatabaseReconciler) clearBindingTrigger(key string) {
 }
 
 // stampSecretTrigger records that the next reconcile for key was most likely
-// caused by a Secret change. This is best-effort: overlapping triggers for the
-// same key can swap labels between queued reconciles, so the metric is
-// informational and should not be used as exact causal tracing.
+// caused by a Secret change. This is best-effort: overlapping triggers or
+// ownership skips can swap or drop labels between queued reconciles, so the
+// metric is informational and should not be used as exact causal tracing.
 func (r *ExternalDatabaseReconciler) stampSecretTrigger(key string, startedAt time.Time) {
 	r.secretTriggerMu.Lock()
 	defer r.secretTriggerMu.Unlock()

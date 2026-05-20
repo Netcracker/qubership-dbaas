@@ -59,6 +59,22 @@ func TestDatabaseDeclarationBindingTriggerLifecycle(t *testing.T) {
 	assertBindingTriggerLifecycle(t, r.stampBindingTrigger, r.consumeBindingTrigger, r.clearBindingTrigger)
 }
 
+func TestDatabaseDeclarationClearAsyncStart(t *testing.T) {
+	key := "test-ns/test-dd"
+	r := &DatabaseDeclarationReconciler{
+		asyncStartTimes: map[string]time.Time{
+			key: time.Unix(100, 0),
+		},
+	}
+
+	r.clearAsyncStart(key)
+	r.clearAsyncStart(key)
+
+	if _, ok := r.asyncStartTimes[key]; ok {
+		t.Fatalf("asyncStartTimes[%q] exists after clearAsyncStart, want deleted", key)
+	}
+}
+
 func TestDbPolicyBindingTriggerLifecycle(t *testing.T) {
 	r := &DbPolicyReconciler{}
 	assertBindingTriggerLifecycle(t, r.stampBindingTrigger, r.consumeBindingTrigger, r.clearBindingTrigger)

@@ -78,7 +78,7 @@ var dbaasReconcileTriggerTotal = prometheus.NewCounterVec(
 var dbaasSecretResolutionErrorsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "dbaas_secret_resolution_errors_total",
-		Help: "Total failures reading credential Secrets referenced by ExternalDatabase.",
+		Help: "Failures reading credential Secrets referenced by ExternalDatabase, scoped to namespaces owned by this operator instance. Labelled by namespace and failure category (secret_not_found, key_missing, key_empty, forbidden, secret_read_failed).",
 	},
 	[]string{"namespace", "reason"},
 )

@@ -81,7 +81,9 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	dd := &dbaasv1.DatabaseDeclaration{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.clearBindingTrigger(req.Namespace + "/" + req.Name)
+			key := req.Namespace + "/" + req.Name
+			r.clearBindingTrigger(key)
+			r.clearAsyncStart(key)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -94,6 +96,8 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 	if !owned {
+		r.clearBindingTrigger(key)
+		r.clearAsyncStart(key)
 		return result, nil
 	}
 
@@ -118,6 +122,7 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 			dd.Status.PendingOperationGeneration, dd.Generation, dd.Status.TrackingID)
 		dd.Status.TrackingID = ""
 		dd.Status.PendingOperationGeneration = 0
+		r.clearAsyncStart(key)
 	}
 
 	trigger := triggerSpecChange
@@ -396,6 +401,13 @@ func (r *DatabaseDeclarationReconciler) observeAsyncCompletion(dd *dbaasv1.Datab
 	}
 }
 
+// clearAsyncStart drops any pending async-operation start stamp for key.
+func (r *DatabaseDeclarationReconciler) clearAsyncStart(key string) {
+	r.asyncStartMu.Lock()
+	defer r.asyncStartMu.Unlock()
+	delete(r.asyncStartTimes, key)
+}
+
 func (r *DatabaseDeclarationReconciler) handlePollError(
 	ctx context.Context,
 	dd *dbaasv1.DatabaseDeclaration,
@@ -419,6 +431,7 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 			// 404 — trackingId expired or never existed; clear it so the next
 			// reconcile re-submits the operation.
 			log.InfoC(ctx, "trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
+			r.clearAsyncStart(dd.Namespace + "/" + dd.Name)
 			clearPendingOperation(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
@@ -541,8 +554,8 @@ func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, o
 
 // stampBindingTrigger records that the next reconcile for key was most likely
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// for the same key can swap labels between queued reconciles, so the metric is
-// informational and should not be used as exact causal tracing.
+// or ownership skips can swap or drop labels between queued reconciles, so the
+// metric is informational and should not be used as exact causal tracing.
 func (r *DatabaseDeclarationReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
@@ -554,8 +567,8 @@ func (r *DatabaseDeclarationReconciler) stampBindingTrigger(key string) {
 
 // consumeBindingTrigger classifies the next reconcile for key as most likely
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// for the same key can swap labels between queued reconciles, so the metric is
-// informational and should not be used as exact causal tracing.
+// or ownership skips can swap or drop labels between queued reconciles, so the
+// metric is informational and should not be used as exact causal tracing.
 func (r *DatabaseDeclarationReconciler) consumeBindingTrigger(key string) bool {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()

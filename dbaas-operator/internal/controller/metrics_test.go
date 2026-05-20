@@ -20,6 +20,7 @@ func TestAggregatorResultClassifiesOwnershipBuckets(t *testing.T) {
 		{name: "server", err: &aggregatorclient.AggregatorError{StatusCode: 500}, want: resultServerError},
 		{name: "wrapped server", err: fmt.Errorf("wrapped: %w", &aggregatorclient.AggregatorError{StatusCode: 503}), want: resultServerError},
 		{name: "network", err: errors.New("dial tcp: connection refused"), want: resultNetworkError},
+		{name: "wrapped network", err: fmt.Errorf("connect: %w", errors.New("dial timeout")), want: resultNetworkError},
 	}
 
 	for _, tt := range tests {
