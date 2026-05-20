@@ -70,7 +70,7 @@ func TestExternalDatabaseTriggerStampsConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
-		wg.Add(4)
+		wg.Add(5)
 		go func(i int) {
 			defer wg.Done()
 			r.stampSecretTrigger(key, time.Unix(int64(i), 0))
@@ -78,6 +78,10 @@ func TestExternalDatabaseTriggerStampsConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_ = r.consumeSecretTrigger(key)
+		}()
+		go func() {
+			defer wg.Done()
+			_, _ = r.consumeSecretPropagation(key)
 		}()
 		go func() {
 			defer wg.Done()

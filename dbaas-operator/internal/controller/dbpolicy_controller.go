@@ -218,6 +218,7 @@ func (r *DbPolicyReconciler) consumeBindingTrigger(key string) bool {
 	return true
 }
 
+// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
 func (r *DbPolicyReconciler) clearBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()

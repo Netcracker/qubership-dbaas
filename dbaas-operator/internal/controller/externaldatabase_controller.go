@@ -63,7 +63,8 @@ type ExternalDatabaseReconciler struct {
 	// secretTriggerMu guards the Secret-trigger maps below.
 	secretTriggerMu sync.Mutex
 	// secretTriggerStamps is consumed when classifying the next reconcile.
-	// secretPropagationStamps is kept until Succeeded so retries are included.
+	// secretPropagationStamps records the first Secret-change time for the next
+	// reconcile. It is consumed on reconcile exit and observed only on Succeeded.
 	secretTriggerStamps     map[string]struct{}
 	secretPropagationStamps map[string]time.Time
 
@@ -435,6 +436,7 @@ func (r *ExternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
 	return true
 }
 
+// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
 func (r *ExternalDatabaseReconciler) clearBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()

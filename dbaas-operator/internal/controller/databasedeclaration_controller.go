@@ -566,6 +566,7 @@ func (r *DatabaseDeclarationReconciler) consumeBindingTrigger(key string) bool {
 	return true
 }
 
+// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
 func (r *DatabaseDeclarationReconciler) clearBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
