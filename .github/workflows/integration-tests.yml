@@ -7,6 +7,9 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout repository
@@ -189,6 +192,7 @@ jobs:
           done
 
       - name: Upload Surefire reports
+        id: upload_surefire
         if: always() && steps.collect_reports.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
@@ -221,6 +225,34 @@ jobs:
         with:
           name: dbaas-logs
           path: logs/*
-      
 
-  
+      - name: Build test report
+        id: build_report
+        if: always() && steps.tests.outcome != 'skipped'
+        env:
+          ARTIFACTS_DIR: artifacts
+          OUTPUT_FILE: report.md
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+          MENTIONS: "@ArkuNC @TheHollowMonarch @Logaka"
+        run: python3 .github/scripts/build-test-report.py
+
+      - name: Post report to sticky issue
+        if: always() && steps.build_report.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ steps.build_report.outputs.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue edit 467 --repo "$REPO" --title "$ISSUE_TITLE"
+          gh issue comment 467 --repo "$REPO" --body-file report.md
+
+      - name: Fail job if any tests failed
+        if: always() && steps.build_report.outputs.status == 'failed'
+        run: |
+          echo "::error::Integration tests failed (${{ steps.build_report.outputs.failed_count }} test(s))"
+          exit 1
