@@ -24,20 +24,24 @@ import (
 type DatabaseSecretSpec struct {
 	// classifier uniquely identifies the database whose credentials this secret tracks.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="classifier is immutable after creation"
 	Classifier Classifier `json:"classifier"`
 
 	// type is the database engine type, e.g. "postgresql", "mongodb".
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="type is immutable after creation"
 	Type string `json:"type"`
 
 	// userRole is the role/permission level for the generated credentials.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.userRole is immutable after creation"
 	UserRole string `json:"userRole,omitempty"`
 
 	// secretName is the name of the Kubernetes Secret to create or update with credentials.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="secretName is immutable after creation"
 	SecretName string `json:"secretName"`
 }
 
@@ -55,10 +59,9 @@ type DatabaseSecretStatus struct {
 
 // DatabaseSecret is the Schema for the databasesecrets API (dbaas.netcracker.com group).
 // The label app.kubernetes.io/name is required — its value is sent as originService in the
-// get-by-classifier request to dbaas-aggregator. Absence of the label results in an empty
-// originService, which causes the aggregator to return HTTP 400 (CORE-DBAAS-4022) →
-// InvalidConfiguration phase. CEL validation of metadata.labels at root schema level is not
-// supported by controller-gen; enforcement is done through the aggregator error flow.
+// get-by-classifier request to dbaas-aggregator. CEL validation of metadata.labels at root
+// schema level is not supported by controller-gen; enforcement is done through a controller-level
+// pre-flight check before the aggregator is called.
 // It requests dbaas-aggregator to provision credentials for a managed database
 // and write them into a named Kubernetes Secret in the same namespace.
 type DatabaseSecret struct {

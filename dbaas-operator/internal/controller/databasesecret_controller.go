@@ -25,9 +25,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -45,6 +44,10 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
+
+// secretNameIndex is the field index key for DatabaseSecret.Spec.SecretName,
+// used to resolve sibling conflicts in O(1) instead of a full namespace scan.
+const secretNameIndex = "spec.secretName"
 
 // DatabaseSecretReconciler reconciles DatabaseSecret objects.
 //
@@ -81,21 +84,29 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecret, retErr error) bool {
-				return retErr == nil
+				return retErr == nil && !result.Requeue && result.RequeueAfter == 0
 			},
 			"DatabaseSecret")
 	}()
 
 	s.Status.Phase = dbaasv1.PhaseProcessing
 
-	// ── Step 6a: Pre-flight validation - require app.kubernetes.io/name label ─────────────────────────
+	// Pre-flight validation - classifier.namespace must match metadata.namespace ─────────────────────────
+	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
+		return invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
+			r.Recorder, s,
+			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q",
+				ns, s.Namespace))
+	}
+
+	// Pre-flight validation - require app.kubernetes.io/name label ─────────────────────────
 	if s.Labels["app.kubernetes.io/name"] == "" {
 		return invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
 			"label app.kubernetes.io/name is required — its value is used as originService in the get-by-classifier request")
 	}
 
-	// ── Step 6b: Pre-flight validation - check whether the target Secret already exists ──────────────
+	// Pre-flight validation - check whether the target Secret already exists ──────────────
 	existingSecret := &corev1.Secret{}
 	secretKey := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.SecretName}
 	secretExists := true
@@ -112,13 +123,16 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
-	// ── Step 6c: Pre-flight validation - check for sibling DatabaseSecret CRs claiming the same name ─
+	// Pre-flight validation - check for sibling DatabaseSecret CRs claiming the same name ─
 	var siblings dbaasv1.DatabaseSecretList
-	if err := r.List(ctx, &siblings, client.InNamespace(s.Namespace)); err != nil {
+	if err := r.List(ctx, &siblings,
+		client.InNamespace(s.Namespace),
+		client.MatchingFields{secretNameIndex: s.Spec.SecretName},
+	); err != nil {
 		return ctrl.Result{}, err
 	}
 	for i := range siblings.Items {
-		if siblings.Items[i].UID != s.UID && siblings.Items[i].Spec.SecretName == s.Spec.SecretName {
+		if siblings.Items[i].UID != s.UID {
 			return r.markSecretConflict(ctx, s,
 				fmt.Sprintf("another DatabaseSecret %q in namespace %q already claims secretName %q",
 					siblings.Items[i].Name, s.Namespace, s.Spec.SecretName))
@@ -143,41 +157,82 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			fmt.Sprintf("aggregator returned empty connectionProperties for type=%s", s.Spec.Type))
 	}
 
-	// ── Step 9: re-check Secret (race guard) ──────────────────────────────────
-	existingSecret = &corev1.Secret{}
-	secretExists = true
-	if err := r.Get(ctx, secretKey, existingSecret); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, err
-		}
-		secretExists = false
-	}
-
-	if secretExists {
-		if conflict, msg := r.ownerConflict(s, existingSecret); conflict {
-			return r.markSecretConflict(ctx, s, msg)
-		}
-	}
-
 	// ── Step 9 / write Secret ─────────────────────────────────────────────────
-	coreSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      s.Spec.SecretName,
-			Namespace: s.Namespace,
-		},
-	}
 	secretData, err := connectionPropertiesToSecretData(dbResp.ConnectionProperties)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("marshal connectionProperties: %w", err)
 	}
-	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, coreSecret, func() error {
-		coreSecret.Data = secretData
-		return ctrl.SetControllerReference(s, coreSecret, r.Scheme)
-	})
+
+	// Step 9.1 — TRY CREATE
+	newSecret, err := r.buildOwnedSecret(s, secretData)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("create/update Secret %s: %w", s.Spec.SecretName, err)
+		return ctrl.Result{}, err
 	}
 
+	err = r.Create(ctx, newSecret)
+	if err == nil {
+		log.InfoC(ctx, "DatabaseSecret reconciled successfully name=%s secretName=%s", s.Name, s.Spec.SecretName)
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+		r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated,
+			"Secret %q created/updated with connection properties (requestId=%s)",
+			s.Spec.SecretName, requestID)
+		return ctrl.Result{}, nil
+	}
+
+	if !apierrors.IsAlreadyExists(err) {
+		return ctrl.Result{}, err
+	}
+
+	// Step 9.2 — AlreadyExists → RE-FETCH
+	existing := &corev1.Secret{}
+	if err := r.Get(ctx, secretKey, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			// race: deleted after AlreadyExists → retry create
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Step 9.3 — OWNER CONFLICT CHECK
+	if conflict, msg := r.ownerConflict(s, existing); conflict {
+		return r.markSecretConflict(ctx, s, msg)
+	}
+
+	// Step 9.4 — UPDATE (idempotent)
+	updated := existing.DeepCopy()
+	updated.Data = secretData
+	if updated.Labels == nil {
+		updated.Labels = make(map[string]string)
+	}
+	updated.Labels["app.kubernetes.io/managed-by"] = "dbaas-operator"
+	updated.Labels["app.kubernetes.io/name"] = s.Labels["app.kubernetes.io/name"]
+
+	// set owner only if not already controlled by us
+	if !metav1.IsControlledBy(updated, s) {
+		if err := ctrl.SetControllerReference(s, updated, r.Scheme); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	if err := r.Update(ctx, updated); err != nil {
+		switch {
+		case apierrors.IsConflict(err):
+			return ctrl.Result{}, err
+		case apierrors.IsNotFound(err):
+			// GC deleted the Secret between re-fetch and Update; spec: Create immediately
+			recreated, buildErr := r.buildOwnedSecret(s, secretData)
+			if buildErr != nil {
+				return ctrl.Result{}, buildErr
+			}
+			if createErr := r.Create(ctx, recreated); createErr != nil && !apierrors.IsAlreadyExists(createErr) {
+				return ctrl.Result{}, createErr
+			}
+			// Cannot confirm write succeeded if AlreadyExists again — let next reconcile confirm
+			return ctrl.Result{Requeue: true}, nil
+		default:
+			return ctrl.Result{}, err
+		}
+	}
 	// ── Step 10: mark succeeded ───────────────────────────────────────────────
 	log.InfoC(ctx, "DatabaseSecret reconciled successfully name=%s secretName=%s", s.Name, s.Spec.SecretName)
 	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
@@ -210,10 +265,13 @@ func (r *DatabaseSecretReconciler) markSecretConflict(ctx context.Context, s *db
 	return ctrl.Result{}, nil
 }
 
-// handleAggregatorErr maps aggregator errors to the correct phase/conditions/events.
-// 401 and 403 are both treated as Unauthorized (transient).
-// 404 gets its own DatabaseNotReady reason.
-// Everything else is delegated to the shared handleAggregatorError helper.
+// handleAggregatorErr maps aggregator errors to phase/conditions/events for DatabaseSecret.
+// It injects the DatabaseNotFound case before delegating to the shared handler:
+//   - 404 + CORE-DBAAS-4006  → BackingOff / DatabaseNotFound  (transient, DB not yet registered)
+//   - 404 without TMF body   → AggregatorError / BackingOff    (BG edge: no active namespace)
+//   - 401                    → BackingOff / Unauthorized        (transient)
+//   - 400 / 403              → InvalidConfiguration / AggregatorRejected (permanent)
+//   - 5xx / network          → BackingOff / AggregatorError     (transient)
 func (r *DatabaseSecretReconciler) handleAggregatorErr(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecret,
@@ -221,23 +279,12 @@ func (r *DatabaseSecretReconciler) handleAggregatorErr(
 	requestID string,
 ) (ctrl.Result, error) {
 	var aggErr *aggregatorclient.AggregatorError
-	if errors.As(err, &aggErr) {
-		switch aggErr.StatusCode {
-		case http.StatusUnauthorized, http.StatusForbidden:
-			markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
-				EventReasonUnauthorized, aggErr.UserMessage())
-			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonUnauthorized,
-				"aggregator rejected credentials (HTTP %d): %s (requestId=%s)",
-				aggErr.StatusCode, aggErr.UserMessage(), requestID)
-			return ctrl.Result{}, err
-
-		case http.StatusNotFound:
-			markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
-				EventReasonDatabaseNotReady, aggErr.UserMessage())
-			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotReady,
-				"database not found in dbaas-aggregator, waiting for provisioning (requestId=%s)", requestID)
-			return ctrl.Result{}, err
-		}
+	if errors.As(err, &aggErr) && aggErr.IsDatabaseNotFound() {
+		markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+			EventReasonDatabaseNotFound, aggErr.UserMessage())
+		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotFound,
+			"database not found in dbaas-aggregator, waiting for provisioning (requestId=%s)", requestID)
+		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 	}
 	return handleAggregatorError(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 		r.Recorder, s, err, requestID)
@@ -245,20 +292,31 @@ func (r *DatabaseSecretReconciler) handleAggregatorErr(
 
 // connectionPropertiesToSecretData serializes the connectionProperties map as a single
 // JSON value stored under the key "connectionProperties" in the Kubernetes Secret.
-// The connectionProperties format is arbitrary (any JSON-serializable map) because
-// on the dbaas-aggregator side the type is List<Map<String,Object>>.
+// The aggregator returns a single map (DatabaseResponseV3SingleCP.connectionProperties)
+// for the requested userRole; the map shape is dynamic and dictated by the adapter.
 func connectionPropertiesToSecretData(props map[string]any) (map[string][]byte, error) {
 	raw, err := json.Marshal(props)
 	if err != nil {
 		return nil, err
 	}
 	return map[string][]byte{
-		"connectionProperties": raw,
+		"connectionProperties.json": raw,
 	}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&dbaasv1.DatabaseSecret{},
+		secretNameIndex,
+		func(obj client.Object) []string {
+			return []string{obj.(*dbaasv1.DatabaseSecret).Spec.SecretName}
+		},
+	); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseSecret{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
@@ -280,4 +338,28 @@ func (r *DatabaseSecretReconciler) enqueueForBinding(ctx context.Context, obj cl
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
+}
+
+func (r *DatabaseSecretReconciler) buildOwnedSecret(
+	owner *dbaasv1.DatabaseSecret,
+	data map[string][]byte,
+) (*corev1.Secret, error) {
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      owner.Spec.SecretName,
+			Namespace: owner.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "dbaas-operator",
+				"app.kubernetes.io/name":       owner.Labels["app.kubernetes.io/name"],
+			},
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: data,
+	}
+
+	if err := ctrl.SetControllerReference(owner, sec, r.Scheme); err != nil {
+		return nil, err
+	}
+
+	return sec, nil
 }

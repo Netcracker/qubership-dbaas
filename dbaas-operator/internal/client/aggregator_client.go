@@ -195,8 +195,11 @@ func newAggregatorError(resp *resty.Response) *AggregatorError {
 	}
 
 	var tmfResp tmf.Response
-	if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
-		aggErr.TmfMessage = tmfResp.Message
+	if json.Unmarshal(resp.Body(), &tmfResp) == nil {
+		aggErr.TmfCode = tmfResp.Code
+		if tmfResp.Message != "" {
+			aggErr.TmfMessage = tmfResp.Message
+		}
 	}
 
 	return aggErr

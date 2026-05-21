@@ -99,8 +99,8 @@ const (
 	// has no ownerReference at all. Type: Warning.
 	EventReasonSecretConflict = "SecretConflict"
 
-	// EventReasonDatabaseNotReady is emitted when dbaas-aggregator returns HTTP 404
-	// for a get-by-classifier request, meaning the database has not been provisioned
-	// yet. The controller retries with exponential backoff. Type: Warning.
-	EventReasonDatabaseNotReady = "DatabaseNotReady"
+	// EventReasonDatabaseNotFound is emitted when dbaas-aggregator returns HTTP 404
+	// for a get-by-classifier request, meaning the database is not yet registered and
+	// the operator retries until it appears. The controller retries with exponential backoff. Type: Warning.
+	EventReasonDatabaseNotFound = "DatabaseNotFound"
 )

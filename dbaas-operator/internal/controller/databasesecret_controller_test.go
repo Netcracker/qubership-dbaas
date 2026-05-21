@@ -82,8 +82,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 		reconciler = &DatabaseSecretReconciler{
-			Client:     k8sClient,
-			Scheme:     k8sClient.Scheme(),
+			Client:     cacheClient,
+			Scheme:     cacheClient.Scheme(),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 			Recorder:   fixture.recorder,
 			Ownership:  mineOwnershipResolver(ns),
@@ -172,14 +172,16 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 			secret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
-			Expect(secret.Data).To(HaveKey("connectionProperties"))
+			Expect(secret.Data).To(HaveKey("connectionProperties.json"))
 			var cp map[string]any
-			Expect(json.Unmarshal(secret.Data["connectionProperties"], &cp)).To(Succeed())
+			Expect(json.Unmarshal(secret.Data["connectionProperties.json"], &cp)).To(Succeed())
 			Expect(cp).To(HaveKey("host"))
 			Expect(cp).To(HaveKey("password"))
 			Expect(cp["port"]).To(BeEquivalentTo(5432))
 			Expect(secret.OwnerReferences).To(HaveLen(1))
 			Expect(secret.OwnerReferences[0].Name).To(Equal(resourceName))
+			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "dbaas-operator"))
+			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "test-service"))
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
 			expectNoRecordedEvent(fixture.recorder.Events)
@@ -214,6 +216,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			secret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
 			Expect(secret.OwnerReferences).To(HaveLen(1))
+			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "dbaas-operator"))
+			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "test-service"))
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
 			expectNoRecordedEvent(fixture.recorder.Events)
@@ -263,9 +267,10 @@ var _ = Describe("DatabaseSecret Controller", func() {
 				Spec: baseSpec(),
 			})).To(Succeed())
 
-			ds, _, err := reconcileAndFetch()
+			ds, result, err := reconcileAndFetch()
 
-			Expect(err).To(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(ds.Status.ObservedGeneration).To(BeZero())
 
@@ -275,9 +280,9 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonDatabaseNotReady))
+			Expect(ready.Reason).To(Equal(EventReasonDatabaseNotFound))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonDatabaseNotReady)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonDatabaseNotFound)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -342,7 +347,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	})
 
 	Context("HTTP 403 — role not permitted by DbPolicy", func() {
-		It("sets Phase=BackingOff, Stalled=False, Unauthorized event, requeues", func() {
+		It("sets Phase=InvalidConfiguration, Stalled=True, AggregatorRejected event, no requeue", func() {
 			fixture.statusCode = http.StatusForbidden
 			fixture.body = `{"code":"CORE-DBAAS-4023","message":"Role not permitted"}`
 			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
@@ -354,20 +359,21 @@ var _ = Describe("DatabaseSecret Controller", func() {
 				Spec: baseSpec(),
 			})).To(Succeed())
 
-			ds, _, err := reconcileAndFetch()
+			ds, result, err := reconcileAndFetch()
 
-			Expect(err).To(HaveOccurred())
-			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
-			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
 
 			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonUnauthorized))
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorRejected))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonUnauthorized)
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorRejected, "Role not permitted")
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -395,6 +401,70 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
 			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Unexpected exception")
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("HTTP 404 — BG edge: no active namespace (no TMF body)", func() {
+		It("sets Phase=BackingOff, reason=AggregatorError, requeues", func() {
+			fixture.statusCode = http.StatusNotFound
+			fixture.body = ``
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			})).To(Succeed())
+
+			ds, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			Expect(ds.Status.ObservedGeneration).To(BeZero())
+
+			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorError))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("HTTP 500 — BG edge: CORE-DBAAS-4041 no DB in active namespace", func() {
+		It("sets Phase=BackingOff, reason=AggregatorError, requeues", func() {
+			fixture.statusCode = http.StatusInternalServerError
+			fixture.body = `{"code":"CORE-DBAAS-4041","message":"Can't find database in active namespace"}`
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			})).To(Succeed())
+
+			ds, _, err := reconcileAndFetch()
+
+			Expect(err).To(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			Expect(ds.Status.ObservedGeneration).To(BeZero())
+
+			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonAggregatorError))
+
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonAggregatorError, "Can't find database in active namespace")
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -528,15 +598,17 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			})).To(Succeed())
 
 			reconciler2 := &DatabaseSecretReconciler{
-				Client:     k8sClient,
-				Scheme:     k8sClient.Scheme(),
+				Client:     cacheClient,
+				Scheme:     cacheClient.Scheme(),
 				Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
 				Recorder:   fixture.recorder,
 				Ownership:  mineOwnershipResolver(ns),
 			}
-			result2, err2 := reconciler2.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: cr2Name, Namespace: ns},
-			})
+			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
+			Eventually(func() error {
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+			}).Should(Succeed())
+			result2, err2 := reconciler2.Reconcile(ctx, reconcile.Request{NamespacedName: cr2Key})
 			Expect(err2).NotTo(HaveOccurred())
 			Expect(result2.RequeueAfter).To(BeZero())
 

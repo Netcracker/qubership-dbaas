@@ -24,6 +24,7 @@ public class OperatorHelper {
 
     public static final String CR_NAMESPACE_BINDING_NAME = "binding";
     public static final String TEST_ID = "dbaas-autotest";
+    public static final String CONNECTION_PROPERTIES_KEY = "connectionProperties.json";
     public static final Pattern NAMESPACE_PATTERN = Pattern.compile("^operator-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     public static final String PHASE_SUCCEEDED = "Succeeded";
@@ -42,7 +43,7 @@ public class OperatorHelper {
     public static final String REASON_SECRET_CONFLICT = "SecretConflict";
     public static final String REASON_INVALID_SPEC = "InvalidSpec";
     public static final String REASON_DATABASE_PROVISIONED = "DatabaseProvisioned";
-    public static final String REASON_DATABASE_NOT_READY = "DatabaseNotReady";
+    public static final String REASON_DATABASE_NOT_FOUND = "DatabaseNotFound";
     public static final String REASON_UNAUTHORIZED = "Unauthorized";
     public static final String REASON_AGGREGATOR_ERROR = "AggregatorError";
     public static final String REASON_OPERATION_TERMINATED = "OperationTerminated";
