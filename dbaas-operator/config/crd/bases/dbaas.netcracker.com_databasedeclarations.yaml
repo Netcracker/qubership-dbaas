@@ -62,6 +62,11 @@ spec:
                   classifier uniquely identifies this database in dbaas.
                   The aggregator uses it to look up or create the physical database.
                   Required keys: microserviceName, scope.
+                  Immutable after creation — changing the classifier of an existing
+                  DatabaseDeclaration would switch the CR onto a different database while
+                  the controller's status (trackingID, observedGeneration) still references
+                  the original one. To rebind to a different database, delete and recreate
+                  the CR.
                 properties:
                   customKeys:
                     additionalProperties:
@@ -99,6 +104,9 @@ spec:
                 - microserviceName
                 - scope
                 type: object
+                x-kubernetes-validations:
+                - message: spec.classifier is immutable after creation
+                  rule: self == oldSelf
               initialInstantiation:
                 description: |-
                   initialInstantiation defines how the database is created on the first deployment.
@@ -174,8 +182,14 @@ spec:
                 description: |-
                   type is the database engine type. Must match a type known to dbaas-aggregator,
                   e.g. "postgresql", "mongodb", "opensearch".
+                  Immutable after creation — changing engine type mid-flight would request
+                  provisioning of a fresh database on a different adapter while the original
+                  remains registered under the same CR identity.
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: spec.type is immutable after creation
+                  rule: self == oldSelf
               versioningConfig:
                 description: |-
                   versioningConfig defines the strategy for handling database versions during
