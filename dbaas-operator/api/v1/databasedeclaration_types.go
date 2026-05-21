@@ -16,43 +16,7 @@ limitations under the License.
 
 package v1
 
-import (
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-// Classifier uniquely identifies a database in dbaas-aggregator.
-// All keys are sorted alphabetically by the aggregator for identity comparison.
-type Classifier struct {
-	// name is the microservice name that owns the database.
-	// Must match metadata.microserviceName sent in the declarative payload.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	MicroserviceName string `json:"microserviceName"`
-
-	// scope defines the logical scope of the database, e.g. "service" or "tenant".
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Scope string `json:"scope"`
-
-	// namespace is the Kubernetes namespace of the owning service.
-	// If omitted, the aggregator uses metadata.namespace from the request.
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-
-	// tenantId is the tenant identifier for multi-tenant deployments.
-	// Only relevant when scope="tenant". When absent, the aggregator applies
-	// the declaration for every tenant already registered in the namespace.
-	// +optional
-	TenantId string `json:"tenantId,omitempty"`
-
-	// customKeys is an optional nested map for adapter-specific or
-	// application-specific identifiers (e.g. logicalDBName).
-	// Values can be any valid JSON type (string, number, boolean, nested object).
-	// Not validated by the aggregator — passed through as-is.
-	// +optional
-	CustomKeys map[string]apiextensionsv1.JSON `json:"customKeys,omitempty"`
-}
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // VersioningConfig defines the strategy for managing database versions during
 // blue-green deployments. Mirrors DatabaseDeclaration.VersioningConfig in the aggregator.
@@ -146,17 +110,13 @@ type DatabaseDeclarationStatus struct {
 	// Zero means no pending async operation.
 	// +optional
 	PendingOperationGeneration int64 `json:"pendingOperationGeneration,omitempty"`
-
-	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-	// Use this to correlate operator logs with dbaas-aggregator logs for debugging.
-	// +optional
-	LastRequestID string `json:"lastRequestId,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=databasedeclarations,singular=databasedeclaration
+// +kubebuilder:resource:scope=Namespaced,path=databasedeclarations,singular=databasedeclaration,shortName=dbdd
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.classifier.microserviceName"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

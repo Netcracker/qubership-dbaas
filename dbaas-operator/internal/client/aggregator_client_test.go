@@ -37,7 +37,7 @@ func staticToken(token string) func(context.Context) (string, error) {
 // minimalExtDBRequest returns the smallest valid ExternalDatabaseRequest.
 func minimalExtDBRequest() *ExternalDatabaseRequest {
 	return &ExternalDatabaseRequest{
-		Classifier:           map[string]string{"namespace": "test"},
+		Classifier:           map[string]any{"namespace": "test"},
 		Type:                 "postgresql",
 		DbName:               "test-db",
 		ConnectionProperties: []map[string]string{{"role": "admin"}},
@@ -170,7 +170,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 	defer srv.Close()
 
 	req := &ExternalDatabaseRequest{
-		Classifier:                 map[string]string{"namespace": "ns", "microserviceName": "svc"},
+		Classifier:                 map[string]any{"namespace": "ns", "microserviceName": "svc"},
 		Type:                       "postgresql",
 		DbName:                     "mydb",
 		ConnectionProperties:       []map[string]string{{"role": "admin", "host": "pg:5432"}},
