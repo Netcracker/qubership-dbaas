@@ -478,6 +478,7 @@ public class OperatorIT extends AbstractIT {
                     );
                 }
 
+                @Test
                 void testExternalDatabaseTryToUpdateClassifier() {
                     String crName = generateName();
                     String microserviceName = generateName();
@@ -1144,7 +1145,7 @@ public class OperatorIT extends AbstractIT {
     }
 
     @Test
-    void testDatabaseSecretDatabaseIsAbsentInActiveNamespace() throws IOException, InterruptedException {
+    void testDatabaseSecretDatabaseIsAbsentInActiveNamespace() throws IOException {
         String crName = generateName();
         String microserviceName = generateName();
         String secretName = generateName();
