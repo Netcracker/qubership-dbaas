@@ -879,6 +879,87 @@ public class OperatorIT extends AbstractIT {
                 helperV3.getDatabaseByClassifierAsPOJO(
                         helperV3.getClusterDbaAuthorization(), cloneClassifierMap, NAMESPACE, "postgresql", 200);
             }
+
+            @Test
+            void testDatabaseDeclarationTryToUpdateClassifier() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
+                createCR(CRD_DATABASE_DECLARATION, cr);
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
+                        kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .edit(r -> {
+                                    Map<String, Object> spec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                                    // Provide all CRD-required fields so the schema validation passes
+                                    // and the XValidation immutability rule is the one that fires.
+                                    spec.put("classifier", Map.of(
+                                            "microserviceName", "updatedMicroservice",
+                                            "scope", "service"
+                                    ));
+                                    return r;
+                                }));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.classifier is immutable after creation"));
+            }
+
+            @Test
+            void testDatabaseDeclarationTryToUpdateType() {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String updatedType = "mongodb";
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
+                var spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+                assertNotEquals(updatedType, spec.get("type"));
+
+                createCR(CRD_DATABASE_DECLARATION, cr);
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
+                        kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .edit(r -> {
+                                    Map<String, Object> currSpec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                                    currSpec.put("type", updatedType);
+                                    return r;
+                                }));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.type is immutable after creation"));
+            }
+
+            @Test
+            void testDatabaseDeclarationCanUpdateSettings() throws IOException {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
+                createCR(CRD_DATABASE_DECLARATION, cr);
+                waitForDesiredState(CRD_DATABASE_DECLARATION, cr,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                var updatedSettings = Map.of(TEST_ID, "updated");
+                var updatedResource = kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                        .inNamespace(NAMESPACE)
+                        .resource(cr)
+                        .edit(r -> {
+                            Map<String, Object> currSpec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                            currSpec.put("settings", updatedSettings);
+                            return r;
+                        });
+                waitForDesiredState(CRD_DATABASE_DECLARATION, updatedResource,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                var refreshed = kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                        .inNamespace(NAMESPACE)
+                        .resource(cr)
+                        .get();
+                var refreshedSpec = (Map<String, Object>) refreshed.getAdditionalProperties().get("spec");
+                assertEquals(updatedSettings, refreshedSpec.get("settings"));
+            }
         }
 
         @Nested
@@ -998,6 +1079,62 @@ public class OperatorIT extends AbstractIT {
                 var actualService = actualServices.getFirst();
                 assertEquals(service.get("name"), actualService.getName());
                 assertEquals(service.get("roles"), actualService.getRoles());
+            }
+
+            @Test
+            void testDbPolicyTryToUpdateMicroserviceName() {
+                String crName = generateName();
+                String microserviceName = generateName();
+                String updatedMicroserviceName = generateName();
+                assertNotEquals(microserviceName, updatedMicroserviceName);
+
+                var service = Map.of("name", "svc-a", "roles", List.of("admin"));
+                var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
+                createCR(CRD_DB_POLICY, cr);
+
+                KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
+                        kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+                                .inNamespace(NAMESPACE)
+                                .resource(cr)
+                                .edit(r -> {
+                                    Map<String, Object> currSpec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                                    currSpec.put("microserviceName", updatedMicroserviceName);
+                                    return r;
+                                }));
+                assertEquals(422, ex.getCode());
+                assertTrue(ex.toString().contains("spec.microserviceName is immutable after creation"));
+            }
+
+            @Test
+            void testDbPolicyCanUpdateServices() {
+                String crName = generateName();
+                String microserviceName = generateName();
+
+                var initialService = Map.of("name", "svc-a", "roles", List.of("admin"));
+                var cr = buildDbPolicyCR(crName, microserviceName, List.of(initialService), null);
+                createCR(CRD_DB_POLICY, cr);
+                waitForDesiredState(CRD_DB_POLICY, cr,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+
+                var updatedService = Map.of("name", "svc-b", "roles", List.of("readonly"));
+                var updatedResource = kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+                        .inNamespace(NAMESPACE)
+                        .resource(cr)
+                        .edit(r -> {
+                            Map<String, Object> currSpec = (Map<String, Object>) r.getAdditionalProperties().get("spec");
+                            currSpec.put("services", List.of(updatedService));
+                            return r;
+                        });
+                waitForDesiredState(CRD_DB_POLICY, updatedResource,
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+
+                var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
+                var actualServices = roles.getServices();
+                assertTrue(actualServices != null && !actualServices.isEmpty());
+                assertEquals(1, actualServices.size());
+                var actualService = actualServices.getFirst();
+                assertEquals(updatedService.get("name"), actualService.getName());
+                assertEquals(updatedService.get("roles"), actualService.getRoles());
             }
         }
     }
