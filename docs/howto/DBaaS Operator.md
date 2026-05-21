@@ -116,11 +116,12 @@ The operator always sends `updateConnectionProperties: true`, which means the re
 
 | HTTP Code | Situation | Operator outcome |
 |-----------|-----------|-----------------|
-| `201 Created` | Successfully registered or updated | `Succeeded` — `Ready=True` |
+| `200 OK` / `201 Created` | Successfully registered or updated | `Succeeded` — `Ready=True` |
 | `400` | Invalid classifier (missing required fields) | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
 | `403` | `tenantId` in classifier does not match JWT | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `409` | Database exists but is not externally managed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `410` / `422` | Aggregator-side spec rejection (rare for this endpoint, but handled the same as 400/403/409) | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
 | Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
@@ -651,7 +652,8 @@ CR created / spec changed / referenced Secret changed
         │
         ▼
   Pre-flight validation
-    classifier.namespace ≠ metadata.namespace? ──▶ InvalidConfiguration (InvalidSpec)
+    classifier.namespace ≠ metadata.namespace? ──────▶ InvalidConfiguration (InvalidSpec)
+    duplicate name in credentialsSecretRef.keys? ────▶ InvalidConfiguration (InvalidSpec)
         │
         ▼
   Read Secrets
@@ -705,7 +707,7 @@ CR created / spec changed / referenced Secret changed
 | `DatabaseRegistered` | `Ready=True` | Successfully registered with dbaas-aggregator |
 | `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
 | `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed before calling aggregator |
-| `SecretError` | `Ready=False`, `Stalled=False` | Secret not found, or required key is missing or empty |
+| `SecretError` | `Ready=False`, `Stalled=False` | Failed to resolve credentials from a referenced Kubernetes Secret. Sub-categories visible via the `dbaas_secret_resolution_errors_total{reason=...}` metric: `secret_not_found`, `key_missing`, `key_empty`, `forbidden` (RBAC denial), `secret_read_failed` (other API / I/O errors). |
 | `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
 | `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 — permanent spec issue |
 | `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, or network error |
@@ -716,8 +718,8 @@ CR created / spec changed / referenced Secret changed
 |----------|---------|:-------:|----------|:---------:|
 | Registered (201) | `Succeeded` | `True` | `DatabaseRegistered` | `False` |
 | `classifier.namespace` mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
-| Secret not found | `BackingOff` | `False` | `SecretError` | `False` |
-| Secret key missing or empty | `BackingOff` | `False` | `SecretError` | `False` |
+| Duplicate `name` in `credentialsSecretRef.keys` | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| Secret not found / key missing / key empty / forbidden / read failed | `BackingOff` | `False` | `SecretError` | `False` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
 | Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
@@ -1295,6 +1297,7 @@ The following parameters control the operator's deployment and behavior. They ar
 | `DBAAS_OPERATOR_ENABLED` | boolean | `false` | When `false`, no Kubernetes resources are created by the Helm chart (Deployment, RBAC, and CRDs are all skipped). Must be set to `true` to deploy the operator. |
 | `LEADER_ELECT` | boolean | `true` | Enables leader election. Required when running more than one replica to ensure only one active instance processes resources at a time. |
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
+| `DBAAS_AGGREGATOR_URL` | string | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (e.g. cross-cluster deployments). Read by the operator as an environment variable; not set by the Helm chart unless explicitly configured. |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |
 | `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
 | `MONITORING_ENABLED` | boolean | — | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Requires Platform System Monitor CRDs. |
