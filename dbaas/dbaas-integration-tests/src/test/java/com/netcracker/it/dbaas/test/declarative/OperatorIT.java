@@ -951,7 +951,7 @@ public class OperatorIT extends AbstractIT {
                             return r;
                         });
                 waitForDesiredState(CRD_DATABASE_DECLARATION, updatedResource,
-                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE, true);
 
                 var refreshed = kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
                         .inNamespace(NAMESPACE)
@@ -1126,7 +1126,7 @@ public class OperatorIT extends AbstractIT {
                             return r;
                         });
                 waitForDesiredState(CRD_DB_POLICY, updatedResource,
-                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                        PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE, true);
 
                 var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
                 var actualServices = roles.getServices();
