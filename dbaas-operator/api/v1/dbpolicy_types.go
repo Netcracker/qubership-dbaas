@@ -69,8 +69,13 @@ type PolicyRole struct {
 type DbPolicySpec struct {
 	// microserviceName is the microservice that owns this policy.
 	// Mapped to metadata.microserviceName in the DBaaS declarative payload.
+	// Immutable after creation — repointing a DbPolicy CR at a different
+	// microservice would rewrite role grants under the same K8s object,
+	// destroying the audit trail of who owned the policy originally. Create
+	// a new CR for a different service instead.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.microserviceName is immutable after creation"
 	MicroserviceName string `json:"microserviceName"`
 
 	// services defines per-microservice database role assignments. Each entry grants
