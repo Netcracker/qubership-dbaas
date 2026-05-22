@@ -131,11 +131,19 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	); err != nil {
 		return ctrl.Result{}, err
 	}
+	// Deterministic tiebreak: the older claimant wins (by creationTimestamp,
+	// falling back to UID lexical order on tie). Only the younger CR(s) move
+	// to SecretConflict. This avoids the symmetric-deadlock where both CRs
+	// would fail and neither could recover when one is deleted.
 	for i := range siblings.Items {
-		if siblings.Items[i].UID != s.UID {
+		sib := &siblings.Items[i]
+		if sib.UID == s.UID {
+			continue
+		}
+		if isOlderClaimant(sib, s) {
 			return r.markSecretConflict(ctx, s,
-				fmt.Sprintf("another DatabaseSecret %q in namespace %q already claims secretName %q",
-					siblings.Items[i].Name, s.Namespace, s.Spec.SecretName))
+				fmt.Sprintf("another DatabaseSecret %q in namespace %q already claims secretName %q (older claimant wins)",
+					sib.Name, s.Namespace, s.Spec.SecretName))
 		}
 	}
 
@@ -312,6 +320,20 @@ func connectionPropertiesToSecretData(props map[string]any) (map[string][]byte, 
 	}, nil
 }
 
+// isOlderClaimant returns true when a was created strictly before b. On equal
+// creationTimestamps it falls back to lexical UID comparison so the result is
+// stable across both peers (otherwise a tie would leave both CRs as "younger"
+// and neither would lose).
+func isOlderClaimant(a, b *dbaasv1.DatabaseSecret) bool {
+	if a.CreationTimestamp.Before(&b.CreationTimestamp) {
+		return true
+	}
+	if b.CreationTimestamp.Before(&a.CreationTimestamp) {
+		return false
+	}
+	return string(a.UID) < string(b.UID)
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	if err := mgr.GetFieldIndexer().IndexField(
@@ -330,6 +352,16 @@ func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlc
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+		// Re-enqueue siblings that share spec.secretName when any DatabaseSecret
+		// in the namespace is created, deleted, or has a spec change. This lets
+		// a loser CR recover automatically once the older claimant is removed or
+		// rebinds to a different secret name; without this watch, a CR stuck in
+		// SecretConflict would never be re-reconciled (its own spec hasn't changed).
+		// GenerationChangedPredicate filters out status-only updates so the
+		// fan-out doesn't run on every status patch.
+		Watches(&dbaasv1.DatabaseSecret{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueSiblingsBySecretName),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("databasesecret").
 		Complete(r)
@@ -343,6 +375,34 @@ func (r *DatabaseSecretReconciler) enqueueForBinding(ctx context.Context, obj cl
 	}
 	reqs := make([]reconcile.Request, 0, len(list.Items))
 	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return reqs
+}
+
+// enqueueSiblingsBySecretName re-enqueues every DatabaseSecret in the same
+// namespace that shares spec.secretName with the given object, excluding the
+// object itself. It fires on create/update/delete of any DatabaseSecret so that
+// CRs sitting in SecretConflict can recover automatically once the older
+// claimant is removed or rebinds.
+func (r *DatabaseSecretReconciler) enqueueSiblingsBySecretName(ctx context.Context, obj client.Object) []reconcile.Request {
+	ds, ok := obj.(*dbaasv1.DatabaseSecret)
+	if !ok || ds.Spec.SecretName == "" {
+		return nil
+	}
+	list := &dbaasv1.DatabaseSecretList{}
+	if err := r.List(ctx, list,
+		client.InNamespace(ds.Namespace),
+		client.MatchingFields{secretNameIndex: ds.Spec.SecretName},
+	); err != nil {
+		log.ErrorC(ctx, "enqueueSiblingsBySecretName: list DatabaseSecrets in %s: %v", ds.Namespace, err)
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		if list.Items[i].UID == ds.UID {
+			continue
+		}
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs

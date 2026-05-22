@@ -625,6 +625,191 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		})
 	})
 
+	Context("Pre-flight: two CRs claim the same secretName before either has reconciled", func() {
+		It("older CR wins, younger CR gets SecretConflict (no symmetric failure)", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			// Create the older CR first (cr1), then the younger CR (cr2). Neither
+			// has reconciled yet, so the target Secret does not exist. The conflict
+			// is detected by the sibling-list check (not the ownership check).
+			cr1 := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, cr1)).To(Succeed())
+
+			// creationTimestamp has 1-second resolution. Sleep so cr2 ends up with
+			// a strictly later timestamp, otherwise the tiebreak falls back to the
+			// random UID order and the assertion becomes non-deterministic.
+			time.Sleep(1100 * time.Millisecond)
+
+			cr2Name := resourceName + "-2"
+			cr2 := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      cr2Name,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, cr2)).To(Succeed())
+
+			// Wait for the cache to observe both CRs (the field index lives in the
+			// cache, so the sibling-list query needs both to be visible).
+			cr1Key := types.NamespacedName{Name: resourceName, Namespace: ns}
+			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
+			Eventually(func() error {
+				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{}); err != nil {
+					return err
+				}
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+			}).Should(Succeed())
+
+			// Reconcile cr2 (the younger). It must lose to cr1.
+			result2, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr2Key})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result2.RequeueAfter).To(BeZero())
+
+			got2 := &dbaasv1.DatabaseSecret{}
+			Expect(k8sClient.Get(ctx, cr2Key, got2)).To(Succeed())
+			Expect(got2.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
+				EventReasonSecretConflict, "older claimant wins")
+
+			// Reconcile cr1 (the older). It must remain unaffected and succeed.
+			result1, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr1Key})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result1.RequeueAfter).To(BeZero())
+
+			got1 := &dbaasv1.DatabaseSecret{}
+			Expect(k8sClient.Get(ctx, cr1Key, got1)).To(Succeed())
+			Expect(got1.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded),
+				"older claimant must not be marked SecretConflict by the younger sibling")
+		})
+	})
+
+	Context("Pre-flight: loser CR recovers after winner is deleted", func() {
+		It("re-reconciling the loser after winner deletion lets it succeed", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			cr1 := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, cr1)).To(Succeed())
+
+			// creationTimestamp has 1-second resolution. Sleep so cr2 ends up with
+			// a strictly later timestamp, otherwise the tiebreak falls back to the
+			// random UID order and the assertion becomes non-deterministic.
+			time.Sleep(1100 * time.Millisecond)
+
+			cr2Name := resourceName + "-2"
+			cr2 := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      cr2Name,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, cr2)).To(Succeed())
+
+			cr1Key := types.NamespacedName{Name: resourceName, Namespace: ns}
+			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
+			Eventually(func() error {
+				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{}); err != nil {
+					return err
+				}
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+			}).Should(Succeed())
+
+			// cr2 loses initially.
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr2Key})
+			Expect(err).NotTo(HaveOccurred())
+			got2 := &dbaasv1.DatabaseSecret{}
+			Expect(k8sClient.Get(ctx, cr2Key, got2)).To(Succeed())
+			Expect(got2.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			drainRecordedEvents(fixture.recorder.Events)
+
+			// Winner (cr1) is removed.
+			Expect(k8sClient.Delete(ctx, cr1)).To(Succeed())
+			Eventually(func() bool {
+				err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{})
+				return err != nil
+			}).Should(BeTrue())
+
+			// cr2 must succeed on the next reconcile — the Watches-driven re-enqueue
+			// is what would trigger this in production; here we simulate it directly.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr2Key})
+			Expect(err).NotTo(HaveOccurred())
+
+			got2 = &dbaasv1.DatabaseSecret{}
+			Expect(k8sClient.Get(ctx, cr2Key, got2)).To(Succeed())
+			Expect(got2.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded),
+				"loser must recover once the older claimant is deleted")
+		})
+	})
+
+	Context("Watches: enqueueSiblingsBySecretName fans out by secretName", func() {
+		It("returns only siblings sharing spec.secretName, excluding the source object", func() {
+			cr1 := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, cr1)).To(Succeed())
+
+			// creationTimestamp has 1-second resolution. Sleep so cr2 ends up with
+			// a strictly later timestamp, otherwise the tiebreak falls back to the
+			// random UID order and the assertion becomes non-deterministic.
+			time.Sleep(1100 * time.Millisecond)
+
+			cr2Name := resourceName + "-2"
+			cr2 := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      cr2Name,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, cr2)).To(Succeed())
+
+			cr1Key := types.NamespacedName{Name: resourceName, Namespace: ns}
+			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
+			Eventually(func() error {
+				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{}); err != nil {
+					return err
+				}
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+			}).Should(Succeed())
+
+			got1 := &dbaasv1.DatabaseSecret{}
+			Expect(cacheClient.Get(ctx, cr1Key, got1)).To(Succeed())
+
+			reqs := reconciler.enqueueSiblingsBySecretName(ctx, got1)
+			names := make([]string, 0, len(reqs))
+			for _, r := range reqs {
+				names = append(names, r.Name)
+			}
+			Expect(names).To(ConsistOf(cr2Name),
+				"the source object itself must be excluded; only siblings sharing secretName are returned")
+		})
+	})
+
 	// ── Ownership / namespace ─────────────────────────────────────────────────
 
 	Context("Foreign namespace — ownership check skips reconcile", func() {

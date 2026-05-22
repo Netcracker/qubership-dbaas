@@ -1167,15 +1167,20 @@ public class OperatorIT extends AbstractIT {
                     String microserviceName = generateName();
                     String secretName = generateName();
 
+                    // CR1 is created first → older claimant.
                     var databaseSecretCR1 = buildDatabaseSecretCR(crName1, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
                     createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
                     waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR1, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
 
+                    // CR2 created later with the same secretName → younger claimant loses.
                     var databaseSecretCR2 = buildDatabaseSecretCR(crName2, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
                     createCR(CRD_DATABASE_SECRET, databaseSecretCR2);
                     waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR2, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
 
-                    waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR1, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
+                    // CR1 must remain unaffected (older wins). The deterministic tiebreak
+                    // ensures both peers agree on the winner and avoids the symmetric
+                    // deadlock where both would fail and neither could recover.
+                    waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR1, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
                 }
 
                 @Test
