@@ -163,6 +163,10 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 			&dbaasv1.DatabaseDeclaration{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
+		Watches(
+			&dbaasv1.DatabaseSecret{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
 		WithOptions(opts).
 		Named("namespacebinding").
 		Complete(r)

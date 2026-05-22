@@ -155,6 +155,29 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	return nil
 }
 
+// GetDatabaseByClassifier fetches connection properties for a database.
+// POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{dbType}
+// Returns *AggregatorError on non-2xx.
+func (c *AggregatorClient) GetDatabaseByClassifier(
+	ctx context.Context, namespace, dbType string, req *GetByClassifierRequest,
+) (*DatabaseResponseSingleCP, error) {
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetBody(req).
+		Post(fmt.Sprintf("/api/v3/dbaas/%s/databases/get-by-classifier/%s", namespace, dbType))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, newAggregatorError(resp)
+	}
+	var result DatabaseResponseSingleCP
+	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+		return nil, fmt.Errorf("decode get-by-classifier response: %w", err)
+	}
+	return &result, nil
+}
+
 func decodeResponse(body []byte, label string) (*DeclarativeResponse, error) {
 	var result DeclarativeResponse
 	if len(body) > 0 {
@@ -172,8 +195,11 @@ func newAggregatorError(resp *resty.Response) *AggregatorError {
 	}
 
 	var tmfResp tmf.Response
-	if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
-		aggErr.TmfMessage = tmfResp.Message
+	if json.Unmarshal(resp.Body(), &tmfResp) == nil {
+		aggErr.TmfCode = tmfResp.Code
+		if tmfResp.Message != "" {
+			aggErr.TmfMessage = tmfResp.Message
+		}
 	}
 
 	return aggErr

@@ -1,21 +1,20 @@
 package com.netcracker.it.dbaas.helpers;
 
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.test.AbstractIT.getPropertyOrEnv;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
@@ -25,6 +24,7 @@ public class OperatorHelper {
 
     public static final String CR_NAMESPACE_BINDING_NAME = "binding";
     public static final String TEST_ID = "dbaas-autotest";
+    public static final String CONNECTION_PROPERTIES_KEY = "connectionProperties.json";
     public static final Pattern NAMESPACE_PATTERN = Pattern.compile("^operator-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     public static final String PHASE_SUCCEEDED = "Succeeded";
@@ -38,9 +38,12 @@ public class OperatorHelper {
 
     public static final String REASON_DATABASE_REGISTERED = "DatabaseRegistered";
     public static final String REASON_AGGREGATOR_REJECTED = "AggregatorRejected";
+    public static final String REASON_SECRET_CREATED = "SecretCreated";
     public static final String REASON_SECRET_ERROR = "SecretError";
+    public static final String REASON_SECRET_CONFLICT = "SecretConflict";
     public static final String REASON_INVALID_SPEC = "InvalidSpec";
     public static final String REASON_DATABASE_PROVISIONED = "DatabaseProvisioned";
+    public static final String REASON_DATABASE_NOT_FOUND = "DatabaseNotFound";
     public static final String REASON_UNAUTHORIZED = "Unauthorized";
     public static final String REASON_AGGREGATOR_ERROR = "AggregatorError";
     public static final String REASON_OPERATION_TERMINATED = "OperationTerminated";
@@ -77,6 +80,14 @@ public class OperatorHelper {
                     .withGroup("dbaas.netcracker.com")
                     .withVersion("v1")
                     .withPlural("dbpolicies")
+                    .withScope("Namespaced")
+                    .build();
+
+    public static final CustomResourceDefinitionContext CRD_DATABASE_SECRET =
+            new CustomResourceDefinitionContext.Builder()
+                    .withGroup("dbaas.netcracker.com")
+                    .withVersion("v1")
+                    .withPlural("databasesecrets")
                     .withScope("Namespaced")
                     .build();
 
@@ -218,6 +229,49 @@ public class OperatorHelper {
         assertEquals(desiredStalling, typeToMap.get("Stalled").get("status"), "actual 'Stalled.Status' do not equals to desired one");
     }
 
+    public static void assertSecretOwnedByCR(Secret secret, HasMetadata ownerCR) {
+        var ownerReferences = secret.getMetadata().getOwnerReferences();
+
+        assertNotNull(ownerReferences, "OwnerReferences must not be null");
+        assertFalse(ownerReferences.isEmpty(), "OwnerReferences must not be empty");
+
+        var ownerRef = ownerReferences.getFirst();
+
+        assertEquals(
+                ownerCR.getMetadata().getUid(),
+                ownerRef.getUid(),
+                "Secret must be owned by CR"
+        );
+    }
+
+    public static void assertSecretContainsConnectionProperties(
+            Secret secret,
+            String dataKey,
+            Map<String, Object> expectedProperties
+    ) {
+        assertNotNull(secret.getData(), "Secret data must not be null");
+        assertTrue(
+                secret.getData().containsKey(dataKey),
+                String.format("Secret must contain key: %s", dataKey)
+        );
+
+        String decodedJson = new String(
+                Base64.getDecoder().decode(secret.getData().get(dataKey)),
+                StandardCharsets.UTF_8
+        );
+
+        expectedProperties.forEach((key, value) -> {
+            assertTrue(
+                    decodedJson.contains(key),
+                    String.format("Secret connectionProperties must contain key: %s", key)
+            );
+            assertTrue(
+                    decodedJson.contains(String.valueOf(value)),
+                    String.format("Secret connectionProperties must contain value %s for key: %s", value, key)
+            );
+        });
+    }
+
     public static String generateName() {
         return "operator-autotests-" + UUID.randomUUID();
     }
@@ -250,6 +304,39 @@ public class OperatorHelper {
         specBody.put("type", type);
         specBody.put("lazy", lazy);
         specBody.putAll(extraSpecFields);
+
+        cr.setAdditionalProperty("spec", specBody);
+        return cr;
+    }
+
+    public static GenericKubernetesResource buildDatabaseSecretCR(String crName, String originService, String microserviceName,
+                                                                  String namespace, String secretName, String role,
+                                                                  String type) {
+
+        GenericKubernetesResource cr = new GenericKubernetesResource();
+        cr.setApiVersion("dbaas.netcracker.com/v1");
+        cr.setKind("DatabaseSecret");
+
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName(crName);
+        meta.setNamespace(NAMESPACE);
+        meta.getLabels().put(TEST_ID, TEST_ID);
+        meta.getLabels().put("app.kubernetes.io/name", originService);
+        cr.setMetadata(meta);
+
+        Map<String, Object> classifier = new HashMap<>();
+        classifier.put("microserviceName", microserviceName);
+        classifier.put("namespace", namespace);
+        classifier.put("scope", "service");
+
+        Map<String, Object> specBody = new HashMap<>();
+        specBody.put("classifier", classifier);
+        specBody.put("secretName", secretName);
+        specBody.put("type", type);
+
+        if (role != null && !role.isBlank()) {
+            specBody.put("userRole", role);
+        }
 
         cr.setAdditionalProperty("spec", specBody);
         return cr;
