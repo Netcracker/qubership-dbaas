@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.netcracker.cloud</groupId>
     <artifactId>dbaas-integration-tests</artifactId>
-    <version>6.12.2-migration-it-SNAPSHOT</version>
+    <version>6.12.2-SNAPSHOT</version>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
