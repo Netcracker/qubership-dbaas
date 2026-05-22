@@ -48,6 +48,18 @@ type DatabaseSecretSpec struct {
 // DatabaseSecretStatus defines the observed state of DatabaseSecret.
 type DatabaseSecretStatus struct {
 	OperatorStatus `json:",inline"`
+
+	// firstNotFoundAt records the first time dbaas-aggregator returned
+	// DatabaseNotFound (HTTP 404 + CORE-DBAAS-4006) for this CR's classifier.
+	// It is set on the first 404 and cleared on any successful aggregator
+	// response. The controller uses it to detect a CR that has been waiting
+	// too long for its database to appear (e.g. a typo in spec.classifier)
+	// and, after a fixed timeout, switches the Ready condition's reason to
+	// DatabaseNotFoundTimeout and stops emitting per-cycle Warning events.
+	// Polling continues so the CR can still self-heal if the database
+	// eventually appears.
+	// +optional
+	FirstNotFoundAt *metav1.Time `json:"firstNotFoundAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true

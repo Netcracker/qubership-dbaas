@@ -25,9 +25,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -157,6 +159,9 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return r.handleAggregatorErr(ctx, s, err, requestID)
 	}
+	// Success — drop the DatabaseNotFound wait marker so the timeout state
+	// (if previously reached) is cleared.
+	s.Status.FirstNotFoundAt = nil
 
 	// ── Step 8: validate connectionProperties ─────────────────────────────────
 	// An empty connectionProperties map on HTTP 200 is not expected from a healthy
@@ -313,6 +318,11 @@ func (r *DatabaseSecretReconciler) markSecretConflict(ctx context.Context, s *db
 //   - 401                    → BackingOff / Unauthorized        (transient)
 //   - 400 / 403              → InvalidConfiguration / AggregatorRejected (permanent)
 //   - 5xx / network          → BackingOff / AggregatorError     (transient)
+//
+// On a continuous DatabaseNotFound streak longer than databaseNotFoundTimeout
+// the Ready reason switches to DatabaseNotFoundTimeout and per-cycle Warning
+// events stop, but the controller keeps polling so the CR can self-heal if
+// the database eventually appears.
 func (r *DatabaseSecretReconciler) handleAggregatorErr(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecret,
@@ -321,12 +331,41 @@ func (r *DatabaseSecretReconciler) handleAggregatorErr(
 ) (ctrl.Result, error) {
 	var aggErr *aggregatorclient.AggregatorError
 	if errors.As(err, &aggErr) && aggErr.IsDatabaseNotFound() {
+		now := metav1.Now()
+		if s.Status.FirstNotFoundAt == nil {
+			s.Status.FirstNotFoundAt = &now
+		}
+		elapsed := now.Sub(s.Status.FirstNotFoundAt.Time)
+
+		if elapsed < databaseNotFoundTimeout {
+			markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+				EventReasonDatabaseNotFound, aggErr.UserMessage())
+			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotFound,
+				"database not found in dbaas-aggregator, waiting for provisioning (requestId=%s)", requestID)
+			return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		}
+
+		// Past the timeout: emit the one-shot DatabaseNotFoundTimeout Warning
+		// only on the reconcile that first crosses the threshold. The Ready
+		// reason itself is the marker — once it is DatabaseNotFoundTimeout, no
+		// further events are emitted, but polling continues so a late-arriving
+		// database can still unstick the CR.
+		ready := meta.FindStatusCondition(s.Status.Conditions, conditionTypeReady)
+		if ready == nil || ready.Reason != EventReasonDatabaseNotFoundTimeout {
+			log.InfoC(ctx, "DatabaseNotFound timeout exceeded name=%s elapsed=%s requestId=%s",
+				s.Name, elapsed.Round(time.Second), requestID)
+			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotFoundTimeout,
+				"database not found in dbaas-aggregator for %s; polling continues but operator action may be required (requestId=%s)",
+				elapsed.Round(time.Second), requestID)
+		}
 		markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
-			EventReasonDatabaseNotFound, aggErr.UserMessage())
-		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotFound,
-			"database not found in dbaas-aggregator, waiting for provisioning (requestId=%s)", requestID)
+			EventReasonDatabaseNotFoundTimeout,
+			fmt.Sprintf("database not found in dbaas-aggregator for %s — operator action may be required",
+				elapsed.Round(time.Second)))
 		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 	}
+	// Non-NotFound failure path — drop the wait marker so a future 404 starts a fresh streak.
+	s.Status.FirstNotFoundAt = nil
 	return handleAggregatorError(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 		r.Recorder, s, err, requestID)
 }

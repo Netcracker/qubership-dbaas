@@ -110,4 +110,13 @@ const (
 	// reconcile) and the controller retries with backoff rather than failing permanently.
 	// Type: Warning.
 	EventReasonEmptyConnectionProperties = "EmptyConnectionProperties"
+
+	// EventReasonDatabaseNotFoundTimeout is emitted once when a DatabaseSecret has been
+	// waiting on a DatabaseNotFound (HTTP 404) response from dbaas-aggregator for longer
+	// than databaseNotFoundTimeout. The controller continues polling (Phase remains
+	// BackingOff, Stalled remains False — the CR may still self-heal once the database
+	// appears) but stops emitting per-cycle DatabaseNotFound Warnings to avoid event spam.
+	// Surfaces a single alertable signal that an operator's classifier may be wrong.
+	// Type: Warning.
+	EventReasonDatabaseNotFoundTimeout = "DatabaseNotFoundTimeout"
 )

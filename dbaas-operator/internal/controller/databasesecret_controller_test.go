@@ -273,6 +273,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(ds.Status.ObservedGeneration).To(BeZero())
+			Expect(ds.Status.FirstNotFoundAt).NotTo(BeNil(), "first 404 must stamp FirstNotFoundAt")
 
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
@@ -284,6 +285,126 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonDatabaseNotFound)
 			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("HTTP 404 — DatabaseNotFound streak crosses the timeout", func() {
+		It("switches Ready.Reason to DatabaseNotFoundTimeout and emits the one-shot Warning", func() {
+			fixture.statusCode = http.StatusNotFound
+			fixture.body = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
+
+			ds := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			// Backdate FirstNotFoundAt past the timeout to simulate a long-stuck
+			// CR without sleeping the test for 10 minutes.
+			Eventually(func() error {
+				return k8sClient.Get(ctx, namespacedName, ds)
+			}).Should(Succeed())
+			past := metav1.NewTime(time.Now().Add(-databaseNotFoundTimeout - time.Minute))
+			ds.Status.FirstNotFoundAt = &past
+			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
+
+			got, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter),
+				"polling must continue so the CR can self-heal if the database appears later")
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff),
+				"phase must remain BackingOff — timeout is informational, not permanent")
+			Expect(got.Status.FirstNotFoundAt).NotTo(BeNil(),
+				"FirstNotFoundAt must be preserved across the threshold crossing")
+
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonDatabaseNotFoundTimeout),
+				"Ready.Reason must flip to DatabaseNotFoundTimeout after the threshold")
+
+			stalled := findCondition(got.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse),
+				"Stalled must stay False — convention is reserved for permanent failures")
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonDatabaseNotFoundTimeout)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+
+		It("does not re-emit the timeout event on subsequent reconciles", func() {
+			fixture.statusCode = http.StatusNotFound
+			fixture.body = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
+
+			ds := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, namespacedName, ds)
+			}).Should(Succeed())
+			past := metav1.NewTime(time.Now().Add(-databaseNotFoundTimeout - time.Minute))
+			ds.Status.FirstNotFoundAt = &past
+			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
+
+			// First reconcile crosses the threshold and emits the timeout event.
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonDatabaseNotFoundTimeout)
+			drainRecordedEvents(fixture.recorder.Events)
+
+			// Second reconcile must NOT re-emit (Ready.Reason already DatabaseNotFoundTimeout).
+			got, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonDatabaseNotFoundTimeout))
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+
+		It("clears FirstNotFoundAt and recovers when aggregator finally returns 200", func() {
+			fixture.statusCode = http.StatusNotFound
+			fixture.body = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
+
+			ds := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, namespacedName, ds)
+			}).Should(Succeed())
+			past := metav1.NewTime(time.Now().Add(-databaseNotFoundTimeout - time.Minute))
+			ds.Status.FirstNotFoundAt = &past
+			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
+
+			// One reconcile to enter the timeout state.
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			drainRecordedEvents(fixture.recorder.Events)
+
+			// Aggregator now returns the database — CR must recover.
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+			got, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(got.Status.FirstNotFoundAt).To(BeNil(),
+				"FirstNotFoundAt must be cleared after a successful aggregator response")
 		})
 	})
 
