@@ -203,7 +203,21 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	existing := &corev1.Secret{}
 	if err := r.Get(ctx, secretKey, existing); err != nil {
 		if apierrors.IsNotFound(err) {
-			// race: deleted after AlreadyExists → retry create
+			// Race: Secret deleted between AlreadyExists and this Get.
+			// newSecret is still valid in scope; retry Create directly so the
+			// next reconcile doesn't need another aggregator round-trip.
+			retryErr := r.Create(ctx, newSecret)
+			if retryErr == nil {
+				log.InfoC(ctx, "DatabaseSecret recreated after deletion race name=%s secretName=%s", s.Name, s.Spec.SecretName)
+				markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+				r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated,
+					"Secret %q created after deletion race (requestId=%s)", s.Spec.SecretName, requestID)
+				return ctrl.Result{}, nil
+			}
+			if !apierrors.IsAlreadyExists(retryErr) {
+				return ctrl.Result{}, retryErr
+			}
+			// Double race — let next reconcile reconverge.
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
