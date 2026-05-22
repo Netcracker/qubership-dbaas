@@ -103,4 +103,11 @@ const (
 	// for a get-by-classifier request, meaning the database is not yet registered and
 	// the operator retries until it appears. The controller retries with exponential backoff. Type: Warning.
 	EventReasonDatabaseNotFound = "DatabaseNotFound"
+
+	// EventReasonEmptyConnectionProperties is emitted when dbaas-aggregator returns HTTP 200
+	// but the connectionProperties map is empty for the requested userRole. This is treated
+	// as a transient state (the aggregator/adapter is expected to populate it on a subsequent
+	// reconcile) and the controller retries with backoff rather than failing permanently.
+	// Type: Warning.
+	EventReasonEmptyConnectionProperties = "EmptyConnectionProperties"
 )

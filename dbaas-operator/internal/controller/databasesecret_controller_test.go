@@ -225,7 +225,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	})
 
 	Context("HTTP 200 — empty connectionProperties", func() {
-		It("sets Phase=InvalidConfiguration, Stalled=True, InvalidSpec event", func() {
+		It("sets Phase=BackingOff, Stalled=False, EmptyConnectionProperties event, requeues", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = `{"connectionProperties":{}}`
 			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
@@ -240,14 +240,14 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			ds, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
-			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
-			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonEmptyConnectionProperties)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -505,7 +505,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 					Name:      secretName,
 					Namespace: ns,
 					OwnerReferences: []metav1.OwnerReference{
-						{APIVersion: "v1", Kind: "Pod", Name: "other", UID: "other-uid", Controller: ptr(true)},
+						{APIVersion: "v1", Kind: "Pod", Name: "other", UID: "other-uid", Controller: new(true)},
 					},
 				},
 			}
@@ -713,4 +713,5 @@ var _ = Describe("DatabaseSecret Controller — rate limiter", func() {
 	})
 })
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }

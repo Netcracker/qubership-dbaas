@@ -151,10 +151,18 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// ── Step 8: validate connectionProperties ─────────────────────────────────
+	// An empty connectionProperties map on HTTP 200 is not expected from a healthy
+	// aggregator+adapter pair (the aggregator throws on missing role rather than
+	// returning an empty payload). Treat it as transient — a momentary inconsistency
+	// in the adapter or role registry — and requeue. The user's spec is still valid.
 	if len(dbResp.ConnectionProperties) == 0 {
-		return invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
-			r.Recorder, s,
-			fmt.Sprintf("aggregator returned empty connectionProperties for type=%s", s.Spec.Type))
+		msg := fmt.Sprintf("aggregator returned empty connectionProperties for type=%s", s.Spec.Type)
+		log.InfoC(ctx, "empty connectionProperties name=%s type=%s requestId=%s", s.Name, s.Spec.Type, requestID)
+		markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+			EventReasonEmptyConnectionProperties, msg)
+		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonEmptyConnectionProperties,
+			"%s (requestId=%s)", msg, requestID)
+		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 	}
 
 	// ── Step 9 / write Secret ─────────────────────────────────────────────────
