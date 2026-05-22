@@ -235,15 +235,26 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		case apierrors.IsConflict(err):
 			return ctrl.Result{}, err
 		case apierrors.IsNotFound(err):
-			// GC deleted the Secret between re-fetch and Update; spec: Create immediately
+			// GC deleted the Secret between re-fetch and Update; recreate it.
 			recreated, buildErr := r.buildOwnedSecret(s, secretData)
 			if buildErr != nil {
 				return ctrl.Result{}, buildErr
 			}
-			if createErr := r.Create(ctx, recreated); createErr != nil && !apierrors.IsAlreadyExists(createErr) {
+			createErr := r.Create(ctx, recreated)
+			if createErr == nil {
+				// We wrote the Secret with the right content — confirm immediately
+				// instead of forcing another aggregator round-trip to verify.
+				log.InfoC(ctx, "DatabaseSecret recreated after GC name=%s secretName=%s", s.Name, s.Spec.SecretName)
+				markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+				r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated,
+					"Secret %q recreated after deletion (requestId=%s)", s.Spec.SecretName, requestID)
+				return ctrl.Result{}, nil
+			}
+			if !apierrors.IsAlreadyExists(createErr) {
 				return ctrl.Result{}, createErr
 			}
-			// Cannot confirm write succeeded if AlreadyExists again — let next reconcile confirm
+			// AlreadyExists — another actor beat us with unknown content; let the
+			// next reconcile re-fetch and reconverge.
 			return ctrl.Result{Requeue: true}, nil
 		default:
 			return ctrl.Result{}, err
