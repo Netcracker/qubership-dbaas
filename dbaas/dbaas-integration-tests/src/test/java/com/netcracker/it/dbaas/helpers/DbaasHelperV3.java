@@ -948,6 +948,38 @@ public class DbaasHelperV3 {
         }
     }
 
+    public void checkConnection(Boolean expectCannotConnect, DatabaseResponse db,
+                                String setData, String checkData, Boolean expectCannotCheckData) {
+        try {
+            log.info("Check connection to created database {}", db);
+            switch (db.getType()) {
+                case MONGODB_TYPE ->
+                        checkConnectionMongo(db, expectCannotConnect, setData, checkData);
+                case POSTGRES_TYPE -> checkConnectionPostgres(db, setData, checkData);
+                case OPENSEARCH_TYPE -> checkConnectionOpensearch(db, setData, checkData);
+                case CASSANDRA_TYPE -> checkConnectionCassandra(db, setData, checkData);
+                case CLICKHOUSE_TYPE -> checkConnectionClickhouse(db, setData, checkData);
+                case ARANGODB_TYPE -> checkConnectionArangodb(db, setData, checkData);
+                case null, default -> fail("Database " + db + " has unknown type");
+            }
+            if (expectCannotConnect || expectCannotCheckData) {
+                fail("Expected exception to be thrown while connecting to " + db);
+            }
+        } catch (CannotConnect | SQLException | MongoException | IOException e) {
+            if (expectCannotConnect) {
+                log.info("Exception thrown as expected", e);
+            } else {
+                throw new RuntimeException(e);
+            }
+        } catch (CannotCheckData e) {
+            if (expectCannotCheckData) {
+                log.info("Exception thrown as expected", e);
+            } else {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     public String urlNormalize(String host, String url) {
         Boolean isSlashInHost = host.endsWith("/");
         Boolean isSlashInURL = url.startsWith("/");
