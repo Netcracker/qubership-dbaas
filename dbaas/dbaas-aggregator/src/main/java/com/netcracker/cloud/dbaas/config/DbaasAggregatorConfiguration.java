@@ -4,6 +4,7 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasReposi
 import com.netcracker.cloud.dbaas.service.*;
 import io.quarkus.arc.All;
 import io.quarkus.runtime.Startup;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
@@ -20,7 +21,7 @@ public class DbaasAggregatorConfiguration {
     public static final String POSTGRESQL = "postgresql";
 
     @Produces
-    @Singleton
+    @ApplicationScoped
     public PasswordEncryption passwordEncryption(EncryptionServiceProvider serviceProvider) {
         return new PasswordEncryption(serviceProvider);
     }

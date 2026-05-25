@@ -326,6 +326,11 @@ public class PhysicalDatabasesService {
         physicalDatabaseCache.computeIfPresent(phyDbId, (id, physicalDatabase) -> getByPhysicalDatabaseIdentifier(phyDbId));
     }
 
+    public void clearAdaptersCache() {
+        startedAdaptersCache.clear();
+        physicalDatabaseCache.clear();
+    }
+
     public PhysicalDatabase searchInPhysicalDatabaseCache(String phyDbId) {
         return Optional.ofNullable(physicalDatabaseCache.computeIfAbsent(phyDbId, id -> getByPhysicalDatabaseIdentifier(phyDbId)))
                 .orElseThrow(() -> new NotFoundException(String.format("Physical Database with phyDbId %s not found", phyDbId)));
