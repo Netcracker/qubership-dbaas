@@ -86,67 +86,16 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecret, retErr error) bool {
-				return retErr == nil && !result.Requeue && result.RequeueAfter == 0
+				return retErr == nil && result.RequeueAfter == 0
 			},
 			"DatabaseSecret")
 	}()
 
 	s.Status.Phase = dbaasv1.PhaseProcessing
 
-	// Pre-flight validation - classifier.namespace must match metadata.namespace ─────────────────────────
-	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
-		return invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
-			r.Recorder, s,
-			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q",
-				ns, s.Namespace))
-	}
-
-	// Pre-flight validation - require app.kubernetes.io/name label ─────────────────────────
-	if s.Labels["app.kubernetes.io/name"] == "" {
-		return invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
-			r.Recorder, s,
-			"label app.kubernetes.io/name is required — its value is used as originService in the get-by-classifier request")
-	}
-
-	// Pre-flight validation - check whether the target Secret already exists ──────────────
-	existingSecret := &corev1.Secret{}
-	secretKey := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.SecretName}
-	secretExists := true
-	if err := r.Get(ctx, secretKey, existingSecret); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, err
-		}
-		secretExists = false
-	}
-
-	if secretExists {
-		if conflict, msg := r.ownerConflict(s, existingSecret); conflict {
-			return r.markSecretConflict(ctx, s, msg)
-		}
-	}
-
-	// Pre-flight validation - check for sibling DatabaseSecret CRs claiming the same name ─
-	var siblings dbaasv1.DatabaseSecretList
-	if err := r.List(ctx, &siblings,
-		client.InNamespace(s.Namespace),
-		client.MatchingFields{secretNameIndex: s.Spec.SecretName},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-	// Deterministic tiebreak: the older claimant wins (by creationTimestamp,
-	// falling back to UID lexical order on tie). Only the younger CR(s) move
-	// to SecretConflict. This avoids the symmetric-deadlock where both CRs
-	// would fail and neither could recover when one is deleted.
-	for i := range siblings.Items {
-		sib := &siblings.Items[i]
-		if sib.UID == s.UID {
-			continue
-		}
-		if isOlderClaimant(sib, s) {
-			return r.markSecretConflict(ctx, s,
-				fmt.Sprintf("another DatabaseSecret %q in namespace %q already claims secretName %q (older claimant wins)",
-					sib.Name, s.Namespace, s.Spec.SecretName))
-		}
+	// ── Pre-flight validations (spec + sibling/Secret ownership) ──────────────
+	if res, stop, err := r.preflightValidate(ctx, s); stop {
+		return res, err
 	}
 
 	// ── Step 7: call aggregator ───────────────────────────────────────────────
@@ -183,8 +132,95 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("marshal connectionProperties: %w", err)
 	}
+	secretKey := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.SecretName}
+	return r.writeSecret(ctx, s, secretData, secretKey, requestID)
+}
 
-	// Step 9.1 — TRY CREATE
+// preflightValidate runs all spec-level and pre-aggregator validations:
+// classifier.namespace consistency, the required app.kubernetes.io/name label,
+// ownership of any pre-existing target Secret, and the sibling-CR tiebreak that
+// resolves spec.secretName collisions deterministically (older claimant wins).
+// It returns stop=true when a terminal state has been set on the CR and the
+// caller must return res/err immediately; stop=false means validation passed
+// and the reconcile may proceed to the aggregator call.
+func (r *DatabaseSecretReconciler) preflightValidate(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecret,
+) (ctrl.Result, bool, error) {
+	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
+		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
+			r.Recorder, s,
+			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q",
+				ns, s.Namespace))
+		return res, true, err
+	}
+
+	if s.Labels["app.kubernetes.io/name"] == "" {
+		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
+			r.Recorder, s,
+			"label app.kubernetes.io/name is required — its value is used as originService in the get-by-classifier request")
+		return res, true, err
+	}
+
+	// Check whether the target Secret already exists and is owned by another CR.
+	existingSecret := &corev1.Secret{}
+	secretKey := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.SecretName}
+	if err := r.Get(ctx, secretKey, existingSecret); err == nil {
+		if conflict, msg := r.ownerConflict(s, existingSecret); conflict {
+			res, err := r.markSecretConflict(ctx, s, msg)
+			return res, true, err
+		}
+	} else if client.IgnoreNotFound(err) != nil {
+		return ctrl.Result{}, true, err
+	}
+
+	// Sibling-CR tiebreak: the older claimant (by creationTimestamp, UID on tie)
+	// wins. Only the younger CR(s) move to SecretConflict. Avoids the symmetric
+	// deadlock where both CRs would fail and neither could recover when one is
+	// deleted.
+	var siblings dbaasv1.DatabaseSecretList
+	if err := r.List(ctx, &siblings,
+		client.InNamespace(s.Namespace),
+		client.MatchingFields{secretNameIndex: s.Spec.SecretName},
+	); err != nil {
+		return ctrl.Result{}, true, err
+	}
+	for i := range siblings.Items {
+		sib := &siblings.Items[i]
+		if sib.UID == s.UID {
+			continue
+		}
+		if isOlderClaimant(sib, s) {
+			res, err := r.markSecretConflict(ctx, s,
+				fmt.Sprintf("another DatabaseSecret %q in namespace %q already claims secretName %q (older claimant wins)",
+					sib.Name, s.Namespace, s.Spec.SecretName))
+			return res, true, err
+		}
+	}
+
+	return ctrl.Result{}, false, nil
+}
+
+// writeSecret persists secretData into the target Kubernetes Secret following
+// the Step 9.1–9.4 race-aware sequence:
+//
+//	9.1 Try Create. On success → mark CR Succeeded.
+//	9.2 On AlreadyExists, re-fetch the Secret. On NotFound (deletion race),
+//	    retry Create inline so the next reconcile does not need another
+//	    aggregator round-trip.
+//	9.3 If the existing Secret is owned by another resource → SecretConflict.
+//	9.4 Otherwise Update idempotently. On NotFound (GC race), recreate the
+//	    Secret and mark Succeeded if the recreate Create returns nil.
+//
+// All success paths emit a Normal SecretCreated event and mark the CR succeeded.
+func (r *DatabaseSecretReconciler) writeSecret(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecret,
+	secretData map[string][]byte,
+	secretKey types.NamespacedName,
+	requestID string,
+) (ctrl.Result, error) {
+	// Step 9.1 — TRY CREATE.
 	newSecret, err := r.buildOwnedSecret(s, secretData)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -192,48 +228,54 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	err = r.Create(ctx, newSecret)
 	if err == nil {
-		log.InfoC(ctx, "DatabaseSecret reconciled successfully name=%s secretName=%s", s.Name, s.Spec.SecretName)
-		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
-		r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated,
-			"Secret %q created/updated with connection properties (requestId=%s)",
-			s.Spec.SecretName, requestID)
+		r.markSecretSucceeded(s, requestID, "Secret %q created/updated with connection properties (requestId=%s)")
 		return ctrl.Result{}, nil
 	}
-
 	if !apierrors.IsAlreadyExists(err) {
 		return ctrl.Result{}, err
 	}
 
-	// Step 9.2 — AlreadyExists → RE-FETCH
+	// Step 9.2 — AlreadyExists → RE-FETCH.
 	existing := &corev1.Secret{}
 	if err := r.Get(ctx, secretKey, existing); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Race: Secret deleted between AlreadyExists and this Get.
-			// newSecret is still valid in scope; retry Create directly so the
-			// next reconcile doesn't need another aggregator round-trip.
+			// newSecret is still valid; retry Create directly so the next
+			// reconcile does not need another aggregator round-trip.
 			retryErr := r.Create(ctx, newSecret)
 			if retryErr == nil {
-				log.InfoC(ctx, "DatabaseSecret recreated after deletion race name=%s secretName=%s", s.Name, s.Spec.SecretName)
-				markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
-				r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated,
-					"Secret %q created after deletion race (requestId=%s)", s.Spec.SecretName, requestID)
+				r.markSecretSucceeded(s, requestID, "Secret %q created after deletion race (requestId=%s)")
 				return ctrl.Result{}, nil
 			}
 			if !apierrors.IsAlreadyExists(retryErr) {
 				return ctrl.Result{}, retryErr
 			}
 			// Double race — let next reconcile reconverge.
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: time.Second}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	// Step 9.3 — OWNER CONFLICT CHECK
+	// Step 9.3 — OWNER CONFLICT CHECK.
 	if conflict, msg := r.ownerConflict(s, existing); conflict {
 		return r.markSecretConflict(ctx, s, msg)
 	}
 
-	// Step 9.4 — UPDATE (idempotent)
+	// Step 9.4 — UPDATE (idempotent).
+	return r.updateOwnedSecret(ctx, s, existing, secretData, requestID)
+}
+
+// updateOwnedSecret performs the idempotent Update step (9.4) on a Secret that
+// we have just confirmed is either already owned by s or unowned. It recreates
+// the Secret if the Update fails with NotFound (GC raced between fetch and
+// update). On any successful write it marks the CR succeeded.
+func (r *DatabaseSecretReconciler) updateOwnedSecret(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecret,
+	existing *corev1.Secret,
+	secretData map[string][]byte,
+	requestID string,
+) (ctrl.Result, error) {
 	updated := existing.DeepCopy()
 	updated.Data = secretData
 	if updated.Labels == nil {
@@ -242,7 +284,6 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	updated.Labels["app.kubernetes.io/managed-by"] = "dbaas-operator"
 	updated.Labels["app.kubernetes.io/name"] = s.Labels["app.kubernetes.io/name"]
 
-	// set owner only if not already controlled by us
 	if !metav1.IsControlledBy(updated, s) {
 		if err := ctrl.SetControllerReference(s, updated, r.Scheme); err != nil {
 			return ctrl.Result{}, err
@@ -261,31 +302,30 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 			createErr := r.Create(ctx, recreated)
 			if createErr == nil {
-				// We wrote the Secret with the right content — confirm immediately
-				// instead of forcing another aggregator round-trip to verify.
-				log.InfoC(ctx, "DatabaseSecret recreated after GC name=%s secretName=%s", s.Name, s.Spec.SecretName)
-				markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
-				r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated,
-					"Secret %q recreated after deletion (requestId=%s)", s.Spec.SecretName, requestID)
+				r.markSecretSucceeded(s, requestID, "Secret %q recreated after deletion (requestId=%s)")
 				return ctrl.Result{}, nil
 			}
 			if !apierrors.IsAlreadyExists(createErr) {
 				return ctrl.Result{}, createErr
 			}
-			// AlreadyExists — another actor beat us with unknown content; let the
-			// next reconcile re-fetch and reconverge.
-			return ctrl.Result{Requeue: true}, nil
+			// AlreadyExists — another actor beat us with unknown content; let
+			// the next reconcile re-fetch and reconverge.
+			return ctrl.Result{RequeueAfter: time.Second}, nil
 		default:
 			return ctrl.Result{}, err
 		}
 	}
-	// ── Step 10: mark succeeded ───────────────────────────────────────────────
-	log.InfoC(ctx, "DatabaseSecret reconciled successfully name=%s secretName=%s", s.Name, s.Spec.SecretName)
-	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
-	r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated,
-		"Secret %q created/updated with connection properties (requestId=%s)",
-		s.Spec.SecretName, requestID)
+	r.markSecretSucceeded(s, requestID, "Secret %q created/updated with connection properties (requestId=%s)")
 	return ctrl.Result{}, nil
+}
+
+// markSecretSucceeded marks the CR Succeeded, emits a Normal SecretCreated
+// event, and logs a confirmation line. eventFormat must be a printf-style
+// format string with two placeholders: the secret name and the request ID.
+func (r *DatabaseSecretReconciler) markSecretSucceeded(s *dbaasv1.DatabaseSecret, requestID, eventFormat string) {
+	log.Infof("DatabaseSecret reconciled successfully name=%s secretName=%s", s.Name, s.Spec.SecretName)
+	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+	r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated, eventFormat, s.Spec.SecretName, requestID)
 }
 
 // ownerConflict returns true when the existing Secret is owned by a resource other than s,

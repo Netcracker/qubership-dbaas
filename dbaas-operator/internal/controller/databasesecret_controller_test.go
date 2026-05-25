@@ -44,6 +44,10 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		ns           = "default"
 		resourceName = "test-databasesecret"
 		secretName   = "test-db-secret"
+
+		// databaseNotFoundResponseBody is the canonical TMF error body the aggregator
+		// returns when a get-by-classifier request finds no matching database.
+		databaseNotFoundResponseBody = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
 	)
 
 	var (
@@ -257,7 +261,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	Context("HTTP 404 — database not yet provisioned", func() {
 		It("sets Phase=BackingOff, Stalled=False, DatabaseNotReady event, requeues", func() {
 			fixture.statusCode = http.StatusNotFound
-			fixture.body = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
+			fixture.body = databaseNotFoundResponseBody
 			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
@@ -291,7 +295,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	Context("HTTP 404 — DatabaseNotFound streak crosses the timeout", func() {
 		It("switches Ready.Reason to DatabaseNotFoundTimeout and emits the one-shot Warning", func() {
 			fixture.statusCode = http.StatusNotFound
-			fixture.body = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
+			fixture.body = databaseNotFoundResponseBody
 
 			ds := &dbaasv1.DatabaseSecret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -311,6 +315,16 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			past := metav1.NewTime(time.Now().Add(-databaseNotFoundTimeout - time.Minute))
 			ds.Status.FirstNotFoundAt = &past
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
+			// Wait for the cache (used by Reconcile via cacheClient) to observe
+			// the backdated FirstNotFoundAt; otherwise Reconcile may see a stale
+			// nil value and skip the timeout branch.
+			Eventually(func() *metav1.Time {
+				cur := &dbaasv1.DatabaseSecret{}
+				if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
+					return nil
+				}
+				return cur.Status.FirstNotFoundAt
+			}).ShouldNot(BeNil())
 
 			got, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
@@ -337,7 +351,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 		It("does not re-emit the timeout event on subsequent reconciles", func() {
 			fixture.statusCode = http.StatusNotFound
-			fixture.body = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
+			fixture.body = databaseNotFoundResponseBody
 
 			ds := &dbaasv1.DatabaseSecret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -355,6 +369,13 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			past := metav1.NewTime(time.Now().Add(-databaseNotFoundTimeout - time.Minute))
 			ds.Status.FirstNotFoundAt = &past
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
+			Eventually(func() *metav1.Time {
+				cur := &dbaasv1.DatabaseSecret{}
+				if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
+					return nil
+				}
+				return cur.Status.FirstNotFoundAt
+			}).ShouldNot(BeNil())
 
 			// First reconcile crosses the threshold and emits the timeout event.
 			_, _, err := reconcileAndFetch()
@@ -373,7 +394,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 		It("clears FirstNotFoundAt and recovers when aggregator finally returns 200", func() {
 			fixture.statusCode = http.StatusNotFound
-			fixture.body = `{"code":"CORE-DBAAS-4006","message":"Database not found"}`
+			fixture.body = databaseNotFoundResponseBody
 
 			ds := &dbaasv1.DatabaseSecret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -391,6 +412,13 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			past := metav1.NewTime(time.Now().Add(-databaseNotFoundTimeout - time.Minute))
 			ds.Status.FirstNotFoundAt = &past
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
+			Eventually(func() *metav1.Time {
+				cur := &dbaasv1.DatabaseSecret{}
+				if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
+					return nil
+				}
+				return cur.Status.FirstNotFoundAt
+			}).ShouldNot(BeNil())
 
 			// One reconcile to enter the timeout state.
 			_, _, err := reconcileAndFetch()
@@ -1018,6 +1046,3 @@ var _ = Describe("DatabaseSecret Controller — rate limiter", func() {
 		Expect(rateLimiter.When(req)).To(Equal(base))
 	})
 })
-
-//go:fix inline
-func ptr[T any](v T) *T { return new(v) }
