@@ -51,6 +51,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -265,6 +266,34 @@ func main() {
 		setupLog.Errorf("Failed to set up ready check: %v", err)
 		os.Exit(1)
 	}
+
+	// ── Rotation webhook receiver ────────────────────────────────────────────
+	// Authenticates inbound rotation events from dbaas-aggregator and patches
+	// the AnnotationRotationTrigger annotation on each affected DatabaseSecret
+	// CR. The handler is mounted on the same HTTP listener as /metrics via the
+	// controller-runtime ExtraHandlers hook; it runs on every replica so any
+	// pod can accept the webhook, and the annotation propagates through the
+	// k8s watch so only the leader's reconciler applies the actual Secret
+	// update.
+	authInitCtx, cancelAuthInit := context.WithTimeout(context.Background(), 30*time.Second)
+	rotationAuth, err := webhook.NewKubernetesAuthenticator(authInitCtx, webhook.AudienceDBaaSOperator)
+	cancelAuthInit()
+	if err != nil {
+		setupLog.Errorf("Failed to create rotation webhook authenticator: %v", err)
+		os.Exit(1)
+	}
+	if err := mgr.AddMetricsServerExtraHandler(
+		webhook.PathRotationNotify,
+		&webhook.RotationHandler{
+			Client: mgr.GetClient(),
+			Auth:   rotationAuth,
+		},
+	); err != nil {
+		setupLog.Errorf("Failed to register rotation webhook handler: %v", err)
+		os.Exit(1)
+	}
+	setupLog.Infof("Rotation webhook registered path=%s audience=%s",
+		webhook.PathRotationNotify, webhook.AudienceDBaaSOperator)
 
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
