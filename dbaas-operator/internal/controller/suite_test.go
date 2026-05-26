@@ -121,6 +121,16 @@ var _ = BeforeSuite(func() {
 		},
 	)).To(Succeed())
 
+	Expect(mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&dbaasv1.DatabaseSecret{},
+		classifierTypeIndex,
+		func(obj client.Object) []string {
+			ds := obj.(*dbaasv1.DatabaseSecret)
+			return []string{classifierIndexKey(ds.Spec.Classifier, ds.Spec.Type)}
+		},
+	)).To(Succeed())
+
 	cacheClient = mgr.GetClient()
 
 	go func() {

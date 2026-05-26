@@ -27,10 +27,12 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -1009,6 +1011,167 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(fixture.capturedPath).To(Equal(
 				fmt.Sprintf("/api/v3/dbaas/%s/databases/get-by-classifier/%s", ns, "postgresql"),
 			))
+		})
+	})
+})
+
+// ── classifierIndexKey + classifierTypeIndex ────────────────────────────────
+
+var _ = Describe("DatabaseSecret Controller — classifier+type field index", func() {
+	const ns = "default"
+
+	Context("classifierIndexKey() canonicalization", func() {
+		It("produces the same key for the same classifier content", func() {
+			c1 := dbaasv1.Classifier{
+				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
+			}
+			c2 := dbaasv1.Classifier{
+				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
+			}
+			Expect(classifierIndexKey(c1, "postgresql")).To(Equal(classifierIndexKey(c2, "postgresql")))
+		})
+
+		It("differs when type differs", func() {
+			c := dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"}
+			Expect(classifierIndexKey(c, "postgresql")).NotTo(Equal(classifierIndexKey(c, "mongodb")))
+		})
+
+		It("differs when classifier scalar fields differ", func() {
+			c1 := dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"}
+			c2 := dbaasv1.Classifier{MicroserviceName: "svc-b", Scope: "service"}
+			Expect(classifierIndexKey(c1, "postgresql")).NotTo(Equal(classifierIndexKey(c2, "postgresql")))
+		})
+
+		It("omits empty optional fields from the canonical form", func() {
+			minimal := dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"}
+			key := classifierIndexKey(minimal, "postgresql")
+			// tenantId / namespace / customKeys are absent in the JSON when empty.
+			Expect(key).NotTo(ContainSubstring("tenantId"))
+			Expect(key).NotTo(ContainSubstring("namespace"))
+			Expect(key).NotTo(ContainSubstring("customKeys"))
+		})
+
+		It("is stable across customKeys ordering (json.Marshal sorts map keys)", func() {
+			c1 := dbaasv1.Classifier{
+				MicroserviceName: "svc", Scope: "service",
+				CustomKeys: map[string]apiextensionsv1.JSON{
+					"b": {Raw: []byte(`"vb"`)},
+					"a": {Raw: []byte(`"va"`)},
+				},
+			}
+			c2 := dbaasv1.Classifier{
+				MicroserviceName: "svc", Scope: "service",
+				CustomKeys: map[string]apiextensionsv1.JSON{
+					"a": {Raw: []byte(`"va"`)},
+					"b": {Raw: []byte(`"vb"`)},
+				},
+			}
+			Expect(classifierIndexKey(c1, "postgresql")).To(Equal(classifierIndexKey(c2, "postgresql")))
+		})
+
+		It("includes nested customKeys structures in the canonical form", func() {
+			c := dbaasv1.Classifier{
+				MicroserviceName: "svc", Scope: "service",
+				CustomKeys: map[string]apiextensionsv1.JSON{
+					"logicalDBName": {Raw: []byte(`"billing"`)},
+					"count":         {Raw: []byte(`42`)},
+				},
+			}
+			key := classifierIndexKey(c, "postgresql")
+			Expect(key).To(ContainSubstring("logicalDBName"))
+			Expect(key).To(ContainSubstring("billing"))
+			Expect(key).To(ContainSubstring(`"count":42`))
+		})
+	})
+
+	Context("cache field index lookup", func() {
+		var (
+			crA *dbaasv1.DatabaseSecret
+			crB *dbaasv1.DatabaseSecret
+			crC *dbaasv1.DatabaseSecret
+		)
+
+		BeforeEach(func() {
+			crA = &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "idx-cr-a", Namespace: ns,
+					Labels: map[string]string{"app.kubernetes.io/name": "svc-a"},
+				},
+				Spec: dbaasv1.DatabaseSecretSpec{
+					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
+					Type:       "postgresql",
+					SecretName: "idx-secret-a",
+				},
+			}
+			crB = &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "idx-cr-b", Namespace: ns,
+					Labels: map[string]string{"app.kubernetes.io/name": "svc-b"},
+				},
+				Spec: dbaasv1.DatabaseSecretSpec{
+					// Same classifier as A, same type → should match A's key.
+					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
+					Type:       "postgresql",
+					SecretName: "idx-secret-b",
+				},
+			}
+			crC = &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "idx-cr-c", Namespace: ns,
+					Labels: map[string]string{"app.kubernetes.io/name": "svc-c"},
+				},
+				Spec: dbaasv1.DatabaseSecretSpec{
+					// Different classifier — must NOT match A's key.
+					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-c", Scope: "service"},
+					Type:       "postgresql",
+					SecretName: "idx-secret-c",
+				},
+			}
+			Expect(k8sClient.Create(ctx, crA)).To(Succeed())
+			Expect(k8sClient.Create(ctx, crB)).To(Succeed())
+			Expect(k8sClient.Create(ctx, crC)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			deleteIfExists(crA)
+			deleteIfExists(crB)
+			deleteIfExists(crC)
+		})
+
+		It("returns all CRs sharing classifier+type, excludes non-matching ones", func() {
+			indexKey := classifierIndexKey(crA.Spec.Classifier, crA.Spec.Type)
+
+			// Wait for the cache to observe all three CRs before querying via the index.
+			Eventually(func() (int, error) {
+				list := &dbaasv1.DatabaseSecretList{}
+				if err := cacheClient.List(ctx, list, client.InNamespace(ns)); err != nil {
+					return 0, err
+				}
+				return len(list.Items), nil
+			}).Should(BeNumerically(">=", 3))
+
+			list := &dbaasv1.DatabaseSecretList{}
+			Expect(cacheClient.List(ctx, list,
+				client.InNamespace(ns),
+				client.MatchingFields{classifierTypeIndex: indexKey})).To(Succeed())
+
+			names := make([]string, 0, len(list.Items))
+			for i := range list.Items {
+				names = append(names, list.Items[i].Name)
+			}
+			Expect(names).To(ConsistOf(crA.Name, crB.Name),
+				"index lookup must return A+B (same classifier+type) and exclude C")
+		})
+
+		It("returns nothing for a classifier with no matching CR", func() {
+			missingKey := classifierIndexKey(
+				dbaasv1.Classifier{MicroserviceName: "svc-nonexistent", Scope: "service"},
+				"postgresql")
+			list := &dbaasv1.DatabaseSecretList{}
+			Expect(cacheClient.List(ctx, list,
+				client.InNamespace(ns),
+				client.MatchingFields{classifierTypeIndex: missingKey})).To(Succeed())
+			Expect(list.Items).To(BeEmpty())
 		})
 	})
 })
