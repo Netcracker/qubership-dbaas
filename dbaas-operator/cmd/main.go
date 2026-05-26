@@ -40,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
@@ -72,12 +72,13 @@ func main() {
 		xrequestid.XRequestIdProvider{},
 	})
 
-	var metricsAddr string
+	var httpAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var backoffBaseDelay time.Duration
 	var backoffMaxDelay time.Duration
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
+	flag.StringVar(&httpAddr, "http-bind-address", ":8080",
+		"Address the operator's HTTP server binds to. Hosts the Prometheus /metrics endpoint and any registered webhook receivers.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -91,8 +92,13 @@ func main() {
 
 	ctrl.SetLogger(newLogrLogger("dbaas-operator"))
 
-	metricsServerOptions := metricsserver.Options{
-		BindAddress: metricsAddr,
+	// httpServerOpts configures the operator's general-purpose HTTP server. It
+	// hosts the Prometheus /metrics endpoint and any handlers registered via
+	// ExtraHandlers (e.g. the rotation webhook receiver). The option type is
+	// named metricsserver.Options for historical reasons inside controller-
+	// runtime — conceptually it is the manager's HTTP listener.
+	httpServerOpts := httpserver.Options{
+		BindAddress: httpAddr,
 	}
 
 	// ── Operator namespace ────────────────────────────────────────────────────
@@ -128,7 +134,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(baseConfig, ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                metricsServerOptions,
+		Metrics:                httpServerOpts,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",

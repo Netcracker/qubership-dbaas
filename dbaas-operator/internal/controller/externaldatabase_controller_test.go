@@ -33,7 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	config "sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
@@ -1108,7 +1108,7 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		skipValidation := true
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
-			Metrics:                metricsserver.Options{BindAddress: "0"},
+			Metrics:                httpserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
 			Controller:             config.Controller{SkipNameValidation: &skipValidation},
 		})
@@ -1178,7 +1178,7 @@ var _ = Describe("ExternalDatabase Controller — secret watch", func() {
 		var err error
 		mgr, err = ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                  k8sClient.Scheme(),
-			Metrics:                 metricsserver.Options{BindAddress: "0"},
+			Metrics:                 httpserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress:  "0",
 			Controller:              config.Controller{SkipNameValidation: &skipValidation},
 			GracefulShutdownTimeout: &shutdownTimeout,

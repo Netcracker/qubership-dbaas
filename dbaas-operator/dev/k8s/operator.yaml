@@ -127,7 +127,7 @@ spec:
             - /app/dbaas-operator
           args:
             - --health-probe-bind-address=:8081
-            - --metrics-bind-address=:8080
+            - --http-bind-address=:8080
             - --leader-elect
           volumeMounts:
             - name: projected-tokens
