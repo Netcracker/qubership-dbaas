@@ -1015,12 +1015,12 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	})
 })
 
-// ── classifierIndexKey + classifierTypeIndex ────────────────────────────────
+// ── dbaasv1.ClassifierIndexKey + dbaasv1.ClassifierTypeIndex ────────────────
 
 var _ = Describe("DatabaseSecret Controller — classifier+type field index", func() {
 	const ns = "default"
 
-	Context("classifierIndexKey() canonicalization", func() {
+	Context("dbaasv1.ClassifierIndexKey() canonicalization", func() {
 		It("produces the same key for the same classifier content", func() {
 			c1 := dbaasv1.Classifier{
 				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
@@ -1028,23 +1028,23 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 			c2 := dbaasv1.Classifier{
 				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
 			}
-			Expect(classifierIndexKey(c1, "postgresql")).To(Equal(classifierIndexKey(c2, "postgresql")))
+			Expect(dbaasv1.ClassifierIndexKey(c1, "postgresql")).To(Equal(dbaasv1.ClassifierIndexKey(c2, "postgresql")))
 		})
 
 		It("differs when type differs", func() {
 			c := dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"}
-			Expect(classifierIndexKey(c, "postgresql")).NotTo(Equal(classifierIndexKey(c, "mongodb")))
+			Expect(dbaasv1.ClassifierIndexKey(c, "postgresql")).NotTo(Equal(dbaasv1.ClassifierIndexKey(c, "mongodb")))
 		})
 
 		It("differs when classifier scalar fields differ", func() {
 			c1 := dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"}
 			c2 := dbaasv1.Classifier{MicroserviceName: "svc-b", Scope: "service"}
-			Expect(classifierIndexKey(c1, "postgresql")).NotTo(Equal(classifierIndexKey(c2, "postgresql")))
+			Expect(dbaasv1.ClassifierIndexKey(c1, "postgresql")).NotTo(Equal(dbaasv1.ClassifierIndexKey(c2, "postgresql")))
 		})
 
 		It("omits empty optional fields from the canonical form", func() {
 			minimal := dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"}
-			key := classifierIndexKey(minimal, "postgresql")
+			key := dbaasv1.ClassifierIndexKey(minimal, "postgresql")
 			// tenantId / namespace / customKeys are absent in the JSON when empty.
 			Expect(key).NotTo(ContainSubstring("tenantId"))
 			Expect(key).NotTo(ContainSubstring("namespace"))
@@ -1066,7 +1066,7 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 					"b": {Raw: []byte(`"vb"`)},
 				},
 			}
-			Expect(classifierIndexKey(c1, "postgresql")).To(Equal(classifierIndexKey(c2, "postgresql")))
+			Expect(dbaasv1.ClassifierIndexKey(c1, "postgresql")).To(Equal(dbaasv1.ClassifierIndexKey(c2, "postgresql")))
 		})
 
 		It("includes nested customKeys structures in the canonical form", func() {
@@ -1077,7 +1077,7 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 					"count":         {Raw: []byte(`42`)},
 				},
 			}
-			key := classifierIndexKey(c, "postgresql")
+			key := dbaasv1.ClassifierIndexKey(c, "postgresql")
 			Expect(key).To(ContainSubstring("logicalDBName"))
 			Expect(key).To(ContainSubstring("billing"))
 			Expect(key).To(ContainSubstring(`"count":42`))
@@ -1139,7 +1139,7 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 		})
 
 		It("returns all CRs sharing classifier+type, excludes non-matching ones", func() {
-			indexKey := classifierIndexKey(crA.Spec.Classifier, crA.Spec.Type)
+			indexKey := dbaasv1.ClassifierIndexKey(crA.Spec.Classifier, crA.Spec.Type)
 
 			// Wait for the cache to observe all three CRs before querying via the index.
 			Eventually(func() (int, error) {
@@ -1153,7 +1153,7 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 			list := &dbaasv1.DatabaseSecretList{}
 			Expect(cacheClient.List(ctx, list,
 				client.InNamespace(ns),
-				client.MatchingFields{classifierTypeIndex: indexKey})).To(Succeed())
+				client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey})).To(Succeed())
 
 			names := make([]string, 0, len(list.Items))
 			for i := range list.Items {
@@ -1164,13 +1164,13 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 		})
 
 		It("returns nothing for a classifier with no matching CR", func() {
-			missingKey := classifierIndexKey(
+			missingKey := dbaasv1.ClassifierIndexKey(
 				dbaasv1.Classifier{MicroserviceName: "svc-nonexistent", Scope: "service"},
 				"postgresql")
 			list := &dbaasv1.DatabaseSecretList{}
 			Expect(cacheClient.List(ctx, list,
 				client.InNamespace(ns),
-				client.MatchingFields{classifierTypeIndex: missingKey})).To(Succeed())
+				client.MatchingFields{dbaasv1.ClassifierTypeIndex: missingKey})).To(Succeed())
 			Expect(list.Items).To(BeEmpty())
 		})
 	})

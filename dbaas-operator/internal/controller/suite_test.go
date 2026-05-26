@@ -124,10 +124,10 @@ var _ = BeforeSuite(func() {
 	Expect(mgr.GetFieldIndexer().IndexField(
 		ctx,
 		&dbaasv1.DatabaseSecret{},
-		classifierTypeIndex,
+		dbaasv1.ClassifierTypeIndex,
 		func(obj client.Object) []string {
 			ds := obj.(*dbaasv1.DatabaseSecret)
-			return []string{classifierIndexKey(ds.Spec.Classifier, ds.Spec.Type)}
+			return []string{dbaasv1.ClassifierIndexKey(ds.Spec.Classifier, ds.Spec.Type)}
 		},
 	)).To(Succeed())
 

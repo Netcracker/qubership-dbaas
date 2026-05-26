@@ -51,44 +51,6 @@ import (
 // used to resolve sibling conflicts in O(1) instead of a full namespace scan.
 const secretNameIndex = "spec.secretName"
 
-// classifierTypeIndex is the field index key for the canonical
-// (spec.classifier, spec.type) pair. Used by the rotation webhook handler to
-// resolve incoming RotationOccurred / RestoreCompleted events from
-// dbaas-aggregator to the affected DatabaseSecret CRs without scanning the
-// whole namespace.
-//
-// The key intentionally does NOT include spec.userRole. The aggregator resolves
-// userRole through DbPolicy (defaultRole, additionalRole) and the global
-// permission registry (see DatabaseRolesService.getSupportRole on the
-// aggregator side), so an operator-side spec.userRole="" may effectively be
-// any policy-defined role, and a spec.userRole="X" may even map to a different
-// effective role via additionalRole rules. Replicating that resolution locally
-// would create cache-coherence problems whenever the DbPolicy changes.
-// Instead, the webhook handler fans out to every DatabaseSecret matching the
-// classifier+type, and each reconcile's content-aware compare guards against
-// no-op Secret writes — the wasted reconciles for non-matching roles are
-// bounded (typically 1-3 CRs per classifier) and harmless.
-const classifierTypeIndex = "spec.classifier+type"
-
-// classifierIndexKey canonicalizes (classifier, type) into a deterministic
-// string suitable for cache field-index lookup. The canonical form is
-// "<type>|<json-of-classifierFlatMap>", where json.Marshal on map[string]any
-// guarantees alphabetical key ordering (including nested customKeys). Two
-// CRs with the same classifier content produce the same key regardless of
-// how their JSON was originally ordered.
-func classifierIndexKey(c dbaasv1.Classifier, dbType string) string {
-	flat := classifierFlatMap(c)
-	raw, err := json.Marshal(flat)
-	if err != nil {
-		// classifierFlatMap only produces JSON-serializable values
-		// (string/number/bool/nested map); marshal failure is not expected,
-		// but if it happens we still want a deterministic-on-content fallback.
-		log.Warnf("classifierIndexKey: marshal of classifier failed type=%s err=%v", dbType, err)
-		return dbType + "|"
-	}
-	return dbType + "|" + string(raw)
-}
-
 // DatabaseSecretReconciler reconciles DatabaseSecret objects.
 //
 // On every reconcile it:
@@ -138,7 +100,7 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// ── Step 7: call aggregator ───────────────────────────────────────────────
 	aggReq := &aggregatorclient.GetByClassifierRequest{
-		Classifier:    classifierFlatMap(s.Spec.Classifier),
+		Classifier:    dbaasv1.ClassifierFlatMap(s.Spec.Classifier),
 		OriginService: s.Labels["app.kubernetes.io/name"],
 		UserRole:      s.Spec.UserRole,
 	}
@@ -492,10 +454,10 @@ func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlc
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&dbaasv1.DatabaseSecret{},
-		classifierTypeIndex,
+		dbaasv1.ClassifierTypeIndex,
 		func(obj client.Object) []string {
 			ds := obj.(*dbaasv1.DatabaseSecret)
-			return []string{classifierIndexKey(ds.Spec.Classifier, ds.Spec.Type)}
+			return []string{dbaasv1.ClassifierIndexKey(ds.Spec.Classifier, ds.Spec.Type)}
 		},
 	); err != nil {
 		return err
