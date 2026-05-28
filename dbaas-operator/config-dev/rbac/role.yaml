@@ -9,13 +9,17 @@ rules:
   resources:
   - secrets
   verbs:
+  - create
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - dbaas.netcracker.com
   resources:
   - databasedeclarations
+  - databasesecrets
   - dbnamespacebalancingrules
   - dbpolicies
   - externaldatabases
@@ -27,6 +31,7 @@ rules:
   - dbaas.netcracker.com
   resources:
   - databasedeclarations/status
+  - databasesecrets/status
   - dbmicroservicebalancingrules/status
   - dbnamespacebalancingrules/status
   - dbpermanentbalancingrules/status

@@ -187,12 +187,29 @@ type InitialInstantiationWire struct {
 	SourceClassifier map[string]any `json:"sourceClassifier,omitempty"`
 }
 
+// ─── get-by-classifier ────────────────────────────────────────────────────────
+
+// GetByClassifierRequest is the body for
+// POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}.
+type GetByClassifierRequest struct {
+	Classifier    map[string]any `json:"classifier"`
+	OriginService string         `json:"originService,omitempty"`
+	UserRole      string         `json:"userRole,omitempty"`
+}
+
+// DatabaseResponseSingleCP is the response from GetDatabaseByClassifier.
+// ConnectionProperties keys are dynamic (host, port, username, password, name, url, role, roHost, …).
+type DatabaseResponseSingleCP struct {
+	ConnectionProperties map[string]any `json:"connectionProperties,omitempty"`
+}
+
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.
 type AggregatorError struct {
 	StatusCode int
 	Body       string // raw response body (fallback when TMF parse fails)
+	TmfCode    string // parsed from TmfErrorResponse.code
 	TmfMessage string // parsed from TmfErrorResponse.message, if available
 }
 
@@ -236,4 +253,12 @@ func (e *AggregatorError) IsSpecRejection() bool {
 		return true
 	}
 	return false
+}
+
+// IsDatabaseNotFound returns true only for a 404 that carries TMF error code
+// CORE-DBAAS-4006 (database not yet registered). A bare 404 without a TMF body
+// (blue-green edge case: no active namespace in the domain) returns false and is
+// treated as a generic transient AggregatorError.
+func (e *AggregatorError) IsDatabaseNotFound() bool {
+	return e.StatusCode == http.StatusNotFound && e.TmfCode == "CORE-DBAAS-4006"
 }

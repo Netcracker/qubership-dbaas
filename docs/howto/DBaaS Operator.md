@@ -91,6 +91,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 - Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time.
 - The operator watches referenced Secrets and automatically reconciles affected `ExternalDatabase` CRs when their credentials rotate — no manual spec change required.
 - Authentication to dbaas-aggregator uses a projected service account token (rotated automatically by Kubernetes).
+- Resource-identity fields on all workload CRs are immutable after creation (enforced by CRD CEL rules) — to retarget a CR at a different database, microservice, or operator instance, delete and recreate it. See the per-resource sections for the exact set of immutable fields.
 
 ---
 
@@ -116,11 +117,12 @@ The operator always sends `updateConnectionProperties: true`, which means the re
 
 | HTTP Code | Situation | Operator outcome |
 |-----------|-----------|-----------------|
-| `201 Created` | Successfully registered or updated | `Succeeded` — `Ready=True` |
+| `200 OK` / `201 Created` | Successfully registered or updated | `Succeeded` — `Ready=True` |
 | `400` | Invalid classifier (missing required fields) | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
 | `403` | `tenantId` in classifier does not match JWT | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `409` | Database exists but is not externally managed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `410` / `422` | Aggregator-side spec rejection (rare for this endpoint, but handled the same as 400/403/409) | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
 | Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
@@ -651,7 +653,8 @@ CR created / spec changed / referenced Secret changed
         │
         ▼
   Pre-flight validation
-    classifier.namespace ≠ metadata.namespace? ──▶ InvalidConfiguration (InvalidSpec)
+    classifier.namespace ≠ metadata.namespace? ──────▶ InvalidConfiguration (InvalidSpec)
+    duplicate name in credentialsSecretRef.keys? ────▶ InvalidConfiguration (InvalidSpec)
         │
         ▼
   Read Secrets
@@ -705,7 +708,7 @@ CR created / spec changed / referenced Secret changed
 | `DatabaseRegistered` | `Ready=True` | Successfully registered with dbaas-aggregator |
 | `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
 | `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed before calling aggregator |
-| `SecretError` | `Ready=False`, `Stalled=False` | Secret not found, or required key is missing or empty |
+| `SecretError` | `Ready=False`, `Stalled=False` | Failed to resolve credentials from a referenced Kubernetes Secret. Sub-categories visible via the `dbaas_secret_resolution_errors_total{reason=...}` metric: `secret_not_found`, `key_missing`, `key_empty`, `forbidden` (RBAC denial), `secret_read_failed` (other API / I/O errors). |
 | `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
 | `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 — permanent spec issue |
 | `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, or network error |
@@ -716,8 +719,8 @@ CR created / spec changed / referenced Secret changed
 |----------|---------|:-------:|----------|:---------:|
 | Registered (201) | `Succeeded` | `True` | `DatabaseRegistered` | `False` |
 | `classifier.namespace` mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
-| Secret not found | `BackingOff` | `False` | `SecretError` | `False` |
-| Secret key missing or empty | `BackingOff` | `False` | `SecretError` | `False` |
+| Duplicate `name` in `credentialsSecretRef.keys` | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| Secret not found / key missing / key empty / forbidden / read failed | `BackingOff` | `False` | `SecretError` | `False` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
 | Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
@@ -841,7 +844,7 @@ spec:
 
 | Field | Required | Mutable | Description |
 |-------|:--------:|:-------:|-------------|
-| `spec.microserviceName` | Yes | Yes | The microservice that owns this policy. Sent as `metadata.microserviceName` in the aggregator payload. |
+| `spec.microserviceName` | Yes | **No** | The microservice that owns this policy. Sent as `metadata.microserviceName` in the aggregator payload. Immutable after creation (CRD CEL rule `self == oldSelf`): repointing the same CR at a different microservice would silently rewrite role grants under the original K8s object and lose the audit link to who created the policy. Create a new CR for a different service. |
 | `spec.services` | At least one of `services` or `policy` | Yes | Per-microservice role assignments. |
 | `spec.policy` | At least one of `services` or `policy` | Yes | Default role rules per database type, applied to services not listed in `services`. |
 | `spec.disableGlobalPermissions` | No | Yes | When `true`, opts out of dbaas-aggregator's default global permission grants. Defaults to `false`. |
@@ -1059,13 +1062,15 @@ spec:
 
 | Field | Required | Mutable | Description |
 |-------|:--------:|:-------:|-------------|
-| `spec.classifier` | Yes | Yes | Database identity in dbaas-aggregator |
-| `spec.type` | Yes | Yes | Database engine type (e.g., `postgresql`, `mongodb`). Must match a type known to dbaas-aggregator |
+| `spec.classifier` | Yes | **No** | Database identity in dbaas-aggregator. Immutable after creation (CRD CEL rule `self == oldSelf`): switching the classifier on an existing CR would re-target the controller at a different database while `status.trackingID` and `status.observedGeneration` still reference the original one. Delete and recreate the CR to rebind. |
+| `spec.type` | Yes | **No** | Database engine type (e.g., `postgresql`, `mongodb`). Must match a type known to dbaas-aggregator. Immutable after creation: changing the engine mid-flight would request provisioning of a fresh database on a different adapter while the original one stays registered under the same CR identity. |
 | `spec.lazy` | No | Yes | When `true`, provisioning is deferred until first access. Defaults to `false`. **Prohibited** in combination with `initialInstantiation.approach=clone` — controller rejects with `InvalidSpec` |
 | `spec.settings` | No | Yes | Free-form string-to-string map of adapter-specific settings |
 | `spec.namePrefix` | No | Yes | Prefix applied to the physical database name created in the DBMS |
 | `spec.versioningConfig` | No | Yes | Strategy for blue-green database versioning. If absent → `versioningType=static`. If present → `versioningType=version` |
 | `spec.initialInstantiation` | No | Yes | Initial database creation strategy. If absent → `approach=new` |
+
+> **Note on `spec.classifier` immutability** — the CEL rule is a strict structural equality check (`self == oldSelf`). Once the CR is created, the exact shape of the classifier is frozen: you can neither add an optional sub-field that was omitted (e.g. `namespace`, `tenantId`, `customKeys`) nor remove one that was present. The same caveat applies as for `ExternalDatabase.spec.classifier` — see the immutability note in that section for the practical implications (the controller still defaults `classifier.namespace` to `metadata.namespace` when the field is absent, so the aggregator receives the right namespace either way).
 
 **`spec.versioningConfig` fields:**
 
@@ -1295,6 +1300,7 @@ The following parameters control the operator's deployment and behavior. They ar
 | `DBAAS_OPERATOR_ENABLED` | boolean | `false` | When `false`, no Kubernetes resources are created by the Helm chart (Deployment, RBAC, and CRDs are all skipped). Must be set to `true` to deploy the operator. |
 | `LEADER_ELECT` | boolean | `true` | Enables leader election. Required when running more than one replica to ensure only one active instance processes resources at a time. |
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
+| `DBAAS_AGGREGATOR_URL` | string | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (e.g. cross-cluster deployments). Read by the operator as an environment variable; not set by the Helm chart unless explicitly configured. |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |
 | `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
 | `MONITORING_ENABLED` | boolean | — | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Requires Platform System Monitor CRDs. |

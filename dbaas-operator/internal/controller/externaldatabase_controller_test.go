@@ -1286,10 +1286,10 @@ var _ = Describe("ExternalDatabase Controller — secret watch", func() {
 		}).Should(HaveLen(2))
 
 		reqs := reconciler.enqueueForSecret(ctx, secretObj)
-		names := []string{reqs[0].NamespacedName.Name, reqs[1].NamespacedName.Name}
+		names := []string{reqs[0].Name, reqs[1].Name}
 		Expect(names).To(ConsistOf(edbName, edbName2))
 		for _, r := range reqs {
-			Expect(r.NamespacedName.Namespace).To(Equal(ns))
+			Expect(r.Namespace).To(Equal(ns))
 		}
 	})
 })

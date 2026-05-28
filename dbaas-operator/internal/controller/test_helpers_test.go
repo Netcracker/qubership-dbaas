@@ -101,6 +101,11 @@ func reconcileAndFetchObject[T client.Object](
 	newObj func() T,
 ) (T, reconcile.Result, error) {
 	GinkgoHelper()
+	// Wait for the caching client to reflect the object before calling Reconcile,
+	// so that reconcilers using cacheClient (required for MatchingFields) can find it.
+	Eventually(func() error {
+		return cacheClient.Get(ctx, key, newObj())
+	}).Should(Succeed())
 	result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 	obj := newObj()
 	Expect(k8sClient.Get(ctx, key, obj)).To(Succeed())

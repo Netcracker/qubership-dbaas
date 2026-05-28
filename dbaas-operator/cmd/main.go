@@ -203,7 +203,20 @@ func main() {
 		func() *dbaasv1.DbPermanentBalancingRuleList { return &dbaasv1.DbPermanentBalancingRuleList{} },
 		func(l *dbaasv1.DbPermanentBalancingRuleList) int { return len(l.Items) },
 	)
-	blockingChecker := ownership.NewCompositeChecker(edbChecker, dpChecker, ddChecker, microserviceRuleChecker, namespaceRuleChecker, permanentRuleChecker)
+	dsChecker := ownership.NewKindChecker(
+		mgr.GetClient(),
+		func() *dbaasv1.DatabaseSecretList { return &dbaasv1.DatabaseSecretList{} },
+		func(l *dbaasv1.DatabaseSecretList) int { return len(l.Items) },
+	)
+	blockingChecker := ownership.NewCompositeChecker(
+		edbChecker,
+		dpChecker,
+		ddChecker,
+		dsChecker,
+		microserviceRuleChecker,
+		namespaceRuleChecker,
+		permanentRuleChecker,
+	)
 	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
@@ -260,6 +273,18 @@ func main() {
 		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
 		os.Exit(1)
 	}
+
+	if err := (&controller.DatabaseSecretReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   recorderFor(mgr, "databasesecret", eventsEnabled),
+		Ownership:  ownershipResolver,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=DatabaseSecret: %v", err)
+		os.Exit(1)
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

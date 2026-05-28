@@ -6,9 +6,12 @@ import (
 	"time"
 )
 
+// testEDBKey is the namespace/name key reused across trigger-stamp tests.
+const testEDBKey = "test-ns/test-edb"
+
 func TestExternalDatabaseSecretTriggerLifecycle(t *testing.T) {
 	r := &ExternalDatabaseReconciler{}
-	key := "test-ns/test-edb"
+	key := testEDBKey
 	start := time.Unix(100, 0)
 	later := start.Add(time.Minute)
 
@@ -36,7 +39,7 @@ func TestExternalDatabaseSecretTriggerLifecycle(t *testing.T) {
 
 func TestExternalDatabaseClearSecretTriggerClearsTriggerAndPropagation(t *testing.T) {
 	r := &ExternalDatabaseReconciler{}
-	key := "test-ns/test-edb"
+	key := testEDBKey
 
 	r.stampSecretTrigger(key, time.Unix(100, 0))
 	r.clearSecretTrigger(key)
@@ -82,10 +85,10 @@ func TestDbPolicyBindingTriggerLifecycle(t *testing.T) {
 
 func TestExternalDatabaseTriggerStampsConcurrentAccess(t *testing.T) {
 	r := &ExternalDatabaseReconciler{}
-	key := "test-ns/test-edb"
+	key := testEDBKey
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(5)
 		go func(i int) {
 			defer wg.Done()

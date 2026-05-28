@@ -56,13 +56,23 @@ type DatabaseDeclarationSpec struct {
 	// classifier uniquely identifies this database in dbaas.
 	// The aggregator uses it to look up or create the physical database.
 	// Required keys: microserviceName, scope.
+	// Immutable after creation — changing the classifier of an existing
+	// DatabaseDeclaration would switch the CR onto a different database while
+	// the controller's status (trackingID, observedGeneration) still references
+	// the original one. To rebind to a different database, delete and recreate
+	// the CR.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.classifier is immutable after creation"
 	Classifier Classifier `json:"classifier"`
 
 	// type is the database engine type. Must match a type known to dbaas-aggregator,
 	// e.g. "postgresql", "mongodb", "opensearch".
+	// Immutable after creation — changing engine type mid-flight would request
+	// provisioning of a fresh database on a different adapter while the original
+	// remains registered under the same CR identity.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.type is immutable after creation"
 	Type string `json:"type"`
 
 	// lazy indicates whether the database should be provisioned on first access rather

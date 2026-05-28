@@ -96,4 +96,35 @@ const (
 	// EventReasonWaitingForNamespaceBinding is used while a resource waits for
 	// its namespace ownership dependency to become available.
 	EventReasonWaitingForNamespaceBinding = "WaitingForNamespaceBinding"
+
+	// EventReasonSecretCreated is emitted when a DatabaseSecret successfully
+	// creates or updates the target Kubernetes Secret with connection properties.
+	// Type: Normal.
+	EventReasonSecretCreated = "SecretCreated"
+
+	// EventReasonSecretConflict is emitted when the target Kubernetes Secret
+	// already exists but its ownerReference points to a different resource or
+	// has no ownerReference at all. Type: Warning.
+	EventReasonSecretConflict = "SecretConflict"
+
+	// EventReasonDatabaseNotFound is emitted when dbaas-aggregator returns HTTP 404
+	// for a get-by-classifier request, meaning the database is not yet registered and
+	// the operator retries until it appears. The controller retries with exponential backoff. Type: Warning.
+	EventReasonDatabaseNotFound = "DatabaseNotFound"
+
+	// EventReasonEmptyConnectionProperties is emitted when dbaas-aggregator returns HTTP 200
+	// but the connectionProperties map is empty for the requested userRole. This is treated
+	// as a transient state (the aggregator/adapter is expected to populate it on a subsequent
+	// reconcile) and the controller retries with backoff rather than failing permanently.
+	// Type: Warning.
+	EventReasonEmptyConnectionProperties = "EmptyConnectionProperties"
+
+	// EventReasonDatabaseNotFoundTimeout is emitted once when a DatabaseSecret has been
+	// waiting on a DatabaseNotFound (HTTP 404) response from dbaas-aggregator for longer
+	// than databaseNotFoundTimeout. The controller continues polling (Phase remains
+	// BackingOff, Stalled remains False — the CR may still self-heal once the database
+	// appears) but stops emitting per-cycle DatabaseNotFound Warnings to avoid event spam.
+	// Surfaces a single alertable signal that an operator's classifier may be wrong.
+	// Type: Warning.
+	EventReasonDatabaseNotFoundTimeout = "DatabaseNotFoundTimeout"
 )

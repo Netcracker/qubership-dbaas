@@ -44,3 +44,11 @@ const ownershipUnboundRetryInterval = 5 * time.Minute
 // The key format is "namespace/name" to prevent spurious cross-namespace reconciles
 // when two namespaces share a secret with the same name.
 const secretNamesIndex = "spec.credentialSecretNames"
+
+// databaseNotFoundTimeout is the duration after which a DatabaseSecret that has
+// been continuously receiving DatabaseNotFound (404) responses from the aggregator
+// is considered stuck. Polling continues (so the CR can recover if the database
+// eventually appears), but the controller switches to EventReasonDatabaseNotFoundTimeout
+// and stops the per-cycle Warning event spam. Surfacing the timeout as a one-shot
+// Warning gives operators a single, alertable signal.
+const databaseNotFoundTimeout = 10 * time.Minute
