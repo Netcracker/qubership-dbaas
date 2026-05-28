@@ -155,6 +155,78 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	return nil
 }
 
+// ApplyMicroserviceBalancingRules sends on-microservice balancing rules to
+// PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices.
+func (c *AggregatorClient) ApplyMicroserviceBalancingRules(ctx context.Context, namespace string, req []OnMicroserviceRuleRequest) error {
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetBody(req).
+		Put(fmt.Sprintf("/api/v3/dbaas/%s/physical_databases/rules/onMicroservices", namespace))
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated {
+		return newAggregatorError(resp)
+	}
+
+	return nil
+}
+
+// ApplyNamespaceBalancingRule sends one namespace balancing rule to
+// PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}.
+func (c *AggregatorClient) ApplyNamespaceBalancingRule(ctx context.Context, namespace, ruleName string, req *NamespaceBalancingRuleRequest) error {
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetBody(req).
+		Put(fmt.Sprintf("/api/v3/dbaas/%s/physical_databases/balancing/rules/%s", namespace, ruleName))
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated {
+		return newAggregatorError(resp)
+	}
+
+	return nil
+}
+
+// ApplyPermanentBalancingRules sends permanent balancing rules to
+// PUT /api/v3/dbaas/balancing/rules/permanent.
+func (c *AggregatorClient) ApplyPermanentBalancingRules(ctx context.Context, req []PermanentBalancingRuleRequest) error {
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetBody(req).
+		Put("/api/v3/dbaas/balancing/rules/permanent")
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated {
+		return newAggregatorError(resp)
+	}
+
+	return nil
+}
+
+// DeletePermanentBalancingRules deletes permanent balancing rules with
+// DELETE /api/v3/dbaas/balancing/rules/permanent.
+func (c *AggregatorClient) DeletePermanentBalancingRules(ctx context.Context, req []PermanentBalancingRuleDeleteRequest) error {
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		SetBody(req).
+		Delete("/api/v3/dbaas/balancing/rules/permanent")
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusNoContent {
+		return newAggregatorError(resp)
+	}
+
+	return nil
+}
+
 func decodeResponse(body []byte, label string) (*DeclarativeResponse, error) {
 	var result DeclarativeResponse
 	if len(body) > 0 {

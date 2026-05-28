@@ -46,7 +46,8 @@ import (
 //  2. Manage the NamespaceBindingProtectionFinalizer: add it when the namespace
 //     contains blocking dbaas resources; remove it (allowing deletion) only once
 //     those resources are gone.
-//  3. Watch workload resources (ExternalDatabase, DbPolicy, and DatabaseDeclaration)
+//  3. Watch workload resources (ExternalDatabase, DbPolicy, DatabaseDeclaration,
+//     and balancing rules)
 //     so that any create/delete of a workload in a bound namespace triggers a
 //     re-evaluation of the finalizer.
 type NamespaceBindingReconciler struct {
@@ -161,6 +162,18 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 		).
 		Watches(
 			&dbaasv1.DatabaseDeclaration{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
+		Watches(
+			&dbaasv1.DbMicroserviceBalancingRule{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
+		Watches(
+			&dbaasv1.DbNamespaceBalancingRule{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
+		Watches(
+			&dbaasv1.DbPermanentBalancingRule{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		WithOptions(opts).

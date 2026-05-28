@@ -625,6 +625,51 @@
                                            "legendFormat":  "{{result}}"
                                        }
                                    ]
+                   },
+                   {
+                       "id":  17,
+                       "type":  "row",
+                       "title":  "Balancing Rules",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  60
+                                   }
+                   },
+                   {
+                       "id":  18,
+                       "type":  "timeseries",
+                       "title":  "Balancing Rule Aggregator Calls",
+                       "description":  "Rate of balancing-rule requests sent by the operator to dbaas-aggregator, split by operation and result.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  61
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (operation, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",controller=\"balancingrule\"}[1m]))",
+                                           "legendFormat":  "{{operation}} / {{result}}"
+                                       }
+                                   ]
                    }
                ]
 }

@@ -33,6 +33,7 @@ const (
 	controllerEDB = "externaldatabase"
 	controllerDD  = "databasedeclaration"
 	controllerDP  = "dbpolicy"
+	controllerBR  = "balancingrule"
 
 	triggerSpecChange             = "spec_change"
 	triggerSecretChange           = "secret_change"
@@ -57,6 +58,12 @@ const (
 	operationRegisterEDB = "register_external_database"
 	operationApplyConfig = "apply_config"
 	operationPollStatus  = "poll_status"
+
+	operationApplyMicroserviceRule   = "apply_microservice_balancing_rule"
+	operationCleanupMicroserviceRule = "cleanup_microservice_balancing_rule"
+	operationApplyNamespaceRule      = "apply_namespace_balancing_rule"
+	operationApplyPermanentRule      = "apply_permanent_balancing_rule"
+	operationDeletePermanentRule     = "delete_permanent_balancing_rule"
 )
 
 // Metric declarations.

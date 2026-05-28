@@ -99,6 +99,17 @@ var (
 
 	// GET /api/declarations/v1/operation/{trackingId}/status
 	reOpStatus = regexp.MustCompile(`^/api/declarations/v1/operation/([^/]+)/status$`)
+
+	// PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices
+	reMicroserviceBalancingRule = regexp.MustCompile(
+		`^/api/v3/dbaas/([^/]+)/physical_databases/rules/onMicroservices$`)
+
+	// PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}
+	reNamespaceBalancingRule = regexp.MustCompile(
+		`^/api/v3/dbaas/([^/]+)/physical_databases/balancing/rules/([^/]+)$`)
+
+	// PUT|DELETE /api/v3/dbaas/balancing/rules/permanent
+	rePermanentBalancingRule = regexp.MustCompile(`^/api/v3/dbaas/balancing/rules/permanent$`)
 )
 
 func main() {
@@ -188,12 +199,59 @@ func handler(
 		case reOpStatus.MatchString(r.URL.Path) && r.Method == http.MethodGet:
 			handleOpStatus(w, r, pollRules)
 
+		case reMicroserviceBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			handleMicroserviceBalancingRule(w, r)
+
+		case reNamespaceBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			handleNamespaceBalancingRule(w, r)
+
+		case rePermanentBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			handlePermanentBalancingRule(w, false)
+
+		case rePermanentBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodDelete:
+			handlePermanentBalancingRule(w, true)
+
 		default:
 			log.Printf("  → 404 no route for %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
 		}
 	})
 	return mux
+}
+
+// handleMicroserviceBalancingRule accepts on-microservice balancing rule updates.
+// The mock only validates route/auth and does not simulate physical DB label resolution.
+func handleMicroserviceBalancingRule(w http.ResponseWriter, r *http.Request) {
+	m := reMicroserviceBalancingRule.FindStringSubmatch(r.URL.Path)
+	namespace := m[1]
+	log.Printf("  -> microservice balancing rules accepted namespace=%q", namespace)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write([]byte("[]"))
+}
+
+// handleNamespaceBalancingRule accepts namespace balancing rule create/update.
+// The mock does not validate physicalDatabaseId existence.
+func handleNamespaceBalancingRule(w http.ResponseWriter, r *http.Request) {
+	m := reNamespaceBalancingRule.FindStringSubmatch(r.URL.Path)
+	namespace := m[1]
+	ruleName := m[2]
+	log.Printf("  -> namespace balancing rule accepted namespace=%q ruleName=%q", namespace, ruleName)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+}
+
+// handlePermanentBalancingRule accepts permanent balancing rule create/update/delete.
+// The mock does not persist state; it exists to exercise operator reconciliation.
+func handlePermanentBalancingRule(w http.ResponseWriter, delete bool) {
+	action := "applied"
+	if delete {
+		action = "deleted"
+	}
+	log.Printf("  -> permanent balancing rules %s", action)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("[]"))
 }
 
 // checkAuth validates the Bearer token from the Authorization header.

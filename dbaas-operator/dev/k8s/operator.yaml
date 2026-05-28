@@ -24,6 +24,26 @@ rules:
       - dbpolicies/status
       - externaldatabases/status
     verbs: [get, update, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - dbmicroservicebalancingrules
+      - dbpermanentbalancingrules
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - dbnamespacebalancingrules
+    verbs: [get, list, watch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - dbmicroservicebalancingrules/status
+      - dbnamespacebalancingrules/status
+      - dbpermanentbalancingrules/status
+    verbs: [get, update, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - dbmicroservicebalancingrules/finalizers
+      - dbpermanentbalancingrules/finalizers
+    verbs: [update]
   # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
   # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
   - apiGroups: [dbaas.netcracker.com]

@@ -1,0 +1,7 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: NamespaceBinding
+metadata:
+  name: binding
+  namespace: dbaas-system
+spec:
+  operatorNamespace: dbaas-system
