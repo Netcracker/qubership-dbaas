@@ -1,4 +1,7 @@
 ## Append samples of your project ##
 resources:
+- dbaas_v1_dbmicroservicebalancingrule.yaml
+- dbaas_v1_dbnamespacebalancingrule.yaml
+- dbaas_v1_dbpermanentbalancingrule.yaml
 - dbaas_v1_externaldatabase.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -45,6 +45,10 @@ const (
 	// after polling completes with COMPLETED). Type: Normal.
 	EventReasonDatabaseProvisioned = "DatabaseProvisioned"
 
+	// EventReasonBalancingRuleApplied is emitted when a balancing rule CR is
+	// successfully applied to dbaas-aggregator. Type: Normal.
+	EventReasonBalancingRuleApplied = "BalancingRuleApplied"
+
 	// EventReasonInvalidSpec is emitted when the CR spec fails pre-flight
 	// validation before the aggregator is even contacted. Type: Warning.
 	EventReasonInvalidSpec = "InvalidSpec"
@@ -88,6 +92,10 @@ const (
 	// deferred because the namespace still contains dbaas workload resources
 	// (ExternalDatabase, DatabaseDeclaration, or DbPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
+
+	// EventReasonWaitingForNamespaceBinding is used while a resource waits for
+	// its namespace ownership dependency to become available.
+	EventReasonWaitingForNamespaceBinding = "WaitingForNamespaceBinding"
 
 	// EventReasonSecretCreated is emitted when a DatabaseSecret successfully
 	// creates or updates the target Kubernetes Secret with connection properties.

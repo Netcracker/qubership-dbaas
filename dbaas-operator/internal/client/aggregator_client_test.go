@@ -269,6 +269,155 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestApplyMicroserviceBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got []OnMicroserviceRuleRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.ApplyMicroserviceBalancingRules(context.Background(), "payments", []OnMicroserviceRuleRequest{{
+		Type:          "postgresql",
+		Rules:         []RuleOnMicroservice{{Label: "zone=fast"}},
+		Microservices: []string{"billing-service"},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: got %q, want PUT", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/payments/physical_databases/rules/onMicroservices"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if len(got) != 1 || got[0].Rules[0].Label != "zone=fast" {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+}
+
+func TestApplyNamespaceBalancingRule_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got NamespaceBalancingRuleRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	order := int64(3)
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.ApplyNamespaceBalancingRule(context.Background(), "payments", "pg-fast", &NamespaceBalancingRuleRequest{
+		Order: &order,
+		Type:  "postgresql",
+		Rule: NamespaceBalancingRuleBody{
+			Type: "perNamespace",
+			Config: map[string]any{
+				"perNamespace": map[string]any{"phydbid": "postgresql-sample"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: got %q, want PUT", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/payments/physical_databases/balancing/rules/pg-fast"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if got.Rule.Type != "perNamespace" || got.Rule.Config["perNamespace"] == nil {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+}
+
+func TestApplyPermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got []PermanentBalancingRuleRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.ApplyPermanentBalancingRules(context.Background(), []PermanentBalancingRuleRequest{{
+		DbType:             "postgresql",
+		PhysicalDatabaseID: "postgresql-prod-a",
+		Namespaces:         []string{"payments", "orders"},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: got %q, want PUT", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/balancing/rules/permanent"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if len(got) != 1 || got[0].PhysicalDatabaseID != "postgresql-prod-a" {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+}
+
+func TestDeletePermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got []PermanentBalancingRuleDeleteRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.DeletePermanentBalancingRules(context.Background(), []PermanentBalancingRuleDeleteRequest{{
+		DbType:     "postgresql",
+		Namespaces: []string{"payments"},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method: got %q, want DELETE", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/balancing/rules/permanent"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if len(got) != 1 || got[0].DbType != "postgresql" || got[0].Namespaces[0] != "payments" {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+}
+
 // ── ApplyConfig ───────────────────────────────────────────────────────────────
 
 func TestApplyConfig_UsesCorrectURLAndMethod(t *testing.T) {

@@ -1,0 +1,15 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: DbMicroserviceBalancingRule
+metadata:
+  name: microservice-balancing-rules
+  namespace: dbaas-system
+spec:
+  rules:
+    - type: postgresql
+      label: zone=fast
+      microservices:
+        - billing-service
+    - type: postgresql
+      label: zone=slow
+      microservices:
+        - billing-service

@@ -45,4 +45,31 @@ resources:
   kind: DbPolicy
   path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
   version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: netcracker.com
+  group: dbaas
+  kind: DbMicroserviceBalancingRule
+  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
+  version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: netcracker.com
+  group: dbaas
+  kind: DbNamespaceBalancingRule
+  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
+  version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: netcracker.com
+  group: dbaas
+  kind: DbPermanentBalancingRule
+  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
+  version: v1
 version: "3"

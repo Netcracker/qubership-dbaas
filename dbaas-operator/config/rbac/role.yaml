@@ -20,6 +20,7 @@ rules:
   resources:
   - databasedeclarations
   - databasesecrets
+  - dbnamespacebalancingrules
   - dbpolicies
   - externaldatabases
   verbs:
@@ -31,6 +32,9 @@ rules:
   resources:
   - databasedeclarations/status
   - databasesecrets/status
+  - dbmicroservicebalancingrules/status
+  - dbnamespacebalancingrules/status
+  - dbpermanentbalancingrules/status
   - dbpolicies/status
   - externaldatabases/status
   verbs:
@@ -40,6 +44,8 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
+  - dbmicroservicebalancingrules
+  - dbpermanentbalancingrules
   - namespacebindings
   verbs:
   - get
@@ -49,6 +55,8 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
+  - dbmicroservicebalancingrules/finalizers
+  - dbpermanentbalancingrules/finalizers
   - namespacebindings/finalizers
   verbs:
   - update

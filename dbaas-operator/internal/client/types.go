@@ -96,6 +96,48 @@ type ExternalDatabaseRequest struct {
 	UpdateConnectionProperties bool                `json:"updateConnectionProperties,omitempty"`
 }
 
+// OnMicroserviceRuleRequest is the request item for
+// PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices.
+type OnMicroserviceRuleRequest struct {
+	Type          string               `json:"type"`
+	Rules         []RuleOnMicroservice `json:"rules"`
+	Microservices []string             `json:"microservices"`
+}
+
+// RuleOnMicroservice mirrors dbaas-aggregator's RuleOnMicroservice DTO.
+type RuleOnMicroservice struct {
+	Label string `json:"label"`
+}
+
+// NamespaceBalancingRuleRequest is the request body for
+// PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}.
+type NamespaceBalancingRuleRequest struct {
+	Order *int64                     `json:"order,omitempty"`
+	Type  string                     `json:"type"`
+	Rule  NamespaceBalancingRuleBody `json:"rule"`
+}
+
+// NamespaceBalancingRuleBody mirrors dbaas-aggregator's RuleBody DTO.
+type NamespaceBalancingRuleBody struct {
+	Type   string         `json:"type"`
+	Config map[string]any `json:"config"`
+}
+
+// PermanentBalancingRuleRequest is the request item for
+// PUT /api/v3/dbaas/balancing/rules/permanent.
+type PermanentBalancingRuleRequest struct {
+	DbType             string   `json:"dbType"`
+	PhysicalDatabaseID string   `json:"physicalDatabaseId"`
+	Namespaces         []string `json:"namespaces"`
+}
+
+// PermanentBalancingRuleDeleteRequest is the request item for
+// DELETE /api/v3/dbaas/balancing/rules/permanent.
+type PermanentBalancingRuleDeleteRequest struct {
+	DbType     string   `json:"dbType,omitempty"`
+	Namespaces []string `json:"namespaces"`
+}
+
 // ─── DatabaseDeclaration wire types ──────────────────────────────────────────
 
 // DatabaseDeclarationSpecWire is the wire representation of the spec field
