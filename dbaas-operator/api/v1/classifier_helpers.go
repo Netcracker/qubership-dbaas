@@ -36,6 +36,25 @@ import (
 // deployments have 1-3 CRs per classifier.
 const ClassifierTypeIndex = "spec.classifier+type"
 
+// EffectiveClassifier returns c with its namespace defaulted to fallbackNamespace
+// (the owning CR's metadata.namespace) when c.Namespace is empty.
+//
+// dbaas-aggregator requires classifier.namespace (its isValidClassifierV3 rejects
+// a classifier without it), and the controllers validate that a non-empty
+// classifier.namespace equals the CR's metadata.namespace — so defaulting an
+// omitted namespace to metadata.namespace is always the correct, unambiguous
+// value. Callers must apply this before serializing the classifier for an
+// aggregator request or computing its cache index key, otherwise a CR that omits
+// the optional spec.classifier.namespace would be rejected by the aggregator and
+// would index under a key that the (always-namespaced) rotation payload cannot
+// match.
+func EffectiveClassifier(c Classifier, fallbackNamespace string) Classifier {
+	if c.Namespace == "" {
+		c.Namespace = fallbackNamespace
+	}
+	return c
+}
+
 // ClassifierFlatMap converts a Classifier into the flat map shape expected on
 // the wire by dbaas-aggregator (Map<String, Object>). All scalar fields are
 // added as top-level keys; customKeys is added as a nested map[string]any

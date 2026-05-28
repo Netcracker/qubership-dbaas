@@ -127,7 +127,8 @@ var _ = BeforeSuite(func() {
 		dbaasv1.ClassifierTypeIndex,
 		func(obj client.Object) []string {
 			ds := obj.(*dbaasv1.DatabaseSecret)
-			return []string{dbaasv1.ClassifierIndexKey(ds.Spec.Classifier, ds.Spec.Type)}
+			c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
+			return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
 		},
 	)).To(Succeed())
 

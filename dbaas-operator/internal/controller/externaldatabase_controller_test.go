@@ -143,7 +143,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	// ── classifier.namespace validation ──────────────────────────────────────
 
 	Context("classifier.namespace absent — falls back to metadata.namespace", func() {
-		It("uses CR namespace in the aggregator URL and succeeds", func() {
+		It("uses CR namespace in the aggregator URL and request body, and succeeds", func() {
 			spec := baseSpec()
 			spec.Classifier.Namespace = ""
 			fixture.statusCode = http.StatusOK
@@ -156,6 +156,16 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fixture.capturedPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+
+			// The classifier in the request body must also carry the defaulted
+			// namespace — the aggregator's isValidClassifierV3 rejects a classifier
+			// without it, regardless of the namespace embedded in the URL path.
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+			var sent struct {
+				Classifier map[string]any `json:"classifier"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.Classifier).To(HaveKeyWithValue("namespace", ns))
 		})
 	})
 

@@ -221,21 +221,28 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclara
 			Namespace:        dd.Namespace,
 			MicroserviceName: dd.Spec.Classifier.MicroserviceName,
 		},
-		Spec: toWireSpec(dd.Spec),
+		Spec: toWireSpec(dd.Spec, dd.Namespace),
 	}
 }
 
 // toWireSpec converts a DatabaseDeclarationSpec (CRD shape) into the wire format
-// expected by dbaas-aggregator.
+// expected by dbaas-aggregator. namespace is the owning CR's metadata.namespace,
+// used to default classifier.namespace when omitted.
 //
 // Mapping summary:
 //   - spec.classifier         → classifierConfig.classifier (SortedMap<String,Object>)
 //   - spec.classifier.customKeys → classifier["customKeys"] (nested map inside the flat map)
 //   - initialInstantiation.sourceClassifier → initialInstantiation.sourceClassifier (same flat-map shape)
-func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
+//
+// The main classifier's namespace is defaulted to the CR's namespace (the
+// aggregator requires it; the controller already validates that a non-empty
+// value equals metadata.namespace). sourceClassifier is left as-is — a clone
+// source may legitimately live in a different namespace, and no equality
+// constraint is enforced on it.
+func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec, namespace string) aggregatorclient.DatabaseDeclarationSpecWire {
 	wire := aggregatorclient.DatabaseDeclarationSpecWire{
 		ClassifierConfig: aggregatorclient.ClassifierConfigWire{
-			Classifier: dbaasv1.ClassifierFlatMap(spec.Classifier),
+			Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(spec.Classifier, namespace)),
 		},
 		Type:       spec.Type,
 		Lazy:       spec.Lazy,

@@ -116,7 +116,7 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// ── Step 7: call aggregator ───────────────────────────────────────────────
 	aggReq := &aggregatorclient.GetByClassifierRequest{
-		Classifier:    dbaasv1.ClassifierFlatMap(s.Spec.Classifier),
+		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		OriginService: s.Labels["app.kubernetes.io/name"],
 		UserRole:      s.Spec.UserRole,
 	}
@@ -540,7 +540,11 @@ func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlc
 		dbaasv1.ClassifierTypeIndex,
 		func(obj client.Object) []string {
 			ds := obj.(*dbaasv1.DatabaseSecret)
-			return []string{dbaasv1.ClassifierIndexKey(ds.Spec.Classifier, ds.Spec.Type)}
+			// Default the classifier namespace to metadata.namespace so the index
+			// key matches the always-namespaced classifier carried in a rotation
+			// webhook payload (see EffectiveClassifier).
+			c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
+			return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
 		},
 	); err != nil {
 		return err

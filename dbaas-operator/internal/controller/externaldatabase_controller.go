@@ -204,7 +204,10 @@ func (r *ExternalDatabaseReconciler) buildRequest(
 	}
 
 	return &aggregatorclient.ExternalDatabaseRequest{
-		Classifier:                 classifierToFlatMap(edb.Spec.Classifier),
+		// Default classifier.namespace to metadata.namespace when omitted — the
+		// aggregator requires it (isValidClassifierV3), and the controller already
+		// validates that a non-empty value equals metadata.namespace.
+		Classifier:                 classifierToFlatMap(dbaasv1.EffectiveClassifier(edb.Spec.Classifier, edb.Namespace)),
 		Type:                       edb.Spec.Type,
 		DbName:                     edb.Spec.DbName,
 		ConnectionProperties:       connProps,

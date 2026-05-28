@@ -196,6 +196,57 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		})
 	})
 
+	Context("classifier.namespace omitted from spec", func() {
+		It("defaults namespace to metadata.namespace in the aggregator request and the index", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			// baseSpec() omits spec.classifier.namespace. The aggregator requires
+			// it, and the rotation index/webhook must agree on it — the controller
+			// defaults it to metadata.namespace (EffectiveClassifier).
+			cr := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(cr.Spec.Classifier.Namespace).To(BeEmpty(), "precondition: namespace is omitted")
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+
+			// The get-by-classifier request body must carry the defaulted namespace,
+			// otherwise the real aggregator would reject it (isValidClassifierV3).
+			var sent map[string]any
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			classifier, ok := sent["classifier"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(classifier).To(HaveKeyWithValue("namespace", ns))
+
+			// The CR must be discoverable by the namespace-filled index key — the
+			// shape a rotation webhook payload always carries.
+			indexKey := dbaasv1.ClassifierIndexKey(
+				dbaasv1.EffectiveClassifier(cr.Spec.Classifier, ns), cr.Spec.Type)
+			Eventually(func() ([]string, error) {
+				list := &dbaasv1.DatabaseSecretList{}
+				if err := cacheClient.List(ctx, list,
+					client.InNamespace(ns),
+					client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
+					return nil, err
+				}
+				names := make([]string, 0, len(list.Items))
+				for i := range list.Items {
+					names = append(names, list.Items[i].Name)
+				}
+				return names, nil
+			}).Should(ConsistOf(resourceName))
+		})
+	})
+
 	Context("HTTP 200 — Secret already owned by this CR, content unchanged", func() {
 		It("is a no-op: Phase=Succeeded, no event, LastRotatedAt stays nil", func() {
 			fixture.statusCode = http.StatusOK
@@ -1075,6 +1126,27 @@ var _ = Describe("DatabaseSecret Controller", func() {
 var _ = Describe("DatabaseSecret Controller — classifier+type field index", func() {
 	const ns = "default"
 
+	Context("dbaasv1.EffectiveClassifier()", func() {
+		It("defaults an omitted namespace to the fallback", func() {
+			c := dbaasv1.EffectiveClassifier(
+				dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"}, "team-a")
+			Expect(c.Namespace).To(Equal("team-a"))
+		})
+
+		It("leaves a non-empty namespace untouched", func() {
+			c := dbaasv1.EffectiveClassifier(
+				dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service", Namespace: "team-x"}, "team-a")
+			Expect(c.Namespace).To(Equal("team-x"))
+		})
+
+		It("makes the index key of an omitted-namespace classifier equal the explicit one", func() {
+			omitted := dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"}
+			explicit := dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service", Namespace: "team-a"}
+			Expect(dbaasv1.ClassifierIndexKey(dbaasv1.EffectiveClassifier(omitted, "team-a"), "postgresql")).
+				To(Equal(dbaasv1.ClassifierIndexKey(explicit, "postgresql")))
+		})
+	})
+
 	Context("dbaasv1.ClassifierIndexKey() canonicalization", func() {
 		It("produces the same key for the same classifier content", func() {
 			c1 := dbaasv1.Classifier{
@@ -1194,7 +1266,10 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 		})
 
 		It("returns all CRs sharing classifier+type, excludes non-matching ones", func() {
-			indexKey := dbaasv1.ClassifierIndexKey(crA.Spec.Classifier, crA.Spec.Type)
+			// Mirror the index: the namespace is defaulted from the CR's metadata
+			// before the key is computed (the rotation webhook always carries it).
+			indexKey := dbaasv1.ClassifierIndexKey(
+				dbaasv1.EffectiveClassifier(crA.Spec.Classifier, crA.Namespace), crA.Spec.Type)
 
 			// Wait for the cache to observe all three CRs before querying via the index.
 			Eventually(func() (int, error) {
