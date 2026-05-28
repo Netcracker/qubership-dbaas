@@ -21,10 +21,12 @@ package controller
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;create;update;patch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -229,7 +231,8 @@ func (r *DatabaseSecretReconciler) writeSecret(
 
 	err = r.Create(ctx, newSecret)
 	if err == nil {
-		r.markSecretSucceeded(s, requestID, "Secret %q created/updated with connection properties (requestId=%s)")
+		r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
+			"Secret %q created with connection properties (requestId=%s)")
 		return ctrl.Result{}, nil
 	}
 	if !apierrors.IsAlreadyExists(err) {
@@ -245,7 +248,8 @@ func (r *DatabaseSecretReconciler) writeSecret(
 			// reconcile does not need another aggregator round-trip.
 			retryErr := r.Create(ctx, newSecret)
 			if retryErr == nil {
-				r.markSecretSucceeded(s, requestID, "Secret %q created after deletion race (requestId=%s)")
+				r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
+					"Secret %q created after deletion race (requestId=%s)")
 				return ctrl.Result{}, nil
 			}
 			if !apierrors.IsAlreadyExists(retryErr) {
@@ -267,9 +271,16 @@ func (r *DatabaseSecretReconciler) writeSecret(
 }
 
 // updateOwnedSecret performs the idempotent Update step (9.4) on a Secret that
-// we have just confirmed is either already owned by s or unowned. It recreates
-// the Secret if the Update fails with NotFound (GC raced between fetch and
-// update). On any successful write it marks the CR succeeded.
+// we have just confirmed is already owned by s (the Step 9.3 ownerConflict
+// check passed). It recreates the Secret if the Update fails with NotFound (GC
+// raced between fetch and update).
+//
+// When the existing Secret already carries exactly the credentials and managed
+// labels we would write, the Update is skipped entirely: a rotation-triggered
+// reconcile that finds unchanged content must not churn the Secret, since every
+// rewrite wakes mounting pods via the kubelet's secret sync. A real content
+// change is treated as a rotation — it stamps Status.LastRotatedAt and emits
+// SecretRotated, distinct from the SecretCreated used on first creation.
 func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecret,
@@ -277,6 +288,15 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	secretData map[string][]byte,
 	requestID string,
 ) (ctrl.Result, error) {
+	// No-op fast path: already in the desired state.
+	if secretUpToDate(s, existing, secretData) {
+		log.InfoC(ctx, "DatabaseSecret already up-to-date, skipping Secret write name=%s secretName=%s", s.Name, s.Spec.SecretName)
+		// Steady state: keep the SecretCreated Ready reason, emit no event,
+		// and do not advance LastRotatedAt — nothing actually changed.
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+		return ctrl.Result{}, nil
+	}
+
 	updated := existing.DeepCopy()
 	updated.Data = secretData
 	if updated.Labels == nil {
@@ -303,7 +323,8 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 			}
 			createErr := r.Create(ctx, recreated)
 			if createErr == nil {
-				r.markSecretSucceeded(s, requestID, "Secret %q recreated after deletion (requestId=%s)")
+				r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
+					"Secret %q recreated after deletion (requestId=%s)")
 				return ctrl.Result{}, nil
 			}
 			if !apierrors.IsAlreadyExists(createErr) {
@@ -316,17 +337,42 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 			return ctrl.Result{}, err
 		}
 	}
-	r.markSecretSucceeded(s, requestID, "Secret %q created/updated with connection properties (requestId=%s)")
+	// Content changed and written — this is a rotation (or first fill of an
+	// adopted Secret). Stamp the rotation timestamp and emit SecretRotated.
+	now := metav1.Now()
+	s.Status.LastRotatedAt = &now
+	r.markSecretSucceeded(s, requestID, EventReasonSecretRotated,
+		"Secret %q updated with rotated connection properties (requestId=%s)")
 	return ctrl.Result{}, nil
 }
 
-// markSecretSucceeded marks the CR Succeeded, emits a Normal SecretCreated
-// event, and logs a confirmation line. eventFormat must be a printf-style
-// format string with two placeholders: the secret name and the request ID.
-func (r *DatabaseSecretReconciler) markSecretSucceeded(s *dbaasv1.DatabaseSecret, requestID, eventFormat string) {
-	log.Infof("DatabaseSecret reconciled successfully name=%s secretName=%s", s.Name, s.Spec.SecretName)
-	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
-	r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated, eventFormat, s.Spec.SecretName, requestID)
+// secretUpToDate reports whether the existing Secret already carries exactly
+// the connection-properties data and operator-managed labels that a write
+// would set. The ownerReference is not checked here because updateOwnedSecret
+// is only reached after the Step 9.3 ownerConflict check confirmed s controls
+// the Secret.
+func secretUpToDate(s *dbaasv1.DatabaseSecret, existing *corev1.Secret, desired map[string][]byte) bool {
+	if !maps.EqualFunc(existing.Data, desired, bytes.Equal) {
+		return false
+	}
+	if existing.Labels["app.kubernetes.io/managed-by"] != "dbaas-operator" {
+		return false
+	}
+	if existing.Labels["app.kubernetes.io/name"] != s.Labels["app.kubernetes.io/name"] {
+		return false
+	}
+	return true
+}
+
+// markSecretSucceeded marks the CR Succeeded with the given Ready reason, emits
+// a Normal event under that reason, and logs a confirmation line. reason is one
+// of EventReasonSecretCreated (creation / recreation) or EventReasonSecretRotated
+// (content changed). eventFormat must be a printf-style format string with two
+// placeholders: the secret name and the request ID.
+func (r *DatabaseSecretReconciler) markSecretSucceeded(s *dbaasv1.DatabaseSecret, requestID, reason, eventFormat string) {
+	log.Infof("DatabaseSecret reconciled successfully name=%s secretName=%s reason=%s", s.Name, s.Spec.SecretName, reason)
+	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, reason)
+	r.Recorder.Eventf(s, corev1.EventTypeNormal, reason, eventFormat, s.Spec.SecretName, requestID)
 }
 
 // ownerConflict returns true when the existing Secret is owned by a resource other than s,

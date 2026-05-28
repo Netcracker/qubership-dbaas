@@ -195,8 +195,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		})
 	})
 
-	Context("HTTP 200 — Secret already owned by this CR (update)", func() {
-		It("updates Secret content, Phase=Succeeded", func() {
+	Context("HTTP 200 — Secret already owned by this CR, content unchanged", func() {
+		It("is a no-op: Phase=Succeeded, no event, LastRotatedAt stays nil", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
 
@@ -210,15 +210,23 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
 
-			// First reconcile — creates the Secret
+			// First reconcile — creates the Secret (SecretCreated).
 			_, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			drainRecordedEvents(fixture.recorder.Events)
 
-			// Second reconcile — updates
+			// Second reconcile with identical aggregator response — must be a
+			// no-op: no Secret write, no event, no LastRotatedAt stamp.
 			got, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(got.Status.LastRotatedAt).To(BeNil(),
+				"no-op reconcile must not advance LastRotatedAt")
+
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonSecretCreated),
+				"steady-state Ready reason stays SecretCreated, not SecretRotated")
 
 			secret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
@@ -226,7 +234,51 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "dbaas-operator"))
 			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "test-service"))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("HTTP 200 — Secret already owned by this CR, content changed (rotation)", func() {
+		It("rewrites the Secret, emits SecretRotated, stamps LastRotatedAt", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			ds := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			// First reconcile — creates the Secret with the original password.
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			drainRecordedEvents(fixture.recorder.Events)
+
+			// Aggregator now returns a rotated password.
+			fixture.body = `{"connectionProperties":{"host":"pg-patroni.dbaas-dev","port":5432,"username":"dbaas_abc123","password":"ROTATED","url":"jdbc:postgresql://pg-patroni.dbaas-dev:5432/mydb","role":"admin"}}`
+
+			got, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(got.Status.LastRotatedAt).NotTo(BeNil(),
+				"a real content change must stamp LastRotatedAt")
+
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonSecretRotated))
+
+			// Secret data reflects the rotated password.
+			secret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			var cp map[string]any
+			Expect(json.Unmarshal(secret.Data["connectionProperties.json"], &cp)).To(Succeed())
+			Expect(cp).To(HaveKeyWithValue("password", "ROTATED"))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretRotated)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -1174,6 +1226,60 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 				client.MatchingFields{dbaasv1.ClassifierTypeIndex: missingKey})).To(Succeed())
 			Expect(list.Items).To(BeEmpty())
 		})
+	})
+})
+
+// ── secretUpToDate ───────────────────────────────────────────────────────────
+
+var _ = Describe("DatabaseSecret Controller — secretUpToDate", func() {
+	cr := &dbaasv1.DatabaseSecret{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{"app.kubernetes.io/name": "svc-a"},
+		},
+	}
+	desired := map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)}
+
+	managedSecret := func(data map[string][]byte, nameLabel string) *corev1.Secret {
+		return &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"app.kubernetes.io/managed-by": "dbaas-operator",
+					"app.kubernetes.io/name":       nameLabel,
+				},
+			},
+			Data: data,
+		}
+	}
+
+	It("returns true when data and managed labels match", func() {
+		existing := managedSecret(map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)}, "svc-a")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeTrue())
+	})
+
+	It("returns false when the data differs", func() {
+		existing := managedSecret(map[string][]byte{"connectionProperties.json": []byte(`{"password":"p2"}`)}, "svc-a")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+
+	It("returns false when an extra data key is present", func() {
+		existing := managedSecret(map[string][]byte{
+			"connectionProperties.json": []byte(`{"password":"p1"}`),
+			"extra":                     []byte("x"),
+		}, "svc-a")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+
+	It("returns false when the managed-by label is missing", func() {
+		existing := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app.kubernetes.io/name": "svc-a"}},
+			Data:       map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)},
+		}
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+
+	It("returns false when the name label drifted", func() {
+		existing := managedSecret(map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)}, "svc-other")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
 	})
 })
 
