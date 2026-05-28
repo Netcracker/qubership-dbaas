@@ -52,3 +52,15 @@ const secretNamesIndex = "spec.credentialSecretNames"
 // and stops the per-cycle Warning event spam. Surfacing the timeout as a one-shot
 // Warning gives operators a single, alertable signal.
 const databaseNotFoundTimeout = 10 * time.Minute
+
+// secretRotationSafetyNetInterval is the requeue delay applied after a
+// successful DatabaseSecret reconcile. The rotation webhook is the primary,
+// near-instant trigger for credential updates; this slow periodic re-poll is a
+// safety net that recovers from missed webhook events (operator restart,
+// network partition that outlasts the aggregator's retry budget, or a
+// catastrophic loss of the event entirely). Each cycle re-fetches the
+// credentials and the content-aware compare suppresses the write when nothing
+// changed, so an idle CR costs one aggregator round-trip per interval and no
+// Secret churn. One hour keeps the aggregator load negligible (≈ #CRs per hour)
+// while bounding the worst-case staleness for a dropped event.
+const secretRotationSafetyNetInterval = 1 * time.Hour

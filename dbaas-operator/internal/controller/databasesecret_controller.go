@@ -87,9 +87,17 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	original := s.DeepCopy()
 	defer func() {
+		// Stamp observedGeneration on terminal states only. Successful
+		// reconciles now carry a safety-net RequeueAfter, so the result's
+		// requeue delay can no longer distinguish "done" from "retrying";
+		// gate on the phase instead. Succeeded and InvalidConfiguration are
+		// terminal (the generation has been fully processed); BackingOff is
+		// not (still polling on a transient error).
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecret, retErr error) bool {
-				return retErr == nil && result.RequeueAfter == 0
+				return retErr == nil &&
+					(obj.Status.Phase == dbaasv1.PhaseSucceeded ||
+						obj.Status.Phase == dbaasv1.PhaseInvalidConfiguration)
 			},
 			"DatabaseSecret")
 	}()
@@ -233,7 +241,7 @@ func (r *DatabaseSecretReconciler) writeSecret(
 	if err == nil {
 		r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
 			"Secret %q created with connection properties (requestId=%s)")
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
 	if !apierrors.IsAlreadyExists(err) {
 		return ctrl.Result{}, err
@@ -250,7 +258,7 @@ func (r *DatabaseSecretReconciler) writeSecret(
 			if retryErr == nil {
 				r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
 					"Secret %q created after deletion race (requestId=%s)")
-				return ctrl.Result{}, nil
+				return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 			}
 			if !apierrors.IsAlreadyExists(retryErr) {
 				return ctrl.Result{}, retryErr
@@ -294,7 +302,7 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 		// Steady state: keep the SecretCreated Ready reason, emit no event,
 		// and do not advance LastRotatedAt — nothing actually changed.
 		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
 
 	updated := existing.DeepCopy()
@@ -325,7 +333,7 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 			if createErr == nil {
 				r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
 					"Secret %q recreated after deletion (requestId=%s)")
-				return ctrl.Result{}, nil
+				return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 			}
 			if !apierrors.IsAlreadyExists(createErr) {
 				return ctrl.Result{}, createErr
@@ -343,7 +351,7 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	s.Status.LastRotatedAt = &now
 	r.markSecretSucceeded(s, requestID, EventReasonSecretRotated,
 		"Secret %q updated with rotated connection properties (requestId=%s)")
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 }
 
 // secretUpToDate reports whether the existing Secret already carries exactly

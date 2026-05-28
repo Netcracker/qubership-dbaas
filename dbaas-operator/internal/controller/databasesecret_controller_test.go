@@ -164,7 +164,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			ds, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
+			Expect(result.RequeueAfter).To(Equal(secretRotationSafetyNetInterval),
+				"a successful reconcile schedules the safety-net re-poll")
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(ds.Status.ObservedGeneration).To(Equal(ds.Generation))
 
@@ -888,7 +889,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			// Reconcile cr1 (the older). It must remain unaffected and succeed.
 			result1, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr1Key})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result1.RequeueAfter).To(BeZero())
+			Expect(result1.RequeueAfter).To(Equal(secretRotationSafetyNetInterval),
+				"the older claimant succeeds and schedules the safety-net re-poll")
 
 			got1 := &dbaasv1.DatabaseSecret{}
 			Expect(k8sClient.Get(ctx, cr1Key, got1)).To(Succeed())
