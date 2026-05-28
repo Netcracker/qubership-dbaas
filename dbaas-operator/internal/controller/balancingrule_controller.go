@@ -875,11 +875,3 @@ func permanentRuleTargetsNamespace(rule *dbaasv1.DbPermanentBalancingRule, names
 	}
 	return false
 }
-
-func copyInt64Ptr(value *int64) *int64 {
-	if value == nil {
-		return nil
-	}
-	copied := *value
-	return &copied
-}
