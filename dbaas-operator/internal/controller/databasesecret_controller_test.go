@@ -34,6 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -1172,6 +1173,83 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 				client.InNamespace(ns),
 				client.MatchingFields{dbaasv1.ClassifierTypeIndex: missingKey})).To(Succeed())
 			Expect(list.Items).To(BeEmpty())
+		})
+	})
+})
+
+// ── specOrRotationTriggerPredicate ───────────────────────────────────────────
+
+var _ = Describe("DatabaseSecret Controller — rotation-trigger predicate", func() {
+	pred := specOrRotationTriggerPredicate{}
+
+	secretWith := func(generation int64, rotationTrigger string) *dbaasv1.DatabaseSecret {
+		ds := &dbaasv1.DatabaseSecret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ds",
+				Namespace:  "default",
+				Generation: generation,
+			},
+		}
+		if rotationTrigger != "" {
+			ds.Annotations = map[string]string{dbaasv1.AnnotationRotationTrigger: rotationTrigger}
+		}
+		return ds
+	}
+
+	Describe("Update", func() {
+		It("fires when the generation changed (spec update)", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(1, ""),
+				ObjectNew: secretWith(2, ""),
+			})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("fires when the rotation-trigger annotation changed", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(1, "evt-1"),
+				ObjectNew: secretWith(1, "evt-2"),
+			})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("fires when the rotation-trigger annotation is first added", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(1, ""),
+				ObjectNew: secretWith(1, "evt-1"),
+			})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("does NOT fire on a status-only update (no generation or annotation change)", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(3, "evt-1"),
+				ObjectNew: secretWith(3, "evt-1"),
+			})
+			Expect(ok).To(BeFalse())
+		})
+
+		It("does NOT fire when only an unrelated annotation changed", func() {
+			old := secretWith(1, "evt-1")
+			old.Annotations["unrelated"] = "a"
+			updated := secretWith(1, "evt-1")
+			updated.Annotations["unrelated"] = "b"
+			ok := pred.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated})
+			Expect(ok).To(BeFalse())
+		})
+
+		It("does NOT fire when objects are nil", func() {
+			Expect(pred.Update(event.UpdateEvent{})).To(BeFalse())
+		})
+	})
+
+	Describe("Create and Delete fall through to defaults", func() {
+		It("fires on Create", func() {
+			Expect(pred.Create(event.CreateEvent{Object: secretWith(1, "")})).To(BeTrue())
+		})
+
+		It("fires on Delete", func() {
+			Expect(pred.Delete(event.DeleteEvent{Object: secretWith(1, "")})).To(BeTrue())
 		})
 	})
 })

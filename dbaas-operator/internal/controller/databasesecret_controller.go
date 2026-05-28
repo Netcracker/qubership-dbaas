@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -438,6 +439,29 @@ func isOlderClaimant(a, b *dbaasv1.DatabaseSecret) bool {
 	return string(a.UID) < string(b.UID)
 }
 
+// specOrRotationTriggerPredicate fires a reconcile on (a) a spec change
+// (generation bump) or (b) a change to the rotation-trigger annotation that
+// the rotation webhook patches when dbaas-aggregator reports a credentials
+// rotation. Plain GenerationChangedPredicate is not enough here: the webhook
+// only mutates an annotation, which does not bump generation, so a rotation
+// would otherwise be filtered out and never reconciled.
+//
+// Create and Delete fall through to the embedded predicate.Funcs defaults
+// (both return true), preserving the standard behaviour for new and removed
+// CRs. Only Update is customised.
+type specOrRotationTriggerPredicate struct{ predicate.Funcs }
+
+func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return false
+	}
+	if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+		return true
+	}
+	return e.ObjectOld.GetAnnotations()[dbaasv1.AnnotationRotationTrigger] !=
+		e.ObjectNew.GetAnnotations()[dbaasv1.AnnotationRotationTrigger]
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	if err := mgr.GetFieldIndexer().IndexField(
@@ -465,7 +489,7 @@ func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlc
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseSecret{},
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+			builder.WithPredicates(specOrRotationTriggerPredicate{})).
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		// Re-enqueue siblings that share spec.secretName when any DatabaseSecret
