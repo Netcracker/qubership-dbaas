@@ -27,12 +27,15 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
@@ -161,7 +164,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			ds, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
+			Expect(result.RequeueAfter).To(Equal(secretRotationSafetyNetInterval),
+				"a successful reconcile schedules the safety-net re-poll")
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(ds.Status.ObservedGeneration).To(Equal(ds.Generation))
 
@@ -192,8 +196,59 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		})
 	})
 
-	Context("HTTP 200 — Secret already owned by this CR (update)", func() {
-		It("updates Secret content, Phase=Succeeded", func() {
+	Context("classifier.namespace omitted from spec", func() {
+		It("defaults namespace to metadata.namespace in the aggregator request and the index", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			// baseSpec() omits spec.classifier.namespace. The aggregator requires
+			// it, and the rotation index/webhook must agree on it — the controller
+			// defaults it to metadata.namespace (EffectiveClassifier).
+			cr := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(cr.Spec.Classifier.Namespace).To(BeEmpty(), "precondition: namespace is omitted")
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+
+			// The get-by-classifier request body must carry the defaulted namespace,
+			// otherwise the real aggregator would reject it (isValidClassifierV3).
+			var sent map[string]any
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			classifier, ok := sent["classifier"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(classifier).To(HaveKeyWithValue("namespace", ns))
+
+			// The CR must be discoverable by the namespace-filled index key — the
+			// shape a rotation webhook payload always carries.
+			indexKey := dbaasv1.ClassifierIndexKey(
+				dbaasv1.EffectiveClassifier(cr.Spec.Classifier, ns), cr.Spec.Type)
+			Eventually(func() ([]string, error) {
+				list := &dbaasv1.DatabaseSecretList{}
+				if err := cacheClient.List(ctx, list,
+					client.InNamespace(ns),
+					client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
+					return nil, err
+				}
+				names := make([]string, 0, len(list.Items))
+				for i := range list.Items {
+					names = append(names, list.Items[i].Name)
+				}
+				return names, nil
+			}).Should(ConsistOf(resourceName))
+		})
+	})
+
+	Context("HTTP 200 — Secret already owned by this CR, content unchanged", func() {
+		It("is a no-op: Phase=Succeeded, no event, LastRotatedAt stays nil", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
 
@@ -207,15 +262,23 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
 
-			// First reconcile — creates the Secret
+			// First reconcile — creates the Secret (SecretCreated).
 			_, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			drainRecordedEvents(fixture.recorder.Events)
 
-			// Second reconcile — updates
+			// Second reconcile with identical aggregator response — must be a
+			// no-op: no Secret write, no event, no LastRotatedAt stamp.
 			got, _, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(got.Status.LastRotatedAt).To(BeNil(),
+				"no-op reconcile must not advance LastRotatedAt")
+
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonSecretCreated),
+				"steady-state Ready reason stays SecretCreated, not SecretRotated")
 
 			secret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
@@ -223,7 +286,51 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "dbaas-operator"))
 			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "test-service"))
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("HTTP 200 — Secret already owned by this CR, content changed (rotation)", func() {
+		It("rewrites the Secret, emits SecretRotated, stamps LastRotatedAt", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			ds := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			// First reconcile — creates the Secret with the original password.
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			drainRecordedEvents(fixture.recorder.Events)
+
+			// Aggregator now returns a rotated password.
+			fixture.body = `{"connectionProperties":{"host":"pg-patroni.dbaas-dev","port":5432,"username":"dbaas_abc123","password":"ROTATED","url":"jdbc:postgresql://pg-patroni.dbaas-dev:5432/mydb","role":"admin"}}`
+
+			got, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(got.Status.LastRotatedAt).NotTo(BeNil(),
+				"a real content change must stamp LastRotatedAt")
+
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonSecretRotated))
+
+			// Secret data reflects the rotated password.
+			secret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			var cp map[string]any
+			Expect(json.Unmarshal(secret.Data["connectionProperties.json"], &cp)).To(Succeed())
+			Expect(cp).To(HaveKeyWithValue("password", "ROTATED"))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretRotated)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -833,7 +940,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			// Reconcile cr1 (the older). It must remain unaffected and succeed.
 			result1, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr1Key})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result1.RequeueAfter).To(BeZero())
+			Expect(result1.RequeueAfter).To(Equal(secretRotationSafetyNetInterval),
+				"the older claimant succeeds and schedules the safety-net re-poll")
 
 			got1 := &dbaasv1.DatabaseSecret{}
 			Expect(k8sClient.Get(ctx, cr1Key, got1)).To(Succeed())
@@ -1013,13 +1121,329 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	})
 })
 
+// ── dbaasv1.ClassifierIndexKey + dbaasv1.ClassifierTypeIndex ────────────────
+
+var _ = Describe("DatabaseSecret Controller — classifier+type field index", func() {
+	const ns = "default"
+
+	Context("dbaasv1.EffectiveClassifier()", func() {
+		It("defaults an omitted namespace to the fallback", func() {
+			c := dbaasv1.EffectiveClassifier(
+				dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"}, "team-a")
+			Expect(c.Namespace).To(Equal("team-a"))
+		})
+
+		It("leaves a non-empty namespace untouched", func() {
+			c := dbaasv1.EffectiveClassifier(
+				dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service", Namespace: "team-x"}, "team-a")
+			Expect(c.Namespace).To(Equal("team-x"))
+		})
+
+		It("makes the index key of an omitted-namespace classifier equal the explicit one", func() {
+			omitted := dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"}
+			explicit := dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service", Namespace: "team-a"}
+			Expect(dbaasv1.ClassifierIndexKey(dbaasv1.EffectiveClassifier(omitted, "team-a"), "postgresql")).
+				To(Equal(dbaasv1.ClassifierIndexKey(explicit, "postgresql")))
+		})
+	})
+
+	Context("dbaasv1.ClassifierIndexKey() canonicalization", func() {
+		It("produces the same key for the same classifier content", func() {
+			c1 := dbaasv1.Classifier{
+				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
+			}
+			c2 := dbaasv1.Classifier{
+				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
+			}
+			Expect(dbaasv1.ClassifierIndexKey(c1, "postgresql")).To(Equal(dbaasv1.ClassifierIndexKey(c2, "postgresql")))
+		})
+
+		It("differs when type differs", func() {
+			c := dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"}
+			Expect(dbaasv1.ClassifierIndexKey(c, "postgresql")).NotTo(Equal(dbaasv1.ClassifierIndexKey(c, "mongodb")))
+		})
+
+		It("differs when classifier scalar fields differ", func() {
+			c1 := dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"}
+			c2 := dbaasv1.Classifier{MicroserviceName: "svc-b", Scope: "service"}
+			Expect(dbaasv1.ClassifierIndexKey(c1, "postgresql")).NotTo(Equal(dbaasv1.ClassifierIndexKey(c2, "postgresql")))
+		})
+
+		It("omits empty optional fields from the canonical form", func() {
+			minimal := dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"}
+			key := dbaasv1.ClassifierIndexKey(minimal, "postgresql")
+			// tenantId / namespace / customKeys are absent in the JSON when empty.
+			Expect(key).NotTo(ContainSubstring("tenantId"))
+			Expect(key).NotTo(ContainSubstring("namespace"))
+			Expect(key).NotTo(ContainSubstring("customKeys"))
+		})
+
+		It("is stable across customKeys ordering (json.Marshal sorts map keys)", func() {
+			c1 := dbaasv1.Classifier{
+				MicroserviceName: "svc", Scope: "service",
+				CustomKeys: map[string]apiextensionsv1.JSON{
+					"b": {Raw: []byte(`"vb"`)},
+					"a": {Raw: []byte(`"va"`)},
+				},
+			}
+			c2 := dbaasv1.Classifier{
+				MicroserviceName: "svc", Scope: "service",
+				CustomKeys: map[string]apiextensionsv1.JSON{
+					"a": {Raw: []byte(`"va"`)},
+					"b": {Raw: []byte(`"vb"`)},
+				},
+			}
+			Expect(dbaasv1.ClassifierIndexKey(c1, "postgresql")).To(Equal(dbaasv1.ClassifierIndexKey(c2, "postgresql")))
+		})
+
+		It("includes nested customKeys structures in the canonical form", func() {
+			c := dbaasv1.Classifier{
+				MicroserviceName: "svc", Scope: "service",
+				CustomKeys: map[string]apiextensionsv1.JSON{
+					"logicalDBName": {Raw: []byte(`"billing"`)},
+					"count":         {Raw: []byte(`42`)},
+				},
+			}
+			key := dbaasv1.ClassifierIndexKey(c, "postgresql")
+			Expect(key).To(ContainSubstring("logicalDBName"))
+			Expect(key).To(ContainSubstring("billing"))
+			Expect(key).To(ContainSubstring(`"count":42`))
+		})
+	})
+
+	Context("cache field index lookup", func() {
+		var (
+			crA *dbaasv1.DatabaseSecret
+			crB *dbaasv1.DatabaseSecret
+			crC *dbaasv1.DatabaseSecret
+		)
+
+		BeforeEach(func() {
+			crA = &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "idx-cr-a", Namespace: ns,
+					Labels: map[string]string{"app.kubernetes.io/name": "svc-a"},
+				},
+				Spec: dbaasv1.DatabaseSecretSpec{
+					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
+					Type:       "postgresql",
+					SecretName: "idx-secret-a",
+				},
+			}
+			crB = &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "idx-cr-b", Namespace: ns,
+					Labels: map[string]string{"app.kubernetes.io/name": "svc-b"},
+				},
+				Spec: dbaasv1.DatabaseSecretSpec{
+					// Same classifier as A, same type → should match A's key.
+					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
+					Type:       "postgresql",
+					SecretName: "idx-secret-b",
+				},
+			}
+			crC = &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "idx-cr-c", Namespace: ns,
+					Labels: map[string]string{"app.kubernetes.io/name": "svc-c"},
+				},
+				Spec: dbaasv1.DatabaseSecretSpec{
+					// Different classifier — must NOT match A's key.
+					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-c", Scope: "service"},
+					Type:       "postgresql",
+					SecretName: "idx-secret-c",
+				},
+			}
+			Expect(k8sClient.Create(ctx, crA)).To(Succeed())
+			Expect(k8sClient.Create(ctx, crB)).To(Succeed())
+			Expect(k8sClient.Create(ctx, crC)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			deleteIfExists(crA)
+			deleteIfExists(crB)
+			deleteIfExists(crC)
+		})
+
+		It("returns all CRs sharing classifier+type, excludes non-matching ones", func() {
+			// Mirror the index: the namespace is defaulted from the CR's metadata
+			// before the key is computed (the rotation webhook always carries it).
+			indexKey := dbaasv1.ClassifierIndexKey(
+				dbaasv1.EffectiveClassifier(crA.Spec.Classifier, crA.Namespace), crA.Spec.Type)
+
+			// Wait for the cache to observe all three CRs before querying via the index.
+			Eventually(func() (int, error) {
+				list := &dbaasv1.DatabaseSecretList{}
+				if err := cacheClient.List(ctx, list, client.InNamespace(ns)); err != nil {
+					return 0, err
+				}
+				return len(list.Items), nil
+			}).Should(BeNumerically(">=", 3))
+
+			list := &dbaasv1.DatabaseSecretList{}
+			Expect(cacheClient.List(ctx, list,
+				client.InNamespace(ns),
+				client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey})).To(Succeed())
+
+			names := make([]string, 0, len(list.Items))
+			for i := range list.Items {
+				names = append(names, list.Items[i].Name)
+			}
+			Expect(names).To(ConsistOf(crA.Name, crB.Name),
+				"index lookup must return A+B (same classifier+type) and exclude C")
+		})
+
+		It("returns nothing for a classifier with no matching CR", func() {
+			missingKey := dbaasv1.ClassifierIndexKey(
+				dbaasv1.Classifier{MicroserviceName: "svc-nonexistent", Scope: "service"},
+				"postgresql")
+			list := &dbaasv1.DatabaseSecretList{}
+			Expect(cacheClient.List(ctx, list,
+				client.InNamespace(ns),
+				client.MatchingFields{dbaasv1.ClassifierTypeIndex: missingKey})).To(Succeed())
+			Expect(list.Items).To(BeEmpty())
+		})
+	})
+})
+
+// ── secretUpToDate ───────────────────────────────────────────────────────────
+
+var _ = Describe("DatabaseSecret Controller — secretUpToDate", func() {
+	cr := &dbaasv1.DatabaseSecret{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{"app.kubernetes.io/name": "svc-a"},
+		},
+	}
+	desired := map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)}
+
+	managedSecret := func(data map[string][]byte, nameLabel string) *corev1.Secret {
+		return &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"app.kubernetes.io/managed-by": "dbaas-operator",
+					"app.kubernetes.io/name":       nameLabel,
+				},
+			},
+			Data: data,
+		}
+	}
+
+	It("returns true when data and managed labels match", func() {
+		existing := managedSecret(map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)}, "svc-a")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeTrue())
+	})
+
+	It("returns false when the data differs", func() {
+		existing := managedSecret(map[string][]byte{"connectionProperties.json": []byte(`{"password":"p2"}`)}, "svc-a")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+
+	It("returns false when an extra data key is present", func() {
+		existing := managedSecret(map[string][]byte{
+			"connectionProperties.json": []byte(`{"password":"p1"}`),
+			"extra":                     []byte("x"),
+		}, "svc-a")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+
+	It("returns false when the managed-by label is missing", func() {
+		existing := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app.kubernetes.io/name": "svc-a"}},
+			Data:       map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)},
+		}
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+
+	It("returns false when the name label drifted", func() {
+		existing := managedSecret(map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)}, "svc-other")
+		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+})
+
+// ── specOrRotationTriggerPredicate ───────────────────────────────────────────
+
+var _ = Describe("DatabaseSecret Controller — rotation-trigger predicate", func() {
+	pred := specOrRotationTriggerPredicate{}
+
+	secretWith := func(generation int64, rotationTrigger string) *dbaasv1.DatabaseSecret {
+		ds := &dbaasv1.DatabaseSecret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ds",
+				Namespace:  "default",
+				Generation: generation,
+			},
+		}
+		if rotationTrigger != "" {
+			ds.Annotations = map[string]string{dbaasv1.AnnotationRotationTrigger: rotationTrigger}
+		}
+		return ds
+	}
+
+	Describe("Update", func() {
+		It("fires when the generation changed (spec update)", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(1, ""),
+				ObjectNew: secretWith(2, ""),
+			})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("fires when the rotation-trigger annotation changed", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(1, "evt-1"),
+				ObjectNew: secretWith(1, "evt-2"),
+			})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("fires when the rotation-trigger annotation is first added", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(1, ""),
+				ObjectNew: secretWith(1, "evt-1"),
+			})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("does NOT fire on a status-only update (no generation or annotation change)", func() {
+			ok := pred.Update(event.UpdateEvent{
+				ObjectOld: secretWith(3, "evt-1"),
+				ObjectNew: secretWith(3, "evt-1"),
+			})
+			Expect(ok).To(BeFalse())
+		})
+
+		It("does NOT fire when only an unrelated annotation changed", func() {
+			old := secretWith(1, "evt-1")
+			old.Annotations["unrelated"] = "a"
+			updated := secretWith(1, "evt-1")
+			updated.Annotations["unrelated"] = "b"
+			ok := pred.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated})
+			Expect(ok).To(BeFalse())
+		})
+
+		It("does NOT fire when objects are nil", func() {
+			Expect(pred.Update(event.UpdateEvent{})).To(BeFalse())
+		})
+	})
+
+	Describe("Create and Delete fall through to defaults", func() {
+		It("fires on Create", func() {
+			Expect(pred.Create(event.CreateEvent{Object: secretWith(1, "")})).To(BeTrue())
+		})
+
+		It("fires on Delete", func() {
+			Expect(pred.Delete(event.DeleteEvent{Object: secretWith(1, "")})).To(BeTrue())
+		})
+	})
+})
+
 // ── Rate limiter / SetupWithManager ──────────────────────────────────────────
 
 var _ = Describe("DatabaseSecret Controller — rate limiter", func() {
 	It("registers the controller with a custom exponential rate limiter", func() {
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
-			Metrics:                metricsserver.Options{BindAddress: "0"},
+			Metrics:                httpserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
 		})
 		Expect(err).NotTo(HaveOccurred())

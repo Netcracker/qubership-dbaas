@@ -70,15 +70,20 @@ spec:
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
               readOnly: true
-          # The base image's ENTRYPOINT is /usr/bin/entrypoint.sh (cert loading, signal
-          # handling, init.d hooks). The Dockerfile sets CMD=["/app/dbaas-operator"], but
-          # a Pod's `args` field REPLACES image CMD entirely, so we must restate the binary
-          # in `command` here. Otherwise entrypoint.sh tries to exec the flags as a command.
+          # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
+          # which loads the Kubernetes service-account ca.crt into the image trust store
+          # before exec'ing its arguments. The rotation webhook's OIDC token verifier
+          # makes a TLS call to the kube-apiserver using the system trust store, so the
+          # CA must be loaded — bypassing the entrypoint (command:[/app/dbaas-operator])
+          # makes that call fail with x509: certificate signed by unknown authority.
+          # A Pod's `args` REPLACES the image CMD, so the binary is passed as the first
+          # entrypoint argument here rather than relying on the Dockerfile CMD.
           command:
-            - /app/dbaas-operator
+            - /usr/bin/entrypoint.sh
           args:
+            - /app/dbaas-operator
             - --health-probe-bind-address=:8081
-            - --metrics-bind-address=:8080
+            - --http-bind-address=:8080
             {{- if .Values.LEADER_ELECT }}
             - --leader-elect
             {{- end }}
@@ -91,6 +96,13 @@ spec:
               value: '{{ lower .Values.LOG_LEVEL }}'
             - name: K8S_EVENTS_ENABLED
               value: '{{ .Values.K8S_EVENTS_ENABLED }}'
+            {{- if .Values.ROTATION_WEBHOOK_ALLOWED_SUBJECTS }}
+            # Override only when the aggregator does not run as the
+            # dbaas-aggregator service account in this namespace. When unset the
+            # operator derives the default allow-list entry on its own.
+            - name: ROTATION_WEBHOOK_ALLOWED_SUBJECTS
+              value: '{{ .Values.ROTATION_WEBHOOK_ALLOWED_SUBJECTS }}'
+            {{- end }}
           ports:
             - name: web
               containerPort: 8081

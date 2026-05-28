@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/dbaas.netcracker.com_databasedeclarations.yaml
+- bases/dbaas.netcracker.com_databasesecrets.yaml
 - bases/dbaas.netcracker.com_dbpolicies.yaml
 - bases/dbaas.netcracker.com_externaldatabases.yaml
 - bases/dbaas.netcracker.com_namespacebindings.yaml

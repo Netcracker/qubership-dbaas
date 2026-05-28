@@ -16,15 +16,22 @@ limitations under the License.
 
 package controller
 
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecrets,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecrets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;create;update;patch
+// The rotation webhook fetches the cluster's OIDC discovery document and JWKS
+// to validate inbound aggregator tokens (see internal/webhook). Hardened
+// clusters do not grant these non-resource URLs to all service accounts, so
+// the operator's own ClusterRole must request them explicitly.
+// +kubebuilder:rbac:urls=/.well-known/openid-configuration;/openid/v1/jwks,verbs=get
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -38,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -84,9 +92,17 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	original := s.DeepCopy()
 	defer func() {
+		// Stamp observedGeneration on terminal states only. Successful
+		// reconciles now carry a safety-net RequeueAfter, so the result's
+		// requeue delay can no longer distinguish "done" from "retrying";
+		// gate on the phase instead. Succeeded and InvalidConfiguration are
+		// terminal (the generation has been fully processed); BackingOff is
+		// not (still polling on a transient error).
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecret, retErr error) bool {
-				return retErr == nil && result.RequeueAfter == 0
+				return retErr == nil &&
+					(obj.Status.Phase == dbaasv1.PhaseSucceeded ||
+						obj.Status.Phase == dbaasv1.PhaseInvalidConfiguration)
 			},
 			"DatabaseSecret")
 	}()
@@ -100,7 +116,7 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// ── Step 7: call aggregator ───────────────────────────────────────────────
 	aggReq := &aggregatorclient.GetByClassifierRequest{
-		Classifier:    classifierFlatMap(s.Spec.Classifier),
+		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		OriginService: s.Labels["app.kubernetes.io/name"],
 		UserRole:      s.Spec.UserRole,
 	}
@@ -228,8 +244,9 @@ func (r *DatabaseSecretReconciler) writeSecret(
 
 	err = r.Create(ctx, newSecret)
 	if err == nil {
-		r.markSecretSucceeded(s, requestID, "Secret %q created/updated with connection properties (requestId=%s)")
-		return ctrl.Result{}, nil
+		r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
+			"Secret %q created with connection properties (requestId=%s)")
+		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
 	if !apierrors.IsAlreadyExists(err) {
 		return ctrl.Result{}, err
@@ -244,8 +261,9 @@ func (r *DatabaseSecretReconciler) writeSecret(
 			// reconcile does not need another aggregator round-trip.
 			retryErr := r.Create(ctx, newSecret)
 			if retryErr == nil {
-				r.markSecretSucceeded(s, requestID, "Secret %q created after deletion race (requestId=%s)")
-				return ctrl.Result{}, nil
+				r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
+					"Secret %q created after deletion race (requestId=%s)")
+				return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 			}
 			if !apierrors.IsAlreadyExists(retryErr) {
 				return ctrl.Result{}, retryErr
@@ -266,9 +284,16 @@ func (r *DatabaseSecretReconciler) writeSecret(
 }
 
 // updateOwnedSecret performs the idempotent Update step (9.4) on a Secret that
-// we have just confirmed is either already owned by s or unowned. It recreates
-// the Secret if the Update fails with NotFound (GC raced between fetch and
-// update). On any successful write it marks the CR succeeded.
+// we have just confirmed is already owned by s (the Step 9.3 ownerConflict
+// check passed). It recreates the Secret if the Update fails with NotFound (GC
+// raced between fetch and update).
+//
+// When the existing Secret already carries exactly the credentials and managed
+// labels we would write, the Update is skipped entirely: a rotation-triggered
+// reconcile that finds unchanged content must not churn the Secret, since every
+// rewrite wakes mounting pods via the kubelet's secret sync. A real content
+// change is treated as a rotation — it stamps Status.LastRotatedAt and emits
+// SecretRotated, distinct from the SecretCreated used on first creation.
 func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecret,
@@ -276,6 +301,15 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	secretData map[string][]byte,
 	requestID string,
 ) (ctrl.Result, error) {
+	// No-op fast path: already in the desired state.
+	if secretUpToDate(s, existing, secretData) {
+		log.InfoC(ctx, "DatabaseSecret already up-to-date, skipping Secret write name=%s secretName=%s", s.Name, s.Spec.SecretName)
+		// Steady state: keep the SecretCreated Ready reason, emit no event,
+		// and do not advance LastRotatedAt — nothing actually changed.
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
+	}
+
 	updated := existing.DeepCopy()
 	updated.Data = secretData
 	if updated.Labels == nil {
@@ -302,8 +336,9 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 			}
 			createErr := r.Create(ctx, recreated)
 			if createErr == nil {
-				r.markSecretSucceeded(s, requestID, "Secret %q recreated after deletion (requestId=%s)")
-				return ctrl.Result{}, nil
+				r.markSecretSucceeded(s, requestID, EventReasonSecretCreated,
+					"Secret %q recreated after deletion (requestId=%s)")
+				return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 			}
 			if !apierrors.IsAlreadyExists(createErr) {
 				return ctrl.Result{}, createErr
@@ -315,17 +350,42 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 			return ctrl.Result{}, err
 		}
 	}
-	r.markSecretSucceeded(s, requestID, "Secret %q created/updated with connection properties (requestId=%s)")
-	return ctrl.Result{}, nil
+	// Content changed and written — this is a rotation (or first fill of an
+	// adopted Secret). Stamp the rotation timestamp and emit SecretRotated.
+	now := metav1.Now()
+	s.Status.LastRotatedAt = &now
+	r.markSecretSucceeded(s, requestID, EventReasonSecretRotated,
+		"Secret %q updated with rotated connection properties (requestId=%s)")
+	return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 }
 
-// markSecretSucceeded marks the CR Succeeded, emits a Normal SecretCreated
-// event, and logs a confirmation line. eventFormat must be a printf-style
-// format string with two placeholders: the secret name and the request ID.
-func (r *DatabaseSecretReconciler) markSecretSucceeded(s *dbaasv1.DatabaseSecret, requestID, eventFormat string) {
-	log.Infof("DatabaseSecret reconciled successfully name=%s secretName=%s", s.Name, s.Spec.SecretName)
-	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
-	r.Recorder.Eventf(s, corev1.EventTypeNormal, EventReasonSecretCreated, eventFormat, s.Spec.SecretName, requestID)
+// secretUpToDate reports whether the existing Secret already carries exactly
+// the connection-properties data and operator-managed labels that a write
+// would set. The ownerReference is not checked here because updateOwnedSecret
+// is only reached after the Step 9.3 ownerConflict check confirmed s controls
+// the Secret.
+func secretUpToDate(s *dbaasv1.DatabaseSecret, existing *corev1.Secret, desired map[string][]byte) bool {
+	if !maps.EqualFunc(existing.Data, desired, bytes.Equal) {
+		return false
+	}
+	if existing.Labels["app.kubernetes.io/managed-by"] != "dbaas-operator" {
+		return false
+	}
+	if existing.Labels["app.kubernetes.io/name"] != s.Labels["app.kubernetes.io/name"] {
+		return false
+	}
+	return true
+}
+
+// markSecretSucceeded marks the CR Succeeded with the given Ready reason, emits
+// a Normal event under that reason, and logs a confirmation line. reason is one
+// of EventReasonSecretCreated (creation / recreation) or EventReasonSecretRotated
+// (content changed). eventFormat must be a printf-style format string with two
+// placeholders: the secret name and the request ID.
+func (r *DatabaseSecretReconciler) markSecretSucceeded(s *dbaasv1.DatabaseSecret, requestID, reason, eventFormat string) {
+	log.Infof("DatabaseSecret reconciled successfully name=%s secretName=%s reason=%s", s.Name, s.Spec.SecretName, reason)
+	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, reason)
+	r.Recorder.Eventf(s, corev1.EventTypeNormal, reason, eventFormat, s.Spec.SecretName, requestID)
 }
 
 // ownerConflict returns true when the existing Secret is owned by a resource other than s,
@@ -438,6 +498,29 @@ func isOlderClaimant(a, b *dbaasv1.DatabaseSecret) bool {
 	return string(a.UID) < string(b.UID)
 }
 
+// specOrRotationTriggerPredicate fires a reconcile on (a) a spec change
+// (generation bump) or (b) a change to the rotation-trigger annotation that
+// the rotation webhook patches when dbaas-aggregator reports a credentials
+// rotation. Plain GenerationChangedPredicate is not enough here: the webhook
+// only mutates an annotation, which does not bump generation, so a rotation
+// would otherwise be filtered out and never reconciled.
+//
+// Create and Delete fall through to the embedded predicate.Funcs defaults
+// (both return true), preserving the standard behaviour for new and removed
+// CRs. Only Update is customised.
+type specOrRotationTriggerPredicate struct{ predicate.Funcs }
+
+func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return false
+	}
+	if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+		return true
+	}
+	return e.ObjectOld.GetAnnotations()[dbaasv1.AnnotationRotationTrigger] !=
+		e.ObjectNew.GetAnnotations()[dbaasv1.AnnotationRotationTrigger]
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	if err := mgr.GetFieldIndexer().IndexField(
@@ -451,9 +534,25 @@ func (r *DatabaseSecretReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlc
 		return err
 	}
 
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&dbaasv1.DatabaseSecret{},
+		dbaasv1.ClassifierTypeIndex,
+		func(obj client.Object) []string {
+			ds := obj.(*dbaasv1.DatabaseSecret)
+			// Default the classifier namespace to metadata.namespace so the index
+			// key matches the always-namespaced classifier carried in a rotation
+			// webhook payload (see EffectiveClassifier).
+			c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
+			return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
+		},
+	); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseSecret{},
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+			builder.WithPredicates(specOrRotationTriggerPredicate{})).
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		// Re-enqueue siblings that share spec.secretName when any DatabaseSecret
