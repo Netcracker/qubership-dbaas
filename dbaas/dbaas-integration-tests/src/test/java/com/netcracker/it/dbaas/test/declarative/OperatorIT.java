@@ -1249,6 +1249,7 @@ public class OperatorIT extends AbstractIT {
                             .delete();
                     assertTrue(deletedDatabaseSecretCR.isEmpty());
 
+                    waitForSecretDeleted(secretName);
                     var deletedSecret = getSecret(secretName);
                     assertNull(deletedSecret);
                 }
@@ -1375,6 +1376,23 @@ public class OperatorIT extends AbstractIT {
                 .inNamespace(NAMESPACE)
                 .resource(secret)
                 .get();
+    }
+
+    // waitForSecretDeleted polls until the owned Secret is gone. Deleting the
+    // DatabaseSecret CR removes its Secret via owner-reference garbage
+    // collection, which is asynchronous, so callers must wait rather than assert
+    // immediately. fabric8 passes null to the predicate once the resource is
+    // absent. The exception is swallowed so the caller's assertNull surfaces a
+    // clear failure if GC did not complete within the timeout.
+    private void waitForSecretDeleted(String secretName) {
+        try {
+            kubernetesClient.secrets()
+                    .inNamespace(NAMESPACE)
+                    .withName(secretName)
+                    .waitUntilCondition(Objects::isNull, 2, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            // Catch later
+        }
     }
 
     private GenericKubernetesResource createCR(CustomResourceDefinitionContext crd, GenericKubernetesResource cr) {
