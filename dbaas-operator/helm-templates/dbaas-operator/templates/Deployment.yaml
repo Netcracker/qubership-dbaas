@@ -96,6 +96,13 @@ spec:
               value: '{{ lower .Values.LOG_LEVEL }}'
             - name: K8S_EVENTS_ENABLED
               value: '{{ .Values.K8S_EVENTS_ENABLED }}'
+            {{- if .Values.ROTATION_WEBHOOK_ALLOWED_SUBJECTS }}
+            # Override only when the aggregator does not run as the
+            # dbaas-aggregator service account in this namespace. When unset the
+            # operator derives the default allow-list entry on its own.
+            - name: ROTATION_WEBHOOK_ALLOWED_SUBJECTS
+              value: '{{ .Values.ROTATION_WEBHOOK_ALLOWED_SUBJECTS }}'
+            {{- end }}
           ports:
             - name: web
               containerPort: 8081

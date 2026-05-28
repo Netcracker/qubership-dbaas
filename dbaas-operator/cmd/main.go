@@ -20,8 +20,10 @@ import (
 	"context"
 	"flag"
 	"io"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -282,18 +284,27 @@ func main() {
 		setupLog.Errorf("Failed to create rotation webhook authenticator: %v", err)
 		os.Exit(1)
 	}
+	// Caller authorization: only allow-listed Kubernetes subjects may trigger
+	// rotations. ROTATION_WEBHOOK_ALLOWED_SUBJECTS is a comma-separated list of
+	// system:serviceaccount:<namespace>:<serviceAccount> entries; when unset it
+	// falls back to the aggregator's derived identity in the operator's own
+	// namespace. The handler is fail-closed against this set.
+	allowedSubjects := webhook.ParseAllowedSubjects(
+		os.Getenv("ROTATION_WEBHOOK_ALLOWED_SUBJECTS"), cloudNamespace)
 	if err := mgr.AddMetricsServerExtraHandler(
 		webhook.PathRotationNotify,
 		&webhook.RotationHandler{
-			Client: mgr.GetClient(),
-			Auth:   rotationAuth,
+			Client:          mgr.GetClient(),
+			Auth:            rotationAuth,
+			AllowedSubjects: allowedSubjects,
 		},
 	); err != nil {
 		setupLog.Errorf("Failed to register rotation webhook handler: %v", err)
 		os.Exit(1)
 	}
-	setupLog.Infof("Rotation webhook registered path=%s audience=%s",
-		webhook.PathRotationNotify, webhook.AudienceDBaaSOperator)
+	setupLog.Infof("Rotation webhook registered path=%s audience=%s allowedSubjects=%v",
+		webhook.PathRotationNotify, webhook.AudienceDBaaSOperator,
+		slices.Sorted(maps.Keys(allowedSubjects)))
 
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

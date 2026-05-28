@@ -138,3 +138,45 @@ var _ = Describe("Authenticator", func() {
 	})
 
 })
+
+var _ = Describe("ParseAllowedSubjects", func() {
+	const operatorNS = "dbaas"
+	derivedDefault := "system:serviceaccount:" + operatorNS + ":" + DefaultAggregatorServiceAccount
+
+	It("parses a comma-separated list, trimming whitespace and dropping blanks", func() {
+		got := ParseAllowedSubjects(
+			" system:serviceaccount:a:sa-1 , ,system:serviceaccount:b:sa-2,", operatorNS)
+		Expect(got).To(Equal(map[string]struct{}{
+			"system:serviceaccount:a:sa-1": {},
+			"system:serviceaccount:b:sa-2": {},
+		}))
+	})
+
+	It("falls back to the derived default when the config is empty", func() {
+		got := ParseAllowedSubjects("", operatorNS)
+		Expect(got).To(Equal(map[string]struct{}{derivedDefault: {}}))
+	})
+
+	It("falls back to the derived default when the config is only blanks and commas", func() {
+		got := ParseAllowedSubjects("  , ,, ", operatorNS)
+		Expect(got).To(Equal(map[string]struct{}{derivedDefault: {}}))
+	})
+
+	It("does not add the derived default when an explicit list is supplied", func() {
+		got := ParseAllowedSubjects("system:serviceaccount:x:y", operatorNS)
+		Expect(got).To(HaveLen(1))
+		Expect(got).NotTo(HaveKey(derivedDefault))
+	})
+
+	It("builds the derived default with the same format as AuthResult.Subject", func() {
+		// The handler matches AuthResult.Subject against this set, so the derived
+		// default must equal what Authenticate would produce for the aggregator.
+		stub := &stubVerifier{token: kubernetesJWT(operatorNS, DefaultAggregatorServiceAccount)}
+		auth := newAuthenticatorForTest(stub)
+		result, err := auth.Authenticate(context.Background(), "Bearer x")
+		Expect(err).NotTo(HaveOccurred())
+
+		got := ParseAllowedSubjects("", operatorNS)
+		Expect(got).To(HaveKey(result.Subject))
+	})
+})

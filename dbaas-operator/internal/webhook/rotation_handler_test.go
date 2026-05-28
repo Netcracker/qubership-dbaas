@@ -127,7 +127,15 @@ var _ = Describe("RotationHandler", func() {
 		}}
 		// Tests that need CRs override fakeClient via newFakeClient(...).
 		fakeClient = newFakeClient()
-		handler = &RotationHandler{Client: fakeClient, Auth: auth}
+		handler = &RotationHandler{
+			Client: fakeClient,
+			Auth:   auth,
+			// Allow the stub's subject so authorized-path tests reach the handler
+			// body. Authorization-specific tests override this set explicitly.
+			AllowedSubjects: map[string]struct{}{
+				"system:serviceaccount:dbaas:dbaas-aggregator": {},
+			},
+		}
 	})
 
 	Describe("HTTP method handling", func() {
@@ -175,6 +183,66 @@ var _ = Describe("RotationHandler", func() {
 			handler.ServeHTTP(rec, req)
 
 			Expect(auth.gotAuthHeader).To(Equal("Bearer some-token"))
+		})
+	})
+
+	Describe("Authorization", func() {
+		It("returns 403 when the authenticated subject is not in the allow-list", func() {
+			// Valid token, but a subject the operator does not trust.
+			auth.result = AuthResult{
+				Subject:        "system:serviceaccount:other-ns:rogue-sa",
+				Namespace:      "other-ns",
+				ServiceAccount: "rogue-sa",
+			}
+			// Seed a CR that would match the payload, to prove the body is never
+			// processed for an unauthorized caller.
+			crA := newDatabaseSecret("cr-a", "team-a", "svc-a")
+			fakeClient = newFakeClient(crA)
+			handler.Client = fakeClient
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, PathRotationNotify,
+				bytes.NewReader(buildPayloadBody("evt-1", "team-a", "svc-a")))
+			req.Header.Set("Authorization", "Bearer good-but-unauthorized")
+
+			handler.ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusForbidden))
+			// The matching CR must NOT have been patched.
+			got := &dbaasv1.DatabaseSecret{}
+			Expect(fakeClient.Get(context.Background(),
+				client.ObjectKey{Namespace: "team-a", Name: "cr-a"}, got)).To(Succeed())
+			Expect(got.Annotations).NotTo(HaveKey(dbaasv1.AnnotationRotationTrigger))
+		})
+
+		It("returns 403 for every caller when the allow-list is empty (fail-closed)", func() {
+			handler.AllowedSubjects = nil // even a valid, well-known subject is denied
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, PathRotationNotify,
+				bytes.NewReader(buildPayloadBody("evt-1", "team-a", "svc-a")))
+			req.Header.Set("Authorization", "Bearer good")
+
+			handler.ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusForbidden))
+		})
+
+		It("accepts a subject present alongside others in a multi-entry allow-list", func() {
+			handler.AllowedSubjects = map[string]struct{}{
+				"system:serviceaccount:dbaas:some-other-sa":    {},
+				"system:serviceaccount:dbaas:dbaas-aggregator": {}, // the stub's subject
+				"system:serviceaccount:elsewhere:another-sa":   {},
+			}
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, PathRotationNotify,
+				bytes.NewReader(buildPayloadBody("evt-1", "team-a", "svc-a")))
+			req.Header.Set("Authorization", "Bearer good")
+
+			handler.ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusOK))
 		})
 	})
 

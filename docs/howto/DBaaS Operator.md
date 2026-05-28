@@ -1432,7 +1432,8 @@ When a credential is rotated on the aggregator side, the operator is notified th
 | Path | `POST /api/rotation/v1/notify` |
 | Listener | The operator's HTTP server on `:8080` — the **same** listener that serves Prometheus `/metrics`, via controller-runtime's `ExtraHandlers`. No extra container port. |
 | Service | `dbaas-operator` (ClusterIP) exposes port `8080`; callers use `http://dbaas-operator.<operator-namespace>.svc:8080/api/rotation/v1/notify`. |
-| Inbound auth | The caller's Kubernetes service-account token is verified via OIDC against the cluster's issuer; the token's audience must be `dbaas-operator`. Tokens with a wrong audience or signature are rejected with `401`. |
+| Inbound authentication | The caller's Kubernetes service-account token is verified via OIDC against the cluster's issuer; the token's audience must be `dbaas-operator`. Tokens with a wrong audience or signature are rejected with `401`. |
+| Inbound authorization | Authentication only proves the token is valid and minted for this operator — not *who* the caller is. The handler additionally checks the authenticated subject (`system:serviceaccount:<namespace>:<serviceAccount>`) against an allow-list and rejects any caller outside it with `403`. The allow-list is configured via `ROTATION_WEBHOOK_ALLOWED_SUBJECTS` (comma-separated); when unset it defaults to `system:serviceaccount:<operator-namespace>:dbaas-aggregator`. The check is **fail-closed** — an empty allow-list denies every caller. |
 | Methods | `POST` only (`405` otherwise); malformed payload → `400`. |
 
 Request body:
@@ -1455,7 +1456,9 @@ Flow:
         │  POST /api/rotation/v1/notify  (Bearer SA token, audience=dbaas-operator)
         ▼
 [any operator replica]
-   authenticate (OIDC) ─ 401 on failure
+   authenticate (OIDC, audience=dbaas-operator) ─ 401 on failure
+        │
+   authorize caller subject against allow-list ─ 403 if not allowed
         │
    resolve DatabaseSecret CRs by (classifier, type) via cache field index,
    scoped to classifier.namespace
@@ -1607,6 +1610,7 @@ The following parameters control the operator's deployment and behavior. They ar
 | `LEADER_ELECT` | boolean | `true` | Enables leader election. Required when running more than one replica to ensure only one active instance processes resources at a time. |
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
 | `DBAAS_AGGREGATOR_URL` | string | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (e.g. cross-cluster deployments). Read by the operator as an environment variable; not set by the Helm chart unless explicitly configured. |
+| `ROTATION_WEBHOOK_ALLOWED_SUBJECTS` | string | `system:serviceaccount:<operator-namespace>:dbaas-aggregator` | Comma-separated allow-list of Kubernetes subjects (`system:serviceaccount:<namespace>:<serviceAccount>`) permitted to call the [rotation webhook](#rotation-webhook). Callers outside the list are rejected with `403`, even with a valid `dbaas-operator`-audience token. When unset it defaults to the aggregator's identity in the operator's own namespace; override only when the aggregator runs under a different service account or namespace. The check is fail-closed. |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |
 | `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
 | `MONITORING_ENABLED` | boolean | — | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Requires Platform System Monitor CRDs. |

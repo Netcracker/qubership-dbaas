@@ -64,6 +64,19 @@ type RotationHandler struct {
 	// production Kubernetes-OIDC implementation from NewKubernetesAuthenticator;
 	// tests may inject a stub.
 	Auth Authenticator
+
+	// AllowedSubjects is the set of Kubernetes subjects
+	// (system:serviceaccount:<namespace>:<serviceAccount>) permitted to invoke
+	// the webhook. A request whose authenticated subject is absent from this
+	// set is rejected with 403, even though its token passed audience
+	// validation — the audience check proves the token is valid and minted for
+	// this operator, not *who* the caller is.
+	//
+	// The set is fail-closed: an empty or nil set denies every caller. main.go
+	// always populates it via ParseAllowedSubjects, which supplies a derived
+	// default when no explicit allow-list is configured, so the webhook is
+	// never left open by omission.
+	AllowedSubjects map[string]struct{}
 }
 
 // rotationResponse is returned as JSON on a successful (200 OK) call. It
@@ -97,7 +110,17 @@ func (h *RotationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Decode and validate payload.
+	// 4. Authorize the caller. A valid, audience-scoped token proves the
+	// request came from a pod that opted in, but not that this specific
+	// caller is permitted to trigger rotations. Reject any subject outside
+	// the configured allow-list with 403 before touching the payload.
+	if !h.subjectAllowed(authResult.Subject) {
+		log.InfoC(ctx, "Rotation webhook rejected unauthorized caller subject=%s", authResult.Subject)
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	// 5. Decode and validate payload.
 	payload, err := decodePayload(r)
 	if err != nil {
 		log.InfoC(ctx, "Rotation webhook rejected malformed payload subject=%s err=%v",
@@ -106,7 +129,7 @@ func (h *RotationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Resolve affected CRs and patch the rotation-trigger annotation.
+	// 6. Resolve affected CRs and patch the rotation-trigger annotation.
 	matched, patched, err := h.processEvent(ctx, payload)
 	if err != nil {
 		log.ErrorC(ctx, "Rotation webhook failed to process event eventId=%s subject=%s err=%v",
@@ -120,6 +143,13 @@ func (h *RotationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		authResult.Subject, matched, patched)
 
 	writeJSON(w, http.StatusOK, rotationResponse{Matched: matched, Patched: patched})
+}
+
+// subjectAllowed reports whether subject is in the configured allow-list. A
+// nil or empty set denies every caller (fail-closed).
+func (h *RotationHandler) subjectAllowed(subject string) bool {
+	_, ok := h.AllowedSubjects[subject]
+	return ok
 }
 
 // bindRequestID copies an incoming X-Request-Id header into the request

@@ -83,6 +83,39 @@ const bearerPrefix = "Bearer "
 // a single definition.
 const AudienceDBaaSOperator = "dbaas-operator"
 
+// DefaultAggregatorServiceAccount is the service account dbaas-aggregator runs
+// under in a standard Qubership deployment. It is used to derive the default
+// rotation-webhook allow-list entry when no explicit allow-list is configured.
+const DefaultAggregatorServiceAccount = "dbaas-aggregator"
+
+// ParseAllowedSubjects builds the set of Kubernetes subjects permitted to call
+// the rotation webhook from a comma-separated configuration string (typically
+// the ROTATION_WEBHOOK_ALLOWED_SUBJECTS env var). Each entry is the canonical
+// subject form system:serviceaccount:<namespace>:<serviceAccount>. Entries are
+// trimmed and blanks are dropped.
+//
+// When the configuration yields no entries, the set falls back to a single
+// derived default — system:serviceaccount:<operatorNamespace>:dbaas-aggregator
+// — the aggregator's identity in a standard same-namespace deployment. The
+// derived subject is built with the same helper that produces AuthResult.Subject
+// (jwttoken.GetKubernetesSubject) so the strings are guaranteed to match.
+//
+// The handler treats the returned set as fail-closed: a caller whose subject is
+// absent is rejected with 403. Because this function always returns at least the
+// derived default, the webhook is never left wide open.
+func ParseAllowedSubjects(config, operatorNamespace string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for entry := range strings.SplitSeq(config, ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			set[entry] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		set[jwttoken.GetKubernetesSubject(operatorNamespace, DefaultAggregatorServiceAccount)] = struct{}{}
+	}
+	return set
+}
+
 // kubernetesAuthenticator is the production implementation backed by the
 // platform tokenverifier library and Kubernetes OIDC discovery.
 type kubernetesAuthenticator struct {
@@ -103,13 +136,14 @@ type kubernetesAuthenticator struct {
 // in-cluster API server, so this call must be made from a pod with a mounted
 // service account token.
 //
-// Authorization is limited to the audience check: callers that successfully
-// project a dbaas-operator-audience token are trusted. This matches the
-// platform's typical single-tenant operations cluster, where the audience
-// already restricts callers to pods that explicitly opted in via projected
-// volume configuration. Multi-tenant deployments that need defense in depth
-// can layer a subject allow-list on top via a tokenverifier.Validation
-// passed to NewKubernetesVerifier.
+// This authenticator only proves the token is valid and minted for the
+// operator's audience; it does not decide *who* may call the webhook.
+// Caller authorization is a separate, explicit step: the RotationHandler
+// matches AuthResult.Subject against a configured allow-list (see
+// ParseAllowedSubjects and RotationHandler.AllowedSubjects) and rejects
+// non-listed callers with 403. Keeping authentication and authorization
+// separate lets the audience check stay reusable while the allow-list
+// remains trivially unit-testable with a stub Authenticator.
 func NewKubernetesAuthenticator(ctx context.Context, audience string) (Authenticator, error) {
 	if audience == "" {
 		return nil, errors.New("audience must not be empty")
