@@ -6,17 +6,21 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"testing"
+	"slices"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 type balancingRuleCall struct {
@@ -25,313 +29,447 @@ type balancingRuleCall struct {
 	body   []byte
 }
 
-func TestReconcileMicroserviceAppliesRulesAndUpdatesStatus(t *testing.T) {
-	rule := &dbaasv1.DbMicroserviceBalancingRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       dbaasv1.DbMicroserviceBalancingRuleName,
-			Namespace:  "payments",
-			Finalizers: []string{dbaasv1.DbMicroserviceBalancingRuleFinalizer},
-		},
-		Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
-			Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
-				{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing", "ledger"}},
-				{Type: "cassandra", Label: "region=west", Microservices: []string{"audit"}},
-			},
-		},
-	}
-	reconciler, calls, closeServer := newBalancingRuleReconcilerFixture(t, "payments", rule)
-	defer closeServer()
-
-	if _, err := reconciler.ReconcileMicroservice(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rule)}); err != nil {
-		t.Fatalf("ReconcileMicroservice returned error: %v", err)
-	}
-
-	if len(*calls) != 1 {
-		t.Fatalf("expected 1 aggregator call, got %d", len(*calls))
-	}
-	if (*calls)[0].method != http.MethodPut || (*calls)[0].path != "/api/v3/dbaas/payments/physical_databases/rules/onMicroservices" {
-		t.Fatalf("unexpected aggregator call: %#v", (*calls)[0])
-	}
-	var got []aggregatorclient.OnMicroserviceRuleRequest
-	if err := json.Unmarshal((*calls)[0].body, &got); err != nil {
-		t.Fatalf("decode aggregator body: %v", err)
-	}
-	if len(got) != 2 || got[0].Type != "mongodb" || got[1].Type != "cassandra" {
-		t.Fatalf("unexpected aggregator body: %#v", got)
-	}
-
-	stored := &dbaasv1.DbMicroserviceBalancingRule{}
-	if err := reconciler.Get(context.Background(), client.ObjectKeyFromObject(rule), stored); err != nil {
-		t.Fatalf("get stored rule: %v", err)
-	}
-	if stored.Status.Phase != dbaasv1.PhaseSucceeded {
-		t.Fatalf("expected succeeded phase, got %q", stored.Status.Phase)
-	}
-	if len(stored.Status.AppliedRules) != 2 {
-		t.Fatalf("expected 2 applied rules, got %#v", stored.Status.AppliedRules)
-	}
+type balancingRuleReconcileFixture struct {
+	reconciler *BalancingRuleReconciler
+	calls      []balancingRuleCall
+	server     *httptest.Server
+	recorder   *record.FakeRecorder
 }
 
-func TestReconcileMicroserviceCleansRemovedTargetsBeforeApply(t *testing.T) {
-	rule := &dbaasv1.DbMicroserviceBalancingRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       dbaasv1.DbMicroserviceBalancingRuleName,
-			Namespace:  "payments",
-			Finalizers: []string{dbaasv1.DbMicroserviceBalancingRuleFinalizer},
-		},
-		Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
-			Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
-				{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
-			},
-		},
-		Status: dbaasv1.DbMicroserviceBalancingRuleStatus{
-			AppliedRules: []dbaasv1.DbMicroserviceBalancingRuleAppliedRule{
+var _ = Describe("BalancingRule Controller", func() {
+	const (
+		businessNS = "default"
+		operatorNS = "default"
+	)
+
+	var fixture *balancingRuleReconcileFixture
+
+	BeforeEach(func() {
+		fixture = newBalancingRuleReconcileFixture(businessNS)
+	})
+
+	AfterEach(func() {
+		fixture.close()
+		deleteIfExists(&dbaasv1.DbMicroserviceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbMicroserviceBalancingRuleName, Namespace: businessNS}})
+		deleteIfExists(&dbaasv1.DbNamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS}})
+		deleteIfExists(&dbaasv1.DbPermanentBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbPermanentBalancingRuleName, Namespace: operatorNS}})
+	})
+
+	Context("microservice singleton", func() {
+		It("applies the full rule list and updates status", func() {
+			rule := &dbaasv1.DbMicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbMicroserviceBalancingRuleName,
+					Namespace:  businessNS,
+					Finalizers: []string{dbaasv1.DbMicroserviceBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
+						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing", "ledger"}},
+						{Type: "cassandra", Label: "region=west", Microservices: []string{"audit"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, result, err := reconcileMicroserviceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(HaveLen(1))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodPut))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/default/physical_databases/rules/onMicroservices"))
+
+			var got []aggregatorclient.OnMicroserviceRuleRequest
+			Expect(json.Unmarshal(fixture.calls[0].body, &got)).To(Succeed())
+			Expect(got).To(HaveLen(2))
+			Expect(got[0].Type).To(Equal("mongodb"))
+			Expect(got[1].Type).To(Equal("cassandra"))
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(stored.Status.AppliedRules).To(HaveLen(2))
+		})
+
+		It("cleans removed targets before applying the new desired list", func() {
+			rule := &dbaasv1.DbMicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbMicroserviceBalancingRuleName,
+					Namespace:  businessNS,
+					Finalizers: []string{dbaasv1.DbMicroserviceBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
+						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updateMicroserviceStatus(rule, []dbaasv1.DbMicroserviceBalancingRuleAppliedRule{
 				{Type: "mongodb", Microservices: []string{"billing", "ledger"}},
-			},
-		},
-	}
-	reconciler, calls, closeServer := newBalancingRuleReconcilerFixture(t, "payments", rule)
-	defer closeServer()
+			})
 
-	if _, err := reconciler.ReconcileMicroservice(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rule)}); err != nil {
-		t.Fatalf("ReconcileMicroservice returned error: %v", err)
-	}
+			_, _, err := reconcileMicroserviceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
 
-	if len(*calls) != 2 {
-		t.Fatalf("expected cleanup then apply calls, got %d", len(*calls))
-	}
-	var cleanup []aggregatorclient.OnMicroserviceRuleRequest
-	if err := json.Unmarshal((*calls)[0].body, &cleanup); err != nil {
-		t.Fatalf("decode cleanup body: %v", err)
-	}
-	if len(cleanup) != 1 || len(cleanup[0].Rules) != 0 || len(cleanup[0].Microservices) != 1 || cleanup[0].Microservices[0] != "ledger" {
-		t.Fatalf("unexpected cleanup body: %#v", cleanup)
-	}
-	var apply []aggregatorclient.OnMicroserviceRuleRequest
-	if err := json.Unmarshal((*calls)[1].body, &apply); err != nil {
-		t.Fatalf("decode apply body: %v", err)
-	}
-	if len(apply) != 1 || apply[0].Microservices[0] != "billing" {
-		t.Fatalf("unexpected apply body: %#v", apply)
-	}
-}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(HaveLen(2))
+			var cleanup []aggregatorclient.OnMicroserviceRuleRequest
+			Expect(json.Unmarshal(fixture.calls[0].body, &cleanup)).To(Succeed())
+			Expect(cleanup).To(HaveLen(1))
+			Expect(cleanup[0].Rules).To(BeEmpty())
+			Expect(cleanup[0].Microservices).To(Equal([]string{"ledger"}))
+			var apply []aggregatorclient.OnMicroserviceRuleRequest
+			Expect(json.Unmarshal(fixture.calls[1].body, &apply)).To(Succeed())
+			Expect(apply).To(HaveLen(1))
+			Expect(apply[0].Microservices).To(Equal([]string{"billing"}))
+		})
 
-func TestReconcileNamespaceAppliesEachRuleAndUpdatesStatus(t *testing.T) {
-	rule := &dbaasv1.DbNamespaceBalancingRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      dbaasv1.DbNamespaceBalancingRuleName,
-			Namespace: "payments",
-		},
-		Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
-			Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+		It("adds the finalizer before applying rules", func() {
+			rule := &dbaasv1.DbMicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbMicroserviceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
+						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, _, err := reconcileMicroserviceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(slices.Contains(stored.Finalizers, dbaasv1.DbMicroserviceBalancingRuleFinalizer)).To(BeTrue())
+		})
+
+		It("cleans applied rules and removes the finalizer when deleted", func() {
+			rule := &dbaasv1.DbMicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbMicroserviceBalancingRuleName,
+					Namespace:  businessNS,
+					Finalizers: []string{dbaasv1.DbMicroserviceBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
+						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing", "ledger"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updateMicroserviceStatus(rule, []dbaasv1.DbMicroserviceBalancingRuleAppliedRule{
+				{Type: "mongodb", Microservices: []string{"billing", "ledger"}},
+			})
+			Expect(k8sClient.Delete(ctx, rule)).To(Succeed())
+
+			result, err := fixture.reconciler.ReconcileMicroservice(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rule)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(HaveLen(1))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodPut))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/default/physical_databases/rules/onMicroservices"))
+			var cleanup []aggregatorclient.OnMicroserviceRuleRequest
+			Expect(json.Unmarshal(fixture.calls[0].body, &cleanup)).To(Succeed())
+			Expect(cleanup).To(HaveLen(1))
+			Expect(cleanup[0].Type).To(Equal("mongodb"))
+			Expect(cleanup[0].Rules).To(BeEmpty())
+			Expect(cleanup[0].Microservices).To(Equal([]string{"billing", "ledger"}))
+			Eventually(func() bool {
+				current := &dbaasv1.DbMicroserviceBalancingRule{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), current)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		})
+	})
+
+	Context("namespace singleton", func() {
+		It("applies each namespace rule and updates status", func() {
+			rule := &dbaasv1.DbNamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+						{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, result, err := reconcileNamespaceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(HaveLen(2))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-mongo"))
+			Expect(fixture.calls[1].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-cassandra"))
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(stored.Status.AppliedRules).To(HaveLen(2))
+		})
+
+		It("reports removed applied rules as cleanup-unsupported orphans", func() {
+			rule := &dbaasv1.DbNamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updateNamespaceStatus(rule, []dbaasv1.DbNamespaceBalancingRuleAppliedRule{
 				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 				{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
-			},
-		},
-	}
-	reconciler, calls, closeServer := newBalancingRuleReconcilerFixture(t, "payments", rule)
-	defer closeServer()
+			})
 
-	if _, err := reconciler.ReconcileNamespace(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rule)}); err != nil {
-		t.Fatalf("ReconcileNamespace returned error: %v", err)
-	}
+			stored, _, err := reconcileNamespaceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
 
-	if len(*calls) != 2 {
-		t.Fatalf("expected 2 aggregator calls, got %d", len(*calls))
-	}
-	if (*calls)[0].path != "/api/v3/dbaas/payments/physical_databases/balancing/rules/payments-mongo" {
-		t.Fatalf("unexpected first path: %s", (*calls)[0].path)
-	}
-	if (*calls)[1].path != "/api/v3/dbaas/payments/physical_databases/balancing/rules/payments-cassandra" {
-		t.Fatalf("unexpected second path: %s", (*calls)[1].path)
-	}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(HaveLen(1))
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(stored.Status.AppliedRules).To(HaveLen(2))
+			ready := findCondition(stored.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonNamespaceRuleCleanupUnsupported))
+			Expect(ready.Message).To(ContainSubstring("payments-cassandra"))
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonNamespaceRuleCleanupUnsupported, "payments-cassandra")
+		})
+	})
 
-	stored := &dbaasv1.DbNamespaceBalancingRule{}
-	if err := reconciler.Get(context.Background(), client.ObjectKeyFromObject(rule), stored); err != nil {
-		t.Fatalf("get stored rule: %v", err)
-	}
-	if stored.Status.Phase != dbaasv1.PhaseSucceeded {
-		t.Fatalf("expected succeeded phase, got %q", stored.Status.Phase)
-	}
-	if len(stored.Status.AppliedRules) != 2 {
-		t.Fatalf("expected 2 applied rules, got %#v", stored.Status.AppliedRules)
-	}
-}
+	Context("permanent singleton", func() {
+		It("applies the full permanent rule list and updates status", func() {
+			fixture.reconciler.Ownership.SetOwner("payments", operatorNS)
+			fixture.reconciler.Ownership.SetOwner("orders", operatorNS)
+			fixture.reconciler.Ownership.SetOwner("audit", operatorNS)
+			rule := &dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbPermanentBalancingRuleName,
+					Namespace:  operatorNS,
+					Finalizers: []string{dbaasv1.DbPermanentBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
+					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+						{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments", "orders"}},
+						{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 
-func TestReconcilePermanentAppliesRulesAndUpdatesStatus(t *testing.T) {
-	rule := &dbaasv1.DbPermanentBalancingRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       dbaasv1.DbPermanentBalancingRuleName,
-			Namespace:  "dbaas-system",
-			Finalizers: []string{dbaasv1.DbPermanentBalancingRuleFinalizer},
-		},
-		Spec: dbaasv1.DbPermanentBalancingRuleSpec{
-			Rules: []dbaasv1.DbPermanentBalancingRuleItem{
-				{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments", "orders"}},
-				{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
-			},
-		},
-	}
-	reconciler, calls, closeServer := newBalancingRuleReconcilerFixture(t, "dbaas-system", rule)
-	ownBusinessNamespaces(reconciler.Ownership, "payments", "orders", "audit")
-	defer closeServer()
+			stored, result, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
 
-	if _, err := reconciler.ReconcilePermanent(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rule)}); err != nil {
-		t.Fatalf("ReconcilePermanent returned error: %v", err)
-	}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(HaveLen(1))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodPut))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/balancing/rules/permanent"))
+			var got []aggregatorclient.PermanentBalancingRuleRequest
+			Expect(json.Unmarshal(fixture.calls[0].body, &got)).To(Succeed())
+			Expect(got).To(HaveLen(2))
+			Expect(got[0].DbType).To(Equal("mongodb"))
+			Expect(got[1].DbType).To(Equal("cassandra"))
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(stored.Status.AppliedRules).To(HaveLen(2))
+		})
 
-	if len(*calls) != 1 {
-		t.Fatalf("expected 1 aggregator call, got %d", len(*calls))
-	}
-	if (*calls)[0].method != http.MethodPut || (*calls)[0].path != "/api/v3/dbaas/balancing/rules/permanent" {
-		t.Fatalf("unexpected aggregator call: %#v", (*calls)[0])
-	}
-	var got []aggregatorclient.PermanentBalancingRuleRequest
-	if err := json.Unmarshal((*calls)[0].body, &got); err != nil {
-		t.Fatalf("decode aggregator body: %v", err)
-	}
-	if len(got) != 2 || got[0].DbType != "mongodb" || got[1].DbType != "cassandra" {
-		t.Fatalf("unexpected aggregator body: %#v", got)
-	}
-
-	stored := &dbaasv1.DbPermanentBalancingRule{}
-	if err := reconciler.Get(context.Background(), client.ObjectKeyFromObject(rule), stored); err != nil {
-		t.Fatalf("get stored rule: %v", err)
-	}
-	if stored.Status.Phase != dbaasv1.PhaseSucceeded {
-		t.Fatalf("expected succeeded phase, got %q", stored.Status.Phase)
-	}
-	if len(stored.Status.AppliedRules) != 2 {
-		t.Fatalf("expected 2 applied rules, got %#v", stored.Status.AppliedRules)
-	}
-}
-
-func TestReconcilePermanentCleansRemovedTargetsBeforeApply(t *testing.T) {
-	rule := &dbaasv1.DbPermanentBalancingRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       dbaasv1.DbPermanentBalancingRuleName,
-			Namespace:  "dbaas-system",
-			Finalizers: []string{dbaasv1.DbPermanentBalancingRuleFinalizer},
-		},
-		Spec: dbaasv1.DbPermanentBalancingRuleSpec{
-			Rules: []dbaasv1.DbPermanentBalancingRuleItem{
-				{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
-			},
-		},
-		Status: dbaasv1.DbPermanentBalancingRuleStatus{
-			AppliedRules: []dbaasv1.DbPermanentBalancingRuleAppliedRule{
+		It("deletes removed targets before applying the new desired list", func() {
+			fixture.reconciler.Ownership.SetOwner("green", operatorNS)
+			rule := &dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbPermanentBalancingRuleName,
+					Namespace:  operatorNS,
+					Finalizers: []string{dbaasv1.DbPermanentBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
+					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+						{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updatePermanentStatus(rule, []dbaasv1.DbPermanentBalancingRuleAppliedRule{
 				{DbType: "cassandra", Namespaces: []string{"blue", "green"}},
-			},
-		},
-	}
-	reconciler, calls, closeServer := newBalancingRuleReconcilerFixture(t, "dbaas-system", rule)
-	ownBusinessNamespaces(reconciler.Ownership, "green")
-	defer closeServer()
+			})
 
-	if _, err := reconciler.ReconcilePermanent(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rule)}); err != nil {
-		t.Fatalf("ReconcilePermanent returned error: %v", err)
-	}
+			_, _, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
 
-	if len(*calls) != 2 {
-		t.Fatalf("expected delete then apply calls, got %d", len(*calls))
-	}
-	if (*calls)[0].method != http.MethodDelete {
-		t.Fatalf("expected first call DELETE, got %s", (*calls)[0].method)
-	}
-	var cleanup []aggregatorclient.PermanentBalancingRuleDeleteRequest
-	if err := json.Unmarshal((*calls)[0].body, &cleanup); err != nil {
-		t.Fatalf("decode cleanup body: %v", err)
-	}
-	if len(cleanup) != 1 || len(cleanup[0].Namespaces) != 1 || cleanup[0].Namespaces[0] != "blue" {
-		t.Fatalf("unexpected cleanup body: %#v", cleanup)
-	}
-	if (*calls)[1].method != http.MethodPut {
-		t.Fatalf("expected second call PUT, got %s", (*calls)[1].method)
-	}
-}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(HaveLen(2))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodDelete))
+			var cleanup []aggregatorclient.PermanentBalancingRuleDeleteRequest
+			Expect(json.Unmarshal(fixture.calls[0].body, &cleanup)).To(Succeed())
+			Expect(cleanup).To(HaveLen(1))
+			Expect(cleanup[0].Namespaces).To(Equal([]string{"blue"}))
+			Expect(fixture.calls[1].method).To(Equal(http.MethodPut))
+		})
 
-func TestReconcileMicroserviceAddsFinalizerBeforeApplying(t *testing.T) {
-	rule := &dbaasv1.DbMicroserviceBalancingRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      dbaasv1.DbMicroserviceBalancingRuleName,
-			Namespace: "payments",
-		},
-		Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
-			Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
-				{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
-			},
-		},
-	}
-	reconciler, calls, closeServer := newBalancingRuleReconcilerFixture(t, "payments", rule)
-	defer closeServer()
+		It("waits for dependency when a target namespace is not owned yet", func() {
+			rule := &dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbPermanentBalancingRuleName,
+					Namespace:  operatorNS,
+					Finalizers: []string{dbaasv1.DbPermanentBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
+					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+						{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 
-	if _, err := reconciler.ReconcileMicroservice(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rule)}); err != nil {
-		t.Fatalf("ReconcileMicroservice returned error: %v", err)
-	}
+			stored, result, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
 
-	if len(*calls) != 0 {
-		t.Fatalf("expected no aggregator calls while adding finalizer, got %d", len(*calls))
-	}
-	stored := &dbaasv1.DbMicroserviceBalancingRule{}
-	if err := reconciler.Get(context.Background(), client.ObjectKeyFromObject(rule), stored); err != nil {
-		t.Fatalf("get stored rule: %v", err)
-	}
-	if !containsString(stored.Finalizers, dbaasv1.DbMicroserviceBalancingRuleFinalizer) {
-		t.Fatalf("expected finalizer to be added, got %#v", stored.Finalizers)
-	}
-}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).NotTo(BeZero())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
+			ready := findCondition(stored.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonWaitingForNamespaceBinding))
+			stalled := findCondition(stored.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+		})
 
-func newBalancingRuleReconcilerFixture(
-	t *testing.T,
-	ownedNamespace string,
-	objs ...client.Object,
-) (*BalancingRuleReconciler, *[]balancingRuleCall, func()) {
-	t.Helper()
+		It("deletes applied targets and removes the finalizer when deleted", func() {
+			rule := &dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbPermanentBalancingRuleName,
+					Namespace:  operatorNS,
+					Finalizers: []string{dbaasv1.DbPermanentBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
+					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+						{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"blue", "green"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updatePermanentStatus(rule, []dbaasv1.DbPermanentBalancingRuleAppliedRule{
+				{DbType: "cassandra", Namespaces: []string{"blue", "green"}},
+			})
+			Expect(k8sClient.Delete(ctx, rule)).To(Succeed())
 
-	calls := []balancingRuleCall{}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			result, err := fixture.reconciler.ReconcilePermanent(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rule)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(HaveLen(1))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodDelete))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/balancing/rules/permanent"))
+			var cleanup []aggregatorclient.PermanentBalancingRuleDeleteRequest
+			Expect(json.Unmarshal(fixture.calls[0].body, &cleanup)).To(Succeed())
+			Expect(cleanup).To(HaveLen(1))
+			Expect(cleanup[0].DbType).To(Equal("cassandra"))
+			Expect(cleanup[0].Namespaces).To(Equal([]string{"blue", "green"}))
+			Eventually(func() bool {
+				current := &dbaasv1.DbPermanentBalancingRule{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), current)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		})
+	})
+})
+
+func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleReconcileFixture {
+	GinkgoHelper()
+	fixture := &balancingRuleReconcileFixture{
+		recorder: record.NewFakeRecorder(32),
+	}
+	fixture.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Fatalf("read request body: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		calls = append(calls, balancingRuleCall{
+		fixture.calls = append(fixture.calls, balancingRuleCall{
 			method: r.Method,
 			path:   r.URL.Path,
 			body:   body,
 		})
 		w.WriteHeader(http.StatusOK)
 	}))
-
-	scheme := runtime.NewScheme()
-	if err := dbaasv1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add dbaas scheme: %v", err)
+	resolver := mineOwnershipResolver(ownedNamespace)
+	fixture.reconciler = &BalancingRuleReconciler{
+		Client:      k8sClient,
+		Scheme:      k8sClient.Scheme(),
+		Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(context.Context) (string, error) { return testToken, nil }),
+		Recorder:    fixture.recorder,
+		Ownership:   resolver,
+		MyNamespace: ownedNamespace,
 	}
-	k8sClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(objs...).
-		WithStatusSubresource(
-			&dbaasv1.DbMicroserviceBalancingRule{},
-			&dbaasv1.DbNamespaceBalancingRule{},
-			&dbaasv1.DbPermanentBalancingRule{},
-		).
-		Build()
-	resolver := ownership.NewOwnershipResolver(ownedNamespace, k8sClient)
-	resolver.SetOwner(ownedNamespace, ownedNamespace)
-
-	return &BalancingRuleReconciler{
-			Client:      k8sClient,
-			Scheme:      scheme,
-			Aggregator:  aggregatorclient.NewClientWithTokenFunc(server.URL, func(context.Context) (string, error) { return "token", nil }),
-			Recorder:    record.NewFakeRecorder(32),
-			Ownership:   resolver,
-			MyNamespace: ownedNamespace,
-		}, &calls, func() {
-			server.Close()
-		}
+	return fixture
 }
 
-func ownBusinessNamespaces(resolver *ownership.OwnershipResolver, namespaces ...string) {
-	for _, namespace := range namespaces {
-		resolver.SetOwner(namespace, "dbaas-system")
+func (f *balancingRuleReconcileFixture) close() {
+	if f.server != nil {
+		f.server.Close()
 	}
+	if f.recorder != nil {
+		drainRecordedEvents(f.recorder.Events)
+	}
+}
+
+func reconcileMicroserviceAndFetch(
+	reconciler *BalancingRuleReconciler,
+	key types.NamespacedName,
+) (*dbaasv1.DbMicroserviceBalancingRule, reconcile.Result, error) {
+	GinkgoHelper()
+	Eventually(func() error {
+		return k8sClient.Get(ctx, key, &dbaasv1.DbMicroserviceBalancingRule{})
+	}).Should(Succeed())
+	result, err := reconciler.ReconcileMicroservice(ctx, reconcile.Request{NamespacedName: key})
+	obj := &dbaasv1.DbMicroserviceBalancingRule{}
+	Expect(k8sClient.Get(ctx, key, obj)).To(Succeed())
+	return obj, result, err
+}
+
+func reconcileNamespaceAndFetch(
+	reconciler *BalancingRuleReconciler,
+	key types.NamespacedName,
+) (*dbaasv1.DbNamespaceBalancingRule, reconcile.Result, error) {
+	GinkgoHelper()
+	Eventually(func() error {
+		return k8sClient.Get(ctx, key, &dbaasv1.DbNamespaceBalancingRule{})
+	}).Should(Succeed())
+	result, err := reconciler.ReconcileNamespace(ctx, reconcile.Request{NamespacedName: key})
+	obj := &dbaasv1.DbNamespaceBalancingRule{}
+	Expect(k8sClient.Get(ctx, key, obj)).To(Succeed())
+	return obj, result, err
+}
+
+func reconcilePermanentAndFetch(
+	reconciler *BalancingRuleReconciler,
+	key types.NamespacedName,
+) (*dbaasv1.DbPermanentBalancingRule, reconcile.Result, error) {
+	GinkgoHelper()
+	Eventually(func() error {
+		return k8sClient.Get(ctx, key, &dbaasv1.DbPermanentBalancingRule{})
+	}).Should(Succeed())
+	result, err := reconciler.ReconcilePermanent(ctx, reconcile.Request{NamespacedName: key})
+	obj := &dbaasv1.DbPermanentBalancingRule{}
+	Expect(k8sClient.Get(ctx, key, obj)).To(Succeed())
+	return obj, result, err
+}
+
+func updateMicroserviceStatus(rule *dbaasv1.DbMicroserviceBalancingRule, applied []dbaasv1.DbMicroserviceBalancingRuleAppliedRule) {
+	GinkgoHelper()
+	stored := &dbaasv1.DbMicroserviceBalancingRule{}
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), stored)).To(Succeed())
+	stored.Status.AppliedRules = applied
+	Expect(k8sClient.Status().Update(ctx, stored)).To(Succeed())
+}
+
+func updateNamespaceStatus(rule *dbaasv1.DbNamespaceBalancingRule, applied []dbaasv1.DbNamespaceBalancingRuleAppliedRule) {
+	GinkgoHelper()
+	stored := &dbaasv1.DbNamespaceBalancingRule{}
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), stored)).To(Succeed())
+	stored.Status.AppliedRules = applied
+	Expect(k8sClient.Status().Update(ctx, stored)).To(Succeed())
+}
+
+func updatePermanentStatus(rule *dbaasv1.DbPermanentBalancingRule, applied []dbaasv1.DbPermanentBalancingRuleAppliedRule) {
+	GinkgoHelper()
+	stored := &dbaasv1.DbPermanentBalancingRule{}
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), stored)).To(Succeed())
+	stored.Status.AppliedRules = applied
+	Expect(k8sClient.Status().Update(ctx, stored)).To(Succeed())
 }

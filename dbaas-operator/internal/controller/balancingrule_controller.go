@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -139,7 +140,7 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 	rule.Status.Phase = dbaasv1.PhaseProcessing
 	rule.Status.LastRequestID = requestID
 
-	if msg, err := r.validateMicroserviceRule(ctx, rule); err != nil {
+	if msg, err := r.validateMicroserviceRule(rule); err != nil {
 		return ctrl.Result{}, err
 	} else if msg != "" {
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
@@ -220,6 +221,20 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		}
 	}
 
+	removedAppliedRules := removedNamespaceAppliedRules(rule.Status.AppliedRules, rule.Spec.Rules)
+	if len(removedAppliedRules) > 0 {
+		removedNames := namespaceAppliedRuleNames(removedAppliedRules)
+		msg := fmt.Sprintf("namespace balancing rules removed from spec cannot be deleted from dbaas-aggregator because the aggregator has no individual namespace rule delete API; orphaned rule names: %s", strings.Join(removedNames, ", "))
+		log.InfoC(ctx, "DbNamespaceBalancingRule has orphaned aggregator rules namespace=%s name=%s orphanedRules=%v requestId=%s",
+			rule.Namespace, rule.Name, removedNames, requestID)
+		markPermanentFailure(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation,
+			EventReasonNamespaceRuleCleanupUnsupported, msg)
+		rule.Status.AppliedRules = append(appliedNamespaceRulesFromSpec(rule.Spec.Rules), removedAppliedRules...)
+		r.Recorder.Eventf(rule, corev1.EventTypeWarning, EventReasonNamespaceRuleCleanupUnsupported,
+			"%s (requestId=%s)", msg, requestID)
+		return ctrl.Result{}, nil
+	}
+
 	markSucceeded(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, EventReasonBalancingRuleApplied)
 	rule.Status.AppliedRules = appliedNamespaceRulesFromSpec(rule.Spec.Rules)
 	log.InfoC(ctx, "DbNamespaceBalancingRule applied to dbaas-aggregator namespace=%s name=%s rules=%d requestId=%s",
@@ -276,7 +291,7 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	rule.Status.Phase = dbaasv1.PhaseProcessing
 	rule.Status.LastRequestID = requestID
 
-	if msg, err := r.validatePermanentRule(ctx, rule); err != nil {
+	if msg, err := r.validatePermanentRule(rule); err != nil {
 		return ctrl.Result{}, err
 	} else if msg != "" {
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
@@ -414,7 +429,7 @@ func (r *BalancingRuleReconciler) cleanupSupersededMicroserviceRules(
 		if applied.Type == "" || len(applied.Microservices) == 0 {
 			continue
 		}
-		removed := differenceStrings(applied.Microservices, desired[lower(applied.Type)])
+		removed := differenceStrings(applied.Microservices, desired[strings.ToLower(applied.Type)])
 		if len(removed) == 0 {
 			continue
 		}
@@ -434,7 +449,7 @@ func (r *BalancingRuleReconciler) cleanupSupersededPermanentRules(
 		if applied.DbType == "" || len(applied.Namespaces) == 0 {
 			continue
 		}
-		removed := differenceStrings(applied.Namespaces, desired[lower(applied.DbType)])
+		removed := differenceStrings(applied.Namespaces, desired[strings.ToLower(applied.DbType)])
 		if len(removed) == 0 {
 			continue
 		}
@@ -476,7 +491,7 @@ func (r *BalancingRuleReconciler) deletePermanentTargets(
 	return err
 }
 
-func (r *BalancingRuleReconciler) validateMicroserviceRule(ctx context.Context, rule *dbaasv1.DbMicroserviceBalancingRule) (string, error) {
+func (r *BalancingRuleReconciler) validateMicroserviceRule(rule *dbaasv1.DbMicroserviceBalancingRule) (string, error) {
 	if rule.Name != dbaasv1.DbMicroserviceBalancingRuleName {
 		return fmt.Sprintf("metadata.name must be %q", dbaasv1.DbMicroserviceBalancingRuleName), nil
 	}
@@ -498,7 +513,7 @@ func (r *BalancingRuleReconciler) validateMicroserviceRule(ctx context.Context, 
 			if strings.TrimSpace(microservice) == "" {
 				return fmt.Sprintf("spec.rules[%d].microservices[%d] must not be blank", i, j), nil
 			}
-			key := lower(item.Type) + "\x00" + microservice
+			key := strings.ToLower(item.Type) + "\x00" + microservice
 			if _, ok := seen[key]; ok {
 				return fmt.Sprintf("spec.rules contains duplicate microservice %q for type %q", microservice, item.Type), nil
 			}
@@ -521,7 +536,7 @@ func (r *BalancingRuleReconciler) validateNamespaceRule(ctx context.Context, rul
 		if strings.TrimSpace(item.Name) == "" {
 			return fmt.Sprintf("spec.rules[%d].name must not be blank", i), nil
 		}
-		nameKey := lower(item.Name)
+		nameKey := strings.ToLower(item.Name)
 		if _, ok := names[nameKey]; ok {
 			return fmt.Sprintf("spec.rules contains duplicate name %q", item.Name), nil
 		}
@@ -532,7 +547,7 @@ func (r *BalancingRuleReconciler) validateNamespaceRule(ctx context.Context, rul
 		if strings.TrimSpace(item.PhysicalDatabaseID) == "" {
 			return fmt.Sprintf("spec.rules[%d].physicalDatabaseId must not be blank", i), nil
 		}
-		typeKey := lower(item.Type)
+		typeKey := strings.ToLower(item.Type)
 		if typeOrders[typeKey] == nil {
 			typeOrders[typeKey] = map[int64]struct{}{}
 		}
@@ -542,7 +557,7 @@ func (r *BalancingRuleReconciler) validateNamespaceRule(ctx context.Context, rul
 		typeOrders[typeKey][item.Order] = struct{}{}
 	}
 	if r.Client != nil {
-		if msg, err := r.validateNamespaceRuleGlobalConflicts(ctx, rule, names, typeOrders); msg != "" || err != nil {
+		if msg, err := r.validateNamespaceRuleGlobalConflicts(ctx, rule, names); msg != "" || err != nil {
 			return msg, err
 		}
 	}
@@ -553,33 +568,33 @@ func (r *BalancingRuleReconciler) validateNamespaceRuleGlobalConflicts(
 	ctx context.Context,
 	rule *dbaasv1.DbNamespaceBalancingRule,
 	names map[string]struct{},
-	typeOrders map[string]map[int64]struct{},
 ) (string, error) {
 	list := &dbaasv1.DbNamespaceBalancingRuleList{}
 	if err := r.List(ctx, list); err != nil {
 		return "", err
 	}
 
+	// Best-effort pre-check only. Aggregator-side validation remains the
+	// authority because another controller can race this List before either
+	// rule is applied. We check names here because namespace rules are keyed by
+	// name in the aggregator and duplicate names can silently clobber each
+	// other; global (type, order) conflicts are enforced by the aggregator's
+	// 409 response and mapped to InvalidConfiguration by handleAggregatorError.
 	for i := range list.Items {
 		other := &list.Items[i]
 		if other.Namespace == rule.Namespace && other.Name == rule.Name {
 			continue
 		}
 		for _, item := range other.Spec.Rules {
-			if _, ok := names[lower(item.Name)]; ok {
+			if _, ok := names[strings.ToLower(item.Name)]; ok {
 				return fmt.Sprintf("spec.rules contains name %q already managed by DbNamespaceBalancingRule %q/%q", item.Name, other.Namespace, other.Name), nil
-			}
-			if orders := typeOrders[lower(item.Type)]; orders != nil {
-				if _, ok := orders[item.Order]; ok {
-					return fmt.Sprintf("spec.rules contains order %d for type %q already managed by DbNamespaceBalancingRule %q/%q", item.Order, item.Type, other.Namespace, other.Name), nil
-				}
 			}
 		}
 	}
 	return "", nil
 }
 
-func (r *BalancingRuleReconciler) validatePermanentRule(ctx context.Context, rule *dbaasv1.DbPermanentBalancingRule) (string, error) {
+func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.DbPermanentBalancingRule) (string, error) {
 	if rule.Name != dbaasv1.DbPermanentBalancingRuleName {
 		return fmt.Sprintf("metadata.name must be %q", dbaasv1.DbPermanentBalancingRuleName), nil
 	}
@@ -601,7 +616,7 @@ func (r *BalancingRuleReconciler) validatePermanentRule(ctx context.Context, rul
 			if strings.TrimSpace(namespace) == "" {
 				return fmt.Sprintf("spec.rules[%d].namespaces[%d] must not be blank", i, j), nil
 			}
-			key := lower(item.DbType) + "\x00" + namespace
+			key := strings.ToLower(item.DbType) + "\x00" + namespace
 			if _, ok := seen[key]; ok {
 				return fmt.Sprintf("spec.rules contains duplicate namespace %q for dbType %q", namespace, item.DbType), nil
 			}
@@ -730,15 +745,6 @@ func permanentRuleTriggerKey(namespace, name string) string {
 	return "permanent/" + namespace + "/" + name
 }
 
-func containsString(values []string, value string) bool {
-	for _, current := range values {
-		if current == value {
-			return true
-		}
-	}
-	return false
-}
-
 func differenceStrings(previous, current []string) []string {
 	if len(previous) == 0 {
 		return nil
@@ -754,10 +760,6 @@ func differenceStrings(previous, current []string) []string {
 		}
 	}
 	return removed
-}
-
-func lower(value string) string {
-	return strings.ToLower(value)
 }
 
 func microserviceRequestsFromSpec(
@@ -836,6 +838,34 @@ func appliedNamespaceRulesFromSpec(
 	return applied
 }
 
+func removedNamespaceAppliedRules(
+	applied []dbaasv1.DbNamespaceBalancingRuleAppliedRule,
+	desired []dbaasv1.DbNamespaceBalancingRuleItem,
+) []dbaasv1.DbNamespaceBalancingRuleAppliedRule {
+	if len(applied) == 0 {
+		return nil
+	}
+	desiredNames := make(map[string]struct{}, len(desired))
+	for _, rule := range desired {
+		desiredNames[rule.Name] = struct{}{}
+	}
+	removed := make([]dbaasv1.DbNamespaceBalancingRuleAppliedRule, 0)
+	for _, rule := range applied {
+		if _, ok := desiredNames[rule.Name]; !ok {
+			removed = append(removed, rule)
+		}
+	}
+	return removed
+}
+
+func namespaceAppliedRuleNames(rules []dbaasv1.DbNamespaceBalancingRuleAppliedRule) []string {
+	names := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		names = append(names, rule.Name)
+	}
+	return names
+}
+
 func appliedPermanentRulesFromSpec(
 	rules []dbaasv1.DbPermanentBalancingRuleItem,
 ) []dbaasv1.DbPermanentBalancingRuleAppliedRule {
@@ -852,7 +882,7 @@ func appliedPermanentRulesFromSpec(
 func desiredMicroserviceByType(rules []dbaasv1.DbMicroserviceBalancingRuleItem) map[string][]string {
 	desired := make(map[string][]string, len(rules))
 	for _, rule := range rules {
-		key := lower(rule.Type)
+		key := strings.ToLower(rule.Type)
 		desired[key] = append(desired[key], rule.Microservices...)
 	}
 	return desired
@@ -861,7 +891,7 @@ func desiredMicroserviceByType(rules []dbaasv1.DbMicroserviceBalancingRuleItem) 
 func desiredPermanentByDbType(rules []dbaasv1.DbPermanentBalancingRuleItem) map[string][]string {
 	desired := make(map[string][]string, len(rules))
 	for _, rule := range rules {
-		key := lower(rule.DbType)
+		key := strings.ToLower(rule.DbType)
 		desired[key] = append(desired[key], rule.Namespaces...)
 	}
 	return desired
@@ -869,7 +899,7 @@ func desiredPermanentByDbType(rules []dbaasv1.DbPermanentBalancingRuleItem) map[
 
 func permanentRuleTargetsNamespace(rule *dbaasv1.DbPermanentBalancingRule, namespace string) bool {
 	for _, item := range rule.Spec.Rules {
-		if containsString(item.Namespaces, namespace) {
+		if slices.Contains(item.Namespaces, namespace) {
 			return true
 		}
 	}
