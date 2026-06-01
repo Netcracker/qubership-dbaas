@@ -115,7 +115,11 @@ func reconcileAndFetchObject[T client.Object](
 func deleteIfExists(obj client.Object) {
 	err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 	if err == nil {
-		Expect(k8sClient.Delete(ctx, obj)).To(Succeed())
+		if len(obj.GetFinalizers()) > 0 {
+			obj.SetFinalizers(nil)
+			Expect(k8sClient.Update(ctx, obj)).To(Succeed())
+		}
+		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).To(Succeed())
 	}
 }
 

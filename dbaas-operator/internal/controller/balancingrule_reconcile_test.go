@@ -21,6 +21,7 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 type balancingRuleCall struct {
@@ -387,7 +388,8 @@ func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleRecon
 		})
 		w.WriteHeader(http.StatusOK)
 	}))
-	resolver := mineOwnershipResolver(ownedNamespace)
+	resolver := ownership.NewOwnershipResolver(ownedNamespace, k8sClient)
+	resolver.SetOwner(ownedNamespace, ownedNamespace)
 	fixture.reconciler = &BalancingRuleReconciler{
 		Client:      k8sClient,
 		Scheme:      k8sClient.Scheme(),
