@@ -503,6 +503,38 @@ class BalancingRulesV3IT extends AbstractIT {
     }
 
     @Test
+    void testDeleteNamespaceBalancingRule() throws IOException {
+        Map<String, PhysicalDatabaseRegistrationResponseDTOV3> databases = helperV3.getRegisteredPhysicalDatabases(POSTGRES_TYPE, helperV3.getClusterDbaAuthorization(), 200).getIdentified();
+        Optional<String> physDbIdOptional = databases.keySet().stream().findFirst();
+        assumeTrue(physDbIdOptional.isPresent());
+        String physDbId = physDbIdOptional.get();
+        String ruleName = "test-rule-delete-" + UUID.randomUUID();
+        RuleRegistrationRequest ruleRegistrationRequest = new RuleRegistrationRequest(null, POSTGRES_TYPE, new RuleBody(perNamespace, Map.of(PER_NAMESPACE, Map.of(PHYSICAL_DATABASE_IDENTIFIER, physDbId))));
+
+        try {
+            Request createRequest = helperV3.createRequest(String.format("api/v3/dbaas/%s/physical_databases/balancing/rules/%s", TEST_NAMESPACE, ruleName), helperV3.getClusterDbaAuthorization(), ruleRegistrationRequest, "PUT");
+            helperV3.executeRequest(createRequest, null, 201);
+
+            Request missingRuleDeleteRequest = helperV3.createRequest(String.format("api/v3/dbaas/%s/physical_databases/balancing/rules/%s", TEST_NAMESPACE, ruleName + "-missing"), helperV3.getClusterDbaAuthorization(), null, "DELETE");
+            try (Response response = okHttpClient.newCall(missingRuleDeleteRequest).execute()) {
+                assertEquals(404, response.code());
+            }
+
+            assertNamespaceRuleApplied(physDbId);
+
+            Request deleteRequest = helperV3.createRequest(String.format("api/v3/dbaas/%s/physical_databases/balancing/rules/%s", TEST_NAMESPACE, ruleName), helperV3.getClusterDbaAuthorization(), null, "DELETE");
+            helperV3.executeRequest(deleteRequest, null, 200);
+
+            assertNamespaceRuleNotApplied();
+        } finally {
+            Request cleanupRequest = helperV3.createRequest(String.format("api/v3/dbaas/%s/physical_databases/balancing/rules/%s", TEST_NAMESPACE, ruleName), helperV3.getClusterDbaAuthorization(), null, "DELETE");
+            try (Response ignored = okHttpClient.newCall(cleanupRequest).execute()) {
+                log.info("Namespace balancing rule cleanup response code: {}", ignored.code());
+            }
+        }
+    }
+
+    @Test
     void testDebugBalancingRulesUseDefaultRule() {
         boolean isDefaultDatabaseDisabled = helperV3.isDefaultDatabaseDisabled(pod);
 
@@ -522,6 +554,32 @@ class BalancingRulesV3IT extends AbstractIT {
         } else {
             assertEquals(DEFAULT_DATABASE_RULE_INFO, pgDebugData.getAppliedRuleInfo());
         }
+    }
+
+    private void assertNamespaceRuleApplied(String physDbId) {
+        DebugRulesDbTypeData pgDebugData = debugRulesForTestMicroservice().get(POSTGRES_TYPE);
+        assertNotNull(pgDebugData);
+        assertEquals(NAMESPACE_RULE_INFO, pgDebugData.getAppliedRuleInfo());
+        assertEquals(physDbId, pgDebugData.getPhysicalDbIdentifier());
+    }
+
+    private void assertNamespaceRuleNotApplied() {
+        DebugRulesDbTypeData pgDebugData = debugRulesForTestMicroservice().get(POSTGRES_TYPE);
+        assertNotNull(pgDebugData);
+        assertNotEquals(NAMESPACE_RULE_INFO, pgDebugData.getAppliedRuleInfo());
+    }
+
+    private Map<String, DebugRulesDbTypeData> debugRulesForTestMicroservice() {
+        DebugRulesRequest debugRulesRequest = new DebugRulesRequest();
+        debugRulesRequest.setRules(Collections.emptyList());
+        debugRulesRequest.setMicroservices(Collections.singletonList(TEST_MICROSERVICE_NAME));
+        Request request = helperV3.createRequest(String.format("api/v3/dbaas/%s/physical_databases/rules/debug", TEST_NAMESPACE), helperV3.getClusterDbaAuthorization(), debugRulesRequest, "POST");
+        Map result = helperV3.executeRequest(request, Map.class, 200);
+        Map<String, Map<String, DebugRulesDbTypeData>> debugResponseData = helperV3.objectMapper.convertValue(result, new TypeReference<>() {
+        });
+        Map<String, DebugRulesDbTypeData> testMicroserviceData = debugResponseData.get(TEST_MICROSERVICE_NAME);
+        assertNotNull(testMicroserviceData);
+        return testMicroserviceData;
     }
 
     public Response createOnMicroserviceRule(List<String> microservices, String dbType, List<RuleOnMicroservice> rules) throws IOException {
