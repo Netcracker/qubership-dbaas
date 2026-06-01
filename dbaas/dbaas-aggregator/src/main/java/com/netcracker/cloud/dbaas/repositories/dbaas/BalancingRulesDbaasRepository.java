@@ -28,6 +28,8 @@ public interface BalancingRulesDbaasRepository {
 
     void deleteAll(List<PerNamespaceRule> perNamespaceRule);
 
+    void delete(PerNamespaceRule perNamespaceRule);
+
     List<PerMicroserviceRule> findPerMicroserviceByNamespace(String namespace);
 
     List<PerMicroserviceRule> findPerMicroserviceByNamespaceWithMaxGeneration(String namespace);
