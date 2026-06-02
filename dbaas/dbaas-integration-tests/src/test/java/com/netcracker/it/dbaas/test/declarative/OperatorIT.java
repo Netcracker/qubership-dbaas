@@ -1143,6 +1143,8 @@ public class OperatorIT extends AbstractIT {
                     var secret = getSecret(secretName);
                     assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
+                    // userRole is empty in this CR → descriptor must omit it.
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "");
                 }
 
                 @Test
@@ -1281,6 +1283,8 @@ public class OperatorIT extends AbstractIT {
                     waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
                     var secret = getSecret(secretName);
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
+                    // userRole "admin" is requested in this CR → descriptor must carry it.
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "admin");
                 }
 
             }
