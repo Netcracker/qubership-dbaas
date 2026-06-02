@@ -12,6 +12,7 @@ import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
+import com.netcracker.cloud.dbaas.enums.OperatorEventType;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import io.quarkus.scheduler.Scheduled;
@@ -75,6 +76,7 @@ public class DbBackupV2Service {
     private final BgNamespaceRepository bgNamespaceRepository;
     private final LockProvider lockProvider;
     private final DeletionService deletionService;
+    private final OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     private final Duration retryDelay;
     private final int retryAttempts;
@@ -92,6 +94,7 @@ public class DbBackupV2Service {
                              BgNamespaceRepository bgNamespaceRepository,
                              LockProvider lockProvider,
                              DeletionService deletionService,
+                             OperatorEventOutboxWriter operatorEventOutboxWriter,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.attempts") int retryAttempts,
                              @ConfigProperty(name = "dbaas.backup-restore.check.attempts") int retryCount
@@ -107,6 +110,7 @@ public class DbBackupV2Service {
         this.bgNamespaceRepository = bgNamespaceRepository;
         this.lockProvider = lockProvider;
         this.deletionService = deletionService;
+        this.operatorEventOutboxWriter = operatorEventOutboxWriter;
         this.retryDelay = retryDelay;
         this.retryAttempts = retryAttempts;
         this.retryCount = retryCount;
@@ -1416,6 +1420,18 @@ public class DbBackupV2Service {
                 newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
                 encryption.encryptPassword(newDatabase);
                 databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
+                for (DatabaseRegistry registry : newDatabase.getDatabaseRegistry()) {
+                    for (EnsuredUser eu : ensuredUsers) {
+                        String euRole = (String) eu.getConnectionProperties().get(ROLE);
+                        if (euRole != null) {
+                            operatorEventOutboxWriter.enqueue(
+                                    OperatorEventType.RESTORE_COMPLETED,
+                                    registry.getClassifier(),
+                                    type,
+                                    euRole);
+                        }
+                    }
+                }
                 log.info("Based on restoreDatabase={}, database with id={} created", restoreDatabase.getName(), newDatabase.getId());
             });
         });

@@ -83,6 +83,9 @@ class DBaaServiceTest {
     @Mock
     private ProcessConnectionPropertiesService connectionPropertiesService;
 
+    @Mock
+    private OperatorEventOutboxWriter operatorEventOutboxWriter;
+
 
     private static final String NAMESPACE = "test-namespace";
     private static final String PG_TYPE = "postgresql";

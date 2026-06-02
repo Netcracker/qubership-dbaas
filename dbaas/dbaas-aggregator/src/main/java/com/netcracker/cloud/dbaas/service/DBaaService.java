@@ -9,6 +9,7 @@ import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.enums.OperatorEventType;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -57,6 +58,8 @@ public class DBaaService {
     UserService userService;
     @Inject
     ProcessConnectionPropertiesService connectionPropertiesService;
+    @Inject
+    OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     @PostConstruct
     public void init() {
@@ -342,6 +345,11 @@ public class DBaaService {
                     response.putSuccessEntity(databaseRegistry.getClassifier(), new HashMap<>(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), (String) cp.get(ROLE))));
                     encryption.encryptPassword(database, (String) cp.get(ROLE));
                     logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveInternalDatabase(databaseRegistry);
+                    operatorEventOutboxWriter.enqueue(
+                            OperatorEventType.ROTATION_OCCURRED,
+                            databaseRegistry.getClassifier(),
+                            databaseRegistry.getType(),
+                            (String) cp.get(ROLE));
                     log.info("The password was changed successfully from database with classifier {} and type {} and role {}", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE));
                     sum += 1L;
                 } catch (WebApplicationException e) {
