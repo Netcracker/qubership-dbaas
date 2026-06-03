@@ -210,13 +210,10 @@ public class MigrationService {
             } else {
                 db.setResources(new ArrayList<>());
             }
+
             if (isUserCreation) {
                 recreateUserResources(dbName, db);
-            } else {
-                updateAdapterMetadata(dbName, db);
             }
-
-            markDatabaseAsCreated(db);
 
             boolean hasDatabaseKind = db.getResources().stream().anyMatch(res -> DbResource.DATABASE_KIND.equals(res.getKind()));
             if (!hasDatabaseKind) {
@@ -231,6 +228,14 @@ public class MigrationService {
                         "database not existing in dbaas");
                 log.error("Got db {} without password and this db doesn't exist in the database of DBAAS", requestsWithAdapterId);
                 return;
+            }
+
+            if (isProcessExternalAsInternal) {
+                if (!isUserCreation) {
+                    updateAdapterMetadata(dbName, db);
+                }
+
+                markDatabaseAsCreated(db);
             }
 
             dBaaService.encryptAndSaveDatabaseEntity(db);
