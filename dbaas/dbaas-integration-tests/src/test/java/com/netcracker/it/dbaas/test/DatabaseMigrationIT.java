@@ -1,36 +1,26 @@
 package com.netcracker.it.dbaas.test;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.mongodb.MongoClient;
-import com.mongodb.client.MongoDatabase;
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.response.MigrationResult;
 import com.netcracker.it.dbaas.exceptions.CannotConnect;
 import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import org.bson.Document;
 import org.junit.jupiter.api.*;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
-import java.net.URL;
-import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.*;
 import java.util.function.Consumer;
 
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
 public class DatabaseMigrationIT extends AbstractIT {
