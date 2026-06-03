@@ -441,14 +441,17 @@ public class MigrationServiceTest {
         final List<RegisterDatabaseRequestV3> registerDatabaseRequestList = Collections.singletonList(testRequest);
 
         mockConnectionPropertiesResponse(dBaaService);
+
         final RegisterDatabaseResponseBuilder registerDatabaseResponseBuilder = migrationService.registerDatabases(registerDatabaseRequestList, API_VERSION.V1, false);
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(physicalDatabasesService, times(1)).getPhysicalDatabaseByAdapterHost(TEST_NAMESPACE);
-        verify(physicalDatabasesService, times(1)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
         verify(physicalDatabasesService, times(1)).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
+        
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
     }
 
