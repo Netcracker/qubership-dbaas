@@ -15,6 +15,7 @@
         <skipIT>true</skipIT>
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
         <logback.version>1.5.32</logback.version>
+        <lombok.version>1.18.46</lombok.version>
         <junit.version>6.0.3</junit.version>
         <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
@@ -26,6 +27,12 @@
             <version>8.9.1</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>io.undertow</groupId>
             <artifactId>undertow-core</artifactId>
