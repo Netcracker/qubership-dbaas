@@ -1,11 +1,12 @@
 package com.netcracker.it.dbaas.test.backup;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtension;
-import com.netcracker.it.dbaas.entity.DatabaseV3;
-import com.netcracker.it.dbaas.entity.LinkDatabasesRequest;
+import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v1.*;
 import com.netcracker.it.dbaas.entity.backup.v3.Status;
 import com.netcracker.it.dbaas.entity.config.DatabaseDeclaration;
+import com.netcracker.it.dbaas.entity.response.MigrationResult;
 import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import lombok.extern.slf4j.Slf4j;
@@ -15,9 +16,12 @@ import org.bson.Document;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.text.MessageFormat;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -38,6 +42,9 @@ class BackupV3IT extends AbstractIT {
     private static BackupHelperV1 backupHelperV1;
     private static DeclarativeConfigHelper declarativeHelper;
     private static BGHelper bgHelper;
+
+    private static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";
+    private static final String MIGRATE_WITH_USER_CREATION_API = BASE_MIGRATE_API + "/with-user-creation";
 
     @Override
     protected void closePortForwardAfterTest() {
@@ -196,6 +203,16 @@ class BackupV3IT extends AbstractIT {
             @Test
             void testBackupRestoreV1_backupRestore() throws IOException {
                 BackupV3IT.this.testBackupRestoreToSameNamespace(POSTGRES_TYPE);
+            }
+
+            @Test
+            void testMigratedExternalToInternalDatabaseBackupRestoreWithUserCreation() throws IOException {
+                testMigratedExternalToInternalDatabaseBackupRestore(true);
+            }
+
+            @Test
+            void testMigratedExternalToInternalDatabaseBackupRestoreWithoutUserCreation() throws IOException {
+                testMigratedExternalToInternalDatabaseBackupRestore(false);
             }
         }
 
@@ -393,6 +410,232 @@ class BackupV3IT extends AbstractIT {
                 BackupV3IT.this.testRestoreDeletedBackup(databaseType);
             }
         }
+    }
+
+    private DatabaseResponse prepareMigratedExternalToInternalPostgresDatabase(String sourceNamespace,
+                                                                               String microserviceName,
+                                                                               boolean withUserCreation) throws IOException {
+        Map.Entry<String, PhysicalDatabaseRegistrationResponseDTOV3> physDbEntry = helperV3.getGlobalPhysicalDbEntry(POSTGRES_TYPE);
+        String physicalId = physDbEntry.getKey();
+        PhysicalDatabaseRegistrationResponseDTOV3 physDb = physDbEntry.getValue();
+
+        Map adapterResponse = helperV3.createDbViaAdapter(POSTGRES_TYPE, microserviceName, sourceNamespace);
+
+        helperV3.removePgMetadata(adapterResponse);
+
+        String dbName = adapterResponse.get("name").toString();
+        List<Map<String, Object>> connectionProperties = (List<Map<String, Object>>) adapterResponse.get(CONNECTION_PROPERTIES);
+
+        Map<String, Object> classifier = new ClassifierBuilder().ms(microserviceName).ns(sourceNamespace).build();
+
+        ExternalDatabaseRequestV3 externalRegistrationRequest = ExternalDatabaseRequestV3
+                .builder()
+                .classifier(classifier)
+                .connectionProperties(connectionProperties)
+                .dbName(dbName)
+                .originService(microserviceName)
+                .userRole(Role.ADMIN.getRoleValue())
+                .type(POSTGRES_TYPE)
+                .build();
+
+        Request externalRegistartionRequest = helperV3.createRequest(String.format(EXTERNALLY_MANAGEABLE_V3, sourceNamespace),
+                helperV3.getClusterDbaAuthorization(), externalRegistrationRequest, HttpMethod.PUT.name());
+
+        helperV3.executeRequest(externalRegistartionRequest, ExternalDatabaseResponseV3.class, HttpStatus.CREATED.value());
+
+        migrateExternalPostgresDatabaseAsInternal(
+                classifier,
+                adapterResponse,
+                dbName,
+                physicalId,
+                physDb,
+                withUserCreation,
+                sourceNamespace
+        );
+
+        DatabaseResponse migratedDb = helperV3.getDatabaseByClassifierAsPOJO(
+                helperV3.getClusterDbaAuthorization(),
+                classifier,
+                sourceNamespace,
+                POSTGRES_TYPE,
+                HttpStatus.OK.value()
+        );
+
+        assertFalse(migratedDb.isExternallyManageable(),
+                "Migrated database should not remain externally manageable");
+        assertEquals(dbName, migratedDb.getName(),
+                "Migrated database should have the same name as the database created via adapter");
+        assertEquals(POSTGRES_TYPE, migratedDb.getType(),
+                "Migrated database should have PostgreSQL type");
+        assertEquals(sourceNamespace, migratedDb.getNamespace(),
+                "Migrated database should belong to the source namespace");
+
+        return migratedDb;
+    }
+
+    private void migrateExternalPostgresDatabaseAsInternal(Map<String, Object> classifier,
+                                                           Map adapterResponse,
+                                                           String dbName,
+                                                           String physicalId,
+                                                           PhysicalDatabaseRegistrationResponseDTOV3 physDb,
+                                                           boolean withUserCreation,
+                                                           String sourceNamespace) {
+        Object requestBody;
+        String apiEndpoint;
+
+        if (withUserCreation) {
+            apiEndpoint = MIGRATE_WITH_USER_CREATION_API;
+
+            requestBody = new RegisterDatabaseWithUserCreationRequest(
+                    classifier,
+                    POSTGRES_TYPE,
+                    dbName,
+                    physicalId,
+                    null
+            );
+        } else {
+            apiEndpoint = BASE_MIGRATE_API;
+
+            List<ConnectionProperties> connProps = helperV3.objectMapper
+                    .convertValue(adapterResponse.get(CONNECTION_PROPERTIES), new TypeReference<>() {
+                    });
+
+            List<DbResource> resources = helperV3.objectMapper
+                    .convertValue(adapterResponse.get("resources"), new TypeReference<>() {
+                    });
+
+            requestBody = new RegisterDatabaseRequest(
+                    classifier,
+                    connProps,
+                    resources,
+                    sourceNamespace,
+                    physDb.getAdapterId(),
+                    POSTGRES_TYPE,
+                    dbName,
+                    physicalId,
+                    null
+            );
+        }
+
+        Request migrationRequest = helperV3.createRequest(
+                apiEndpoint,
+                helperV3.getClusterDbaAuthorization(),
+                Collections.singletonList(requestBody),
+                HttpMethod.PUT.name()
+        );
+
+        Map<String, MigrationResult> resultMap = sendMigrationRequest(
+                migrationRequest,
+                HttpStatus.OK.value()
+        );
+
+        MigrationResult migrationResult = resultMap.get(POSTGRES_TYPE);
+
+        assertNotNull(migrationResult,
+                "Migration result for PostgreSQL should be present");
+
+        assertEquals(dbName, migrationResult.getMigrated().getFirst(),
+                "Migration result should contain migrated database name");
+
+        assertEquals(1, migrationResult.getMigratedDbInfo().size(),
+                "Migration result should contain exactly one migrated database info");
+
+        assertEquals(dbName, migrationResult.getMigratedDbInfo().getFirst().getName(),
+                "Migrated database info should have expected database name");
+    }
+
+    private Map<String, MigrationResult> sendMigrationRequest(Request request, int expectedCode) {
+        Map response = helperV3.executeRequest(request, Map.class, expectedCode);
+
+        return helperV3.objectMapper.convertValue(
+                response,
+                new TypeReference<>() {
+                }
+        );
+    }
+
+    private void testMigratedExternalToInternalDatabaseBackupRestore(boolean withUserCreation) throws IOException{
+        assumeTrue(helperV3.hasAdapterOfType(POSTGRES_TYPE),  MessageFormat.format("No {0} adapter. Skip test.", POSTGRES_TYPE));
+
+        String sourceNamespace = helperV3.generateTestNamespace();
+        String targetNamespace = helperV3.generateTestNamespace();
+
+        String microserviceName = withUserCreation ? DBAAS_AUTO_TEST_1 : DBAAS_AUTO_TEST_2;
+
+        DatabaseResponse migratedDb = prepareMigratedExternalToInternalPostgresDatabase(sourceNamespace,
+                microserviceName,
+                withUserCreation
+        );
+
+        backupHelperV3.checkConnections(
+                false,
+                List.of(migratedDb),
+                BACKUPED_DATA,
+                BACKUPED_DATA,
+                false
+        );
+
+        var backupRequest = new BackupRequestBuilder().filterCriteria(
+                fc -> fc.include(f -> f.ns(sourceNamespace).dbType(POSTGRES_TYPE))).build();
+
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus(),
+                "Backup should be completed for migrated external-to-internal PostgreSQL database");
+
+        int backedUpDatabasesCount = backupResponse.getLogicalBackups().stream().mapToInt(
+                logicalBackup -> logicalBackup.getBackupDatabases().size())
+                .sum();
+
+        assertEquals(1, backedUpDatabasesCount, "Backup should include migrated external-to-internal PostgreSQL database");
+
+        String changedData = "changedData";
+
+        backupHelperV3.checkConnections(false, List.of(migratedDb), changedData, changedData, false);
+
+        var restoreRequest = new RestoreRequestBuilder().mapping(m -> m.ns(sourceNamespace, targetNamespace)).build();
+
+        var restoreResponse = backupHelperV1.runRestoreAndWait(
+                backupRequest.getBackupName(),
+                restoreRequest,
+                false
+        );
+
+        assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus(),
+                "Restore should be completed for migrated external-to-internal PostgreSQL database");
+
+        DatabaseResponse restoredDb = helperV3.getDatabaseByClassifierAsPOJO(
+                helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder()
+                        .ms(microserviceName)
+                        .ns(targetNamespace)
+                        .build(),
+                targetNamespace,
+                POSTGRES_TYPE,
+                HttpStatus.OK.value()
+        );
+
+        assertNotEquals(migratedDb.getName(), restoredDb.getName(),
+                "Restored database should have a different physical database name");
+
+        assertNotEquals(migratedDb.getConnectionProperties(), restoredDb.getConnectionProperties(),
+                "Restored database should have different connection properties");
+
+        backupHelperV3.checkConnections(
+                false,
+                List.of(migratedDb),
+                null,
+                changedData,
+                false
+        );
+
+        backupHelperV3.checkConnections(
+                false,
+                List.of(restoredDb),
+                null,
+                BACKUPED_DATA,
+                false
+        );
     }
 
     private void testCollectAndRestoreBackupToTargetNamespace(String databaseType) throws IOException, InterruptedException {

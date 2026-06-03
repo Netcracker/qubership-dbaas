@@ -7,10 +7,7 @@ import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
 import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
-import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.entity.pg.DbResource;
-import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -23,6 +20,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 
 @ApplicationScoped
@@ -206,7 +204,7 @@ public class MigrationService {
             DatabaseRegistry db = isProcessExternalAsInternal ?
                     existingDatabase :
                     newDatabaseByRequest(requestsWithAdapterId);
-            
+
             if (requestsWithAdapterId.getResources() != null && !requestsWithAdapterId.getResources().isEmpty()) {
                 db.setResources(new ArrayList<>(requestsWithAdapterId.getResources()));
             } else {
@@ -214,7 +212,12 @@ public class MigrationService {
             }
             if (isUserCreation) {
                 recreateUserResources(dbName, db);
+            } else {
+                updateAdapterMetadata(dbName, db);
             }
+
+            markDatabaseAsCreated(db);
+
             boolean hasDatabaseKind = db.getResources().stream().anyMatch(res -> DbResource.DATABASE_KIND.equals(res.getKind()));
             if (!hasDatabaseKind) {
                 db.getResources().add(new DbResource(DbResource.DATABASE_KIND, db.getName()));
@@ -241,10 +244,24 @@ public class MigrationService {
         }
     }
 
+    private void updateAdapterMetadata(String dbName, DatabaseRegistry dbRegistry) {
+        physicalDatabasesService.getAdapterById(dbRegistry.getAdapterId()).changeMetaData(dbName,
+                AbstractDbaasAdapterRESTClient.buildMetadata(dbRegistry.getClassifier()));
+    }
+
+    private void markDatabaseAsCreated(DatabaseRegistry dbRegistry) {
+        if (dbRegistry.getDatabase().getDbState() == null) {
+            dbRegistry.getDatabase().setDbState(new DbState());
+        }
+
+        dbRegistry.getDatabase().getDbState().setDatabaseState(CREATED);
+    }
+
     private void recreateUserResources(String dbName, DatabaseRegistry dbRegistry) {
         PhysicalDatabase physicalDb = physicalDatabasesService.getByAdapterId(dbRegistry.getAdapterId());
-        physicalDatabasesService.getAdapterById(physicalDb.getAdapter().getAdapterId())
-                .changeMetaData(dbRegistry.getName(), AbstractDbaasAdapterRESTClient.buildMetadata(dbRegistry.getClassifier()));
+
+        updateAdapterMetadata(dbName, dbRegistry);
+
         List<String> userRoles = physicalDb.getRoles();
         List<EnsuredUser> ensuredUsers = userRoles.stream().map(role -> dBaaService.recreateUsers(physicalDatabasesService.getAdapterById(dbRegistry.getAdapterId()), null, dbName, null, role))
                 .collect(Collectors.toList());

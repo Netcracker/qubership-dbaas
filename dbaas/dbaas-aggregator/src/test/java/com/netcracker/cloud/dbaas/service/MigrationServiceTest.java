@@ -59,8 +59,10 @@ public class MigrationServiceTest {
     private final String TEST_DB_NAME = "test-db";
     private final String TEST_USER = "test-user";
     private final String TEST_TYPE = "test-type";
+    private final String ROLE_RW = "rw";
 
     @Test
+
     void testRegisterRequestValidation() {
         final RegisterDatabaseRequestV3 wrongAdapterId = getRegisterDatabaseRequestSample();
         wrongAdapterId.setAdapterId("wrong-adapter-id");
@@ -136,7 +138,7 @@ public class MigrationServiceTest {
     @Test
     void testRegisterDatabasesWithUserCreation() {
         PhysicalDatabase physicalDatabaseSample = getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID);
-        physicalDatabaseSample.setRoles(Arrays.asList("admin", "rw"));
+        physicalDatabaseSample.setRoles(Arrays.asList("admin", ROLE_RW));
         when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabaseSample);
         when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(physicalDatabaseSample);
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
@@ -146,8 +148,8 @@ public class MigrationServiceTest {
 
         when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, "admin"))
                 .thenReturn(createEnsureUser(getConnectionProp("admin")));
-        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, "rw"))
-                .thenReturn(createEnsureUser(getConnectionProp("rw")));
+        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, ROLE_RW))
+                .thenReturn(createEnsureUser(getConnectionProp(ROLE_RW)));
 
         RegisterDatabaseRequestV3 registerDatabaseRequest = new RegisterDatabaseRequestV3();
         registerDatabaseRequest.setName(TEST_DB_NAME);
@@ -482,7 +484,7 @@ public class MigrationServiceTest {
     @Test
     void testRegisterExternalAsInternalWithUserCreationShouldSetCreatedStatusAndUpdateMetadata() {
         PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID);
-        physicalDatabase.setRoles(Arrays.asList(Role.ADMIN.toString(), "rw"));
+        physicalDatabase.setRoles(Arrays.asList(Role.ADMIN.toString(), ROLE_RW));
 
         RegisterDatabaseRequestV3 request = prepareExternalAsInternalMigration(physicalDatabase);
 
@@ -490,8 +492,8 @@ public class MigrationServiceTest {
 
         when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, Role.ADMIN.toString()))
                 .thenReturn(createEnsureUser(getConnectionProp(Role.ADMIN.toString())));
-        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, "rw"))
-                .thenReturn(createEnsureUser(getConnectionProp("rw")));
+        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, ROLE_RW))
+                .thenReturn(createEnsureUser(getConnectionProp(ROLE_RW)));
 
         RegisterDatabaseResponseBuilder result = migrationService.registerDatabases(
                 Collections.singletonList(request), API_VERSION.V3, true);
