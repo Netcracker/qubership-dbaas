@@ -933,7 +933,14 @@ public class DbaasHelperV3 {
                             .setConsistencyLevel(ConsistencyLevel.ALL);
 
                     String value = Failsafe.with(CASSANDRA_CHECK_RETRY_POLICY)
-                            .get(() -> session.execute(select).one().getString("value"));
+                            .get(() -> {
+                                var row = session.execute(select).one();
+                                if (row == null) {
+                                    log.warn("Row not yet visible in cassandra db {} after restore, retrying", databaseToCheck);
+                                    throw new IllegalStateException("Row not yet visible after restore");
+                                }
+                                return row.getString("value");
+                            });
 
                     assertEquals(checkData + "_value", value);
 
