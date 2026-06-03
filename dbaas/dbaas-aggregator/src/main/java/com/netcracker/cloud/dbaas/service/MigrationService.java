@@ -212,7 +212,7 @@ public class MigrationService {
             }
 
             if (isUserCreation) {
-                recreateUserResources(dbName, db);
+                recreateUserResources(dbName, db, requestsWithAdapterId.getClassifier());
             }
 
             boolean hasDatabaseKind = db.getResources().stream().anyMatch(res -> DbResource.DATABASE_KIND.equals(res.getKind()));
@@ -232,7 +232,7 @@ public class MigrationService {
 
             if (isProcessExternalAsInternal) {
                 if (!isUserCreation) {
-                    updateAdapterMetadata(dbName, db);
+                    updateAdapterMetadata(dbName, db, requestsWithAdapterId.getClassifier());
                 }
 
                 markDatabaseAsCreated(db);
@@ -249,9 +249,11 @@ public class MigrationService {
         }
     }
 
-    private void updateAdapterMetadata(String dbName, DatabaseRegistry dbRegistry) {
-        physicalDatabasesService.getAdapterById(dbRegistry.getAdapterId()).changeMetaData(dbName,
-                AbstractDbaasAdapterRESTClient.buildMetadata(dbRegistry.getClassifier()));
+    private void updateAdapterMetadata(String dbName,
+                                       DatabaseRegistry dbRegistry,
+                                       Map<String, Object> classifier) {
+        physicalDatabasesService.getAdapterById(dbRegistry.getAdapterId())
+                .changeMetaData(dbName, AbstractDbaasAdapterRESTClient.buildMetadata(classifier));
     }
 
     private void markDatabaseAsCreated(DatabaseRegistry dbRegistry) {
@@ -262,10 +264,11 @@ public class MigrationService {
         dbRegistry.getDatabase().getDbState().setDatabaseState(CREATED);
     }
 
-    private void recreateUserResources(String dbName, DatabaseRegistry dbRegistry) {
+    private void recreateUserResources(String dbName, DatabaseRegistry dbRegistry,
+                                       Map<String, Object> classifier) {
         PhysicalDatabase physicalDb = physicalDatabasesService.getByAdapterId(dbRegistry.getAdapterId());
 
-        updateAdapterMetadata(dbName, dbRegistry);
+        updateAdapterMetadata(dbName, dbRegistry, classifier);
 
         List<String> userRoles = physicalDb.getRoles();
         List<EnsuredUser> ensuredUsers = userRoles.stream().map(role -> dBaaService.recreateUsers(physicalDatabasesService.getAdapterById(dbRegistry.getAdapterId()), null, dbName, null, role))
