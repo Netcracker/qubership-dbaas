@@ -173,6 +173,7 @@ public class MigrationServiceTest {
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verify(dBaaService, times(2)).recreateUsers(any(), any(), any(), any(), any());
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
     }
 
@@ -424,15 +425,17 @@ public class MigrationServiceTest {
         when(dbaasAdapter.getDatabases()).thenReturn(Collections.singleton(TEST_DB_NAME));
         when(dbaasAdapter.identifier()).thenReturn(TEST_ADAPTER_ID);
 
+        SortedMap<String, Object> classifier = getClassifier();
         RegisterDatabaseRequestV3 testRequest = getRegisterDatabaseRequestSample();
         testRequest.setAdapterId(null);
         testRequest.setDbHost(TEST_TYPE + "." + TEST_NAMESPACE);
+        testRequest.setClassifier(classifier);
 
         Database testDb = new Database();
         testDb.setName(TEST_DB_NAME);
         testDb.setPhysicalDatabaseId(TEST_PHYDBID);
         testDb.setExternallyManageable(true);
-        testDb.setClassifier(testRequest.getClassifier());
+        testDb.setClassifier(classifier);
         testDb.setConnectionProperties(List.of(Map.of("username", "username", "password", "password")));
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setDatabase(testDb);
@@ -451,7 +454,7 @@ public class MigrationServiceTest {
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
         verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
-        
+
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
     }
 
