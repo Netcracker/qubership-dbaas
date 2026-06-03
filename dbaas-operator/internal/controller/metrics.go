@@ -62,6 +62,7 @@ const (
 	operationApplyMicroserviceRule   = "apply_microservice_balancing_rule"
 	operationCleanupMicroserviceRule = "cleanup_microservice_balancing_rule"
 	operationApplyNamespaceRule      = "apply_namespace_balancing_rule"
+	operationDeleteNamespaceRule     = "delete_namespace_balancing_rule"
 	operationApplyPermanentRule      = "apply_permanent_balancing_rule"
 	operationDeletePermanentRule     = "delete_permanent_balancing_rule"
 )

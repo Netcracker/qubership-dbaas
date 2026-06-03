@@ -35,6 +35,10 @@ const (
 	// previously applied microservice rule in dbaas-aggregator before deletion.
 	DbMicroserviceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/dbmicroservicebalancingrule-cleanup"
 
+	// DbNamespaceBalancingRuleFinalizer lets the operator delete the previously
+	// applied namespace rules in dbaas-aggregator before deletion.
+	DbNamespaceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/dbnamespacebalancingrule-cleanup"
+
 	// DbPermanentBalancingRuleFinalizer lets the operator delete the previously
 	// applied permanent rule in dbaas-aggregator before deletion.
 	DbPermanentBalancingRuleFinalizer = "platform.dbaas.netcracker.com/dbpermanentbalancingrule-cleanup"
@@ -185,8 +189,7 @@ type DbNamespaceBalancingRuleStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// appliedRules are the namespace rule entries last successfully applied
-	// to dbaas-aggregator. They are informational only; namespace rule cleanup
-	// is not performed because the aggregator API has no individual delete endpoint.
+	// to dbaas-aggregator. They are used to delete removed entries when spec changes.
 	// +optional
 	// +listType=atomic
 	AppliedRules []DbNamespaceBalancingRuleAppliedRule `json:"appliedRules,omitempty"`

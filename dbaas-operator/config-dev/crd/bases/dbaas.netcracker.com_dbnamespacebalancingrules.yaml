@@ -100,8 +100,7 @@ spec:
               appliedRules:
                 description: |-
                   appliedRules are the namespace rule entries last successfully applied
-                  to dbaas-aggregator. They are informational only; namespace rule cleanup
-                  is not performed because the aggregator API has no individual delete endpoint.
+                  to dbaas-aggregator. They are used to delete removed entries when spec changes.
                 items:
                   description: DbNamespaceBalancingRuleAppliedRule tracks one namespace
                     rule entry last applied.

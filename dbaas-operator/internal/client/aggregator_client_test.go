@@ -347,6 +347,80 @@ func TestApplyNamespaceBalancingRule_UsesCorrectURLMethodAndBody(t *testing.T) {
 	}
 }
 
+func TestDeleteNamespaceBalancingRule_UsesCorrectURLAndMethod(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method: got %q, want DELETE", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/payments/physical_databases/balancing/rules/pg-fast"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+}
+
+func TestDeleteNamespaceBalancingRule_SuccessStatuses(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{http.StatusOK, http.StatusNoContent, http.StatusNotFound} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(code)
+			}))
+			defer srv.Close()
+
+			c := newClient(srv.URL, staticToken("test-token"))
+			if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err != nil {
+				t.Errorf("HTTP %d should be success, got: %v", code, err)
+			}
+		})
+	}
+}
+
+func TestDeleteNamespaceBalancingRule_NonSuccessReturnsError(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{http.StatusMethodNotAllowed, http.StatusInternalServerError} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(code)
+			}))
+			defer srv.Close()
+
+			c := newClient(srv.URL, staticToken("test-token"))
+			if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err == nil {
+				t.Fatalf("expected error for HTTP %d, got nil", code)
+			}
+		})
+	}
+}
+
+func TestDeleteNamespaceBalancingRule_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c := newClient("http://127.0.0.1", staticToken("test-token"))
+	if err := c.DeleteNamespaceBalancingRule(ctx, "payments", "pg-fast"); err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+}
+
 func TestApplyPermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) {
 	t.Parallel()
 

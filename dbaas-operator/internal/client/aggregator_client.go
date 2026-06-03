@@ -191,6 +191,23 @@ func (c *AggregatorClient) ApplyNamespaceBalancingRule(ctx context.Context, name
 	return nil
 }
 
+// DeleteNamespaceBalancingRule deletes one namespace balancing rule with
+// DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}.
+func (c *AggregatorClient) DeleteNamespaceBalancingRule(ctx context.Context, namespace, ruleName string) error {
+	resp, err := c.rc.R().
+		SetContext(ctx).
+		Delete(fmt.Sprintf("/api/v3/dbaas/%s/physical_databases/balancing/rules/%s", namespace, ruleName))
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusNoContent && resp.StatusCode() != http.StatusNotFound {
+		return newAggregatorError(resp)
+	}
+
+	return nil
+}
+
 // ApplyPermanentBalancingRules sends permanent balancing rules to
 // PUT /api/v3/dbaas/balancing/rules/permanent.
 func (c *AggregatorClient) ApplyPermanentBalancingRules(ctx context.Context, req []PermanentBalancingRuleRequest) error {
