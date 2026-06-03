@@ -437,8 +437,11 @@ public class MigrationServiceTest {
         testDb.setExternallyManageable(true);
         testDb.setClassifier(classifier);
         testDb.setConnectionProperties(List.of(Map.of("username", "username", "password", "password")));
+
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setDatabase(testDb);
+        databaseRegistry.setClassifier(classifier);
+
         testDb.setDatabaseRegistry(Arrays.asList(databaseRegistry));
         when(dBaaService.findDatabaseByOldClassifierAndType(testRequest.getClassifier(), TEST_TYPE, true)).thenReturn(databaseRegistry);
         final List<RegisterDatabaseRequestV3> registerDatabaseRequestList = Collections.singletonList(testRequest);
