@@ -49,13 +49,6 @@ const (
 	// successfully applied to dbaas-aggregator. Type: Normal.
 	EventReasonBalancingRuleApplied = "BalancingRuleApplied"
 
-	// EventReasonNamespaceRuleCleanupUnsupported is emitted when a namespace
-	// balancing rule was previously applied but disappeared from spec.rules.
-	// The aggregator has no individual namespace-rule delete API, so the
-	// applied rule may remain active until namespace-level cleanup runs.
-	// Type: Warning.
-	EventReasonNamespaceRuleCleanupUnsupported = "NamespaceRuleCleanupUnsupported"
-
 	// EventReasonInvalidSpec is emitted when the CR spec fails pre-flight
 	// validation before the aggregator is even contacted. Type: Warning.
 	EventReasonInvalidSpec = "InvalidSpec"

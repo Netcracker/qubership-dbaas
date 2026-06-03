@@ -20,7 +20,6 @@ rules:
   resources:
   - databasedeclarations
   - databasesecrets
-  - dbnamespacebalancingrules
   - dbpolicies
   - externaldatabases
   verbs:
@@ -45,6 +44,7 @@ rules:
   - dbaas.netcracker.com
   resources:
   - dbmicroservicebalancingrules
+  - dbnamespacebalancingrules
   - dbpermanentbalancingrules
   - namespacebindings
   verbs:
@@ -56,6 +56,7 @@ rules:
   - dbaas.netcracker.com
   resources:
   - dbmicroservicebalancingrules/finalizers
+  - dbnamespacebalancingrules/finalizers
   - dbpermanentbalancingrules/finalizers
   - namespacebindings/finalizers
   verbs:

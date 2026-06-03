@@ -11,7 +11,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -33,6 +32,7 @@ type balancingRuleCall struct {
 type balancingRuleReconcileFixture struct {
 	reconciler *BalancingRuleReconciler
 	calls      []balancingRuleCall
+	statusCode int
 	server     *httptest.Server
 	recorder   *record.FakeRecorder
 }
@@ -184,7 +184,11 @@ var _ = Describe("BalancingRule Controller", func() {
 	Context("namespace singleton", func() {
 		It("applies each namespace rule and updates status", func() {
 			rule := &dbaasv1.DbNamespaceBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbNamespaceBalancingRuleName,
+					Namespace:  businessNS,
+					Finalizers: []string{dbaasv1.DbNamespaceBalancingRuleFinalizer},
+				},
 				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
 					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
 						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
@@ -205,9 +209,13 @@ var _ = Describe("BalancingRule Controller", func() {
 			Expect(stored.Status.AppliedRules).To(HaveLen(2))
 		})
 
-		It("reports removed applied rules as cleanup-unsupported orphans", func() {
+		It("deletes removed rules before applying the new desired list", func() {
 			rule := &dbaasv1.DbNamespaceBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbNamespaceBalancingRuleName,
+					Namespace:  businessNS,
+					Finalizers: []string{dbaasv1.DbNamespaceBalancingRuleFinalizer},
+				},
 				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
 					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
 						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
@@ -220,17 +228,93 @@ var _ = Describe("BalancingRule Controller", func() {
 				{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
 			})
 
+			_, _, err := reconcileNamespaceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(HaveLen(2))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodDelete))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-cassandra"))
+			Expect(fixture.calls[1].method).To(Equal(http.MethodPut))
+			Expect(fixture.calls[1].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-mongo"))
+		})
+
+		It("adds the finalizer before applying rules", func() {
+			rule := &dbaasv1.DbNamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
 			stored, _, err := reconcileNamespaceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(fixture.calls).To(HaveLen(1))
-			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
-			Expect(stored.Status.AppliedRules).To(HaveLen(2))
-			ready := findCondition(stored.Status.Conditions, conditionTypeReady)
-			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonNamespaceRuleCleanupUnsupported))
-			Expect(ready.Message).To(ContainSubstring("payments-cassandra"))
-			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonNamespaceRuleCleanupUnsupported, "payments-cassandra")
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(slices.Contains(stored.Finalizers, dbaasv1.DbNamespaceBalancingRuleFinalizer)).To(BeTrue())
+		})
+
+		It("cleans applied rules and removes the finalizer when deleted", func() {
+			rule := namespaceRuleWithFinalizer(businessNS)
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updateNamespaceStatus(rule, []dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+				{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
+			})
+			Expect(k8sClient.Delete(ctx, rule)).To(Succeed())
+
+			result, err := fixture.reconciler.ReconcileNamespace(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rule)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(HaveLen(2))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodDelete))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-mongo"))
+			Expect(fixture.calls[1].method).To(Equal(http.MethodDelete))
+			Expect(fixture.calls[1].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-cassandra"))
+			Eventually(func() bool {
+				current := &dbaasv1.DbNamespaceBalancingRule{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), current)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		})
+
+		It("keeps the finalizer when cleanup fails", func() {
+			rule := namespaceRuleWithFinalizer(businessNS)
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updateNamespaceStatus(rule, []dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+			})
+			Expect(k8sClient.Delete(ctx, rule)).To(Succeed())
+			fixture.statusCode = http.StatusInternalServerError
+
+			_, err := fixture.reconciler.ReconcileNamespace(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rule)})
+
+			Expect(err).To(HaveOccurred())
+			current := &dbaasv1.DbNamespaceBalancingRule{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), current)).To(Succeed())
+			Expect(slices.Contains(current.Finalizers, dbaasv1.DbNamespaceBalancingRuleFinalizer)).To(BeTrue())
+		})
+
+		It("removes the finalizer when cleanup retry receives not found", func() {
+			rule := namespaceRuleWithFinalizer(businessNS)
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updateNamespaceStatus(rule, []dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+			})
+			Expect(k8sClient.Delete(ctx, rule)).To(Succeed())
+			fixture.statusCode = http.StatusNotFound
+
+			_, err := fixture.reconciler.ReconcileNamespace(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rule)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func() bool {
+				current := &dbaasv1.DbNamespaceBalancingRule{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rule), current)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
 		})
 	})
 
@@ -373,7 +457,8 @@ var _ = Describe("BalancingRule Controller", func() {
 func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleReconcileFixture {
 	GinkgoHelper()
 	fixture := &balancingRuleReconcileFixture{
-		recorder: record.NewFakeRecorder(32),
+		recorder:   record.NewFakeRecorder(32),
+		statusCode: http.StatusOK,
 	}
 	fixture.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -386,7 +471,7 @@ func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleRecon
 			path:   r.URL.Path,
 			body:   body,
 		})
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(fixture.statusCode)
 	}))
 	resolver := ownership.NewOwnershipResolver(ownedNamespace, k8sClient)
 	resolver.SetOwner(ownedNamespace, ownedNamespace)
@@ -399,6 +484,22 @@ func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleRecon
 		MyNamespace: ownedNamespace,
 	}
 	return fixture
+}
+
+func namespaceRuleWithFinalizer(namespace string) *dbaasv1.DbNamespaceBalancingRule {
+	return &dbaasv1.DbNamespaceBalancingRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       dbaasv1.DbNamespaceBalancingRuleName,
+			Namespace:  namespace,
+			Finalizers: []string{dbaasv1.DbNamespaceBalancingRuleFinalizer},
+		},
+		Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
+			Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+				{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
+			},
+		},
+	}
 }
 
 func (f *balancingRuleReconcileFixture) close() {

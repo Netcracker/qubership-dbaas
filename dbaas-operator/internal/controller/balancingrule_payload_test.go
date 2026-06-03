@@ -125,6 +125,62 @@ var _ = Describe("BalancingRule payload helpers", func() {
 		Expect(got[0].Microservices).To(Equal([]string{"ledger"}))
 	})
 
+	It("sends delete requests for namespace rule cleanup", func() {
+		var gotMethod, gotPath string
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		reconciler := &BalancingRuleReconciler{
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(srv.URL, func(context.Context) (string, error) {
+				return testToken, nil
+			}),
+		}
+
+		Expect(reconciler.deleteNamespaceRule(ctx, "payments", "payments-cassandra")).To(Succeed())
+
+		Expect(gotMethod).To(Equal(http.MethodDelete))
+		Expect(gotPath).To(Equal("/api/v3/dbaas/payments/physical_databases/balancing/rules/payments-cassandra"))
+	})
+
+	It("deletes only removed namespace rules before applying the new desired set", func() {
+		var gotMethod, gotPath string
+		var calls int
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		reconciler := &BalancingRuleReconciler{
+			Aggregator: aggregatorclient.NewClientWithTokenFunc(srv.URL, func(context.Context) (string, error) {
+				return testToken, nil
+			}),
+		}
+		rule := &dbaasv1.DbNamespaceBalancingRule{}
+		rule.Namespace = "payments"
+		rule.Spec.Rules = []dbaasv1.DbNamespaceBalancingRuleItem{
+			{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+		}
+		rule.Status.AppliedRules = []dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+			{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+			{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
+		}
+
+		Expect(reconciler.cleanupSupersededNamespaceRules(ctx, rule)).To(Succeed())
+
+		Expect(calls).To(Equal(1))
+		Expect(gotMethod).To(Equal(http.MethodDelete))
+		Expect(gotPath).To(Equal("/api/v3/dbaas/payments/physical_databases/balancing/rules/payments-cassandra"))
+	})
+
 	It("sends delete requests for permanent rule cleanup", func() {
 		var got []aggregatorclient.PermanentBalancingRuleDeleteRequest
 		var gotMethod, gotPath string
