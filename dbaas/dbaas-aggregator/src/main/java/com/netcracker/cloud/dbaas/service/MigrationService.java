@@ -200,6 +200,7 @@ public class MigrationService {
                 existingDatabase.setBackupDisabled(requestsWithAdapterId.getBackupDisabled());
                 existingDatabase.setPhysicalDatabaseId(requestsWithAdapterId.getPhysicalDatabaseId());
                 existingDatabase.setAdapterId(requestsWithAdapterId.getAdapterId());
+                existingDatabase.setConnectionProperties(new ArrayList<>(requestsWithAdapterId.getConnectionProperties()));
             }
             DatabaseRegistry db = isProcessExternalAsInternal ?
                     existingDatabase :
