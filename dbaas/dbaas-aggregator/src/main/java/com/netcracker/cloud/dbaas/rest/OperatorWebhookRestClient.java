@@ -4,7 +4,6 @@ import com.netcracker.cloud.dbaas.entity.dto.RotationEventPayload;
 import io.vertx.core.impl.NoStackTraceTimeoutException;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.faulttolerance.Retry;
 
 import java.net.SocketTimeoutException;
@@ -18,5 +17,5 @@ public interface OperatorWebhookRestClient extends AutoCloseable{
     @Path("/api/rotation/v1/notify")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    Response notify(RotationEventPayload payload);
+    void notify(RotationEventPayload payload);
 }

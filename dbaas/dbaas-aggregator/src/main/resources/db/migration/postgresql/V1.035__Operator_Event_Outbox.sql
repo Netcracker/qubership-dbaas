@@ -10,7 +10,7 @@ create table if not exists operator_event_outbox
     next_attempt_at timestamp with time zone not null default now(),
     created_at      timestamp with time zone not null default now(),
     sent_at         timestamp with time zone,
-    constraint chk_outbox_status check (status in ('PENDING', 'CHECK', 'FAILED'))
+    constraint chk_outbox_status check (status in ('PENDING', 'SENT', 'FAILED'))
 );
 
 create index idx_outbox_pending

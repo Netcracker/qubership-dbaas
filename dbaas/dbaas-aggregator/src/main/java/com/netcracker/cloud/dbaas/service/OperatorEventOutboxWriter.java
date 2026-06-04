@@ -2,6 +2,9 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.netcracker.cloud.dbaas.entity.pg.OperatorEvent;
 import com.netcracker.cloud.dbaas.enums.OperatorEventStatus;
 import com.netcracker.cloud.dbaas.enums.OperatorEventType;
@@ -23,11 +26,13 @@ import static jakarta.transaction.Transactional.TxType.MANDATORY;
 @Slf4j
 @ApplicationScoped
 public class OperatorEventOutboxWriter {
-
     private final RotationNotificationProperty rotationProperty;
     private final OperatorEventRepository operatorEventRepository;
     private final OperatorEventMetrics operatorEventMetrics;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = JsonMapper.builder()
+            .addModule(new JavaTimeModule())
+            .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+            .build();
 
     @Inject
     public OperatorEventOutboxWriter(RotationNotificationProperty rotationProperty,
@@ -38,7 +43,6 @@ public class OperatorEventOutboxWriter {
         this.rotationProperty = rotationProperty;
         this.operatorEventRepository = operatorEventRepository;
         this.operatorEventMetrics = operatorEventMetrics;
-        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -47,7 +51,7 @@ public class OperatorEventOutboxWriter {
      */
     @Transactional(MANDATORY)
     public void enqueue(OperatorEventType eventType, SortedMap<String, Object> classifier, String type, String role) {
-        if (!rotationProperty.enabled() || rotationProperty.callbackUrl().isBlank()) {
+        if (!rotationProperty.enabled()) {
             return;
         }
 

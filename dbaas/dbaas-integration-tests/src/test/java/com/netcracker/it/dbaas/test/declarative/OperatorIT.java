@@ -2,8 +2,9 @@ package com.netcracker.it.dbaas.test.declarative;
 
 import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtension;
 import com.netcracker.it.dbaas.entity.*;
-import com.netcracker.it.dbaas.helpers.BGHelper;
-import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
+import com.netcracker.it.dbaas.entity.backup.v1.BackupStatus;
+import com.netcracker.it.dbaas.entity.backup.v1.RestoreStatus;
+import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -36,12 +37,14 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 public class OperatorIT extends AbstractIT {
 
     private static BGHelper bgHelper;
+    private static BackupHelperV1 backupHelperV1;
 
     @BeforeAll
     static void setUp() throws IOException {
         NAMESPACE = getTestNamespace();
         dbaasOperatorExistOrSkipTests();
         bgHelper = new BGHelper(helperV3);
+        backupHelperV1 = new BackupHelperV1(helperV3);
         cleanUp();
         createNamespaceBindingCROrSkipTests();
     }
@@ -885,6 +888,7 @@ public class OperatorIT extends AbstractIT {
 
                     var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
                     createCR(CRD_DATABASE_DECLARATION, cr);
+                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
 
                     KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
                             kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
@@ -915,7 +919,7 @@ public class OperatorIT extends AbstractIT {
                     assertNotEquals(updatedType, spec.get("type"));
 
                     createCR(CRD_DATABASE_DECLARATION, cr);
-
+                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
                     KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
                             kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
                                     .inNamespace(NAMESPACE)
@@ -1074,6 +1078,7 @@ public class OperatorIT extends AbstractIT {
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
                     var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
                     createCR(CRD_DB_POLICY, cr);
+                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
                             kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
@@ -1283,6 +1288,102 @@ public class OperatorIT extends AbstractIT {
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
                 }
 
+                @Test
+                void testDatabaseSecretApplyRotation() throws IOException {
+                    String dbDeclarationCRName = generateName();
+                    String dbSecretCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+
+                    var databaseDeclarationCR = buildDatabaseDeclarationCR(dbDeclarationCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
+                    createCR(CRD_DATABASE_DECLARATION, databaseDeclarationCR);
+                    waitForDesiredState(CRD_DATABASE_DECLARATION, databaseDeclarationCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                    var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var secretBefore = getSecret(secretName);
+                    assertNotNull(secretBefore, "secret must exist");
+                    var passwordBefore = extractPasswordFromSecret(secretBefore);
+
+                    helperV3.changePassword(classifier, POSTGRES_TYPE, 200, NAMESPACE);
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+
+                    var secretAfter = getSecret(secretName);
+                    assertNotNull(secretAfter, "secret must exist after rotation");
+                    var passwordAfter = extractPasswordFromSecret(secretAfter);
+
+                    assertNotEquals(passwordBefore, passwordAfter, "password must change after rotation");
+                }
+
+                @Test
+                void testDatabaseSecretRotationFanOutToSameClassifier() throws IOException {
+                    String dbDeclarationCRName = generateName();
+                    String dbSecretCRName1 = generateName();
+                    String dbSecretCRName2 = generateName();
+                    String microserviceName = generateName();
+                    String secretName1 = generateName();
+                    String secretName2 = generateName();
+                    var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+
+                    var databaseDeclarationCR = buildDatabaseDeclarationCR(dbDeclarationCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
+                    createCR(CRD_DATABASE_DECLARATION, databaseDeclarationCR);
+                    waitForDesiredState(CRD_DATABASE_DECLARATION, databaseDeclarationCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                    var databaseSecretCR1 = buildDatabaseSecretCR(dbSecretCRName1, microserviceName, microserviceName, NAMESPACE, secretName1, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretCR1 = createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var databaseSecretCR2 = buildDatabaseSecretCR(dbSecretCRName2, microserviceName, microserviceName, NAMESPACE, secretName2, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretCR2 = createCR(CRD_DATABASE_SECRET, databaseSecretCR2);
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var passwordBefore1 = extractPasswordFromSecret(getSecret(secretName1));
+                    var passwordBefore2 = extractPasswordFromSecret(getSecret(secretName2));
+
+                    helperV3.changePassword(classifier, POSTGRES_TYPE, 200, NAMESPACE);
+
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+
+                    var passwordAfter1 = extractPasswordFromSecret(getSecret(secretName1));
+                    var passwordAfter2 = extractPasswordFromSecret(getSecret(secretName2));
+
+                    assertNotEquals(passwordBefore1, passwordAfter1, "secret 1 password must change after rotation");
+                    assertNotEquals(passwordBefore2, passwordAfter2, "secret 2 password must change after rotation");
+                }
+
+                @Test
+                void testDatabaseSecretRotationTriggeredByBackupRestore() throws IOException, InterruptedException {
+                    String dbSecretCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+
+                    helperV3.createDatabase(classifier, POSTGRES_TYPE, 201);
+
+                    var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var passwordBefore = extractPasswordFromSecret(getSecret(secretName));
+
+                    var backupRequest = new BackupRequestBuilder()
+                            .filterCriteria(fc -> fc.include(f -> f.ms(microserviceName)))
+                            .build();
+                    var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+                    assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+
+                    var restoreRequest = new RestoreRequestBuilder().build();
+                    var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+                    assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+                    var passwordAfter = extractPasswordFromSecret(getSecret(secretName));
+                    assertNotEquals(passwordBefore, passwordAfter, "secret password must change after rotation");
+                }
+                // TODO check do need to inject rotation method to old backup restore
             }
         }
     }

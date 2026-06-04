@@ -1,13 +1,12 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
+import com.netcracker.cloud.dbaas.entity.dto.RotationEventPayload;
 import com.netcracker.cloud.dbaas.enums.OperatorEventStatus;
 import com.netcracker.cloud.dbaas.enums.OperatorEventType;
-import com.netcracker.cloud.dbaas.entity.dto.RotationEventPayload;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -53,4 +52,8 @@ public class OperatorEvent {
 
     @Column(name = "sent_at")
     private OffsetDateTime sentAt;
+
+    public void increaseAttempt() {
+        this.attempts++;
+    }
 }

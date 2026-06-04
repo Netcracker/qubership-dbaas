@@ -9,8 +9,7 @@ import java.time.Duration;
 public interface RotationNotificationProperty {
     boolean enabled();
     String callbackUrl();
-    String tokenPath();
-    Duration dispatchInterval();
+    String jwtAudience();
     Duration retryDelay();
     int maxAttempts();
     Duration sentTtl();

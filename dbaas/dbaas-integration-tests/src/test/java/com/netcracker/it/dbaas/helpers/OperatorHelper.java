@@ -38,6 +38,7 @@ public class OperatorHelper {
 
     public static final String REASON_DATABASE_REGISTERED = "DatabaseRegistered";
     public static final String REASON_AGGREGATOR_REJECTED = "AggregatorRejected";
+    public static final String REASON_SECRET_ROTATED = "SecretRotated";
     public static final String REASON_SECRET_CREATED = "SecretCreated";
     public static final String REASON_SECRET_ERROR = "SecretError";
     public static final String REASON_SECRET_CONFLICT = "SecretConflict";
@@ -366,5 +367,16 @@ public class OperatorHelper {
 
         cr.setAdditionalProperty("spec", specBody);
         return cr;
+    }
+
+    public static String extractPasswordFromSecret(Secret secret) {
+        assertNotNull(secret, "secret must exist");
+        String decodedJson = new String(
+                Base64.getDecoder().decode(secret.getData().get(CONNECTION_PROPERTIES_KEY)),
+                StandardCharsets.UTF_8
+        );
+        int startIdx = decodedJson.indexOf("\"password\":\"") + 12;
+        int endIdx = decodedJson.indexOf("\"", startIdx);
+        return decodedJson.substring(startIdx, endIdx);
     }
 }
