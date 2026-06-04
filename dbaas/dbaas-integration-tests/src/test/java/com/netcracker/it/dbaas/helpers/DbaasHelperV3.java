@@ -4,6 +4,7 @@ import com.arangodb.ArangoDB;
 import com.arangodb.entity.BaseDocument;
 import com.clickhouse.jdbc.ClickHouseDataSource;
 import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -93,7 +94,7 @@ public class DbaasHelperV3 {
     private final static RetryPolicy<Object> NAMESPACES_DBS_CLEANUP_POLICY = new RetryPolicy<>()
             .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(10));
     private static final RetryPolicy<Object> CASSANDRA_CHECK_RETRY_POLICY = new RetryPolicy<>()
-            .withMaxRetries(3).withDelay(Duration.ofSeconds(3));
+            .withMaxRetries(12).withDelay(Duration.ofSeconds(5));
 
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
@@ -933,10 +934,18 @@ public class DbaasHelperV3 {
             if (checkData != null) {
                 try {
                     var clause = QueryBuilder.eq("key", "test_key");
-                    var select = QueryBuilder.select().from(keyspace, "autotests").where(clause);
+                    var select = QueryBuilder.select().from(keyspace, "autotests").where(clause)
+                            .setConsistencyLevel(ConsistencyLevel.ALL);
 
                     String value = Failsafe.with(CASSANDRA_CHECK_RETRY_POLICY)
-                            .get(() -> session.execute(select).one().getString("value"));
+                            .get(() -> {
+                                var row = session.execute(select).one();
+                                if (row == null) {
+                                    log.warn("Row not yet visible in cassandra db {} after restore, retrying", databaseToCheck);
+                                    throw new IllegalStateException("Row not yet visible after restore");
+                                }
+                                return row.getString("value");
+                            });
 
                     assertEquals(checkData + "_value", value);
 
