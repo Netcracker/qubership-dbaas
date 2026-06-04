@@ -1148,6 +1148,8 @@ public class OperatorIT extends AbstractIT {
                     var secret = getSecret(secretName);
                     assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
+                    // userRole is empty in this CR → descriptor must omit it.
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "");
                 }
 
                 @Test
@@ -1172,20 +1174,20 @@ public class OperatorIT extends AbstractIT {
                     String microserviceName = generateName();
                     String secretName = generateName();
 
-                    // CR1 is created first → older claimant.
+                    // Two CRs claim the same secretName for a database that does not exist.
+                    // The deterministic sibling tiebreak (older creationTimestamp, UID on tie)
+                    // makes exactly one CR lose with SecretConflict while the other keeps
+                    // claiming the name (BackingOff/DatabaseNotFound) — avoiding the symmetric
+                    // deadlock where both fail and neither recovers. Which CR wins is
+                    // UID-dependent when both are created within the same second (k8s stores
+                    // creationTimestamp at second granularity), so the test asserts the
+                    // invariant — exactly one conflict — without assuming an order.
                     var databaseSecretCR1 = buildDatabaseSecretCR(crName1, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
-                    waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR1, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
-
-                    // CR2 created later with the same secretName → younger claimant loses.
                     var databaseSecretCR2 = buildDatabaseSecretCR(crName2, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
                     createCR(CRD_DATABASE_SECRET, databaseSecretCR2);
-                    waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR2, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
 
-                    // CR1 must remain unaffected (older wins). The deterministic tiebreak
-                    // ensures both peers agree on the winner and avoids the symmetric
-                    // deadlock where both would fail and neither could recover.
-                    waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR1, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
+                    assertExactlyOneSecretConflict(crName1, crName2);
                 }
 
                 @Test
@@ -1286,6 +1288,8 @@ public class OperatorIT extends AbstractIT {
                     waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
                     var secret = getSecret(secretName);
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
+                    // userRole "admin" is requested in this CR → descriptor must carry it.
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "admin");
                 }
 
                 @Test
@@ -1494,6 +1498,37 @@ public class OperatorIT extends AbstractIT {
         } catch (Exception e) {
             // Catch later
         }
+    }
+
+    // assertExactlyOneSecretConflict waits until exactly one of the two DatabaseSecret CRs
+    // that share a secretName loses the sibling tiebreak (InvalidConfiguration/SecretConflict)
+    // while the other keeps claiming it (BackingOff/DatabaseNotFound). It does NOT assume which
+    // CR wins: when both CRs are created within the same second their creationTimestamps are
+    // equal (k8s second granularity) and the winner is decided by UID, so the outcome is
+    // deterministic but order-independent.
+    private void assertExactlyOneSecretConflict(String crNameA, String crNameB) {
+        var dsClient = kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET).inNamespace(NAMESPACE);
+        try {
+            dsClient.withName(crNameA).waitUntilCondition(a -> {
+                var b = dsClient.withName(crNameB).get();
+                return a != null && b != null && exactlyOneSecretConflict(a, b);
+            }, 2, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            // Catch later — the assertion below produces a clear failure message.
+        }
+        var a = dsClient.withName(crNameA).get();
+        var b = dsClient.withName(crNameB).get();
+        assertTrue(exactlyOneSecretConflict(a, b),
+                "exactly one of two DatabaseSecret CRs sharing a secretName must be in "
+                        + "InvalidConfiguration/SecretConflict and the other in BackingOff/DatabaseNotFound");
+    }
+
+    private boolean exactlyOneSecretConflict(GenericKubernetesResource a, GenericKubernetesResource b) {
+        boolean aConflict = isDesiredState(a, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
+        boolean bConflict = isDesiredState(b, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
+        boolean aClaiming = isDesiredState(a, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
+        boolean bClaiming = isDesiredState(b, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
+        return (aConflict && bClaiming) || (aClaiming && bConflict);
     }
 
     private GenericKubernetesResource createCR(CustomResourceDefinitionContext crd, GenericKubernetesResource cr) {

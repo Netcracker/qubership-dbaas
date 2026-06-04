@@ -144,9 +144,9 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// ── Step 9 / write Secret ─────────────────────────────────────────────────
-	secretData, err := connectionPropertiesToSecretData(dbResp.ConnectionProperties)
+	secretData, err := buildSecretData(s, dbResp.ConnectionProperties)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("marshal connectionProperties: %w", err)
+		return ctrl.Result{}, err
 	}
 	secretKey := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.SecretName}
 	return r.writeSecret(ctx, s, secretData, secretKey, requestID)
@@ -470,17 +470,49 @@ func (r *DatabaseSecretReconciler) handleAggregatorErr(
 		r.Recorder, s, err, requestID)
 }
 
-// connectionPropertiesToSecretData serializes the connectionProperties map as a single
-// JSON value stored under the key "connectionProperties" in the Kubernetes Secret.
-// The aggregator returns a single map (DatabaseResponseV3SingleCP.connectionProperties)
-// for the requested userRole; the map shape is dynamic and dictated by the adapter.
-func connectionPropertiesToSecretData(props map[string]any) (map[string][]byte, error) {
-	raw, err := json.Marshal(props)
+// Secret data keys written by the operator and consumed by dbaas-client.
+const (
+	// secretKeyConnectionProperties holds the connectionProperties map returned
+	// by dbaas-aggregator (dynamic shape, dictated by the adapter).
+	secretKeyConnectionProperties = "connectionProperties.json"
+	// secretKeyMetadata holds the self-describing descriptor (classifier, type,
+	// userRole) that lets dbaas-client match a mounted Secret to a request.
+	secretKeyMetadata = "metadata.json"
+)
+
+// secretMetadata is the self-describing descriptor stored under
+// secretKeyMetadata. dbaas-client matches a mounted Secret to a request by
+// (classifier, type, userRole). The classifier is the same canonical flat map
+// the operator sends to dbaas-aggregator — namespace defaulted to
+// metadata.namespace, empty optional fields omitted — so both sides agree on
+// the key. UserRole is the requested role (DatabaseSecret.spec.userRole), not
+// the role the aggregator resolved at runtime; it is omitted when empty.
+type secretMetadata struct {
+	Classifier map[string]any `json:"classifier"`
+	Type       string         `json:"type"`
+	UserRole   string         `json:"userRole,omitempty"`
+}
+
+// buildSecretData serializes the connectionProperties and the self-describing
+// metadata descriptor into the two keys of the managed Secret. The descriptor
+// classifier is canonicalized identically to the aggregator request (see
+// ClassifierFlatMap / EffectiveClassifier) so dbaas-client can match it.
+func buildSecretData(s *dbaasv1.DatabaseSecret, props map[string]any) (map[string][]byte, error) {
+	connRaw, err := json.Marshal(props)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal connectionProperties: %w", err)
+	}
+	metaRaw, err := json.Marshal(secretMetadata{
+		Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
+		Type:       s.Spec.Type,
+		UserRole:   s.Spec.UserRole,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal metadata: %w", err)
 	}
 	return map[string][]byte{
-		"connectionProperties.json": raw,
+		secretKeyConnectionProperties: connRaw,
+		secretKeyMetadata:             metaRaw,
 	}, nil
 }
 

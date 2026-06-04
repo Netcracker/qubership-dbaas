@@ -1365,7 +1365,12 @@ spec:
 | `spec.userRole` | No | **No** | Role/permission level of the requested credentials (e.g., `admin`, `ro`, `rw`). When absent, the aggregator resolves the effective role through `DbPolicy` (`defaultRole`) and the global permission registry. Immutable after creation. |
 | `spec.secretName` | Yes | **No** | Name of the Kubernetes Secret the operator creates or updates in the CR's namespace. Immutable after creation — changing it would orphan the previously materialized Secret. Two `DatabaseSecret` CRs in the same namespace must not target the same `secretName` (see the sibling-conflict tiebreak below). |
 
-The materialized Secret is of type `Opaque` and stores the credentials under a single key, `connectionProperties.json`, containing the aggregator's `connectionProperties` map serialized as JSON. The operator also stamps the labels `app.kubernetes.io/managed-by=dbaas-operator` and `app.kubernetes.io/name=<value from the CR>`.
+The materialized Secret is of type `Opaque` and stores two keys:
+
+- **`connectionProperties.json`** — the aggregator's `connectionProperties` map serialized as JSON (credentials: `url`, `host`, `port`, `username`, `password`, `role`, …; the exact shape is adapter-specific).
+- **`metadata.json`** — a self-describing descriptor `{ classifier, type, userRole }` that lets a consumer match the Secret to a database request without calling the aggregator (used by dbaas-client when it reads connection properties from a mounted Secret instead of REST). The `classifier` is the same canonical flat map the operator sends to the aggregator — `namespace` defaulted to `metadata.namespace`, empty optional fields omitted. `userRole` mirrors `spec.userRole` (the *requested* role, not the role the aggregator resolved at runtime) and is omitted when empty.
+
+The operator also stamps the labels `app.kubernetes.io/managed-by=dbaas-operator` and `app.kubernetes.io/name=<value from the CR>`.
 
 #### How DatabaseSecret Works
 

@@ -186,6 +186,20 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(cp).To(HaveKey("host"))
 			Expect(cp).To(HaveKey("password"))
 			Expect(cp["port"]).To(BeEquivalentTo(5432))
+
+			// metadata.json descriptor: classifier (namespace defaulted), type, userRole.
+			Expect(secret.Data).To(HaveKey("metadata.json"))
+			var meta map[string]any
+			Expect(json.Unmarshal(secret.Data["metadata.json"], &meta)).To(Succeed())
+			Expect(meta).To(HaveKeyWithValue("type", "postgresql"))
+			Expect(meta).To(HaveKeyWithValue("userRole", "admin"))
+			metaClassifier, ok := meta["classifier"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(metaClassifier).To(HaveKeyWithValue("microserviceName", "test-service"))
+			Expect(metaClassifier).To(HaveKeyWithValue("scope", "service"))
+			Expect(metaClassifier).To(HaveKeyWithValue("namespace", ns),
+				"classifier.namespace is defaulted to metadata.namespace in the descriptor")
+
 			Expect(secret.OwnerReferences).To(HaveLen(1))
 			Expect(secret.OwnerReferences[0].Name).To(Equal(resourceName))
 			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "dbaas-operator"))
@@ -1357,6 +1371,73 @@ var _ = Describe("DatabaseSecret Controller — secretUpToDate", func() {
 	It("returns false when the name label drifted", func() {
 		existing := managedSecret(map[string][]byte{"connectionProperties.json": []byte(`{"password":"p1"}`)}, "svc-other")
 		Expect(secretUpToDate(cr, existing, desired)).To(BeFalse())
+	})
+})
+
+// ── buildSecretData ──────────────────────────────────────────────────────────
+
+var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
+	props := map[string]any{"host": "h", "password": "p", "port": 5432}
+
+	newCR := func(userRole string) *dbaasv1.DatabaseSecret {
+		return &dbaasv1.DatabaseSecret{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
+			Spec: dbaasv1.DatabaseSecretSpec{
+				// namespace omitted from the classifier on purpose — must be defaulted.
+				Classifier: dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"},
+				Type:       "postgresql",
+				UserRole:   userRole,
+				SecretName: "s",
+			},
+		}
+	}
+
+	mustBuild := func(cr *dbaasv1.DatabaseSecret, props map[string]any) map[string][]byte {
+		data, err := buildSecretData(cr, props)
+		Expect(err).NotTo(HaveOccurred())
+		return data
+	}
+
+	unmarshalMeta := func(data map[string][]byte) map[string]any {
+		var meta map[string]any
+		Expect(json.Unmarshal(data["metadata.json"], &meta)).To(Succeed())
+		return meta
+	}
+
+	It("writes both connectionProperties.json and metadata.json", func() {
+		data, err := buildSecretData(newCR("admin"), props)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(data).To(HaveKey("connectionProperties.json"))
+		Expect(data).To(HaveKey("metadata.json"))
+	})
+
+	It("serializes connectionProperties verbatim", func() {
+		data, err := buildSecretData(newCR("admin"), props)
+		Expect(err).NotTo(HaveOccurred())
+		var cp map[string]any
+		Expect(json.Unmarshal(data["connectionProperties.json"], &cp)).To(Succeed())
+		Expect(cp).To(HaveKeyWithValue("host", "h"))
+		Expect(cp).To(HaveKeyWithValue("password", "p"))
+	})
+
+	It("descriptor carries type and the canonical classifier with namespace defaulted", func() {
+		meta := unmarshalMeta(mustBuild(newCR("admin"), props))
+		Expect(meta).To(HaveKeyWithValue("type", "postgresql"))
+		clf, ok := meta["classifier"].(map[string]any)
+		Expect(ok).To(BeTrue())
+		Expect(clf).To(HaveKeyWithValue("microserviceName", "svc"))
+		Expect(clf).To(HaveKeyWithValue("scope", "service"))
+		Expect(clf).To(HaveKeyWithValue("namespace", "team-a"))
+	})
+
+	It("includes userRole when set", func() {
+		meta := unmarshalMeta(mustBuild(newCR("ro"), props))
+		Expect(meta).To(HaveKeyWithValue("userRole", "ro"))
+	})
+
+	It("omits userRole when spec.userRole is empty", func() {
+		meta := unmarshalMeta(mustBuild(newCR(""), props))
+		Expect(meta).NotTo(HaveKey("userRole"))
 	})
 })
 

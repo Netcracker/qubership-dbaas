@@ -1,5 +1,7 @@
 package com.netcracker.it.dbaas.helpers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -25,6 +27,7 @@ public class OperatorHelper {
     public static final String CR_NAMESPACE_BINDING_NAME = "binding";
     public static final String TEST_ID = "dbaas-autotest";
     public static final String CONNECTION_PROPERTIES_KEY = "connectionProperties.json";
+    public static final String METADATA_KEY = "metadata.json";
     public static final Pattern NAMESPACE_PATTERN = Pattern.compile("^operator-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     public static final String PHASE_SUCCEEDED = "Succeeded";
@@ -271,6 +274,54 @@ public class OperatorHelper {
                     String.format("Secret connectionProperties must contain value %s for key: %s", value, key)
             );
         });
+    }
+
+    /**
+     * Asserts the Secret carries a metadata.json descriptor with the expected classifier
+     * (microserviceName, namespace, scope=service), type and userRole. When expectedUserRole
+     * is null or blank, the descriptor must NOT contain the userRole field (omit-empty).
+     */
+    public static void assertSecretContainsMetadata(
+            Secret secret,
+            String expectedMicroserviceName,
+            String expectedNamespace,
+            String expectedType,
+            String expectedUserRole
+    ) {
+        assertNotNull(secret.getData(), "Secret data must not be null");
+        assertTrue(
+                secret.getData().containsKey(METADATA_KEY),
+                String.format("Secret must contain key: %s", METADATA_KEY)
+        );
+
+        String decodedJson = new String(
+                Base64.getDecoder().decode(secret.getData().get(METADATA_KEY)),
+                StandardCharsets.UTF_8
+        );
+
+        JsonNode meta;
+        try {
+            meta = new ObjectMapper().readTree(decodedJson);
+        } catch (Exception e) {
+            throw new AssertionError("metadata.json is not valid JSON: " + decodedJson, e);
+        }
+
+        assertEquals(expectedType, meta.path("type").asText(), "metadata.type");
+
+        JsonNode classifier = meta.path("classifier");
+        assertEquals(expectedMicroserviceName, classifier.path("microserviceName").asText(),
+                "metadata.classifier.microserviceName");
+        assertEquals(expectedNamespace, classifier.path("namespace").asText(),
+                "metadata.classifier.namespace");
+        assertEquals("service", classifier.path("scope").asText(),
+                "metadata.classifier.scope");
+
+        if (expectedUserRole == null || expectedUserRole.isBlank()) {
+            assertFalse(meta.has("userRole"),
+                    "metadata.userRole must be omitted when spec.userRole is empty");
+        } else {
+            assertEquals(expectedUserRole, meta.path("userRole").asText(), "metadata.userRole");
+        }
     }
 
     public static String generateName() {
