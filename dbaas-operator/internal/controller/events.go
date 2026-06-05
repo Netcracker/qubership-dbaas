@@ -98,9 +98,18 @@ const (
 	EventReasonWaitingForNamespaceBinding = "WaitingForNamespaceBinding"
 
 	// EventReasonSecretCreated is emitted when a DatabaseSecret successfully
-	// creates or updates the target Kubernetes Secret with connection properties.
+	// creates the target Kubernetes Secret with connection properties for the
+	// first time. Subsequent content changes (e.g. rotation) use SecretRotated.
 	// Type: Normal.
 	EventReasonSecretCreated = "SecretCreated"
+
+	// EventReasonSecretRotated is emitted when a DatabaseSecret reconcile detects
+	// that the connectionProperties returned by dbaas-aggregator differ from what
+	// is currently stored in the target Kubernetes Secret, and writes the new
+	// content. Triggered both by rotation events from the aggregator and by
+	// safety-net polls that detect drift. The initial Secret creation uses
+	// SecretCreated instead. Type: Normal.
+	EventReasonSecretRotated = "SecretRotated"
 
 	// EventReasonSecretConflict is emitted when the target Kubernetes Secret
 	// already exists but its ownerReference points to a different resource or

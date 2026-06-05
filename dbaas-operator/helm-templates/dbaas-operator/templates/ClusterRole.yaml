@@ -25,9 +25,11 @@ rules:
     resources: [ dbpolicies/status ]
     verbs: [ get, update, patch ]
   # databasesecrets: operator reads and watches; creates/updates the target core v1.Secret; status via /status subresource.
+  # patch on the resource itself is required for the rotation webhook to stamp the
+  # dbaas.netcracker.com/rotation-trigger annotation on matched CRs.
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databasesecrets ]
-    verbs: [ get, list, watch ]
+    verbs: [ get, list, watch, patch ]
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databasesecrets/status ]
     verbs: [ get, update, patch ]
@@ -62,4 +64,10 @@ rules:
   - apiGroups: [ "" ]
     resources: [ secrets ]
     verbs: [ get, list, create, update, patch, watch ]
+  # OIDC discovery: the rotation webhook validates inbound aggregator tokens by
+  # fetching the cluster's OIDC configuration and JWKS (see internal/webhook).
+  # Hardened clusters do not grant these non-resource URLs to all service
+  # accounts, so request them explicitly.
+  - nonResourceURLs: [ /.well-known/openid-configuration, /openid/v1/jwks ]
+    verbs: [ get ]
 {{- end }}

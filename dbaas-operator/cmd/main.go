@@ -20,8 +20,10 @@ import (
 	"context"
 	"flag"
 	"io"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,7 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
@@ -51,6 +53,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -72,12 +75,13 @@ func main() {
 		xrequestid.XRequestIdProvider{},
 	})
 
-	var metricsAddr string
+	var httpAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var backoffBaseDelay time.Duration
 	var backoffMaxDelay time.Duration
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
+	flag.StringVar(&httpAddr, "http-bind-address", ":8080",
+		"Address the operator's HTTP server binds to. Hosts the Prometheus /metrics endpoint and any registered webhook receivers.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -91,8 +95,13 @@ func main() {
 
 	ctrl.SetLogger(newLogrLogger("dbaas-operator"))
 
-	metricsServerOptions := metricsserver.Options{
-		BindAddress: metricsAddr,
+	// httpServerOpts configures the operator's general-purpose HTTP server. It
+	// hosts the Prometheus /metrics endpoint and any handlers registered via
+	// ExtraHandlers (e.g. the rotation webhook receiver). The option type is
+	// named metricsserver.Options for historical reasons inside controller-
+	// runtime — conceptually it is the manager's HTTP listener.
+	httpServerOpts := httpserver.Options{
+		BindAddress: httpAddr,
 	}
 
 	// ── Operator namespace ────────────────────────────────────────────────────
@@ -128,7 +137,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(baseConfig, ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                metricsServerOptions,
+		Metrics:                httpServerOpts,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
@@ -295,6 +304,43 @@ func main() {
 		setupLog.Errorf("Failed to set up ready check: %v", err)
 		os.Exit(1)
 	}
+
+	// ── Rotation webhook receiver ────────────────────────────────────────────
+	// Authenticates inbound rotation events from dbaas-aggregator and patches
+	// the AnnotationRotationTrigger annotation on each affected DatabaseSecret
+	// CR. The handler is mounted on the same HTTP listener as /metrics via the
+	// controller-runtime ExtraHandlers hook; it runs on every replica so any
+	// pod can accept the webhook, and the annotation propagates through the
+	// k8s watch so only the leader's reconciler applies the actual Secret
+	// update.
+	authInitCtx, cancelAuthInit := context.WithTimeout(context.Background(), 30*time.Second)
+	rotationAuth, err := webhook.NewKubernetesAuthenticator(authInitCtx, webhook.AudienceDBaaSOperator)
+	cancelAuthInit()
+	if err != nil {
+		setupLog.Errorf("Failed to create rotation webhook authenticator: %v", err)
+		os.Exit(1)
+	}
+	// Caller authorization: only allow-listed Kubernetes subjects may trigger
+	// rotations. ROTATION_WEBHOOK_ALLOWED_SUBJECTS is a comma-separated list of
+	// system:serviceaccount:<namespace>:<serviceAccount> entries; when unset it
+	// falls back to the aggregator's derived identity in the operator's own
+	// namespace. The handler is fail-closed against this set.
+	allowedSubjects := webhook.ParseAllowedSubjects(
+		os.Getenv("ROTATION_WEBHOOK_ALLOWED_SUBJECTS"), cloudNamespace)
+	if err := mgr.AddMetricsServerExtraHandler(
+		webhook.PathRotationNotify,
+		&webhook.RotationHandler{
+			Client:          mgr.GetClient(),
+			Auth:            rotationAuth,
+			AllowedSubjects: allowedSubjects,
+		},
+	); err != nil {
+		setupLog.Errorf("Failed to register rotation webhook handler: %v", err)
+		os.Exit(1)
+	}
+	setupLog.Infof("Rotation webhook registered path=%s audience=%s allowedSubjects=%v",
+		webhook.PathRotationNotify, webhook.AudienceDBaaSOperator,
+		slices.Sorted(maps.Keys(allowedSubjects)))
 
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

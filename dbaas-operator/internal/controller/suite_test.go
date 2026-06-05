@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	// +kubebuilder:scaffold:imports
@@ -107,7 +107,7 @@ var _ = BeforeSuite(func() {
 	// indexes — only the in-process cache does.
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme.Scheme,
-		Metrics:                metricsserver.Options{BindAddress: "0"},
+		Metrics:                httpserver.Options{BindAddress: "0"},
 		HealthProbeBindAddress: "0",
 	})
 	Expect(err).NotTo(HaveOccurred())
@@ -118,6 +118,17 @@ var _ = BeforeSuite(func() {
 		secretNameIndex,
 		func(obj client.Object) []string {
 			return []string{obj.(*dbaasv1.DatabaseSecret).Spec.SecretName}
+		},
+	)).To(Succeed())
+
+	Expect(mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&dbaasv1.DatabaseSecret{},
+		dbaasv1.ClassifierTypeIndex,
+		func(obj client.Object) []string {
+			ds := obj.(*dbaasv1.DatabaseSecret)
+			c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
+			return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
 		},
 	)).To(Succeed())
 

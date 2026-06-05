@@ -9,9 +9,7 @@ kind: ClusterRole
 metadata:
   name: dbaas-operator
 rules:
-  # dbaas CRs
-  # Read-only access (Get/List/Watch) is sufficient for all workload resources;
-  # none of the controllers call Create, Update, or Delete on the main resource.
+  # dbaas CRs (read-only for workloads whose main resource the operator never mutates).
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - databasedeclarations
@@ -21,6 +19,7 @@ rules:
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - databasedeclarations/status
+      - databasesecrets/status
       - dbpolicies/status
       - externaldatabases/status
     verbs: [get, update, patch]
@@ -46,17 +45,23 @@ rules:
     verbs: [update]
   # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
   # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
+  # databasesecrets / namespacebindings: patch on the main resource is needed —
+  # databasesecrets for the rotation-trigger annotation, namespacebindings for
+  # the protection finalizer (client.MergeFrom).
   - apiGroups: [dbaas.netcracker.com]
-    resources: [namespacebindings]
+    resources: [databasesecrets, namespacebindings]
     verbs: [get, list, watch, patch]
   - apiGroups: [dbaas.netcracker.com]
     resources: [namespacebindings/finalizers]
     verbs: [update]
-  # Secrets (for credentials in ExternalDatabase)
-  # list + watch required for WatchesMetadata; get required for reconcile reads.
+  # Secrets: list+watch for WatchesMetadata, get for reconcile reads,
+  # create/update/patch for DatabaseSecret materialization.
   - apiGroups: [""]
     resources: [secrets]
-    verbs: [get, list, watch]
+    verbs: [get, list, watch, create, update, patch]
+  # OIDC discovery for the rotation webhook's token verifier (see internal/webhook).
+  - nonResourceURLs: [/.well-known/openid-configuration, /openid/v1/jwks]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -140,14 +145,17 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-          # The base image's ENTRYPOINT is /usr/bin/entrypoint.sh. Dockerfile sets
-          # CMD=["/app/dbaas-operator"], but a Pod's `args` field REPLACES image CMD,
-          # so the binary path must be repeated here in `command`.
+          # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
+          # which loads the Kubernetes service-account ca.crt into the trust store before
+          # exec'ing its args. The rotation webhook's OIDC verifier makes a TLS call to the
+          # kube-apiserver via the system trust store, so the CA must be loaded — bypassing
+          # the entrypoint fails with x509: certificate signed by unknown authority.
           command:
-            - /app/dbaas-operator
+            - /usr/bin/entrypoint.sh
           args:
+            - /app/dbaas-operator
             - --health-probe-bind-address=:8081
-            - --metrics-bind-address=:8080
+            - --http-bind-address=:8080
             - --leader-elect
           volumeMounts:
             - name: projected-tokens

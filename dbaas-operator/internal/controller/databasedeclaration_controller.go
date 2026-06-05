@@ -21,7 +21,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -222,21 +221,28 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclara
 			Namespace:        dd.Namespace,
 			MicroserviceName: dd.Spec.Classifier.MicroserviceName,
 		},
-		Spec: toWireSpec(dd.Spec),
+		Spec: toWireSpec(dd.Spec, dd.Namespace),
 	}
 }
 
 // toWireSpec converts a DatabaseDeclarationSpec (CRD shape) into the wire format
-// expected by dbaas-aggregator.
+// expected by dbaas-aggregator. namespace is the owning CR's metadata.namespace,
+// used to default classifier.namespace when omitted.
 //
 // Mapping summary:
 //   - spec.classifier         → classifierConfig.classifier (SortedMap<String,Object>)
 //   - spec.classifier.customKeys → classifier["customKeys"] (nested map inside the flat map)
 //   - initialInstantiation.sourceClassifier → initialInstantiation.sourceClassifier (same flat-map shape)
-func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec) aggregatorclient.DatabaseDeclarationSpecWire {
+//
+// The main classifier's namespace is defaulted to the CR's namespace (the
+// aggregator requires it; the controller already validates that a non-empty
+// value equals metadata.namespace). sourceClassifier is left as-is — a clone
+// source may legitimately live in a different namespace, and no equality
+// constraint is enforced on it.
+func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec, namespace string) aggregatorclient.DatabaseDeclarationSpecWire {
 	wire := aggregatorclient.DatabaseDeclarationSpecWire{
 		ClassifierConfig: aggregatorclient.ClassifierConfigWire{
-			Classifier: classifierFlatMap(spec.Classifier),
+			Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(spec.Classifier, namespace)),
 		},
 		Type:       spec.Type,
 		Lazy:       spec.Lazy,
@@ -253,42 +259,11 @@ func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec) aggregatorclient.DatabaseD
 			Approach: spec.InitialInstantiation.Approach,
 		}
 		if spec.InitialInstantiation.SourceClassifier != nil {
-			ii.SourceClassifier = classifierFlatMap(*spec.InitialInstantiation.SourceClassifier)
+			ii.SourceClassifier = dbaasv1.ClassifierFlatMap(*spec.InitialInstantiation.SourceClassifier)
 		}
 		wire.InitialInstantiation = ii
 	}
 	return wire
-}
-
-// classifierFlatMap converts a Classifier CR field into the flat map expected by
-// DatabaseDeclaration.ClassifierConfig.classifier (SortedMap<String, Object>).
-// All scalar fields are added as top-level keys; customKeys is added as a nested
-// map[string]any under the "customKeys" key, with each JSON value deserialized.
-func classifierFlatMap(c dbaasv1.Classifier) map[string]any {
-	m := make(map[string]any, 4+len(c.CustomKeys))
-	m["microserviceName"] = c.MicroserviceName
-	m["scope"] = c.Scope
-	if c.Namespace != "" {
-		m["namespace"] = c.Namespace
-	}
-	if c.TenantId != "" {
-		m["tenantId"] = c.TenantId
-	}
-	if len(c.CustomKeys) > 0 {
-		customKeys := make(map[string]any, len(c.CustomKeys))
-		for k, v := range c.CustomKeys {
-			var val any
-			if err := json.Unmarshal(v.Raw, &val); err != nil {
-				// raw bytes are always valid JSON from the API server, but
-				// fall back to string representation if something goes wrong.
-				customKeys[k] = string(v.Raw)
-				continue
-			}
-			customKeys[k] = val
-		}
-		m["customKeys"] = customKeys
-	}
-	return m
 }
 
 // aggregatorConditionDataBaseCreated is the condition type used by dbaas-aggregator
