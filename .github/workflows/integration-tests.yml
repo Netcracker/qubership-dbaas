@@ -171,6 +171,35 @@ jobs:
             -n postgres \
             --timeout=300s
 
+      - name: Dump cluster diagnostics on deploy failure
+        if: failure()
+        run: |
+          set +e
+          echo "::group::All pods (all namespaces)"
+          kubectl get pods -A -o wide
+          echo "::endgroup::"
+          for pair in "dbaas-operator:dbaas" "dbaas-aggregator:dbaas" "postgres-backup-daemon:postgres"; do
+            d="${pair%%:*}"; ns="${pair##*:}"
+            echo "::group::describe deploy/$d ($ns)"
+            kubectl -n "$ns" describe deploy/"$d"
+            echo "::endgroup::"
+            echo "::group::describe pods $d ($ns)"
+            kubectl -n "$ns" describe pod -l "app.kubernetes.io/name=$d"
+            echo "::endgroup::"
+            echo "::group::logs $d ($ns, current)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=300
+            echo "::endgroup::"
+            echo "::group::logs $d ($ns, PREVIOUS/crash)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --previous --tail=300
+            echo "::endgroup::"
+          done
+          echo "::group::Recent events (ns=dbaas)"
+          kubectl -n dbaas get events --sort-by=.lastTimestamp | tail -80
+          echo "::endgroup::"
+          echo "::group::Recent events (ns=postgres)"
+          kubectl -n postgres get events --sort-by=.lastTimestamp | tail -40
+          echo "::endgroup::"
+
       - name: Run tests
         id: tests
         run: mvn --batch-mode -Dmaven.test.failure.ignore=true -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
@@ -201,6 +230,7 @@ jobs:
 
       - name: Collect Fluent Bit logs
         id: collect_fluentbit_logs
+        if: always()
         run: |
           chmod +x .github/scripts/collect-fluentbit-logs.sh && \
           .github/scripts/collect-fluentbit-logs.sh
@@ -215,6 +245,7 @@ jobs:
 
       - name: Collect DBaaS logs
         id: collect_logs
+        if: always()
         run: |
           chmod +x .github/scripts/get-dbaas-logs.sh && \
           .github/scripts/get-dbaas-logs.sh
