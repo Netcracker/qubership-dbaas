@@ -204,13 +204,8 @@ class BackupV3IT extends AbstractIT {
             }
 
             @Test
-            void testMigratedExternalToInternalDatabaseBackupRestoreWithUserCreation() throws IOException {
-                testMigratedExternalToInternalDatabaseBackupRestore(true);
-            }
-
-            @Test
-            void testMigratedExternalToInternalDatabaseBackupRestoreWithoutUserCreation() throws IOException {
-                testMigratedExternalToInternalDatabaseBackupRestore(false);
+            void testMigratedExternalToInternalDatabasesBackupRestore() throws IOException {
+                BackupV3IT.this.testMigratedExternalToInternalDatabasesBackupRestore();
             }
         }
 
@@ -856,46 +851,69 @@ class BackupV3IT extends AbstractIT {
         backupHelperV3.checkConnections(false, List.of(restoredLogicalDatabase), null, BACKUPED_DATA, false);
     }
 
-    public void testMigratedExternalToInternalDatabaseBackupRestore(boolean withUserCreation) throws IOException{
-        assumeTrue(helperV3.hasAdapterOfType(POSTGRES_TYPE),  MessageFormat.format("No {0} adapter. Skip test.", POSTGRES_TYPE));
+    public void testMigratedExternalToInternalDatabasesBackupRestore() throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(POSTGRES_TYPE),
+                MessageFormat.format("No {0} adapter. Skip test.", POSTGRES_TYPE));
 
         String sourceNamespace = helperV3.generateTestNamespace();
         String targetNamespace = helperV3.generateTestNamespace();
 
-        String microserviceName = withUserCreation ? DBAAS_AUTO_TEST_1 : DBAAS_AUTO_TEST_2;
+        DatabaseResponse migratedWithUserCreation = migrationHelper.prepareMigratedExternalToInternalPostgresDatabase(
+                sourceNamespace,
+                DBAAS_AUTO_TEST_1,
+                true
+        );
 
-        DatabaseResponse migratedDb = migrationHelper.prepareMigratedExternalToInternalPostgresDatabase(sourceNamespace,
-                microserviceName,
-                withUserCreation
+        DatabaseResponse migratedWithoutUserCreation = migrationHelper.prepareMigratedExternalToInternalPostgresDatabase(
+                sourceNamespace,
+                DBAAS_AUTO_TEST_2,
+                false
+        );
+
+        List<DatabaseResponse> migratedDbs = List.of(
+                migratedWithUserCreation,
+                migratedWithoutUserCreation
         );
 
         backupHelperV3.checkConnections(
                 false,
-                List.of(migratedDb),
+                migratedDbs,
                 BACKUPED_DATA,
                 BACKUPED_DATA,
                 false
         );
 
-        var backupRequest = new BackupRequestBuilder().filterCriteria(
-                fc -> fc.include(f -> f.ns(sourceNamespace).dbType(POSTGRES_TYPE))).build();
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc -> fc.include(f -> f
+                        .ns(sourceNamespace)
+                        .dbType(POSTGRES_TYPE)))
+                .build();
 
         var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
 
         assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus(),
-                "Backup should be completed for migrated external-to-internal PostgreSQL database");
+                "Backup should be completed for migrated external-to-internal PostgreSQL databases");
 
-        int backedUpDatabasesCount = backupResponse.getLogicalBackups().stream().mapToInt(
-                        logicalBackup -> logicalBackup.getBackupDatabases().size())
+        int backedUpDatabasesCount = backupResponse.getLogicalBackups().stream()
+                .mapToInt(logicalBackup -> logicalBackup.getBackupDatabases().size())
                 .sum();
 
-        assertEquals(1, backedUpDatabasesCount, "Backup should include migrated external-to-internal PostgreSQL database");
+        assertEquals(2, backedUpDatabasesCount,
+                "Backup should include both migrated external-to-internal PostgreSQL databases");
 
         String changedData = "changedData";
 
-        backupHelperV3.checkConnections(false, List.of(migratedDb), changedData, changedData, false);
+        backupHelperV3.checkConnections(
+                false,
+                migratedDbs,
+                changedData,
+                changedData,
+                false
+        );
 
-        var restoreRequest = new RestoreRequestBuilder().mapping(m -> m.ns(sourceNamespace, targetNamespace)).build();
+        var restoreRequest = new RestoreRequestBuilder()
+                .mapping(m -> m.ns(sourceNamespace, targetNamespace))
+                .build();
 
         var restoreResponse = backupHelperV1.runRestoreAndWait(
                 backupRequest.getBackupName(),
@@ -904,12 +922,12 @@ class BackupV3IT extends AbstractIT {
         );
 
         assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus(),
-                "Restore should be completed for migrated external-to-internal PostgreSQL database");
+                "Restore should be completed for migrated external-to-internal PostgreSQL databases");
 
-        DatabaseResponse restoredDb = helperV3.getDatabaseByClassifierAsPOJO(
+        DatabaseResponse restoredWithUserCreation = helperV3.getDatabaseByClassifierAsPOJO(
                 helperV3.getClusterDbaAuthorization(),
                 new ClassifierBuilder()
-                        .ms(microserviceName)
+                        .ms(DBAAS_AUTO_TEST_1)
                         .ns(targetNamespace)
                         .build(),
                 targetNamespace,
@@ -917,15 +935,34 @@ class BackupV3IT extends AbstractIT {
                 HttpStatus.OK.value()
         );
 
-        assertNotEquals(migratedDb.getName(), restoredDb.getName(),
-                "Restored database should have a different physical database name");
+        DatabaseResponse restoredWithoutUserCreation = helperV3.getDatabaseByClassifierAsPOJO(
+                helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder()
+                        .ms(DBAAS_AUTO_TEST_2)
+                        .ns(targetNamespace)
+                        .build(),
+                targetNamespace,
+                POSTGRES_TYPE,
+                HttpStatus.OK.value()
+        );
 
-        assertNotEquals(migratedDb.getConnectionProperties(), restoredDb.getConnectionProperties(),
-                "Restored database should have different connection properties");
+        assertNotEquals(migratedWithUserCreation.getName(), restoredWithUserCreation.getName(),
+                "Restored with-user-creation database should have a different physical database name");
+
+        assertNotEquals(migratedWithoutUserCreation.getName(), restoredWithoutUserCreation.getName(),
+                "Restored without user creation database should have a different physical database name");
+
+        assertNotEquals(migratedWithUserCreation.getConnectionProperties(),
+                restoredWithUserCreation.getConnectionProperties(),
+                "Restored with user creation database should have different connection properties");
+
+        assertNotEquals(migratedWithoutUserCreation.getConnectionProperties(),
+                restoredWithoutUserCreation.getConnectionProperties(),
+                "Restored without user creation database should have different connection properties");
 
         backupHelperV3.checkConnections(
                 false,
-                List.of(migratedDb),
+                migratedDbs,
                 null,
                 changedData,
                 false
@@ -933,7 +970,7 @@ class BackupV3IT extends AbstractIT {
 
         backupHelperV3.checkConnections(
                 false,
-                List.of(restoredDb),
+                List.of(restoredWithUserCreation, restoredWithoutUserCreation),
                 null,
                 BACKUPED_DATA,
                 false
