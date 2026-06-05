@@ -291,9 +291,13 @@ func (r *DatabaseSecretReconciler) writeSecret(
 // When the existing Secret already carries exactly the credentials and managed
 // labels we would write, the Update is skipped entirely: a rotation-triggered
 // reconcile that finds unchanged content must not churn the Secret, since every
-// rewrite wakes mounting pods via the kubelet's secret sync. A real content
-// change is treated as a rotation — it stamps Status.LastRotatedAt and emits
-// SecretRotated, distinct from the SecretCreated used on first creation.
+// rewrite wakes mounting pods via the kubelet's secret sync.
+//
+// Only a change to connectionProperties.json is treated as a rotation — it
+// stamps Status.LastRotatedAt and emits SecretRotated. A metadata.json or label
+// backfill (credentials unchanged) still rewrites the Secret but reports plain
+// success (SecretCreated reason, no LastRotatedAt, no SecretRotated event), so
+// the rotation timestamp stays faithful to its connection-properties contract.
 func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecret,
@@ -309,6 +313,13 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
 		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
+
+	// Distinguish a credential change (rotation) from a metadata.json / label
+	// backfill: only the former advances LastRotatedAt and emits SecretRotated.
+	// existing.Data is the pre-update content; secretData is the desired content.
+	credentialsChanged := !bytes.Equal(
+		existing.Data[secretKeyConnectionProperties],
+		secretData[secretKeyConnectionProperties])
 
 	updated := existing.DeepCopy()
 	updated.Data = secretData
@@ -350,8 +361,16 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 			return ctrl.Result{}, err
 		}
 	}
-	// Content changed and written — this is a rotation (or first fill of an
-	// adopted Secret). Stamp the rotation timestamp and emit SecretRotated.
+	// The Secret was written. Only stamp LastRotatedAt and emit SecretRotated
+	// when the credentials actually changed. A metadata.json or label backfill
+	// rewrites the Secret once but is not a rotation, so it must not advance the
+	// rotation timestamp nor report SecretRotated.
+	if !credentialsChanged {
+		log.InfoC(ctx, "DatabaseSecret Secret updated without credential change (metadata/label backfill) name=%s secretName=%s",
+			s.Name, s.Spec.SecretName)
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
+	}
 	now := metav1.Now()
 	s.Status.LastRotatedAt = &now
 	r.markSecretSucceeded(s, requestID, EventReasonSecretRotated,
