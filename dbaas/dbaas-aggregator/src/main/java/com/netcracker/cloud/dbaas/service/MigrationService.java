@@ -222,9 +222,11 @@ public class MigrationService {
                 db.getResources().add(new DbResource(DbResource.DATABASE_KIND, db.getName()));
             }
 
-            boolean hasMissingPassword = db.getConnectionProperties().stream()
-                    .anyMatch(properties -> isBlank(properties.get(PASSWORD_FIELD).toString())
-                            && isBlank(properties.get(ENCRYPTED_PASSWORD_FIELD).toString()));
+            boolean hasMissingPassword = db.getConnectionProperties() == null
+                    || db.getConnectionProperties().isEmpty()
+                    || db.getConnectionProperties().stream()
+                    .anyMatch(properties -> StringUtils.isBlank(Objects.toString(properties.get(PASSWORD_FIELD), null))
+                            && StringUtils.isBlank(Objects.toString(properties.get(ENCRYPTED_PASSWORD_FIELD), null)));
 
             if (hasMissingPassword) {
                 responseBuilder.addFailedDb(dbName, requestsWithAdapterId.getType());
