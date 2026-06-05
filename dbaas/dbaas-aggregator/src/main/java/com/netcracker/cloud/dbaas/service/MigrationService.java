@@ -23,7 +23,6 @@ import java.util.stream.Collectors;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.ENCRYPTED_PASSWORD_FIELD;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
-import static org.apache.commons.lang.StringUtils.isBlank;
 
 @ApplicationScoped
 @Slf4j
@@ -236,13 +235,11 @@ public class MigrationService {
                 return;
             }
 
-            if (isProcessExternalAsInternal) {
-                if (!isUserCreation) {
-                    updateAdapterMetadata(dbName, db, requestsWithAdapterId.getClassifier());
-                }
-
-                markDatabaseAsCreated(db);
+            if (!isUserCreation) {
+                updateAdapterMetadata(dbName, db, requestsWithAdapterId.getClassifier());
             }
+
+            markDatabaseAsCreated(db);
 
             dBaaService.encryptAndSaveDatabaseEntity(db);
             db.getDatabaseRegistry().forEach(dbr -> responseBuilder.addMigratedDb(dBaaService.processConnectionPropertiesV3(dbr)));
