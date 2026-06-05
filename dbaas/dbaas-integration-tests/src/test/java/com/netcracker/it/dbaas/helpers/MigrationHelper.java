@@ -47,8 +47,8 @@ public class MigrationHelper {
     private static final String DBAAS_METADATA = "_dbaas_metadata";
     public static final String CONNECTION_PROPERTIES = "connectionProperties";
 
-    private static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";
-    private static final String MIGRATE_WITH_USER_CREATION_API = BASE_MIGRATE_API + "/with-user-creation";
+    public static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";
+    public static final String MIGRATE_WITH_USER_CREATION_API = BASE_MIGRATE_API + "/with-user-creation";
 
     public Map.Entry<String, PhysicalDatabaseRegistrationResponseDTOV3> getGlobalPhysicalDbEntry(String dbType) throws IOException {
         return helperV3.getRegisteredPhysicalDatabases(dbType, helperV3.getClusterDbaAuthorization(), 200)

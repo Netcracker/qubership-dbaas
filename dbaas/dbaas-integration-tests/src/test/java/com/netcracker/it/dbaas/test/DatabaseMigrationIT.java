@@ -20,15 +20,12 @@ import java.util.*;
 import java.util.function.Consumer;
 
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.*;
-import static com.netcracker.it.dbaas.helpers.MigrationHelper.CONNECTION_PROPERTIES;
+import static com.netcracker.it.dbaas.helpers.MigrationHelper.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @Slf4j
 public class DatabaseMigrationIT extends AbstractIT {
-
-    private static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";
-    private static final String MIGRATE_WITH_USER_CREATION_API = BASE_MIGRATE_API + "/with-user-creation";
 
     private static final String DATABASE_ERROR_MSG = "registered database must contain ";
     private static final String INVALID_CLASSIFIER_ERROR_MSG = "Invalid classifier. It does not match v3 format. Classifier: ";

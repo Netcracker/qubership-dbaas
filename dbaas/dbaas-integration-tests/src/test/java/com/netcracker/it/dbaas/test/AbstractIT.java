@@ -11,7 +11,6 @@ import com.netcracker.it.dbaas.entity.AggregatorHealth;
 import com.netcracker.it.dbaas.entity.DatabaseV3;
 import com.netcracker.it.dbaas.entity.DbaasUsersData;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
-import com.netcracker.it.dbaas.helpers.MigrationHelper;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -29,7 +28,10 @@ import java.net.SocketException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -181,6 +183,7 @@ public abstract class AbstractIT {
         }
         return value;
     }
+
 
     protected static DbaasUsersData readDbaasUsersFromSecret() {
         Secret secret = kubernetesClient.secrets().withName("dbaas-security-configuration-secret").get();

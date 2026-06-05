@@ -16,7 +16,6 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.gson.GsonBuilder;
 import com.mongodb.*;
-import com.mongodb.client.MongoDatabase;
 import com.netcracker.cloud.junit.cloudcore.extension.provider.LocalHostAddressGenerator;
 import com.netcracker.cloud.junit.cloudcore.extension.service.Endpoint;
 import com.netcracker.cloud.junit.cloudcore.extension.service.NetSocketAddress;
@@ -40,7 +39,6 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.Getter;
 import lombok.NonNull;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
@@ -84,7 +82,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.oneOf;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
 public class DbaasHelperV3 {
