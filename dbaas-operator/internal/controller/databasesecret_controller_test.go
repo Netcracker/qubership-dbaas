@@ -349,6 +349,56 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		})
 	})
 
+	Context("HTTP 200 — Secret owned by this CR, only metadata.json missing (backfill)", func() {
+		It("rewrites the Secret to add metadata.json but is not a rotation: LastRotatedAt stays nil, no SecretRotated", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			ds := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			// First reconcile — creates the Secret with both keys.
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			drainRecordedEvents(fixture.recorder.Events)
+
+			// Simulate an older Secret that predates the metadata.json key:
+			// drop it while leaving connectionProperties.json unchanged.
+			secret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			Expect(secret.Data).To(HaveKey("metadata.json"))
+			delete(secret.Data, "metadata.json")
+			Expect(k8sClient.Update(ctx, secret)).To(Succeed())
+
+			// Reconcile — must backfill metadata.json without reporting a rotation.
+			got, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(got.Status.LastRotatedAt).To(BeNil(),
+				"a metadata-only backfill must not advance LastRotatedAt")
+
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonSecretCreated),
+				"metadata backfill keeps the SecretCreated reason, not SecretRotated")
+
+			// metadata.json restored; connectionProperties.json untouched.
+			secret = &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			Expect(secret.Data).To(HaveKey("metadata.json"))
+
+			// No rotation event emitted.
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
 	Context("HTTP 200 — empty connectionProperties", func() {
 		It("sets Phase=BackingOff, Stalled=False, EmptyConnectionProperties event, requeues", func() {
 			fixture.statusCode = http.StatusOK
