@@ -13,6 +13,7 @@ import com.netcracker.it.dbaas.entity.DbaasUsersData;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.RetryPolicy;
@@ -28,14 +29,10 @@ import java.net.SocketException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Base class for all the DBaaS Aggregator ITs.
@@ -187,7 +184,7 @@ public abstract class AbstractIT {
     protected static DbaasUsersData readDbaasUsersFromSecret() {
         Secret secret = kubernetesClient.secrets().withName("dbaas-security-configuration-secret").get();
 
-        
+
         String usersJson;
         if (secret.getData().size() > 1) {
             usersJson = secret.getData().get("users.json");
