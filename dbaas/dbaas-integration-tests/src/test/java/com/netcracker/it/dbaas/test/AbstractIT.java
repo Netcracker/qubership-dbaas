@@ -184,10 +184,10 @@ public abstract class AbstractIT {
         return value;
     }
 
-
     protected static DbaasUsersData readDbaasUsersFromSecret() {
         Secret secret = kubernetesClient.secrets().withName("dbaas-security-configuration-secret").get();
 
+        
         String usersJson;
         if (secret.getData().size() > 1) {
             usersJson = secret.getData().get("users.json");
