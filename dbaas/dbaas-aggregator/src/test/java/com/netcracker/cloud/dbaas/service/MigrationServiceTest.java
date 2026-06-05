@@ -100,7 +100,8 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
@@ -118,6 +119,7 @@ public class MigrationServiceTest {
         registerDatabaseRequest.setNamespace(TEST_NAMESPACE);
         registerDatabaseRequest.setAdapterId(TEST_ADAPTER_ID);
         registerDatabaseRequest.setType(TEST_TYPE);
+        registerDatabaseRequest.setClassifier(getClassifier());
         final Map<String, Object> connectionProperties = new HashMap<>();
         connectionProperties.put(PASSWORD_FIELD, "test-password");
         connectionProperties.put(ROLE, Role.ADMIN.toString());
@@ -129,7 +131,8 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
@@ -220,7 +223,8 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(physicalDatabasesService).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
@@ -245,7 +249,8 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService, times(1)).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(1)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(dbaasAdapter, times(1)).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(physicalDatabasesService, times(1)).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
@@ -271,7 +276,9 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService, times(1)).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(1)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(1)).getByAdapterId(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(physicalDatabasesService, times(1)).getAllAdapters();
         verify(dbaasAdapter, times(2)).identifier();
         verify(dbaasAdapter, times(1)).type();
@@ -348,7 +355,8 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService, times(1)).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
@@ -535,6 +543,7 @@ public class MigrationServiceTest {
         registerDatabaseRequest.setNamespace(TEST_NAMESPACE);
         registerDatabaseRequest.setAdapterId(TEST_ADAPTER_ID);
         registerDatabaseRequest.setType(TEST_TYPE);
+        registerDatabaseRequest.setClassifier(getClassifier());
         final Map<String, Object> connectionProperties = new HashMap<>();
         connectionProperties.put(PASSWORD_FIELD, "test-password");
         connectionProperties.put(ROLE, Role.ADMIN.toString());
