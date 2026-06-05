@@ -962,8 +962,7 @@ public class DbaasHelperV3 {
         try {
             log.info("Check connection to created database {}", db);
             switch (db.getType()) {
-                case MONGODB_TYPE ->
-                        checkConnectionMongo(db, expectCannotConnect, setData, checkData);
+                case MONGODB_TYPE -> checkConnectionMongo(db, expectCannotConnect, setData, checkData);
                 case POSTGRES_TYPE -> checkConnectionPostgres(db, setData, checkData);
                 case OPENSEARCH_TYPE -> checkConnectionOpensearch(db, setData, checkData);
                 case CASSANDRA_TYPE -> checkConnectionCassandra(db, setData, checkData);
