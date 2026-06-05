@@ -33,7 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	config "sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
@@ -143,7 +143,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	// ── classifier.namespace validation ──────────────────────────────────────
 
 	Context("classifier.namespace absent — falls back to metadata.namespace", func() {
-		It("uses CR namespace in the aggregator URL and succeeds", func() {
+		It("uses CR namespace in the aggregator URL and request body, and succeeds", func() {
 			spec := baseSpec()
 			spec.Classifier.Namespace = ""
 			fixture.statusCode = http.StatusOK
@@ -156,6 +156,16 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fixture.capturedPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+
+			// The classifier in the request body must also carry the defaulted
+			// namespace — the aggregator's isValidClassifierV3 rejects a classifier
+			// without it, regardless of the namespace embedded in the URL path.
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+			var sent struct {
+				Classifier map[string]any `json:"classifier"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.Classifier).To(HaveKeyWithValue("namespace", ns))
 		})
 	})
 
@@ -1108,7 +1118,7 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		skipValidation := true
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
-			Metrics:                metricsserver.Options{BindAddress: "0"},
+			Metrics:                httpserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
 			Controller:             config.Controller{SkipNameValidation: &skipValidation},
 		})
@@ -1178,7 +1188,7 @@ var _ = Describe("ExternalDatabase Controller — secret watch", func() {
 		var err error
 		mgr, err = ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                  k8sClient.Scheme(),
-			Metrics:                 metricsserver.Options{BindAddress: "0"},
+			Metrics:                 httpserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress:  "0",
 			Controller:              config.Controller{SkipNameValidation: &skipValidation},
 			GracefulShutdownTimeout: &shutdownTimeout,

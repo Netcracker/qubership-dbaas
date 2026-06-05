@@ -32,6 +32,12 @@
     - [How It Works](#how-databasedeclaration-works)
     - [Status Reference](#databasedeclaration-status-reference)
     - [Usage Examples](#databasedeclaration-usage-examples)
+  - [DatabaseSecret](#databasesecret)
+    - [Resource Fields](#databasesecret-resource-fields)
+    - [How It Works](#how-databasesecret-works)
+    - [Rotation Webhook](#rotation-webhook)
+    - [Status Reference](#databasesecret-status-reference)
+    - [Usage Examples](#databasesecret-usage-examples)
 - [Configuration Parameters](#configuration-parameters)
   - [Reconcile Backoff](#reconcile-backoff)
 
@@ -187,6 +193,8 @@ containers:
 
 **Requirement on the dbaas-aggregator side:** the aggregator must be configured to accept tokens with `audience=dbaas` and validate them against the Kubernetes token review API.
 
+> **Inbound authentication** — the projected token above is for the operator's **outbound** calls. The operator also **exposes** one authenticated endpoint, the rotation webhook, where the roles are reversed: dbaas-aggregator presents a projected token with `audience=dbaas-operator` and the operator verifies it via OIDC. See [Rotation Webhook](#rotation-webhook).
+
 ---
 
 ## RBAC and Required Permissions
@@ -255,6 +263,18 @@ rules:
     resources: ["externaldatabases/status"]
     verbs: ["get", "update", "patch"]
 
+  # DatabaseSecret: the controller reads and watches CRs; patch on the main
+  # resource is required for the rotation webhook to stamp the
+  # dbaas.netcracker.com/rotation-trigger annotation. Status is written via the
+  # /status subresource.
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["databasesecrets"]
+    verbs: ["get", "list", "watch", "patch"]
+
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["databasesecrets/status"]
+    verbs: ["get", "update", "patch"]
+
   # NamespaceBinding: patch is required to add/remove the binding-protection finalizer (client.MergeFrom).
   # Kubernetes additionally checks update on /finalizers when metadata.finalizers changes during a patch.
   - apiGroups: ["dbaas.netcracker.com"]
@@ -265,14 +285,23 @@ rules:
     resources: ["namespacebindings/finalizers"]
     verbs: ["update"]
 
-  # Read Secrets to resolve credentials referenced by ExternalDatabase CRs.
-  # get is required to read Secret data during reconcile.
-  # list and watch are required for the metadata-only Secret watch that triggers
-  # automatic reconciliation when a referenced Secret changes (credential rotation).
+  # Secrets: read credentials referenced by ExternalDatabase CRs and materialize
+  # the target Secret for DatabaseSecret CRs.
+  # get reads Secret data during reconcile; list/watch back the metadata-only
+  # Secret watch that triggers reconciliation on referenced-Secret changes;
+  # create/update/patch write the DatabaseSecret-managed Secret.
   # Only metadata (not data) is cached — Secret bodies are fetched on demand.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # OIDC discovery for the rotation webhook's token verifier: the operator
+  # fetches the cluster's OIDC configuration and JWKS to validate inbound
+  # aggregator tokens. Hardened clusters do not bind
+  # system:service-account-issuer-discovery to all service accounts, so the
+  # operator requests these non-resource URLs explicitly.
+  - nonResourceURLs: ["/.well-known/openid-configuration", "/openid/v1/jwks"]
+    verbs: ["get"]
 ```
 
 #### Required ClusterRoleBinding
@@ -343,9 +372,12 @@ subjects:
 | `dbaas.netcracker.com` | `databasedeclarations/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, and `status.trackingID` |
 | `dbaas.netcracker.com` | `externaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
+| `dbaas.netcracker.com` | `databasesecrets` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required for the rotation webhook to stamp the `dbaas.netcracker.com/rotation-trigger` annotation on matched CRs |
+| `dbaas.netcracker.com` | `databasesecrets/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, `status.lastRotatedAt`, and `status.firstNotFoundAt` |
 | `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
 | `dbaas.netcracker.com` | `namespacebindings/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `""` (core) | `secrets` | `get`, `list`, `watch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). Secret bodies are not cached. |
+| `""` (core) | `secrets` | `get`, `list`, `watch`, `create`, `update`, `patch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). `create`/`update`/`patch`: materialize the Secret managed by a `DatabaseSecret` CR. Secret bodies are not cached. |
+| _non-resource URLs_ | `/.well-known/openid-configuration`, `/openid/v1/jwks` | `get` | OIDC discovery for the rotation webhook's token verifier — fetch the cluster's OIDC config and JWKS to validate inbound aggregator tokens. Needed explicitly on hardened clusters that do not grant `system:service-account-issuer-discovery` to all service accounts |
 
 **Role** (operator namespace only):
 
@@ -1289,6 +1321,288 @@ kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
 
 ---
 
+### DatabaseSecret
+
+`DatabaseSecret` requests credentials for a database already managed by dbaas-aggregator and materializes them into a named Kubernetes `Secret` in the same namespace. The operator does **not** provision the database — it looks the database up by classifier and writes the returned `connectionProperties` into the target Secret, keeping it in sync as credentials rotate.
+
+The Secret is created with an `ownerReference` to the CR, so deleting the `DatabaseSecret` cascades to the materialized Secret.
+
+`kubectl get databasesecret` columns: `PHASE`, `TYPE`, `AGE`
+
+> **Required label** — `metadata.labels["app.kubernetes.io/name"]` must be set. Its value is sent as `originService` in the get-by-classifier request, which the aggregator uses to resolve the service's role grants (see [DbPolicy](#dbpolicy)). A CR without this label is rejected with `InvalidConfiguration`/`InvalidSpec` and the aggregator is never called. The check is enforced at the controller level (CEL validation of `metadata.labels` is not supported by controller-gen at the root schema).
+
+#### DatabaseSecret Resource Fields
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecret
+metadata:
+  name: my-app-db-secret
+  namespace: my-namespace
+  labels:
+    app.kubernetes.io/name: my-service   # required — sent as originService
+spec:
+  classifier:
+    microserviceName: my-service   # required
+    scope: service                 # required; "service" or "tenant"
+    namespace: my-namespace        # the aggregator always stores this; keep it set
+    # tenantId: my-tenant          # only meaningful when scope=tenant
+    # customKeys:                  # optional adapter-specific identifiers (arbitrary JSON)
+    #   logicalDBName: payments
+  type: postgresql                 # required
+  # userRole: admin                # optional; permission level of the returned credentials
+  secretName: my-app-db-secret     # required; name of the Secret to create/update
+```
+
+**`spec.classifier`** — identifies the database in dbaas-aggregator. Same structure and semantics as [DatabaseDeclaration](#databasedeclaration-resource-fields).
+
+**Top-level spec fields:**
+
+| Field | Required | Mutable | Description |
+|-------|:--------:|:-------:|-------------|
+| `spec.classifier` | Yes | **No** | Database identity in dbaas-aggregator. Immutable after creation (CEL `self == oldSelf`): repointing at a different database would write foreign credentials under the same Secret while `status` still references the original. Delete and recreate the CR to rebind. |
+| `spec.type` | Yes | **No** | Database engine type (e.g., `postgresql`, `mongodb`). Immutable after creation. |
+| `spec.userRole` | No | **No** | Role/permission level of the requested credentials (e.g., `admin`, `ro`, `rw`). When absent, the aggregator resolves the effective role through `DbPolicy` (`defaultRole`) and the global permission registry. Immutable after creation. |
+| `spec.secretName` | Yes | **No** | Name of the Kubernetes Secret the operator creates or updates in the CR's namespace. Immutable after creation — changing it would orphan the previously materialized Secret. Two `DatabaseSecret` CRs in the same namespace must not target the same `secretName` (see the sibling-conflict tiebreak below). |
+
+The materialized Secret is of type `Opaque` and stores two keys:
+
+- **`connectionProperties.json`** — the aggregator's `connectionProperties` map serialized as JSON (credentials: `url`, `host`, `port`, `username`, `password`, `role`, …; the exact shape is adapter-specific).
+- **`metadata.json`** — a self-describing descriptor `{ classifier, type, userRole }` that lets a consumer match the Secret to a database request without calling the aggregator (used by dbaas-client when it reads connection properties from a mounted Secret instead of REST). The `classifier` is the same canonical flat map the operator sends to the aggregator — `namespace` defaulted to `metadata.namespace`, empty optional fields omitted. `userRole` mirrors `spec.userRole` (the *requested* role, not the role the aggregator resolved at runtime) and is omitted when empty.
+
+The operator also stamps the labels `app.kubernetes.io/managed-by=dbaas-operator` and `app.kubernetes.io/name=<value from the CR>`.
+
+#### How DatabaseSecret Works
+
+A reconcile is triggered when any of the following happens:
+
+- The CR is created.
+- The CR spec changes (`metadata.generation` increments).
+- The covering `NamespaceBinding` is created or updated.
+- Another `DatabaseSecret` in the namespace sharing the same `spec.secretName` is created, deleted, or changed (sibling-conflict recovery).
+- The rotation webhook patches the `dbaas.netcracker.com/rotation-trigger` annotation (credential rotation — see [Rotation Webhook](#rotation-webhook) below).
+- A safety-net re-poll: every successful reconcile re-enqueues itself after 1 hour to recover from any missed rotation event.
+
+```
+CR created / spec changed / rotation-trigger annotation changed
+        │
+        ▼
+  Ownership check (NamespaceBinding)
+        │ not owned → skip
+        ▼
+  phase = Processing
+        │
+        ▼
+  Pre-flight validation (controller-side)
+    classifier.namespace ≠ metadata.namespace?            ─▶ InvalidConfiguration (InvalidSpec)
+    app.kubernetes.io/name label missing?                 ─▶ InvalidConfiguration (InvalidSpec)
+    target Secret exists, owned by another resource?      ─▶ InvalidConfiguration (SecretConflict)
+    another DatabaseSecret claims the same secretName?    ─▶ InvalidConfiguration (SecretConflict)
+        (older claimant wins — by creationTimestamp, UID on tie)
+        │
+        ▼
+  POST /api/v3/dbaas/{ns}/databases/get-by-classifier/{type}
+    (originService = app.kubernetes.io/name label, userRole = spec.userRole)
+        │
+        │   401              ─▶ BackingOff (Unauthorized)
+        │   400/403/409/410/422 ▶ InvalidConfiguration (AggregatorRejected)
+        │   404 + CORE-DBAAS-4006 ▶ BackingOff (DatabaseNotFound) — DB not yet provisioned
+        │       └─ continuous streak > 10 min ▶ BackingOff (DatabaseNotFoundTimeout)
+        │   404 (no TMF body) / 5xx / network ▶ BackingOff (AggregatorError)
+        │   200 OK, empty connectionProperties ▶ BackingOff (EmptyConnectionProperties)
+        │   200 OK with connectionProperties
+        ▼
+  Write target Secret (race-aware)
+    Create → on AlreadyExists: re-fetch, owner-conflict check, then Update
+        │
+        ├─ Secret created                 ▶ Succeeded (SecretCreated)
+        ├─ existing content identical      ▶ Succeeded (no write, no event)
+        └─ existing content differs        ▶ Succeeded (SecretRotated, stamp lastRotatedAt)
+        │
+        ▼
+  RequeueAfter 1h (safety-net re-poll)
+```
+
+Two behaviours are worth calling out:
+
+- **Content-aware update** — on a rotation-triggered reconcile the operator compares the existing Secret's `connectionProperties.json` (and managed labels) against what it would write. If they already match, it skips the write entirely: no Secret update, no event, `lastRotatedAt` unchanged. This avoids needlessly waking every pod that mounts the Secret (the kubelet reloads mounted Secrets on change). Only a genuine content change is written and reported as `SecretRotated`.
+- **Sibling-conflict tiebreak** — if two CRs in the namespace target the same `secretName`, the older one (by `creationTimestamp`, falling back to UID lexical order on a tie) wins and proceeds; the younger one moves to `SecretConflict`. The loser recovers automatically — without a spec change — once the winner is deleted or rebinds, because the controller watches sibling `DatabaseSecret`s by `secretName`.
+
+##### Rotation Webhook
+
+When a credential is rotated on the aggregator side, the operator is notified through an inbound HTTP webhook rather than by polling. This is the only operator-**exposed** endpoint (all other operator → aggregator traffic is outbound, see [API Endpoints](#api-endpoints)).
+
+| Aspect | Value |
+|--------|-------|
+| Path | `POST /api/rotation/v1/notify` |
+| Listener | The operator's HTTP server on `:8080` — the **same** listener that serves Prometheus `/metrics`, via controller-runtime's `ExtraHandlers`. No extra container port. |
+| Service | `dbaas-operator` (ClusterIP) exposes port `8080`; callers use `http://dbaas-operator.<operator-namespace>.svc:8080/api/rotation/v1/notify`. |
+| Inbound authentication | The caller's Kubernetes service-account token is verified via OIDC against the cluster's issuer; the token's audience must be `dbaas-operator`. Tokens with a wrong audience or signature are rejected with `401`. |
+| Inbound authorization | Authentication only proves the token is valid and minted for this operator — not *who* the caller is. The handler additionally checks the authenticated subject (`system:serviceaccount:<namespace>:<serviceAccount>`) against an allow-list and rejects any caller outside it with `403`. The allow-list is configured via `ROTATION_WEBHOOK_ALLOWED_SUBJECTS` (comma-separated); when unset it defaults to `system:serviceaccount:<operator-namespace>:dbaas-aggregator`. The check is **fail-closed** — an empty allow-list denies every caller. |
+| Methods | `POST` only (`405` otherwise); malformed payload → `400`. |
+
+Request body:
+
+```json
+{
+  "eventId": "<uuid>",
+  "occurredAt": "<RFC3339 timestamp>",
+  "classifier": { "microserviceName": "my-service", "scope": "service", "namespace": "my-namespace" },
+  "type": "postgresql",
+  "userRole": "admin",
+  "eventType": "ROTATION_OCCURRED"
+}
+```
+
+Flow:
+
+```
+[aggregator outbox dispatcher]
+        │  POST /api/rotation/v1/notify  (Bearer SA token, audience=dbaas-operator)
+        ▼
+[any operator replica]
+   authenticate (OIDC, audience=dbaas-operator) ─ 401 on failure
+        │
+   authorize caller subject against allow-list ─ 403 if not allowed
+        │
+   resolve DatabaseSecret CRs by (classifier, type) via cache field index,
+   scoped to classifier.namespace
+        │
+   patch dbaas.netcracker.com/rotation-trigger = <eventId> on each match
+        │  200 OK { "matched": N, "patched": M }
+        ▼
+[Kubernetes watch] ─ annotation change ─▶ leader's reconciler runs ─▶ content-aware Secret update
+```
+
+The webhook **does not** reconcile directly. It runs on every replica (it is not leader-gated) and only patches an annotation; the patch propagates through the Kubernetes watch so that the leader's reconciler performs the actual Secret update. This keeps the receiver thin and the reconcile path leader-bound, and makes the webhook safe to call against any replica.
+
+###### Why the lookup ignores `userRole`
+
+The cache index the webhook queries is keyed by `(classifier, type)` **only** — it deliberately omits `userRole`, even though a rotation event names the specific role whose password changed. This is a consequence of where role resolution happens.
+
+**The aggregator resolves the effective role at request time, not the operator.** When the operator calls get-by-classifier, it sends the CR's `spec.userRole` verbatim (which may be empty) together with `originService` (the `app.kubernetes.io/name` label). The aggregator then computes the *effective* role from inputs that live entirely on its side and can change without the `DatabaseSecret` CR ever being touched:
+
+- **The `DbPolicy` for the microservice in that namespace.** For the requested `type` it carries a `defaultRole` and an optional `additionalRole` list:
+  - When `spec.userRole` is empty, the effective role becomes the policy's `defaultRole` — which may be any role name the platform team configured, not necessarily `admin`.
+  - When `spec.userRole` is set, it is accepted only if it appears in `additionalRole` (or equals `defaultRole`); the matched value, lower-cased, becomes the effective role.
+- **Whether the request is first-party or cross-service.** If `originService` equals the classifier's `microserviceName`, the policy path above applies. If it is a *different* service (e.g., a CDC consumer reading another service's database), the aggregator instead matches `originService` against the policy's `services` grants, and the effective role is whichever granted role matches the request.
+- **The global permission registry**, consulted as a fallback when no policy entry matches and global permissions are not disabled — again defaulting `userRole` to `admin` only when nothing else resolves.
+
+(The aggregator-side logic is `DatabaseRolesService.getSupportRole`.)
+
+**Two consequences for the operator:**
+
+1. The same `spec.userRole` on two CRs can resolve to two different effective roles, and an empty `spec.userRole` can resolve to *anything* the policy dictates. There is no static, CR-local function from `spec.userRole` to the aggregator's effective role.
+2. A `DbPolicy` edit changes the effective role of existing `DatabaseSecret` CRs **without** changing those CRs — so any operator-side mapping would have to be invalidated and recomputed every time a policy changes, duplicating the aggregator's resolution and racing its cache.
+
+Because a rotation event carries the *resolved* role, matching it to the affected CRs would require the operator to replicate all of the above. Rather than do that, **the webhook wakes every `DatabaseSecret` that shares the event's `(classifier, type)`, regardless of role.** Each woken CR then re-fetches its own credentials through get-by-classifier — where the aggregator performs the authoritative role resolution — and the [content-aware update](#how-databasesecret-works) writes nothing when the returned credentials are unchanged. So CRs bound to a role other than the one that rotated simply perform a cheap no-op; only the CR(s) whose effective role actually changed get a Secret write and a `SecretRotated` event.
+
+The over-fetch is bounded and cheap: a classifier is typically referenced by 1–3 `DatabaseSecret` CRs (one per role), each costing one get-by-classifier round-trip and no Secret churn on a no-op. Trading a couple of redundant reads for not reimplementing — and not having to keep coherent — the aggregator's role-resolution rules is the right balance.
+
+> If the operator is unreachable when an event fires, the aggregator retries; a dropped event is eventually caught by the 1-hour safety-net re-poll.
+
+#### DatabaseSecret Status Reference
+
+**`status.phase`** — human-readable summary for `kubectl get databasesecret`.
+
+| Phase | Meaning |
+|-------|---------|
+| `Unknown` | CR just created, not yet processed |
+| `Processing` | Controller is actively reconciling (transient) |
+| `Succeeded` | The target Secret is present and current |
+| `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
+| `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
+
+**`status.firstNotFoundAt`** — timestamp of the first `DatabaseNotFound` (404) response in the current streak. Set on the first 404, cleared on any successful aggregator response. Used to detect a CR that has been waiting too long for its database to appear (e.g., a typo in `spec.classifier`): after a fixed timeout the Ready reason switches to `DatabaseNotFoundTimeout` and per-cycle Warning events stop, while polling continues so the CR self-heals if the database eventually appears.
+
+**`status.lastRotatedAt`** — timestamp of the most recent connection-properties change written to the target Secret. Advanced only when the Secret bytes actually change (rotation or first fill of an adopted Secret); no-op reconciles and the initial creation do **not** advance it.
+
+**`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as the other resources.
+
+**Reason vocabulary:**
+
+| Reason | Applied to | Meaning |
+|--------|-----------|---------|
+| `SecretCreated` | `Ready=True` | Secret present and current — initial creation, recreation after a deletion race, or a steady-state no-op confirmation |
+| `SecretRotated` | `Ready=True` | The Secret's content was just changed (credential rotation or first fill of an adopted Secret) |
+| `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed: `classifier.namespace` mismatch or missing `app.kubernetes.io/name` label |
+| `SecretConflict` | `Ready=False`, `Stalled=True` | The target Secret is owned by another resource, or another `DatabaseSecret` claims the same `secretName` |
+| `EmptyConnectionProperties` | `Ready=False`, `Stalled=False` | Aggregator returned `200` with an empty `connectionProperties` map — treated as transient and retried |
+| `DatabaseNotFound` | `Ready=False`, `Stalled=False` | Aggregator returned `404`/`CORE-DBAAS-4006` — the database is not yet registered; retried |
+| `DatabaseNotFoundTimeout` | `Ready=False`, `Stalled=False` | The `DatabaseNotFound` streak exceeded the timeout (≈10 min) — polling continues but the per-cycle Warning events stop; likely a wrong classifier |
+| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned `401` |
+| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned `400` / `403` / `409` / `410` / `422` — permanent spec issue |
+| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned `5xx`, a `404` without a TMF body (blue-green: no active namespace), or a network error |
+
+**Full state matrix:**
+
+| Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
+|----------|---------|:-------:|----------|:---------:|
+| Missing label / classifier.namespace mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| Target Secret owned by another resource | `InvalidConfiguration` | `False` | `SecretConflict` | `True` |
+| Sibling claims same secretName (younger loses) | `InvalidConfiguration` | `False` | `SecretConflict` | `True` |
+| get-by-classifier → 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
+| get-by-classifier → 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
+| get-by-classifier → 404 / CORE-DBAAS-4006 | `BackingOff` | `False` | `DatabaseNotFound` | `False` |
+| DatabaseNotFound streak > 10 min | `BackingOff` | `False` | `DatabaseNotFoundTimeout` | `False` |
+| get-by-classifier → 5xx / network / 404 (no TMF) | `BackingOff` | `False` | `AggregatorError` | `False` |
+| 200 OK, empty connectionProperties | `BackingOff` | `False` | `EmptyConnectionProperties` | `False` |
+| Secret created | `Succeeded` | `True` | `SecretCreated` | `False` |
+| Secret content unchanged (no-op) | `Succeeded` | `True` | `SecretCreated` | `False` |
+| Secret content changed (rotation) | `Succeeded` | `True` | `SecretRotated` | `False` |
+
+**Diagnostic rules:**
+
+- **`Stalled=True`** — fix the spec (or the conflicting sibling / pre-existing Secret). The controller will not retry on its own.
+- **`Stalled=False` + `Ready=False`** — transient; the controller retries with exponential backoff. A persistent `DatabaseNotFound` usually means the `DatabaseDeclaration` for this classifier has not provisioned yet — or the classifier is wrong (watch for `DatabaseNotFoundTimeout`).
+- **`status.lastRotatedAt`** — when this was last advanced tells you when credentials last actually changed.
+- **`status.lastRequestId`** — correlate operator logs with aggregator logs.
+
+#### DatabaseSecret Usage Examples
+
+**Materialize credentials for an existing database:**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecret
+metadata:
+  name: my-app-db-secret
+  namespace: my-namespace
+  labels:
+    app.kubernetes.io/name: my-service
+spec:
+  classifier:
+    microserviceName: my-service
+    scope: service
+    namespace: my-namespace
+  type: postgresql
+  userRole: admin
+  secretName: my-app-db-secret
+```
+
+```bash
+kubectl apply -f databasesecret.yaml
+
+# Watch until the Secret is materialized
+kubectl get databasesecret my-app-db-secret -n my-namespace -w
+# NAME               PHASE       TYPE         AGE
+# my-app-db-secret   Succeeded   postgresql   5s
+
+# Inspect the materialized Secret
+kubectl get secret my-app-db-secret -n my-namespace -o jsonpath='{.data.connectionProperties\.json}' | base64 -d | jq .
+
+# See when credentials were last rotated (empty until the first rotation)
+kubectl get databasesecret my-app-db-secret -n my-namespace -o jsonpath='{.status.lastRotatedAt}'
+
+# Check conditions for the human-readable error message
+kubectl get databasesecret my-app-db-secret -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+
+# Use lastRequestId to correlate with aggregator logs
+kubectl get databasesecret my-app-db-secret -n my-namespace -o jsonpath='{.status.lastRequestId}'
+```
+
+---
+
 ## Configuration Parameters
 
 The following parameters control the operator's deployment and behavior. They are set as Helm values.
@@ -1301,6 +1615,7 @@ The following parameters control the operator's deployment and behavior. They ar
 | `LEADER_ELECT` | boolean | `true` | Enables leader election. Required when running more than one replica to ensure only one active instance processes resources at a time. |
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
 | `DBAAS_AGGREGATOR_URL` | string | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (e.g. cross-cluster deployments). Read by the operator as an environment variable; not set by the Helm chart unless explicitly configured. |
+| `ROTATION_WEBHOOK_ALLOWED_SUBJECTS` | string | `system:serviceaccount:<operator-namespace>:dbaas-aggregator` | Comma-separated allow-list of Kubernetes subjects (`system:serviceaccount:<namespace>:<serviceAccount>`) permitted to call the [rotation webhook](#rotation-webhook). Callers outside the list are rejected with `403`, even with a valid `dbaas-operator`-audience token. When unset it defaults to the aggregator's identity in the operator's own namespace; override only when the aggregator runs under a different service account or namespace. The check is fail-closed. |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |
 | `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
 | `MONITORING_ENABLED` | boolean | — | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Requires Platform System Monitor CRDs. |

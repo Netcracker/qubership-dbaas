@@ -181,6 +181,17 @@
         false
       ]
     },
+    "ROTATION_WEBHOOK_ALLOWED_SUBJECTS": {
+      "$id": "#/properties/ROTATION_WEBHOOK_ALLOWED_SUBJECTS",
+      "type": "string",
+      "title": "The ROTATION_WEBHOOK_ALLOWED_SUBJECTS schema",
+      "description": "Comma-separated allow-list of Kubernetes subjects (system:serviceaccount:<namespace>:<serviceAccount>) permitted to call the rotation webhook. Callers outside the list are rejected with 403. Leave empty to use the built-in default: the dbaas-aggregator service account in the operator's own namespace. The check is fail-closed.",
+      "default": "",
+      "examples": [
+        "",
+        "system:serviceaccount:dbaas:dbaas-aggregator"
+      ]
+    },
     "DBAAS_OPERATOR_ENABLED": {
       "$id": "#/properties/DBAAS_OPERATOR_ENABLED",
       "$ref": "#/definitions/booleanOrString",

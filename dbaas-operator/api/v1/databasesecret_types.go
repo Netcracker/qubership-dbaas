@@ -60,6 +60,16 @@ type DatabaseSecretStatus struct {
 	// eventually appears.
 	// +optional
 	FirstNotFoundAt *metav1.Time `json:"firstNotFoundAt,omitempty"`
+
+	// lastRotatedAt records the time of the most recent connection properties
+	// change applied to the target Secret. Updated only when Reconcile actually
+	// changes the Secret bytes; no-op reconciles do not touch it. The controller
+	// sets this both when a rotation event from dbaas-aggregator triggers the
+	// change and when a safety-net poll detects drift in the aggregator's data.
+	// Distinct from metadata.creationTimestamp (initial Secret creation does not
+	// advance this field — see the SecretCreated vs SecretRotated event reasons).
+	// +optional
+	LastRotatedAt *metav1.Time `json:"lastRotatedAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true

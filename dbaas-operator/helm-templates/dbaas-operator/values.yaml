@@ -19,4 +19,10 @@ restrictedEnvironment: false
 LOG_LEVEL: "info"
 K8S_EVENTS_ENABLED: false
 LEADER_ELECT: true
+# Comma-separated allow-list of Kubernetes subjects permitted to call the rotation
+# webhook (system:serviceaccount:<namespace>:<serviceAccount>). Leave empty to use
+# the built-in default: the dbaas-aggregator service account in the operator's own
+# namespace. Set only to override (e.g. the aggregator runs in a different
+# namespace or under a different service account).
+ROTATION_WEBHOOK_ALLOWED_SUBJECTS: ""
 
