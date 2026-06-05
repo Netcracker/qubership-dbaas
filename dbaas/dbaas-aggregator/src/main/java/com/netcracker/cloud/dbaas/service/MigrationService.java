@@ -21,7 +21,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
+import static com.netcracker.cloud.dbaas.service.PasswordEncryption.ENCRYPTED_PASSWORD_FIELD;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
+import static org.apache.commons.lang.StringUtils.isBlank;
 
 @ApplicationScoped
 @Slf4j
@@ -220,9 +222,11 @@ public class MigrationService {
                 db.getResources().add(new DbResource(DbResource.DATABASE_KIND, db.getName()));
             }
 
-            List<Object> passwords = db.getConnectionProperties().stream().
-                    map(properties -> properties.getOrDefault(PASSWORD_FIELD, null)).collect(Collectors.toList());
-            if (passwords.contains(null) || passwords.contains("")) {
+            boolean hasMissingPassword = db.getConnectionProperties().stream()
+                    .anyMatch(properties -> isBlank(properties.get(PASSWORD_FIELD).toString())
+                            && isBlank(properties.get(ENCRYPTED_PASSWORD_FIELD).toString()));
+
+            if (hasMissingPassword) {
                 responseBuilder.addFailedDb(dbName, requestsWithAdapterId.getType());
                 responseBuilder.addFailureReason(dbName, requestsWithAdapterId.getType(), "No password for not " +
                         "database not existing in dbaas");

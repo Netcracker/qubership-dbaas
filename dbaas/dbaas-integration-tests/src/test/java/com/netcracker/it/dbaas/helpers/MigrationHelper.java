@@ -240,17 +240,13 @@ public class MigrationHelper {
         } else {
             apiEndpoint = BASE_MIGRATE_API;
 
-            List<ConnectionProperties> connProps = helperV3.objectMapper
-                    .convertValue(adapterResponse.get(CONNECTION_PROPERTIES), new TypeReference<>() {
-                    });
-
             List<DbResource> resources = helperV3.objectMapper
                     .convertValue(adapterResponse.get("resources"), new TypeReference<>() {
                     });
 
             requestBody = new RegisterDatabaseRequest(
                     classifier,
-                    connProps,
+                    null,
                     resources,
                     sourceNamespace,
                     physDb.getAdapterId(),
