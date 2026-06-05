@@ -101,6 +101,7 @@ public class MigrationServiceTest {
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
         verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
         verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
@@ -132,6 +133,7 @@ public class MigrationServiceTest {
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
         verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
         verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
@@ -173,6 +175,8 @@ public class MigrationServiceTest {
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
         verify(physicalDatabasesService, times(4)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verify(dBaaService, times(2)).recreateUsers(any(), any(), any(), any(), any());
@@ -356,6 +360,7 @@ public class MigrationServiceTest {
 
         verify(dBaaService, times(1)).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
         verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
         verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
