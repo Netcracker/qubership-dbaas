@@ -143,8 +143,6 @@ public class DbaasHelperV3 {
             .build();
 
     public static final Pattern TEST_NAMESPACE_PATTERN = Pattern.compile("^dbaas-autotests-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-    public static final String CONNECTION_PROPERTIES = "connectionProperties";
-    private static final String DBAAS_METADATA = "_dbaas_metadata";
 
     @NonNull
     private volatile URL dbaasServiceUrl;
@@ -1324,42 +1322,6 @@ public class DbaasHelperV3 {
         return changePassword(passwordChangeRequest, expectHttpCode, namespace);
     }
 
-    public Map createDbViaAdapter(String dbType, String microserviceName, String namespace) throws IOException {
-        PhysicalDatabaseRegistrationResponseDTOV3 physDb = getGlobalPhysicalDbEntry(dbType).getValue();
-        String adapterAddress = physDb.getAdapterAddress();
-        URL portForward = createPortForward(adapterAddress);
-        String apiVersion = physDb.getSupportedVersion();
-        String payload = String.format(
-                "{\"metadata\":{\"classifier\":{\"microserviceName\":\"%s\",\"scope\":\"service\",\"namespace\":\"%s\"}}}",
-                microserviceName, namespace);
-        String adapterCredentials = readAdapterCredentials(adapterAddress);
-        Request request = new Request.Builder()
-                .url(portForward.toString() + "api/" + apiVersion + "/dbaas/adapter/" + dbType + "/databases")
-                .post(RequestBody.create(payload, JSON))
-                .addHeader("Authorization", "Basic " + Base64.getEncoder().encodeToString(adapterCredentials.getBytes()))
-                .addHeader("X-Request-Id", getRequestId())
-                .build();
-        try (Response response = okHttpClient.newCall(request).execute()) {
-            String resBody = response.body().string();
-            log.info("Adapter {} created database: {}", adapterAddress, resBody);
-            assumeTrue(response.code() == 201, "dbaas-adapter could not create database, skip test");
-            return objectMapper.readValue(resBody, Map.class);
-        } catch (IOException e) {
-            log.error("Error while creating database via adapter {}", adapterAddress, e);
-            throw e;
-        }
-    }
-
-    public Map.Entry<String, PhysicalDatabaseRegistrationResponseDTOV3> getGlobalPhysicalDbEntry(String dbType) throws IOException {
-        return getRegisteredPhysicalDatabases(dbType, getClusterDbaAuthorization(), 200)
-                .getIdentified()
-                .entrySet()
-                .stream()
-                .filter(entry -> entry.getValue().isGlobal())
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("No global physical database found for type: " + dbType));
-    }
-
     private PasswordChangeResponse changePassword(PasswordChangeRequest passwordChangeRequest, int expectHttpCode, String namespace) throws IOException {
         String passwordChangeRequestJson = new GsonBuilder().create().toJson(passwordChangeRequest);
         Request request = new Request.Builder()
@@ -1374,40 +1336,6 @@ public class DbaasHelperV3 {
             log.debug("Response body: {}", body);
             assertThat(response.code(), is(expectHttpCode));
             return objectMapper.readValue(body, PasswordChangeResponse.class);
-        }
-    }
-
-    @SneakyThrows
-    public void removePgMetadata(Map map) {
-        log.info("remove pg metadata");
-        List<Map<String, Object>> connectionProperties = (List<Map<String, Object>>) map.get(CONNECTION_PROPERTIES);
-        Map<String, Object> adminConnectionProperty = connectionProperties.stream().filter(cp -> cp.get("role").equals(Role.ADMIN.getRoleValue())).findFirst().get();
-        log.info("connection property {}", adminConnectionProperty);
-        DatabaseResponse databaseResponse = DatabaseResponse.builder().connectionProperties(adminConnectionProperty).build();
-        try (Connection connection = connectPg(databaseResponse);
-             Statement statement = connection.createStatement()) {
-            try {
-                String sql = "DROP TABLE _dbaas_metadata";
-                statement.executeUpdate(sql);
-            } catch (Throwable ex) {
-                throw new CannotConnect(ex);
-            }
-        }
-    }
-
-    @SneakyThrows
-    public void removeMongoMetadata(Map map) {
-        log.info("remove mongodb metadata");
-        List<Map<String, Object>> connectionProperties = (List<Map<String, Object>>) map.get(CONNECTION_PROPERTIES);
-        Map<String, Object> adminConnectionProperty = connectionProperties.stream().filter(cp -> cp.get("role").equals(Role.ADMIN.getRoleValue())).findFirst().get();
-        log.info("connection property {}", adminConnectionProperty);
-        DatabaseResponse databaseResponse = DatabaseResponse.builder().connectionProperties(adminConnectionProperty).build();
-        try (MongoClient mongoClient = connectMongo(databaseResponse, false)) {
-            MongoDatabase mongoDatabase = mongoClient.getDatabase((String) adminConnectionProperty.get("authDbName"));
-            mongoDatabase.getCollection("autotestsData").insertOne(new Document("testkey", "testvalue")); // if database does not have any collections mongo drops such db, so we create fake collection
-            mongoDatabase.getCollection(DBAAS_METADATA).drop();
-            assertFalse(mongoDatabase.listCollectionNames()
-                    .into(new ArrayList<>()).contains(DBAAS_METADATA));
         }
     }
 
@@ -1683,42 +1611,6 @@ public class DbaasHelperV3 {
             }
         }
         return Optional.empty();
-    }
-
-    public String readAdapterCredentials(String adapterAddress) {
-        String adapterNamespace = DbaasHelperV3.getServiceNamespaceFromUrl(adapterAddress);
-        String adapterServiceName = DbaasHelperV3.getServiceNameFromUrl(adapterAddress);
-
-        Pod adapterPod = getAdapterPodByServiceName(adapterNamespace, adapterServiceName)
-                .orElseThrow(() -> new RuntimeException(
-                        "Could not find adapter pod for service " + adapterServiceName
-                                + " in namespace: " + adapterNamespace));
-
-        String username = readFirstAvailableSecretFromEnv(
-                adapterPod,
-                adapterNamespace,
-                List.of("DBAAS_ADAPTER_API_USER", "DBAAS_AGGREGATOR_USERNAME")
-        );
-
-        String password = readFirstAvailableSecretFromEnv(
-                adapterPod,
-                adapterNamespace,
-                List.of("DBAAS_ADAPTER_API_PASSWORD", "DBAAS_AGGREGATOR_PASSWORD")
-        );
-
-        return username + ":" + password;
-    }
-
-    private String readFirstAvailableSecretFromEnv(Pod pod, String namespace, List<String> envNames) {
-        for (String envName : envNames) {
-            Optional<String> value = readSecretFromEnvVariable(pod, namespace, envName);
-            if (value.isPresent()) {
-                return value.get();
-            }
-        }
-        throw new RuntimeException("None of env variables " + envNames
-                + " found in pod " + pod.getMetadata().getName()
-                + " in namespace " + namespace);
     }
 
     private String getAdapterAddress(String dbType, String physicalDatabaseId) {

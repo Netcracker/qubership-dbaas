@@ -11,6 +11,7 @@ import com.netcracker.it.dbaas.entity.AggregatorHealth;
 import com.netcracker.it.dbaas.entity.DatabaseV3;
 import com.netcracker.it.dbaas.entity.DbaasUsersData;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
+import com.netcracker.it.dbaas.helpers.MigrationHelper;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;

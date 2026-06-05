@@ -7,6 +7,7 @@ import com.netcracker.it.dbaas.entity.response.MigrationResult;
 import com.netcracker.it.dbaas.exceptions.CannotConnect;
 import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
+import com.netcracker.it.dbaas.helpers.MigrationHelper;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Request;
 import org.junit.jupiter.api.*;
@@ -19,6 +20,7 @@ import java.util.*;
 import java.util.function.Consumer;
 
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.*;
+import static com.netcracker.it.dbaas.helpers.MigrationHelper.CONNECTION_PROPERTIES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
@@ -38,6 +40,13 @@ public class DatabaseMigrationIT extends AbstractIT {
     private static final String INCORRECT_POSTGRES_TYPE = "postgrsql";
     private static final String TEST_MIGRATED_DB_NAME = "migrated_db";
     private static final String TEST_PHYSICAL_DB_ID = "physical_db_id";
+
+    private static MigrationHelper migrationHelper;
+
+    @BeforeAll
+    static void initHelper() {
+        migrationHelper = new MigrationHelper(helperV3);
+    }
 
     @BeforeEach
     public void initAndCleanDbs() throws IOException {
@@ -129,23 +138,23 @@ public class DatabaseMigrationIT extends AbstractIT {
     @Test
     @Tag("Smoke")
     public void migrateWithUserCreation_SuccessfullyMigratedPostgresql() throws IOException, SQLException {
-        testDatabaseMigration(POSTGRES_TYPE, helperV3::removePgMetadata, false, true);
+        testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, false, true);
     }
 
     @Test
     public void migrateWithUserCreation_SuccessfullyMigratedMongodb() throws IOException, SQLException {
         Assumptions.assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongodb adapter. Skip test.");
-        testDatabaseMigration(MONGODB_TYPE, helperV3::removeMongoMetadata, false, true);
+        testDatabaseMigration(MONGODB_TYPE, migrationHelper::removeMongoMetadata, false, true);
     }
 
     @Test
     public void migrateWithUserCreation_SuccessfullyMigratedPostgresql_SetOnlyHostDb() throws IOException, SQLException {
-        testDatabaseMigration(POSTGRES_TYPE, helperV3::removePgMetadata, true, true);
+        testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, true, true);
     }
 
     @Test
     void migrateWithUserCreation_MigrateExternalAsInternal() throws IOException, SQLException {
-        Consumer<Map> removeMetadata = helperV3::removePgMetadata;
+        Consumer<Map> removeMetadata = migrationHelper::removePgMetadata;
         String physicalId = null;
         for (Map.Entry<String, PhysicalDatabaseRegistrationResponseDTOV3> physicalDbEntrySet : helperV3.getRegisteredPhysicalDatabases(POSTGRES_TYPE, helperV3.getClusterDbaAuthorization(), 200).
                 getIdentified().entrySet()) {
@@ -155,7 +164,7 @@ public class DatabaseMigrationIT extends AbstractIT {
         }
 
         // create database via adapter so it can be registered as external
-        Map map = helperV3.createDbViaAdapter(POSTGRES_TYPE, TEST_MICROSERVICE_NAME, DbaasHelperV3.TEST_NAMESPACE);
+        Map map = migrationHelper.createDbViaAdapter(POSTGRES_TYPE, TEST_MICROSERVICE_NAME, DbaasHelperV3.TEST_NAMESPACE);
         removeMetadata.accept(map);
 
         // register created database as external
@@ -226,18 +235,18 @@ public class DatabaseMigrationIT extends AbstractIT {
 
     @Test
     public void migrateDatabaseSuccessfullyMigratedPostgreSql() throws IOException, SQLException {
-        testDatabaseMigration(POSTGRES_TYPE, helperV3::removePgMetadata, false, false);
+        testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, false, false);
     }
 
     @Test
     public void migrateDatabaseSuccessfullyMigratedMongodb() throws IOException, SQLException {
         Assumptions.assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongodb adapter. Skip test.");
-        testDatabaseMigration(MONGODB_TYPE, helperV3::removeMongoMetadata, false, false);
+        testDatabaseMigration(MONGODB_TYPE, migrationHelper::removeMongoMetadata, false, false);
     }
 
     @Test
     public void migrateDatabaseSuccessfullyMigratedPostgresql_SetOnlyHostDb() throws IOException, SQLException {
-        testDatabaseMigration(POSTGRES_TYPE, helperV3::removePgMetadata, true, false);
+        testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, true, false);
     }
 
     private ClassifierWithRolesRequest createClassifierWithRolesRequest(Map<String, Object> classifier) {
@@ -250,11 +259,11 @@ public class DatabaseMigrationIT extends AbstractIT {
 
     private void testDatabaseMigration(String dbType, Consumer<Map> removeMetadata, boolean withHostDb,
                                        boolean withUserCreation) throws IOException, SQLException {
-        Map.Entry<String, PhysicalDatabaseRegistrationResponseDTOV3> physDbEntry = helperV3.getGlobalPhysicalDbEntry(dbType);
+        Map.Entry<String, PhysicalDatabaseRegistrationResponseDTOV3> physDbEntry = migrationHelper.getGlobalPhysicalDbEntry(dbType);
         String physicalId = physDbEntry.getKey();
         PhysicalDatabaseRegistrationResponseDTOV3 physDb = physDbEntry.getValue();
 
-        Map adapterResponse = helperV3.createDbViaAdapter(dbType, TEST_MICROSERVICE_NAME, DbaasHelperV3.TEST_NAMESPACE);
+        Map adapterResponse = migrationHelper.createDbViaAdapter(dbType, TEST_MICROSERVICE_NAME, DbaasHelperV3.TEST_NAMESPACE);
         removeMetadata.accept(adapterResponse);
         String dbName = adapterResponse.get(NAME).toString();
 
