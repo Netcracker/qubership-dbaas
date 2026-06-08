@@ -157,7 +157,19 @@ type GetByClassifierRequest struct {
 
 // DatabaseResponseSingleCP is the response from GetDatabaseByClassifier.
 // ConnectionProperties keys are dynamic (host, port, username, password, name, url, role, roHost, …).
+//
+// The aggregator returns the full DatabaseResponseV3SingleCP descriptor (id,
+// name, namespace, type, settings, connectionProperties); these fields are
+// surfaced so the operator can mirror them into the Secret's metadata.json for
+// dbaas-client. Note: the aggregator documents Id as best-effort on a
+// by-classifier lookup ("might not be used … for security purpose"), so callers
+// must tolerate an empty Id.
 type DatabaseResponseSingleCP struct {
+	Id                   string         `json:"id,omitempty"`
+	Name                 string         `json:"name,omitempty"`
+	Namespace            string         `json:"namespace,omitempty"`
+	Type                 string         `json:"type,omitempty"`
+	Settings             map[string]any `json:"settings,omitempty"`
 	ConnectionProperties map[string]any `json:"connectionProperties,omitempty"`
 }
 

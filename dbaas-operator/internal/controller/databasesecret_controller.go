@@ -144,7 +144,7 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// ── Step 9 / write Secret ─────────────────────────────────────────────────
-	secretData, err := buildSecretData(s, dbResp.ConnectionProperties)
+	secretData, err := buildSecretData(s, dbResp)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -508,18 +508,30 @@ const (
 // metadata.namespace, empty optional fields omitted — so both sides agree on
 // the key. UserRole is the requested role (DatabaseSecret.spec.userRole), not
 // the role the aggregator resolved at runtime; it is omitted when empty.
+//
+// Id, Name, Namespace, and Settings mirror the aggregator's
+// DatabaseResponseV3SingleCP so dbaas-client can reconstruct a full LogicalDb
+// from a mounted Secret without a REST call. They are descriptive only (not
+// part of the match key) and are omitted when empty; Id in particular may be
+// empty because the aggregator returns it best-effort on a by-classifier lookup.
 type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
 	Type       string         `json:"type"`
 	UserRole   string         `json:"userRole,omitempty"`
+	Id         string         `json:"id,omitempty"`
+	Name       string         `json:"name,omitempty"`
+	Namespace  string         `json:"namespace,omitempty"`
+	Settings   map[string]any `json:"settings,omitempty"`
 }
 
 // buildSecretData serializes the connectionProperties and the self-describing
 // metadata descriptor into the two keys of the managed Secret. The descriptor
 // classifier is canonicalized identically to the aggregator request (see
-// ClassifierFlatMap / EffectiveClassifier) so dbaas-client can match it.
-func buildSecretData(s *dbaasv1.DatabaseSecret, props map[string]any) (map[string][]byte, error) {
-	connRaw, err := json.Marshal(props)
+// ClassifierFlatMap / EffectiveClassifier) so dbaas-client can match it, and the
+// id/name/namespace/settings fields mirror the aggregator response so the client
+// can reconstruct a full LogicalDb from the mounted Secret.
+func buildSecretData(s *dbaasv1.DatabaseSecret, dbResp *aggregatorclient.DatabaseResponseSingleCP) (map[string][]byte, error) {
+	connRaw, err := json.Marshal(dbResp.ConnectionProperties)
 	if err != nil {
 		return nil, fmt.Errorf("marshal connectionProperties: %w", err)
 	}
@@ -527,6 +539,10 @@ func buildSecretData(s *dbaasv1.DatabaseSecret, props map[string]any) (map[strin
 		Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		Type:       s.Spec.Type,
 		UserRole:   s.Spec.UserRole,
+		Id:         dbResp.Id,
+		Name:       dbResp.Name,
+		Namespace:  dbResp.Namespace,
+		Settings:   dbResp.Settings,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal metadata: %w", err)
