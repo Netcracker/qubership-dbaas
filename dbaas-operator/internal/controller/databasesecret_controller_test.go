@@ -291,8 +291,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 			ready := findCondition(got.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonSecretCreated),
-				"steady-state Ready reason stays SecretCreated, not SecretRotated")
+			Expect(ready.Reason).To(Equal(ReasonSecretUpToDate),
+				"steady-state Ready reason is SecretUpToDate, not SecretRotated")
 
 			secret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
@@ -386,8 +386,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 			ready := findCondition(got.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonSecretCreated),
-				"metadata backfill keeps the SecretCreated reason, not SecretRotated")
+			Expect(ready.Reason).To(Equal(ReasonSecretUpToDate),
+				"metadata backfill reports SecretUpToDate, not SecretRotated")
 
 			// metadata.json restored; connectionProperties.json untouched.
 			secret = &corev1.Secret{}

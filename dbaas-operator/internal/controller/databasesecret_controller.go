@@ -308,9 +308,11 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	// No-op fast path: already in the desired state.
 	if secretUpToDate(s, existing, secretData) {
 		log.InfoC(ctx, "DatabaseSecret already up-to-date, skipping Secret write name=%s secretName=%s", s.Name, s.Spec.SecretName)
-		// Steady state: keep the SecretCreated Ready reason, emit no event,
-		// and do not advance LastRotatedAt — nothing actually changed.
-		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+		// Steady state: report the SecretUpToDate Ready reason, emit no event, and
+		// do not advance LastRotatedAt — nothing actually changed. Using a neutral
+		// reason (rather than reusing SecretCreated) keeps the Ready reason accurate
+		// and avoids clobbering a prior SecretRotated reason on the next safety-net poll.
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, ReasonSecretUpToDate)
 		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
 
@@ -368,7 +370,7 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	if !credentialsChanged {
 		log.InfoC(ctx, "DatabaseSecret Secret updated without credential change (metadata/label backfill) name=%s secretName=%s",
 			s.Name, s.Spec.SecretName)
-		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, ReasonSecretUpToDate)
 		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
 	now := metav1.Now()
