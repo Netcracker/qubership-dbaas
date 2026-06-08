@@ -253,8 +253,7 @@ jobs:
         with:
           name: dbaas-logs
           path: logs/*
-
-      - name: Build test report
+- name: Build test report
         id: build_report
         if: always() && steps.tests.outcome != 'skipped'
         env:
@@ -267,7 +266,7 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: python3 .github/scripts/build-test-report.py
 
-      - name: Email test report
+- name: Email test report
         if: always() && steps.build_report.outcome == 'success'
         continue-on-error: true
         # Pinned to the commit that adds email-action (#782); no release tag includes it yet.
