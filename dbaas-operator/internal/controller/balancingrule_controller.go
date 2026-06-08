@@ -225,18 +225,28 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
 
+	appliedRules := make([]dbaasv1.DbNamespaceBalancingRuleAppliedRule, 0, len(rule.Spec.Rules))
+
 	for _, item := range rule.Spec.Rules {
 		aggStart := time.Now()
 		err = r.Aggregator.ApplyNamespaceBalancingRule(ctx, rule.Namespace, item.Name, namespaceRequestFromSpecItem(item))
 		recordAggregatorCall(controllerBR, operationApplyNamespaceRule, aggStart, err)
 		if err != nil {
+			rule.Status.AppliedRules = appliedRules
 			log.ErrorC(ctx, "failed to apply DbNamespaceBalancingRule to dbaas-aggregator: %v", err)
 			return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 		}
+		appliedRules = append(appliedRules, dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+			Name:               item.Name,
+			Type:               item.Type,
+			PhysicalDatabaseID: item.PhysicalDatabaseID,
+			Order:              item.Order,
+		})
+		rule.Status.AppliedRules = appliedRules
 	}
 
 	markSucceeded(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, EventReasonBalancingRuleApplied)
-	rule.Status.AppliedRules = appliedNamespaceRulesFromSpec(rule.Spec.Rules)
+	rule.Status.AppliedRules = appliedRules
 	log.InfoC(ctx, "DbNamespaceBalancingRule applied to dbaas-aggregator namespace=%s name=%s rules=%d requestId=%s",
 		rule.Namespace, rule.Name, len(rule.Spec.Rules), requestID)
 	r.Recorder.Eventf(rule, corev1.EventTypeNormal, EventReasonBalancingRuleApplied,

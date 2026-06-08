@@ -33,6 +33,7 @@ type balancingRuleReconcileFixture struct {
 	reconciler *BalancingRuleReconciler
 	calls      []balancingRuleCall
 	statusCode int
+	statuses   []int
 	server     *httptest.Server
 	recorder   *record.FakeRecorder
 }
@@ -207,6 +208,23 @@ var _ = Describe("BalancingRule Controller", func() {
 			Expect(fixture.calls[1].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-cassandra"))
 			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(stored.Status.AppliedRules).To(HaveLen(2))
+		})
+
+		It("records successfully applied namespace rules when a later apply fails", func() {
+			rule := namespaceRuleWithFinalizer(businessNS)
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			fixture.statuses = []int{http.StatusOK, http.StatusConflict}
+
+			stored, _, err := reconcileNamespaceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(HaveLen(2))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-mongo"))
+			Expect(fixture.calls[1].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-cassandra"))
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(stored.Status.AppliedRules).To(Equal([]dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+			}))
 		})
 
 		It("deletes removed rules before applying the new desired list", func() {
@@ -471,7 +489,12 @@ func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleRecon
 			path:   r.URL.Path,
 			body:   body,
 		})
-		w.WriteHeader(fixture.statusCode)
+		statusCode := fixture.statusCode
+		if len(fixture.statuses) > 0 {
+			statusCode = fixture.statuses[0]
+			fixture.statuses = fixture.statuses[1:]
+		}
+		w.WriteHeader(statusCode)
 	}))
 	resolver := ownership.NewOwnershipResolver(ownedNamespace, k8sClient)
 	resolver.SetOwner(ownedNamespace, ownedNamespace)

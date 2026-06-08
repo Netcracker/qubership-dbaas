@@ -207,11 +207,7 @@ func main() {
 		func() *dbaasv1.DbNamespaceBalancingRuleList { return &dbaasv1.DbNamespaceBalancingRuleList{} },
 		func(l *dbaasv1.DbNamespaceBalancingRuleList) int { return len(l.Items) },
 	)
-	permanentRuleChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.DbPermanentBalancingRuleList { return &dbaasv1.DbPermanentBalancingRuleList{} },
-		func(l *dbaasv1.DbPermanentBalancingRuleList) int { return len(l.Items) },
-	)
+	permanentRuleChecker := ownership.NewPermanentBalancingRuleChecker(mgr.GetClient(), cloudNamespace)
 	dsChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
 		func() *dbaasv1.DatabaseSecretList { return &dbaasv1.DatabaseSecretList{} },

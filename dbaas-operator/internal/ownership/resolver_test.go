@@ -241,6 +241,93 @@ var _ = Describe("OwnershipResolver", func() {
 		})
 	})
 
+	Describe("PermanentBalancingRuleChecker", func() {
+		newChecker := func(objs ...client.Object) ownership.BlockingResourceChecker {
+			cl := fake.NewClientBuilder().
+				WithScheme(newScheme()).
+				WithObjects(objs...).
+				Build()
+			return ownership.NewPermanentBalancingRuleChecker(cl, myNS)
+		}
+
+		It("returns false when no permanent rule targets the namespace", func() {
+			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Namespace: myNS,
+				},
+				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
+					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+						{DbType: "postgresql", PhysicalDatabaseID: "pg-a", Namespaces: []string{ns2}},
+					},
+				},
+			})
+
+			blocking, err := checker.HasBlockingResources(ctx, ns1)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(blocking).To(BeFalse())
+		})
+
+		It("returns true when a permanent rule spec targets the namespace", func() {
+			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Namespace: myNS,
+				},
+				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
+					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+						{DbType: "postgresql", PhysicalDatabaseID: "pg-a", Namespaces: []string{ns1}},
+					},
+				},
+			})
+
+			blocking, err := checker.HasBlockingResources(ctx, ns1)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(blocking).To(BeTrue())
+		})
+
+		It("returns true when applied permanent rule status targets the namespace", func() {
+			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Namespace: myNS,
+				},
+				Status: dbaasv1.DbPermanentBalancingRuleStatus{
+					AppliedRules: []dbaasv1.DbPermanentBalancingRuleAppliedRule{
+						{DbType: "postgresql", Namespaces: []string{ns1}},
+					},
+				},
+			})
+
+			blocking, err := checker.HasBlockingResources(ctx, ns1)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(blocking).To(BeTrue())
+		})
+
+		It("ignores permanent rules owned by another operator namespace", func() {
+			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Namespace: otherNS,
+				},
+				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
+					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+						{DbType: "postgresql", PhysicalDatabaseID: "pg-a", Namespaces: []string{ns1}},
+					},
+				},
+				Status: dbaasv1.DbPermanentBalancingRuleStatus{
+					AppliedRules: []dbaasv1.DbPermanentBalancingRuleAppliedRule{
+						{DbType: "postgresql", Namespaces: []string{ns1}},
+					},
+				},
+			})
+
+			blocking, err := checker.HasBlockingResources(ctx, ns1)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(blocking).To(BeFalse())
+		})
+	})
+
 	Describe("CompositeChecker", func() {
 		makeChecker := func(result bool) ownership.BlockingResourceChecker {
 			return &fixedChecker{result: result}

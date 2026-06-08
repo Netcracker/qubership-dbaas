@@ -77,7 +77,10 @@ spec:
                     physicalDatabaseId:
                       description: |-
                         physicalDatabaseId is the physical database identifier where new logical
-                        databases of this type should be created.
+                        databases of this type should be created. The operator validates this
+                        value for shape only; a Succeeded status means dbaas-aggregator stored
+                        the rule, not that this identifier was resolved to a registered physical
+                        database.
                       minLength: 1
                       type: string
                   required:
@@ -97,7 +100,8 @@ spec:
               appliedRules:
                 description: |-
                   appliedRules are the permanent rule entries last successfully applied
-                  to dbaas-aggregator. They are used to delete removed entries when spec changes.
+                  to dbaas-aggregator. They are used to delete removed entries when spec
+                  changes. They do not guarantee that referenced physical databases exist.
                 items:
                   description: |-
                     DbPermanentBalancingRuleAppliedRule tracks one successfully applied permanent

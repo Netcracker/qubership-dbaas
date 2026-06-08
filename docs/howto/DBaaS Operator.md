@@ -1510,10 +1510,10 @@ Aggregator calls by kind:
 | Kind | On create/update | On item removal from `spec.rules` | On CR deletion |
 |------|------------------|------------------------------------|----------------|
 | `DbMicroserviceBalancingRule` | Adds a finalizer, applies the full desired list, stores applied `type + microservices`. | Sends cleanup for removed applied `type + microservices` by applying an empty rule set for those entries, then applies the new desired list. | Finalizer cleans up all applied microservice entries before Kubernetes removes the CR. |
-| `DbNamespaceBalancingRule` | Applies each desired namespace rule by name and stores applied entries for observability. | The aggregator currently has no individual namespace-rule delete endpoint. The controller emits a Warning event, sets `Ready=False` with reason `NamespaceRuleCleanupUnsupported`, and keeps the orphaned applied rule name in status. | No finalizer is added. Deleting the CR does not delete aggregator-side namespace rules until a delete API exists or external cleanup handles them. |
+| `DbNamespaceBalancingRule` | Adds a finalizer, applies each desired namespace rule by name, and stores applied entries. | Calls `DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` for removed applied rule names, then applies the new desired list. | Finalizer deletes all applied namespace rules before Kubernetes removes the CR. |
 | `DbPermanentBalancingRule` | Adds a finalizer, verifies target namespace ownership, applies the full desired list, stores applied `dbType + namespaces`. | Sends cleanup through `DELETE /api/v3/dbaas/balancing/rules/permanent` for removed applied entries, then applies the new desired list. | Finalizer deletes all applied permanent entries before Kubernetes removes the CR. |
 
-For blue-green cleanup, keep the old operator running until any finalizers on microservice and permanent rule CRs have completed. Namespace rule cleanup is intentionally explicit in status because the current aggregator API cannot delete those rules individually.
+For blue-green cleanup, keep the old operator running until any finalizers on microservice, namespace, and permanent rule CRs have completed.
 
 #### Balancing Rule Status Reference
 
@@ -1539,7 +1539,6 @@ For blue-green cleanup, keep the old operator running until any finalizers on mi
 | `BalancingRuleApplied` | Desired balancing rules were successfully applied to dbaas-aggregator. |
 | `InvalidSpec` | Controller-side validation failed before calling aggregator. |
 | `WaitingForNamespaceBinding` | The rule is waiting for an owned `NamespaceBinding`. |
-| `NamespaceRuleCleanupUnsupported` | A namespace rule was removed from spec, but the aggregator has no delete endpoint for it. |
 | `AggregatorRejected` | Aggregator returned a permanent rejection such as `400`, `403`, `409`, `410`, or `422`. |
 | `Unauthorized` | Aggregator returned `401`; usually token/auth configuration. |
 | `AggregatorError` | Aggregator returned `5xx` or the request failed due to network/I/O. |

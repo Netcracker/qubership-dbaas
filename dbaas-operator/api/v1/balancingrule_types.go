@@ -69,7 +69,10 @@ type DbMicroserviceBalancingRuleItem struct {
 	Microservices []string `json:"microservices"`
 
 	// label is the physical database label expression used by dbaas-aggregator
-	// to resolve exactly one physical database, e.g. "zone=fast".
+	// to resolve exactly one physical database, e.g. "zone=fast". The operator
+	// validates this value for shape only; a Succeeded status means
+	// dbaas-aggregator accepted the rule, not that future provisioning is
+	// guaranteed to find a matching physical database.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:Pattern=`^[^=]+=[^=]+$`
@@ -92,7 +95,9 @@ type DbMicroserviceBalancingRuleStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// appliedRules are the microservice rule entries last successfully applied
-	// to dbaas-aggregator. They are used to clean up removed entries when spec changes.
+	// to dbaas-aggregator. They are used to clean up removed entries when spec
+	// changes. They do not guarantee that referenced physical database labels
+	// still resolve.
 	// +optional
 	// +listType=atomic
 	AppliedRules []DbMicroserviceBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
@@ -158,7 +163,10 @@ type DbNamespaceBalancingRuleItem struct {
 	Type string `json:"type"`
 
 	// physicalDatabaseId is the physical database identifier where new logical
-	// databases of this type should be created.
+	// databases of this type should be created. The operator validates this
+	// value for shape only; a Succeeded status means dbaas-aggregator stored
+	// the rule, not that this identifier was resolved to a registered physical
+	// database.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	PhysicalDatabaseID string `json:"physicalDatabaseId"`
@@ -189,7 +197,8 @@ type DbNamespaceBalancingRuleStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// appliedRules are the namespace rule entries last successfully applied
-	// to dbaas-aggregator. They are used to delete removed entries when spec changes.
+	// to dbaas-aggregator. They are used to delete removed entries when spec
+	// changes. They do not guarantee that referenced physical databases exist.
 	// +optional
 	// +listType=atomic
 	AppliedRules []DbNamespaceBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
@@ -250,7 +259,10 @@ type DbPermanentBalancingRuleItem struct {
 	DbType string `json:"dbType"`
 
 	// physicalDatabaseId is the physical database identifier where new logical
-	// databases of this type should be created.
+	// databases of this type should be created. The operator validates this
+	// value for shape only; a Succeeded status means dbaas-aggregator stored
+	// the rule, not that this identifier was resolved to a registered physical
+	// database.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	PhysicalDatabaseID string `json:"physicalDatabaseId"`
@@ -279,7 +291,8 @@ type DbPermanentBalancingRuleStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// appliedRules are the permanent rule entries last successfully applied
-	// to dbaas-aggregator. They are used to delete removed entries when spec changes.
+	// to dbaas-aggregator. They are used to delete removed entries when spec
+	// changes. They do not guarantee that referenced physical databases exist.
 	// +optional
 	// +listType=atomic
 	AppliedRules []DbPermanentBalancingRuleAppliedRule `json:"appliedRules,omitempty"`

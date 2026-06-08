@@ -63,7 +63,10 @@ spec:
                     label:
                       description: |-
                         label is the physical database label expression used by dbaas-aggregator
-                        to resolve exactly one physical database, e.g. "zone=fast".
+                        to resolve exactly one physical database, e.g. "zone=fast". The operator
+                        validates this value for shape only; a Succeeded status means
+                        dbaas-aggregator accepted the rule, not that future provisioning is
+                        guaranteed to find a matching physical database.
                       minLength: 1
                       pattern: ^[^=]+=[^=]+$
                       type: string
@@ -98,7 +101,9 @@ spec:
               appliedRules:
                 description: |-
                   appliedRules are the microservice rule entries last successfully applied
-                  to dbaas-aggregator. They are used to clean up removed entries when spec changes.
+                  to dbaas-aggregator. They are used to clean up removed entries when spec
+                  changes. They do not guarantee that referenced physical database labels
+                  still resolve.
                 items:
                   description: |-
                     DbMicroserviceBalancingRuleAppliedRule tracks one successfully applied
