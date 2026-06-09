@@ -31,7 +31,7 @@ const (
 	// successfully registered with dbaas-aggregator. Type: Normal.
 	EventReasonDatabaseRegistered = "DatabaseRegistered"
 
-	// EventReasonPolicyApplied is emitted when a DbPolicy is successfully
+	// EventReasonPolicyApplied is emitted when a DatabaseAccessPolicy is successfully
 	// applied via dbaas-aggregator POST /api/declarations/v1/apply. Type: Normal.
 	EventReasonPolicyApplied = "PolicyApplied"
 
@@ -86,7 +86,7 @@ const (
 
 	// EventReasonBindingBlocked is emitted when an NamespaceBinding deletion is
 	// deferred because the namespace still contains dbaas workload resources
-	// (ExternalDatabase, InternalDatabase, or DbPolicy). Type: Warning.
+	// (ExternalDatabase, InternalDatabase, or DatabaseAccessPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
 
 	// EventReasonSecretCreated is emitted when a DatabaseSecret successfully

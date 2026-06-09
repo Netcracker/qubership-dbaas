@@ -56,7 +56,7 @@ type PolicyRole struct {
 	AdditionalRole []string `json:"additionalRole,omitempty"`
 }
 
-// DbPolicySpec defines the desired state of DbPolicy.
+// DatabaseAccessPolicySpec defines the desired state of DatabaseAccessPolicy.
 //
 // This spec is serialized by the controller and sent as the "spec" field of the
 // DeclarativePayload body to dbaas-aggregator:
@@ -66,10 +66,10 @@ type PolicyRole struct {
 //
 // Field names and semantics match the RolesRegistration Java class in the aggregator.
 // At least one of services or policy must be provided.
-type DbPolicySpec struct {
+type DatabaseAccessPolicySpec struct {
 	// microserviceName is the microservice that owns this policy.
 	// Mapped to metadata.microserviceName in the DBaaS declarative payload.
-	// Immutable after creation — repointing a DbPolicy CR at a different
+	// Immutable after creation — repointing a DatabaseAccessPolicy CR at a different
 	// microservice would rewrite role grants under the same K8s object,
 	// destroying the audit trail of who owned the policy originally. Create
 	// a new CR for a different service instead.
@@ -95,49 +95,49 @@ type DbPolicySpec struct {
 	DisableGlobalPermissions bool `json:"disableGlobalPermissions,omitempty"`
 }
 
-// DbPolicyStatus defines the observed state of DbPolicy.
-type DbPolicyStatus struct {
+// DatabaseAccessPolicyStatus defines the observed state of DatabaseAccessPolicy.
+type DatabaseAccessPolicyStatus struct {
 	OperatorStatus `json:",inline"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=dbpolicies,singular=dbpolicy,shortName=dbdp
+// +kubebuilder:resource:scope=Namespaced,path=databaseaccesspolicies,singular=databaseaccesspolicy,shortName=dbdap
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.microserviceName"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// DbPolicy is the Schema for the dbpolicies API.
+// DatabaseAccessPolicy is the Schema for the databaseaccesspolicies API.
 // It declares the database role assignments for microservices in a namespace,
 // applied by dbaas-aggregator when provisioning or connecting to databases.
-type DbPolicy struct {
+type DatabaseAccessPolicy struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is standard object metadata.
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of DbPolicy.
-	Spec DbPolicySpec `json:"spec"`
+	// spec defines the desired state of DatabaseAccessPolicy.
+	Spec DatabaseAccessPolicySpec `json:"spec"`
 
-	// status defines the observed state of DbPolicy.
+	// status defines the observed state of DatabaseAccessPolicy.
 	// +optional
-	Status DbPolicyStatus `json:"status,omitempty"`
+	Status DatabaseAccessPolicyStatus `json:"status,omitempty"`
 }
 
-func (p *DbPolicy) SetObservedGeneration(generation int64) {
+func (p *DatabaseAccessPolicy) SetObservedGeneration(generation int64) {
 	p.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true
 
-// DbPolicyList contains a list of DbPolicy.
-type DbPolicyList struct {
+// DatabaseAccessPolicyList contains a list of DatabaseAccessPolicy.
+type DatabaseAccessPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []DbPolicy `json:"items"`
+	Items           []DatabaseAccessPolicy `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&DbPolicy{}, &DbPolicyList{})
+	SchemeBuilder.Register(&DatabaseAccessPolicy{}, &DatabaseAccessPolicyList{})
 }

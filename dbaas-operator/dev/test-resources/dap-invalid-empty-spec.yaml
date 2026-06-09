@@ -1,7 +1,7 @@
 apiVersion: dbaas.netcracker.com/v1
-kind: DbPolicy
+kind: DatabaseAccessPolicy
 metadata:
-  name: dp-invalid-empty-spec
+  name: dap-invalid-empty-spec
   namespace: test-ns
 spec:
   # Neither services nor policy are set — CRD allows it (both fields are +optional),

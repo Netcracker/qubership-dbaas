@@ -1,7 +1,7 @@
 apiVersion: dbaas.netcracker.com/v1
-kind: DbPolicy
+kind: DatabaseAccessPolicy
 metadata:
-  name: dp-400
+  name: dap-400
   namespace: test-ns
 spec:
   # microserviceName "svc-400" matches apply-rules.json → mock returns 400 CORE-DBAAS-4036

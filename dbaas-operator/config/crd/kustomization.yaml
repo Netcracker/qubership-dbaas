@@ -4,7 +4,7 @@
 resources:
 - bases/dbaas.netcracker.com_internaldatabases.yaml
 - bases/dbaas.netcracker.com_databasesecrets.yaml
-- bases/dbaas.netcracker.com_dbpolicies.yaml
+- bases/dbaas.netcracker.com_databaseaccesspolicies.yaml
 - bases/dbaas.netcracker.com_externaldatabases.yaml
 - bases/dbaas.netcracker.com_namespacebindings.yaml
 # +kubebuilder:scaffold:crdkustomizeresource

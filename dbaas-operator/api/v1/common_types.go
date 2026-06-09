@@ -75,7 +75,7 @@ type Classifier struct {
 //
 // InternalDatabase additionally uses WaitingForDependency while polling
 // an asynchronous provisioning operation in dbaas-aggregator.
-// ExternalDatabase and DbPolicy never transition into WaitingForDependency —
+// ExternalDatabase and DatabaseAccessPolicy never transition into WaitingForDependency —
 // their reconcile flows are fully synchronous.
 //
 // +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
@@ -93,7 +93,7 @@ const (
 	// PhaseWaitingForDependency indicates the controller is polling an
 	// asynchronous provisioning operation in dbaas-aggregator (HTTP 202 +
 	// trackingId flow). Used only by InternalDatabase — ExternalDatabase
-	// and DbPolicy have synchronous reconcile flows and never use this phase.
+	// and DatabaseAccessPolicy have synchronous reconcile flows and never use this phase.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
 	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.
@@ -125,11 +125,11 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, InternalDatabase):
+	// Condition types used by all dbaas operator resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase):
 	//   - "Ready"   — True when the resource was successfully processed by
 	//                 dbaas-aggregator for the current generation.
 	//                 ExternalDatabase: reason "DatabaseRegistered" on success.
-	//                 DbPolicy: reason "PolicyApplied" on success.
+	//                 DatabaseAccessPolicy: reason "PolicyApplied" on success.
 	//                 InternalDatabase: reason "DatabaseProvisioned" on success;
 	//                   reason "ProvisioningStarted" while the async operation is in progress.
 	//                 False on any error; see Reason for the error category.

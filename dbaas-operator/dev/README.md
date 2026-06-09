@@ -8,7 +8,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | Resource | Namespace | Description |
 |---|---|---|
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
-| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DbPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`) |
+| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DatabaseAccessPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC — watches all namespaces cluster-wide |
 | Namespace `test-ns` | — | Working namespace for CRs |
 | `NamespaceBinding/binding` | `test-ns` | Claims `test-ns` for this operator (operatorNamespace=`dbaas-system`) |
@@ -61,7 +61,7 @@ Apply all test CRs at once and observe their phases:
 kubectl apply -f dev/test-resources/ -n test-ns
 kubectl get namespacebinding -n test-ns       # binding   dbaas-system
 kubectl get externaldatabase -n test-ns
-kubectl get dbpolicy -n test-ns
+kubectl get databaseaccesspolicy -n test-ns
 kubectl get internaldatabase -n test-ns
 ```
 
@@ -99,7 +99,7 @@ edb-secret-empty-key      BackingOff             postgresql   mydb-empty-key
 | `edb-secret-missing-key.yaml` | `mydb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 | `edb-secret-empty-key.yaml` | `mydb-empty-key` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 
-### DbPolicy
+### DatabaseAccessPolicy
 
 The mock routes `POST /api/declarations/v1/apply` requests by `metadata.microserviceName` from the request body.
 Rules are defined in `apply-rules.json` inside the `aggregator-mock-rules` ConfigMap.
@@ -108,22 +108,22 @@ Expected output:
 
 ```
 NAME                      PHASE
-dp-success                Succeeded
-dp-400                    InvalidConfiguration
-dp-401                    BackingOff
-dp-500                    BackingOff
-dp-invalid-empty-spec     InvalidConfiguration
+dap-success                Succeeded
+dap-400                    InvalidConfiguration
+dap-401                    BackingOff
+dap-500                    BackingOff
+dap-invalid-empty-spec     InvalidConfiguration
 ```
 
 | CR file | `microserviceName` | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
 |---|---|---|---|---|---|
-| `dbpolicy-success.yaml` | `svc-ok` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
-| `dbpolicy-400.yaml` | `svc-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
-| `dbpolicy-401.yaml` | `svc-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
-| `dbpolicy-500.yaml` | `svc-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
-| `dbpolicy-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (no HTTP call) | `InvalidConfiguration` | `InvalidSpec` | `True` |
+| `dap-success.yaml` | `svc-ok` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
+| `dap-400.yaml` | `svc-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `dap-401.yaml` | `svc-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
+| `dap-500.yaml` | `svc-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
+| `dap-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (no HTTP call) | `InvalidConfiguration` | `InvalidSpec` | `True` |
 
-> **Note:** `dbpolicy-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
+> **Note:** `dap-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
 
 ### InternalDatabase
 
@@ -201,28 +201,28 @@ kubectl logs -n dbaas-system deployment/dbaas-aggregator -f
 # Full CR status — ExternalDatabase
 kubectl get externaldatabase -n test-ns edb-401 -o yaml
 
-# Full CR status — DbPolicy
-kubectl get dbpolicy -n test-ns dp-401 -o yaml
+# Full CR status — DatabaseAccessPolicy
+kubectl get databaseaccesspolicy -n test-ns dap-401 -o yaml
 
 # Full CR status — InternalDatabase
 kubectl get internaldatabase -n test-ns idb-400-bad-request -o yaml
 
 # Events for a CR
-kubectl get events -n test-ns --field-selector involvedObject.name=dp-401
+kubectl get events -n test-ns --field-selector involvedObject.name=dap-401
 kubectl get events -n test-ns --field-selector involvedObject.name=idb-poll-failed
 
 # Reset a CR — delete and reapply
 kubectl delete externaldatabase -n test-ns edb-401
 kubectl apply -f dev/test-resources/edb-401-unauthorized.yaml -n test-ns
 
-kubectl delete dbpolicy -n test-ns dp-401
-kubectl apply -f dev/test-resources/dbpolicy-401.yaml -n test-ns
+kubectl delete databaseaccesspolicy -n test-ns dap-401
+kubectl apply -f dev/test-resources/dap-401.yaml -n test-ns
 
 kubectl delete internaldatabase -n test-ns idb-401-unauthorized
 kubectl apply -f dev/test-resources/idb-401-unauthorized.yaml -n test-ns
 
 # Redeploy all test resources at once (NamespaceBinding is preserved — it has a deletion-protection finalizer)
-kubectl delete externaldatabase,dbpolicy,internaldatabase -n test-ns --all
+kubectl delete externaldatabase,databaseaccesspolicy,internaldatabase -n test-ns --all
 kubectl apply -f dev/test-resources/ -n test-ns
 ```
 
@@ -267,12 +267,12 @@ dev/
     ├── edb-secret-missing-key.yaml  # EDB — Secret exists, key missing → BackingOff
     ├── edb-secret-empty-key.yaml    # EDB — Secret exists, key present but empty → BackingOff (SecretError, not Unauthorized)
     │
-    │   # DbPolicy test CRs
-    ├── dbpolicy-success.yaml                # DbPolicy — 200 OK → Succeeded (reason: PolicyApplied)
-    ├── dbpolicy-400.yaml                    # DbPolicy — 400 → InvalidConfiguration
-    ├── dbpolicy-401.yaml                    # DbPolicy — 401 → BackingOff
-    ├── dbpolicy-500.yaml                    # DbPolicy — 500 → BackingOff
-    ├── dbpolicy-invalid-empty-spec.yaml     # DbPolicy — pre-flight: no services/policy → InvalidConfiguration
+    │   # DatabaseAccessPolicy test CRs
+    ├── dap-success.yaml                # DatabaseAccessPolicy — 200 OK → Succeeded (reason: PolicyApplied)
+    ├── dap-400.yaml                    # DatabaseAccessPolicy — 400 → InvalidConfiguration
+    ├── dap-401.yaml                    # DatabaseAccessPolicy — 401 → BackingOff
+    ├── dap-500.yaml                    # DatabaseAccessPolicy — 500 → BackingOff
+    ├── dap-invalid-empty-spec.yaml     # DatabaseAccessPolicy — pre-flight: no services/policy → InvalidConfiguration
     │
     │   # InternalDatabase test CRs
     ├── idb-success-sync.yaml                 # IDB — apply-rule 200 (sync) → Succeeded

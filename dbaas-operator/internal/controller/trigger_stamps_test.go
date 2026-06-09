@@ -78,8 +78,8 @@ func TestInternalDatabaseClearAsyncStart(t *testing.T) {
 	}
 }
 
-func TestDbPolicyBindingTriggerLifecycle(t *testing.T) {
-	r := &DbPolicyReconciler{}
+func TestDatabaseAccessPolicyBindingTriggerLifecycle(t *testing.T) {
+	r := &DatabaseAccessPolicyReconciler{}
 	assertBindingTriggerLifecycle(t, r.stampBindingTrigger, r.consumeBindingTrigger, r.clearBindingTrigger)
 }
 

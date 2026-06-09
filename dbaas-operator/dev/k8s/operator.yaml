@@ -13,14 +13,14 @@ rules:
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - internaldatabases
-      - dbpolicies
+      - databaseaccesspolicies
       - externaldatabases
     verbs: [get, list, watch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - internaldatabases/status
       - databasesecrets/status
-      - dbpolicies/status
+      - databaseaccesspolicies/status
       - externaldatabases/status
     verbs: [get, update, patch]
   # databasesecrets / namespacebindings: patch on the main resource is needed —

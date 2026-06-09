@@ -17,12 +17,12 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ internaldatabases/status ]
     verbs: [ get, update, patch ]
-  # dbpolicies: operator reads and watches; status is updated via the /status subresource.
+  # databaseaccesspolicies: operator reads and watches; status is updated via the /status subresource.
   - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ dbpolicies ]
+    resources: [ databaseaccesspolicies ]
     verbs: [ get, list, watch ]
   - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ dbpolicies/status ]
+    resources: [ databaseaccesspolicies/status ]
     verbs: [ get, update, patch ]
   # databasesecrets: operator reads and watches; creates/updates the target core v1.Secret; status via /status subresource.
   # patch on the resource itself is required for the rotation webhook to stamp the

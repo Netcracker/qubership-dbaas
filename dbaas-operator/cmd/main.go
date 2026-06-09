@@ -189,8 +189,8 @@ func main() {
 	)
 	dpChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
-		func() *dbaasv1.DbPolicyList { return &dbaasv1.DbPolicyList{} },
-		func(l *dbaasv1.DbPolicyList) int { return len(l.Items) },
+		func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} },
+		func(l *dbaasv1.DatabaseAccessPolicyList) int { return len(l.Items) },
 	)
 	ddChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
@@ -226,14 +226,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.DbPolicyReconciler{
+	if err := (&controller.DatabaseAccessPolicyReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "dbpolicy", eventsEnabled),
+		Recorder:   recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
+		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
 		os.Exit(1)
 	}
 
