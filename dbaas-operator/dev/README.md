@@ -8,7 +8,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | Resource | Namespace | Description |
 |---|---|---|
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
-| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DbPolicy/DatabaseDeclaration by `microserviceName`), `poll-rules.json` (DatabaseDeclaration async poll by `trackingId`) |
+| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DatabaseAccessPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC — watches all namespaces cluster-wide |
 | Namespace `test-ns` | — | Working namespace for CRs |
 | `NamespaceBinding/binding` | `test-ns` | Claims `test-ns` for this operator (operatorNamespace=`dbaas-system`) |
@@ -61,8 +61,8 @@ Apply all test CRs at once and observe their phases:
 kubectl apply -f dev/test-resources/ -n test-ns
 kubectl get namespacebinding -n test-ns       # binding   dbaas-system
 kubectl get externaldatabase -n test-ns
-kubectl get dbpolicy -n test-ns
-kubectl get databasedeclaration -n test-ns
+kubectl get databaseaccesspolicy -n test-ns
+kubectl get internaldatabase -n test-ns
 ```
 
 ### ExternalDatabase
@@ -99,7 +99,7 @@ edb-secret-empty-key      BackingOff             postgresql   mydb-empty-key
 | `edb-secret-missing-key.yaml` | `mydb` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 | `edb-secret-empty-key.yaml` | `mydb-empty-key` | — (no HTTP call) | `BackingOff` | `SecretError` | `False` |
 
-### DbPolicy
+### DatabaseAccessPolicy
 
 The mock routes `POST /api/declarations/v1/apply` requests by `metadata.microserviceName` from the request body.
 Rules are defined in `apply-rules.json` inside the `aggregator-mock-rules` ConfigMap.
@@ -108,70 +108,70 @@ Expected output:
 
 ```
 NAME                      PHASE
-dp-success                Succeeded
-dp-400                    InvalidConfiguration
-dp-401                    BackingOff
-dp-500                    BackingOff
-dp-invalid-empty-spec     InvalidConfiguration
+dap-success                Succeeded
+dap-400                    InvalidConfiguration
+dap-401                    BackingOff
+dap-500                    BackingOff
+dap-invalid-empty-spec     InvalidConfiguration
 ```
 
 | CR file | `microserviceName` | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
 |---|---|---|---|---|---|
-| `dbpolicy-success.yaml` | `svc-ok` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
-| `dbpolicy-400.yaml` | `svc-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
-| `dbpolicy-401.yaml` | `svc-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
-| `dbpolicy-500.yaml` | `svc-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
-| `dbpolicy-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (no HTTP call) | `InvalidConfiguration` | `InvalidSpec` | `True` |
+| `dap-success.yaml` | `svc-ok` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
+| `dap-400.yaml` | `svc-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `dap-401.yaml` | `svc-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
+| `dap-500.yaml` | `svc-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
+| `dap-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (no HTTP call) | `InvalidConfiguration` | `InvalidSpec` | `True` |
 
-> **Note:** `dbpolicy-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
+> **Note:** `dap-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
 
-### DatabaseDeclaration
+### InternalDatabase
 
 The mock routes `POST /api/declarations/v1/apply` requests by `metadata.microserviceName`.
-For `DatabaseDeclaration` the default response is HTTP 202 (async) with
+For `InternalDatabase` the default response is HTTP 202 (async) with
 `trackingId = "tracking-<microserviceName>"`. Poll responses are controlled by
 `poll-rules.json` (keyed by `trackingId`); missing rule → `COMPLETED`.
 
-Expected output (`kubectl get databasedeclaration -n test-ns`):
+Expected output (`kubectl get internaldatabase -n test-ns`):
 
 ```
 NAME                    PHASE                  TYPE
-dd-success-sync         Succeeded              postgresql
-dd-success-async        Succeeded              postgresql
-dd-custom-keys          Succeeded              postgresql
-dd-400-bad-request      InvalidConfiguration   postgresql
-dd-401-unauthorized     BackingOff             postgresql
-dd-500-server-error     BackingOff             postgresql
-dd-poll-failed          InvalidConfiguration   postgresql
-dd-poll-terminated      BackingOff             postgresql
-dd-invalid-lazy-clone   InvalidConfiguration   postgresql
-dd-invalid-no-source    InvalidConfiguration   postgresql
+idb-success-sync         Succeeded              postgresql
+idb-success-async        Succeeded              postgresql
+idb-custom-keys          Succeeded              postgresql
+idb-400-bad-request      InvalidConfiguration   postgresql
+idb-401-unauthorized     BackingOff             postgresql
+idb-500-server-error     BackingOff             postgresql
+idb-poll-failed          InvalidConfiguration   postgresql
+idb-poll-terminated      BackingOff             postgresql
+idb-invalid-lazy-clone   InvalidConfiguration   postgresql
+idb-invalid-no-source    InvalidConfiguration   postgresql
 ```
 
 | CR file | `microserviceName` | Apply response | Poll response | Expected Phase | `Ready.reason` | `Stalled` |
 |---|---|---|---|---|---|---|
-| `dd-success-sync.yaml` | `dd-svc-sync` | 200 (rule) | — | `Succeeded` | `DatabaseProvisioned` | `False` |
-| `dd-success-async.yaml` | `dd-svc-async` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
-| `dd-custom-keys.yaml` | `dd-svc-custom-keys` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
-| `dd-400-bad-request.yaml` | `dd-svc-400` | 400 (rule) | — | `InvalidConfiguration` | `AggregatorRejected` | `True` |
-| `dd-401-unauthorized.yaml` | `dd-svc-401` | 401 (rule) | — | `BackingOff` | `Unauthorized` | `False` |
-| `dd-500-server-error.yaml` | `dd-svc-500` | 500 (rule) | — | `BackingOff` | `AggregatorError` | `False` |
-| `dd-poll-failed.yaml` | `dd-poll-failed` | 202 (default) | `FAILED` (poll rule) | `InvalidConfiguration` | `AggregatorRejected` | `True` |
-| `dd-poll-terminated.yaml` | `dd-poll-terminated` | 202 (default) | `TERMINATED` (poll rule) | `BackingOff` (cycling) | `OperationTerminated` | `False` |
-| `dd-invalid-lazy-clone.yaml` | `dd-svc-lazy` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
-| `dd-invalid-no-source.yaml` | `dd-svc-nosrc` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
+| `idb-success-sync.yaml` | `idb-svc-sync` | 200 (rule) | — | `Succeeded` | `DatabaseProvisioned` | `False` |
+| `idb-success-async.yaml` | `idb-svc-async` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
+| `idb-custom-keys.yaml` | `idb-svc-custom-keys` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
+| `idb-400-bad-request.yaml` | `idb-svc-400` | 400 (rule) | — | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `idb-401-unauthorized.yaml` | `idb-svc-401` | 401 (rule) | — | `BackingOff` | `Unauthorized` | `False` |
+| `idb-500-server-error.yaml` | `idb-svc-500` | 500 (rule) | — | `BackingOff` | `AggregatorError` | `False` |
+| `idb-poll-failed.yaml` | `idb-poll-failed` | 202 (default) | `FAILED` (poll rule) | `InvalidConfiguration` | `AggregatorRejected` | `True` |
+| `idb-poll-terminated.yaml` | `idb-poll-terminated` | 202 (default) | `TERMINATED` (poll rule) | `BackingOff` (cycling) | `OperationTerminated` | `False` |
+| `idb-invalid-lazy-clone.yaml` | `idb-svc-lazy` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
+| `idb-invalid-no-source.yaml` | `idb-svc-nosrc` | — (no HTTP call) | — | `InvalidConfiguration` | `InvalidSpec` | `True` |
 
-`dd-invalid-lazy-clone` and `dd-invalid-no-source` exercise controller-level pre-flight checks
+`idb-invalid-lazy-clone` and `idb-invalid-no-source` exercise controller-level pre-flight checks
 (`lazy=true` + `approach=clone` and `approach=clone` without `sourceClassifier` respectively).
 These are cross-field constraints that the CRD schema cannot enforce.
 
-`dd-custom-keys` exercises the `classifier.customKeys` field, which accepts any JSON value type
+`idb-custom-keys` exercises the `classifier.customKeys` field, which accepts any JSON value type
 (string, number, boolean, nested object). The operator converts these to the aggregator wire format
 under `classifierConfig.customKeys`. Check the mock logs to verify all four types are transmitted
 correctly:
 
 ```bash
-kubectl logs -n dbaas-system deployment/dbaas-aggregator | grep -A 10 "dd-svc-custom-keys"
+kubectl logs -n dbaas-system deployment/dbaas-aggregator | grep -A 10 "idb-svc-custom-keys"
 ```
 
 ### Changing rules without rebuilding
@@ -201,28 +201,28 @@ kubectl logs -n dbaas-system deployment/dbaas-aggregator -f
 # Full CR status — ExternalDatabase
 kubectl get externaldatabase -n test-ns edb-401 -o yaml
 
-# Full CR status — DbPolicy
-kubectl get dbpolicy -n test-ns dp-401 -o yaml
+# Full CR status — DatabaseAccessPolicy
+kubectl get databaseaccesspolicy -n test-ns dap-401 -o yaml
 
-# Full CR status — DatabaseDeclaration
-kubectl get databasedeclaration -n test-ns dd-400-bad-request -o yaml
+# Full CR status — InternalDatabase
+kubectl get internaldatabase -n test-ns idb-400-bad-request -o yaml
 
 # Events for a CR
-kubectl get events -n test-ns --field-selector involvedObject.name=dp-401
-kubectl get events -n test-ns --field-selector involvedObject.name=dd-poll-failed
+kubectl get events -n test-ns --field-selector involvedObject.name=dap-401
+kubectl get events -n test-ns --field-selector involvedObject.name=idb-poll-failed
 
 # Reset a CR — delete and reapply
 kubectl delete externaldatabase -n test-ns edb-401
 kubectl apply -f dev/test-resources/edb-401-unauthorized.yaml -n test-ns
 
-kubectl delete dbpolicy -n test-ns dp-401
-kubectl apply -f dev/test-resources/dbpolicy-401.yaml -n test-ns
+kubectl delete databaseaccesspolicy -n test-ns dap-401
+kubectl apply -f dev/test-resources/dap-401.yaml -n test-ns
 
-kubectl delete databasedeclaration -n test-ns dd-401-unauthorized
-kubectl apply -f dev/test-resources/dd-401-unauthorized.yaml -n test-ns
+kubectl delete internaldatabase -n test-ns idb-401-unauthorized
+kubectl apply -f dev/test-resources/idb-401-unauthorized.yaml -n test-ns
 
 # Redeploy all test resources at once (NamespaceBinding is preserved — it has a deletion-protection finalizer)
-kubectl delete externaldatabase,dbpolicy,databasedeclaration -n test-ns --all
+kubectl delete externaldatabase,databaseaccesspolicy,internaldatabase -n test-ns --all
 kubectl apply -f dev/test-resources/ -n test-ns
 ```
 
@@ -267,22 +267,22 @@ dev/
     ├── edb-secret-missing-key.yaml  # EDB — Secret exists, key missing → BackingOff
     ├── edb-secret-empty-key.yaml    # EDB — Secret exists, key present but empty → BackingOff (SecretError, not Unauthorized)
     │
-    │   # DbPolicy test CRs
-    ├── dbpolicy-success.yaml                # DbPolicy — 200 OK → Succeeded (reason: PolicyApplied)
-    ├── dbpolicy-400.yaml                    # DbPolicy — 400 → InvalidConfiguration
-    ├── dbpolicy-401.yaml                    # DbPolicy — 401 → BackingOff
-    ├── dbpolicy-500.yaml                    # DbPolicy — 500 → BackingOff
-    ├── dbpolicy-invalid-empty-spec.yaml     # DbPolicy — pre-flight: no services/policy → InvalidConfiguration
+    │   # DatabaseAccessPolicy test CRs
+    ├── dap-success.yaml                # DatabaseAccessPolicy — 200 OK → Succeeded (reason: PolicyApplied)
+    ├── dap-400.yaml                    # DatabaseAccessPolicy — 400 → InvalidConfiguration
+    ├── dap-401.yaml                    # DatabaseAccessPolicy — 401 → BackingOff
+    ├── dap-500.yaml                    # DatabaseAccessPolicy — 500 → BackingOff
+    ├── dap-invalid-empty-spec.yaml     # DatabaseAccessPolicy — pre-flight: no services/policy → InvalidConfiguration
     │
-    │   # DatabaseDeclaration test CRs
-    ├── dd-success-sync.yaml                 # DD — apply-rule 200 (sync) → Succeeded
-    ├── dd-success-async.yaml                # DD — 202 default → poll COMPLETED → Succeeded
-    ├── dd-custom-keys.yaml                  # DD — classifier.customKeys with string/number/boolean/object values → Succeeded
-    ├── dd-400-bad-request.yaml              # DD — apply-rule 400 → InvalidConfiguration
-    ├── dd-401-unauthorized.yaml             # DD — apply-rule 401 → BackingOff
-    ├── dd-500-server-error.yaml             # DD — apply-rule 500 → BackingOff
-    ├── dd-poll-failed.yaml                  # DD — 202 → poll FAILED → InvalidConfiguration
-    ├── dd-poll-terminated.yaml              # DD — 202 → poll TERMINATED → BackingOff (resubmits automatically)
-    ├── dd-invalid-lazy-clone.yaml           # DD — pre-flight: lazy=true + clone → InvalidConfiguration
-    └── dd-invalid-no-source.yaml           # DD — pre-flight: clone without sourceClassifier → InvalidConfiguration
+    │   # InternalDatabase test CRs
+    ├── idb-success-sync.yaml                 # IDB — apply-rule 200 (sync) → Succeeded
+    ├── idb-success-async.yaml                # IDB — 202 default → poll COMPLETED → Succeeded
+    ├── idb-custom-keys.yaml                  # IDB — classifier.customKeys with string/number/boolean/object values → Succeeded
+    ├── idb-400-bad-request.yaml              # IDB — apply-rule 400 → InvalidConfiguration
+    ├── idb-401-unauthorized.yaml             # IDB — apply-rule 401 → BackingOff
+    ├── idb-500-server-error.yaml             # IDB — apply-rule 500 → BackingOff
+    ├── idb-poll-failed.yaml                  # IDB — 202 → poll FAILED → InvalidConfiguration
+    ├── idb-poll-terminated.yaml              # IDB — 202 → poll TERMINATED → BackingOff (resubmits automatically)
+    ├── idb-invalid-lazy-clone.yaml           # IDB — pre-flight: lazy=true + clone → InvalidConfiguration
+    └── idb-invalid-no-source.yaml           # IDB — pre-flight: clone without sourceClassifier → InvalidConfiguration
 ```

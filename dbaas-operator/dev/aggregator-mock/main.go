@@ -35,8 +35,8 @@ limitations under the License.
 //	MOCK_APPLY_RULES_FILE – path to a JSON file mapping microserviceName → MockRule
 //	                      for POST /api/declarations/v1/apply (default: /config/apply-rules.json).
 //	                      Missing = not an error.
-//	                      For DbPolicy: no rule → 200 COMPLETED.
-//	                      For DatabaseDeclaration: no rule → 202 IN_PROGRESS with trackingId.
+//	                      For DatabaseAccessPolicy: no rule → 200 COMPLETED.
+//	                      For InternalDatabase: no rule → 202 IN_PROGRESS with trackingId.
 //	MOCK_POLL_RULES_FILE – path to a JSON file mapping trackingId → MockPollRule
 //	                      for GET /api/declarations/v1/operation/{id}/status
 //	                      (default: /config/poll-rules.json). Missing = not an error.
@@ -115,7 +115,7 @@ func main() {
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
 		defaultRule.HTTPCode, len(rules))
-	log.Printf("  POST .../apply → DbPolicy:200 / DatabaseDeclaration:202 (%d per-microserviceName rules loaded)",
+	log.Printf("  POST .../apply → DatabaseAccessPolicy:200 / InternalDatabase:202 (%d per-microserviceName rules loaded)",
 		len(applyRules))
 	log.Printf("  GET  .../operation/.../status → default COMPLETED (%d per-trackingId poll rules loaded)",
 		len(pollRules))
@@ -283,7 +283,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 
 	// Default behaviour depends on subKind.
 	if req.SubKind == "DatabaseDeclaration" {
-		// DatabaseDeclaration is always async: return 202 with a deterministic trackingId.
+		// InternalDatabase is always async: return 202 with a deterministic trackingId.
 		trackingID := "tracking-" + msName
 		log.Printf("  → apply config  subKind=DatabaseDeclaration microserviceName=%q"+
 			" → 202 IN_PROGRESS trackingId=%q (default)",
@@ -301,7 +301,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 		return
 	}
 
-	// DbPolicy and any other subKind: default 200 COMPLETED (synchronous).
+	// DatabaseAccessPolicy and any other subKind: default 200 COMPLETED (synchronous).
 	log.Printf("  → apply config  subKind=%q microserviceName=%q → 200 COMPLETED (default)", req.SubKind, msName)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

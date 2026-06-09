@@ -23,9 +23,9 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations
-  - dbpolicies
+  - databaseaccesspolicies
   - externaldatabases
+  - internaldatabases
   verbs:
   - get
   - list
@@ -33,10 +33,10 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations/status
+  - databaseaccesspolicies/status
   - databasesecrets/status
-  - dbpolicies/status
   - externaldatabases/status
+  - internaldatabases/status
   verbs:
   - get
   - patch

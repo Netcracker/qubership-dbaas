@@ -1,0 +1,13 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseAccessPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: dbaas-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: databaseaccesspolicy-sample
+spec:
+  microserviceName: sample-service
+  services:
+    - name: other-service
+      roles:
+        - admin

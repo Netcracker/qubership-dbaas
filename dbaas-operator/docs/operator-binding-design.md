@@ -3,7 +3,7 @@
 ## Problem
 
 The operator manages three kinds of workload resources: `ExternalDatabase`,
-`DatabaseDeclaration`, and `DbPolicy`.
+`InternalDatabase`, and `DatabaseAccessPolicy`.
 
 **Initial problem:** the namespaces handled by the operator were configured via
 the static `--watch-namespaces` flag (comma-separated list). This meant:
@@ -52,7 +52,7 @@ spec:
 When a NamespaceBinding is created, the operator adds the finalizer
 `platform.dbaas.netcracker.com/binding-protection`.
 When a NamespaceBinding is deleted, the operator checks for blocking resources
-(`ExternalDatabase`, `DatabaseDeclaration`, `DbPolicy`) in the same namespace:
+(`ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`) in the same namespace:
 
 - If any are present, the finalizer is **not removed**, the object remains in
   `DeletionTimestamp` state, and a Warning event `BindingBlocked` is recorded.
@@ -121,8 +121,8 @@ In `cmd/main.go`:
 ```
 CompositeChecker
 ├── KindChecker[ExternalDatabaseList]         (always)
-├── KindChecker[DbPolicyList]                 (always)
-└── KindChecker[DatabaseDeclarationList]      (always)
+├── KindChecker[DatabaseAccessPolicyList]                 (always)
+└── KindChecker[InternalDatabaseList]      (always)
 ```
 
 ### 3. `internal/controller/namespacebinding_controller.go` and the `binding → workloads` watch
@@ -149,7 +149,7 @@ GET NamespaceBinding
 
 **Watches in `NamespaceBindingReconciler`** (`workload → binding`):
 `handler.EnqueueRequestsFromMapFunc` is configured for `ExternalDatabase`,
-`DbPolicy`, and `DatabaseDeclaration` (all always).
+`DatabaseAccessPolicy`, and `InternalDatabase` (all always).
 Mapping: any object
 → `{Namespace: obj.Namespace, Name: "binding"}`. This guarantees that
 deleting the last blocking resource immediately triggers another finalizer
@@ -157,7 +157,7 @@ check.
 
 **Watches in workload reconcilers** (`binding → workloads`):
 Each of the three workload controllers (`ExternalDatabase`,
-`DatabaseDeclaration`, and `DbPolicy`) also watches `NamespaceBinding`. When a
+`InternalDatabase`, and `DatabaseAccessPolicy`) also watches `NamespaceBinding`. When a
 NamespaceBinding is created or updated, the `enqueueForBinding` mapping does a
 LIST of all corresponding CRs in the same namespace and returns one
 `reconcile.Request` per object.
@@ -239,7 +239,7 @@ Ginkgo/Gomega + envtest cover:
   preserved, `BindingBlocked` event emitted.
 - Not Found: `Forget` called, no error.
 
-Existing `ExternalDatabase`, `DatabaseDeclaration`, and `DbPolicy` tests are
+Existing `ExternalDatabase`, `InternalDatabase`, and `DatabaseAccessPolicy` tests are
 extended: each reconciler now gets `Ownership: mineOwnershipResolver(ns)`.
 This helper pre-seeds the resolver with `Mine` state for the test namespace
 (fast path, no API call).
@@ -254,7 +254,7 @@ This helper pre-seeds the resolver with `Mine` state for the test namespace
 | `cache.Options.DefaultNamespaces` in manager | Removed |
 | `WATCH_NAMESPACES` in Helm values | Removed |
 | Watches limited to explicitly configured namespaces | Cluster-wide watch + per-object ownership check |
-| `ALPHA_APIS_ENABLED` env var | Removed — DatabaseDeclaration is now stable (v1) |
+| `ALPHA_APIS_ENABLED` env var | Removed — InternalDatabase is now stable (v1) |
 
 ---
 
@@ -273,7 +273,7 @@ kubectl get events -n test-ns --field-selector involvedObject.name=binding
 # → Warning BindingBlocked: deletion deferred: namespace still contains dbaas workload resources
 
 # Delete all workload resources → binding is deleted automatically
-kubectl delete externaldatabase,databasedeclaration,dbpolicy --all -n test-ns
+kubectl delete externaldatabase,internaldatabase,databaseaccesspolicy --all -n test-ns
 kubectl get namespacebinding -n test-ns
 # → No resources found
 ```

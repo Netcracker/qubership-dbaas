@@ -679,7 +679,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		})
 	})
 
-	Context("HTTP 403 — role not permitted by DbPolicy", func() {
+	Context("HTTP 403 — role not permitted by DatabaseAccessPolicy", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, AggregatorRejected event, no requeue", func() {
 			fixture.statusCode = http.StatusForbidden
 			fixture.body = `{"code":"CORE-DBAAS-4023","message":"Role not permitted"}`

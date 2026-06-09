@@ -54,10 +54,10 @@ public class OperatorIT extends AbstractIT {
         kubernetesClient.genericKubernetesResources(CRD_EXTERNAL_DATABASE)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
-        kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+        kubernetesClient.genericKubernetesResources(CRD_INTERNAL_DATABASE)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
-        kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+        kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
@@ -707,34 +707,34 @@ public class OperatorIT extends AbstractIT {
 
             @Nested
             @EnableExtension
-            class DatabaseDeclaration {
+            class InternalDatabase {
 
                 @Test
-                void testDatabaseDeclarationValidMinimalSpec() throws IOException {
+                void testInternalDatabaseValidMinimalSpec() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql");
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
                     helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
                 }
 
                 @Test
-                void testDatabaseDeclarationClassifierNamespaceMismatch() throws IOException {
+                void testInternalDatabaseClassifierNamespaceMismatch() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, generateName(), "postgresql");
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, generateName(), "postgresql");
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
                     helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
                 }
 
                 @Test
-                void testDatabaseDeclarationLazyAndCloneRejected() throws IOException {
+                void testInternalDatabaseLazyAndCloneRejected() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
@@ -747,15 +747,15 @@ public class OperatorIT extends AbstractIT {
                                     "microserviceName", microserviceName)
                     ));
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", true, extraSpec);
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql", true, extraSpec);
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
                     helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
                 }
 
                 @Test
-                void testDatabaseDeclarationCloneWithoutSourceClassifier() throws IOException {
+                void testInternalDatabaseCloneWithoutSourceClassifier() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
@@ -763,15 +763,15 @@ public class OperatorIT extends AbstractIT {
                             "initialInstantiation", Map.of("approach", "clone")
                     );
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
                     helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
                 }
 
                 @Test
-                void testDatabaseDeclarationSourceClassifierMicroserviceNameMismatch() throws IOException {
+                void testInternalDatabaseSourceClassifierMicroserviceNameMismatch() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
@@ -785,15 +785,15 @@ public class OperatorIT extends AbstractIT {
                             )
                     );
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
                     helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 404);
                 }
 
                 @Test
-                void testDatabaseDeclarationValidCloneConfig() throws IOException, SQLException {
+                void testInternalDatabaseValidCloneConfig() throws IOException, SQLException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
@@ -815,15 +815,15 @@ public class OperatorIT extends AbstractIT {
                             )
                     ));
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
                     Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
                     Map<String, Object> cloneClassifier = (Map<String, Object>) spec.get("classifier");
                     cloneClassifier.put("customKeys", Map.of(
                             TEST_ID, "clone"
                     ));
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
 
                     var cloneClassifierMap = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
                     cloneClassifierMap.put("customKeys", Map.of(TEST_ID, "clone"));
@@ -837,7 +837,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseDeclarationWaitsForCloneSource() throws IOException, SQLException {
+                void testInternalDatabaseWaitsForCloneSource() throws IOException, SQLException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
@@ -853,7 +853,7 @@ public class OperatorIT extends AbstractIT {
                             )
                     ));
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql", false, extraSpec);
                     Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
                     Map<String, Object> cloneClassifier = (Map<String, Object>) spec.get("classifier");
                     cloneClassifier.put("customKeys", Map.of(
@@ -861,8 +861,8 @@ public class OperatorIT extends AbstractIT {
                     ));
 
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr,
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr,
                             PHASE_WAITING_FOR_DEPENDENCY, STATUS_FALSE, REASON_PROVISIONING_STARTED, STATUS_FALSE);
 
                     var cloneClassifierMap = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
@@ -875,23 +875,22 @@ public class OperatorIT extends AbstractIT {
                     var sourceDb = helperV3.createDatabase(sourceClassifier, "postgresql", 201);
                     helperV3.checkConnectionPostgres(sourceDb);
 
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr,
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr,
                             PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
                     helperV3.getDatabaseByClassifierAsPOJO(
                             helperV3.getClusterDbaAuthorization(), cloneClassifierMap, NAMESPACE, "postgresql", 200);
                 }
 
                 @Test
-                void testDatabaseDeclarationTryToUpdateClassifier() {
+                void testInternalDatabaseTryToUpdateClassifier() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql");
+                    createCR(CRD_INTERNAL_DATABASE, cr);
 
                     KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
-                            kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                            kubernetesClient.genericKubernetesResources(CRD_INTERNAL_DATABASE)
                                     .inNamespace(NAMESPACE)
                                     .resource(cr)
                                     .edit(r -> {
@@ -909,19 +908,19 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseDeclarationTryToUpdateType() {
+                void testInternalDatabaseTryToUpdateType() {
                     String crName = generateName();
                     String microserviceName = generateName();
                     String updatedType = "mongodb";
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql");
                     var spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
                     assertNotEquals(updatedType, spec.get("type"));
 
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+
                     KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
-                            kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                            kubernetesClient.genericKubernetesResources(CRD_INTERNAL_DATABASE)
                                     .inNamespace(NAMESPACE)
                                     .resource(cr)
                                     .edit(r -> {
@@ -934,17 +933,17 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseDeclarationCanUpdateSettings() throws IOException {
+                void testInternalDatabaseCanUpdateSettings() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    var cr = buildDatabaseDeclarationCR(crName, microserviceName, NAMESPACE, "postgresql");
-                    createCR(CRD_DATABASE_DECLARATION, cr);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, cr,
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql");
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr,
                             PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
 
                     var updatedSettings = Map.of(TEST_ID, "updated");
-                    var updatedResource = kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                    var updatedResource = kubernetesClient.genericKubernetesResources(CRD_INTERNAL_DATABASE)
                             .inNamespace(NAMESPACE)
                             .resource(cr)
                             .edit(r -> {
@@ -952,10 +951,10 @@ public class OperatorIT extends AbstractIT {
                                 currSpec.put("settings", updatedSettings);
                                 return r;
                             });
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, updatedResource,
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, updatedResource,
                             PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE, true);
 
-                    var refreshed = kubernetesClient.genericKubernetesResources(CRD_DATABASE_DECLARATION)
+                    var refreshed = kubernetesClient.genericKubernetesResources(CRD_INTERNAL_DATABASE)
                             .inNamespace(NAMESPACE)
                             .resource(cr)
                             .get();
@@ -966,38 +965,38 @@ public class OperatorIT extends AbstractIT {
 
             @Nested
             @EnableExtension
-            class DbPolicy {
+            class DatabaseAccessPolicy {
 
                 @Test
-                void testDbPolicyBothServicesAndPolicyEmpty() {
+                void testDatabaseAccessPolicyBothServicesAndPolicyEmpty() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(), List.of());
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(), List.of());
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
                     helperV3.getAccessRoles(NAMESPACE, microserviceName, 404);
                 }
 
                 @Test
-                void testDbPolicyOnlyServicesSet() {
+                void testDatabaseAccessPolicyOnlyServicesSet() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    OperatorIT.this.testDbPolicyOnlyServicesSet(crName, microserviceName, "svc-a", List.of("admin"));
+                    OperatorIT.this.testDatabaseAccessPolicyOnlyServicesSet(crName, microserviceName, "svc-a", List.of("admin"));
                 }
 
                 @Test
-                void testDbPolicyOnlyPolicySet() {
+                void testDatabaseAccessPolicyOnlyPolicySet() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var policy = Map.<String, Object>of("type", "backup", "defaultRole", "admin");
-                    var cr = buildDbPolicyCR(crName, microserviceName, null, List.of(policy));
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, null, List.of(policy));
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
                     assertTrue(roles.getServices() == null || roles.getServices().isEmpty());
@@ -1012,16 +1011,16 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyBothServicesAndPolicySet() {
+                void testDatabaseAccessPolicyBothServicesAndPolicySet() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
                     var policy = Map.<String, Object>of("type", "backup", "defaultRole", "admin");
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), List.of(policy));
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), List.of(policy));
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
 
@@ -1043,18 +1042,18 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyDisableGlobalPermissions() {
+                void testDatabaseAccessPolicyDisableGlobalPermissions() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), null);
 
                     Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
                     spec.put("disableGlobalPermissions", true);
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
                     assertEquals(Boolean.TRUE, roles.getDisableGlobalPermissions());
@@ -1069,19 +1068,18 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyTryToUpdateMicroserviceName() {
+                void testDatabaseAccessPolicyTryToUpdateMicroserviceName() {
                     String crName = generateName();
                     String microserviceName = generateName();
                     String updatedMicroserviceName = generateName();
                     assertNotEquals(microserviceName, updatedMicroserviceName);
 
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), null);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
 
                     KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
-                            kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+                            kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
                                     .inNamespace(NAMESPACE)
                                     .resource(cr)
                                     .edit(r -> {
@@ -1094,18 +1092,18 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyCanUpdateServices() {
+                void testDatabaseAccessPolicyCanUpdateServices() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var initialService = Map.of("name", "svc-a", "roles", List.of("admin"));
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(initialService), null);
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr,
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(initialService), null);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr,
                             PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var updatedService = Map.of("name", "svc-b", "roles", List.of("readonly"));
-                    var updatedResource = kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+                    var updatedResource = kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
                             .inNamespace(NAMESPACE)
                             .resource(cr)
                             .edit(r -> {
@@ -1113,7 +1111,7 @@ public class OperatorIT extends AbstractIT {
                                 currSpec.put("services", List.of(updatedService));
                                 return r;
                             });
-                    waitForDesiredState(CRD_DB_POLICY, updatedResource,
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, updatedResource,
                             PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE, true);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
@@ -1131,14 +1129,14 @@ public class OperatorIT extends AbstractIT {
             class DatabaseSecret {
                 @Test
                 void testDatabaseSecretCreatedSuccessfully() throws IOException {
-                    String dbDeclarationCRName = generateName();
+                    String internalDatabaseCRName = generateName();
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
 
-                    var databaseDeclarationCR = buildDatabaseDeclarationCR(dbDeclarationCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
-                    createCR(CRD_DATABASE_DECLARATION, databaseDeclarationCR);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, databaseDeclarationCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                    var internalDatabaseCR = buildInternalDatabaseCR(internalDatabaseCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
+                    createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
                     var expectedConnections = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, POSTGRES_TYPE, 200).getConnectionProperties();
 
                     var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
@@ -1262,9 +1260,9 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseSecretApplyDbPolicy() throws IOException {
+                void testDatabaseSecretApplyDatabaseAccessPolicy() throws IOException {
                     String dbSecretCrName = generateName();
-                    String dbPolicyCrName = generateName();
+                    String databaseAccessPolicyCrName = generateName();
                     String microserviceName = generateName();
                     String originService = generateName();
                     String secretName = generateName();
@@ -1283,7 +1281,7 @@ public class OperatorIT extends AbstractIT {
                             .withName(dbSecretCrName)
                             .delete();
 
-                    OperatorIT.this.testDbPolicyOnlyServicesSet(dbPolicyCrName, microserviceName, originService, List.of("admin"));
+                    OperatorIT.this.testDatabaseAccessPolicyOnlyServicesSet(databaseAccessPolicyCrName, microserviceName, originService, List.of("admin"));
                     var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
                     waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
                     var secret = getSecret(secretName);
@@ -1294,15 +1292,15 @@ public class OperatorIT extends AbstractIT {
 
                 @Test
                 void testDatabaseSecretApplyRotation() throws IOException {
-                    String dbDeclarationCRName = generateName();
+                    String internalDatabaseCRName = generateName();
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
                     var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
 
-                    var databaseDeclarationCR = buildDatabaseDeclarationCR(dbDeclarationCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
-                    createCR(CRD_DATABASE_DECLARATION, databaseDeclarationCR);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, databaseDeclarationCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                    var internalDatabaseCR = buildInternalDatabaseCR(internalDatabaseCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
+                    createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
 
                     var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
                     var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
@@ -1324,7 +1322,7 @@ public class OperatorIT extends AbstractIT {
 
                 @Test
                 void testDatabaseSecretRotationFanOutToSameClassifier() throws IOException {
-                    String dbDeclarationCRName = generateName();
+                    String internalDatabaseCRName = generateName();
                     String dbSecretCRName1 = generateName();
                     String dbSecretCRName2 = generateName();
                     String microserviceName = generateName();
@@ -1332,9 +1330,9 @@ public class OperatorIT extends AbstractIT {
                     String secretName2 = generateName();
                     var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
 
-                    var databaseDeclarationCR = buildDatabaseDeclarationCR(dbDeclarationCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
-                    createCR(CRD_DATABASE_DECLARATION, databaseDeclarationCR);
-                    waitForDesiredState(CRD_DATABASE_DECLARATION, databaseDeclarationCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+                    var internalDatabaseCR = buildInternalDatabaseCR(internalDatabaseCRName, microserviceName, NAMESPACE, POSTGRES_TYPE);
+                    createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
 
                     var databaseSecretCR1 = buildDatabaseSecretCR(dbSecretCRName1, microserviceName, microserviceName, NAMESPACE, secretName1, "", POSTGRES_TYPE);
                     var createdDatabaseSecretCR1 = createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
@@ -1409,12 +1407,12 @@ public class OperatorIT extends AbstractIT {
         bgHelper.destroyDomain(new BgNamespaceRequest(NAMESPACE, TEST_NAMESPACE_CANDIDATE)).close();
     }
 
-    private void testDbPolicyOnlyServicesSet(String crName, String originService, String microserviceName, List<String> roles) {
+    private void testDatabaseAccessPolicyOnlyServicesSet(String crName, String originService, String microserviceName, List<String> roles) {
         var service = Map.of("name", microserviceName, "roles", roles);
-        var cr = buildDbPolicyCR(crName, originService, List.of(service), null);
+        var cr = buildDatabaseAccessPolicyCR(crName, originService, List.of(service), null);
 
-        createCR(CRD_DB_POLICY, cr);
-        waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+        createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+        waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
         var accessRoles = helperV3.getAccessRoles(NAMESPACE, originService, 200);
         assertTrue(accessRoles.getPolicies() == null || accessRoles.getPolicies().isEmpty());

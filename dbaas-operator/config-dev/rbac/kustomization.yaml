@@ -13,9 +13,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the dbaas-operator itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
-- dbpolicy_admin_role.yaml
-- dbpolicy_editor_role.yaml
-- dbpolicy_viewer_role.yaml
-- databasedeclaration_admin_role.yaml
-- databasedeclaration_editor_role.yaml
-- databasedeclaration_viewer_role.yaml
+- databaseaccesspolicy_admin_role.yaml
+- databaseaccesspolicy_editor_role.yaml
+- databaseaccesspolicy_viewer_role.yaml
+- internaldatabase_admin_role.yaml
+- internaldatabase_editor_role.yaml
+- internaldatabase_viewer_role.yaml
