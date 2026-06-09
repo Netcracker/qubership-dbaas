@@ -12,13 +12,13 @@ rules:
   # dbaas CRs (read-only for workloads whose main resource the operator never mutates).
   - apiGroups: [dbaas.netcracker.com]
     resources:
-      - databasedeclarations
+      - internaldatabases
       - dbpolicies
       - externaldatabases
     verbs: [get, list, watch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
-      - databasedeclarations/status
+      - internaldatabases/status
       - databasesecrets/status
       - dbpolicies/status
       - externaldatabases/status

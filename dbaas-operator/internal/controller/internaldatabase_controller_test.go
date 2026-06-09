@@ -49,7 +49,7 @@ const (
 	body401Unauthorized = `{"message":"Requested role is not allowed","status":"401","@type":"NC.TMFErrorResponse.v1.0"}`
 )
 
-var _ = Describe("DatabaseDeclaration Controller", func() {
+var _ = Describe("InternalDatabase Controller", func() {
 	const (
 		ns           = "default"
 		resourceName = "test-dd"
@@ -62,14 +62,14 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		pollBody          string
 		capturedApplyBody []byte
 		mockServer        *httptest.Server
-		reconciler        *DatabaseDeclarationReconciler
+		reconciler        *InternalDatabaseReconciler
 		fakeRecorder      *record.FakeRecorder
 		namespacedName    types.NamespacedName
 	)
 
-	// baseSpec returns a minimal valid DatabaseDeclaration spec.
-	baseSpec := func() dbaasv1.DatabaseDeclarationSpec {
-		return dbaasv1.DatabaseDeclarationSpec{
+	// baseSpec returns a minimal valid InternalDatabase spec.
+	baseSpec := func() dbaasv1.InternalDatabaseSpec {
+		return dbaasv1.InternalDatabaseSpec{
 			Classifier: dbaasv1.Classifier{
 				MicroserviceName: "test-service",
 				Scope:            "service",
@@ -110,7 +110,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 		fakeRecorder = record.NewFakeRecorder(16)
-		reconciler = &DatabaseDeclarationReconciler{
+		reconciler = &InternalDatabaseReconciler{
 			Client:     k8sClient,
 			Scheme:     k8sClient.Scheme(),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return testToken, nil }),
@@ -122,7 +122,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	AfterEach(func() {
 		mockServer.Close()
 
-		dd := &dbaasv1.DatabaseDeclaration{}
+		dd := &dbaasv1.InternalDatabase{}
 		if err := k8sClient.Get(ctx, namespacedName, dd); err == nil {
 			Expect(k8sClient.Delete(ctx, dd)).To(Succeed())
 		}
@@ -130,10 +130,10 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		drainRecordedEvents(fakeRecorder.Events)
 	})
 
-	reconcileAndFetch := func() (*dbaasv1.DatabaseDeclaration, reconcile.Result, error) {
+	reconcileAndFetch := func() (*dbaasv1.InternalDatabase, reconcile.Result, error) {
 		GinkgoHelper()
-		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1.DatabaseDeclaration {
-			return &dbaasv1.DatabaseDeclaration{}
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1.InternalDatabase {
+			return &dbaasv1.InternalDatabase{}
 		})
 	}
 
@@ -143,7 +143,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
 			spec.Classifier.MicroserviceName = ""
-			err := k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			err := k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})
@@ -157,7 +157,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
 			spec.Classifier.Scope = ""
-			err := k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			err := k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})
@@ -171,7 +171,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("is rejected by CRD admission before reaching the controller", func() {
 			spec := baseSpec()
 			spec.Type = ""
-			err := k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			err := k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})
@@ -194,7 +194,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 					Scope:            "service",
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -229,7 +229,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 				Approach: "clone",
 				// SourceClassifier deliberately omitted
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -260,7 +260,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 					Scope:            "service",
 				},
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -285,7 +285,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("proceeds normally; aggregator receives namespace from metadata", func() {
 			spec := baseSpec()
 			// Namespace field left unset (zero value / omitempty).
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -301,7 +301,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("proceeds normally and succeeds", func() {
 			spec := baseSpec()
 			spec.Classifier.Namespace = ns // same as metadata.namespace
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -317,7 +317,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue, never calls aggregator", func() {
 			spec := baseSpec()
 			spec.Classifier.Namespace = "other-namespace"
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -351,7 +351,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("buildPayload", func() {
 		It("sets kind=DBaaS, subKind=DatabaseDeclaration, microserviceName in metadata", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -361,7 +361,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			Expect(capturedApplyBody).NotTo(BeEmpty())
 
 			// Wire format: classifierConfig.classifier is a flat map
-			// (mirrors DatabaseDeclaration.ClassifierConfig.classifier: SortedMap<String,Object>).
+			// (mirrors InternalDatabase.ClassifierConfig.classifier: SortedMap<String,Object>).
 			var sent struct {
 				Kind     string `json:"kind"`
 				SubKind  string `json:"subKind"`
@@ -393,7 +393,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 				"active":  {Raw: []byte(`true`)},          // boolean
 				"meta":    {Raw: []byte(`{"owner":"a"}`)}, // nested object
 			}
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       spec,
 			})).To(Succeed())
@@ -433,7 +433,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/DatabaseProvisioned, does not requeue", func() {
 			applyCode = http.StatusOK
 			applyBody = statusCompleted
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -468,7 +468,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=WaitingForDependency, stores trackingId, emits ProvisioningStarted, requeues after poll interval", func() {
 			applyCode = http.StatusAccepted
 			applyBody = `{"trackingId":"track-abc-123"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -502,12 +502,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=COMPLETED", func() {
 		It("sets Phase=Succeeded, clears trackingId, emits DatabaseProvisioned, does not requeue", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-poll-completed"
 			dd.Status.PendingOperationGeneration = dd.Generation
@@ -539,12 +539,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=FAILED", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, clears trackingId, emits AggregatorRejected, does not requeue", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-poll-failed"
 			dd.Status.PendingOperationGeneration = dd.Generation
@@ -580,12 +580,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=TERMINATED", func() {
 		It("sets Phase=BackingOff, Stalled=False, clears trackingId, emits OperationTerminated, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-terminated"
 			dd.Status.PendingOperationGeneration = dd.Generation
@@ -623,13 +623,13 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			applyCode = http.StatusAccepted
 			applyBody = `{"trackingId":"track-resubmit"}`
 
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
 			// Simulate a pending tracking ID that comes back TERMINATED.
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-stale"
 			dd.Status.PendingOperationGeneration = dd.Generation
@@ -660,12 +660,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — status=IN_PROGRESS", func() {
 		It("keeps Phase=WaitingForDependency, keeps trackingId, requeues after poll interval", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			gen := dd.Generation
 			dd.Status.TrackingID = "track-in-progress"
@@ -693,12 +693,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — HTTP 404 trackingId not found", func() {
 		It("clears trackingId, sets Phase=BackingOff, Stalled=False, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-gone"
 			dd.Status.PendingOperationGeneration = dd.Generation
@@ -728,12 +728,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — HTTP 401 unauthorized", func() {
 		It("keeps trackingId, sets Phase=BackingOff, Stalled=False, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-unauth"
 			dd.Status.PendingOperationGeneration = dd.Generation
@@ -765,12 +765,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 	Context("POLL — HTTP 500 server error", func() {
 		It("keeps trackingId, sets Phase=BackingOff, Stalled=False, requeues", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			dd.Status.TrackingID = "track-500"
 			dd.Status.PendingOperationGeneration = dd.Generation
@@ -801,7 +801,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, does not requeue", func() {
 			applyCode = http.StatusBadRequest
 			applyBody = `{"code":"CORE-DBAAS-4036","reason":"Validation failed","message":"Declarative configuration validation failed.","status":"400","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -831,7 +831,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			applyCode = http.StatusUnauthorized
 			applyBody = body401Unauthorized
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -859,7 +859,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff (not InvalidConfiguration), Stalled=False, requeues", func() {
 			applyCode = http.StatusNotFound
 			applyBody = ""
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -886,7 +886,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff (not InvalidConfiguration), Stalled=False, requeues", func() {
 			applyCode = http.StatusTooManyRequests
 			applyBody = ""
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -909,7 +909,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			applyCode = http.StatusInternalServerError
 			applyBody = `{"code":"CORE-DBAAS-2000","message":"Unexpected exception","status":"500","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -935,7 +935,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 	Context("SUBMIT — network error (aggregator unreachable)", func() {
 		It("sets Phase=BackingOff, Stalled=False, requeues", func() {
 			mockServer.Close()
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
@@ -960,12 +960,12 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 			applyCode = http.StatusOK
 			applyBody = statusCompleted
 
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseDeclaration{
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec:       baseSpec(),
 			})).To(Succeed())
 
-			dd := &dbaasv1.DatabaseDeclaration{}
+			dd := &dbaasv1.InternalDatabase{}
 			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
 			// Simulate a stale trackingId from a previous generation.
 			dd.Status.TrackingID = "track-stale"
@@ -991,7 +991,7 @@ var _ = Describe("DatabaseDeclaration Controller", func() {
 
 // ── Rate limiter / SetupWithManager ───────────────────────────────────────────
 
-var _ = Describe("DatabaseDeclaration Controller — rate limiter", func() {
+var _ = Describe("InternalDatabase Controller — rate limiter", func() {
 	It("registers the controller with a custom exponential rate limiter", func() {
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
@@ -1005,7 +1005,7 @@ var _ = Describe("DatabaseDeclaration Controller — rate limiter", func() {
 
 		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
 
-		err = (&DatabaseDeclarationReconciler{
+		err = (&InternalDatabaseReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"), // nolint:staticcheck

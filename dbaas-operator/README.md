@@ -12,7 +12,7 @@
 
 ---
 
-Alpha resources (`DatabaseDeclaration`, `DbPolicy`) remain under active development in the repository, but are not installed by `make install` / `make deploy`.
+Alpha resources (`InternalDatabase`, `DbPolicy`) remain under active development in the repository, but are not installed by `make install` / `make deploy`.
 
 ## ExternalDatabase
 

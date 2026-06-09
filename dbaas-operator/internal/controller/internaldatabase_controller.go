@@ -16,8 +16,8 @@ limitations under the License.
 
 package controller
 
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations,verbs=get;list;watch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasedeclarations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=internaldatabases,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=internaldatabases/status,verbs=get;update;patch
 
 import (
 	"context"
@@ -48,14 +48,14 @@ import (
 // pollRequeueAfter is the interval between polls of an in-progress async operation.
 const pollRequeueAfter = 5 * time.Second
 
-// DatabaseDeclarationReconciler reconciles DatabaseDeclaration objects.
+// InternalDatabaseReconciler reconciles InternalDatabase objects.
 //
 // The reconcile loop has two branches:
 //   - SUBMIT: no pending trackingId → validate, build payload, call POST /apply.
 //     HTTP 200 → Succeeded (synchronous). HTTP 202 → store trackingId, requeue for polling.
 //   - POLL: pending trackingId → call GET /operation/{id}/status.
 //     COMPLETED → Succeeded. FAILED/TERMINATED → InvalidConfiguration. IN_PROGRESS → requeue.
-type DatabaseDeclarationReconciler struct {
+type InternalDatabaseReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Aggregator *aggregatorclient.AggregatorClient
@@ -73,11 +73,11 @@ type DatabaseDeclarationReconciler struct {
 	bindingTriggerStamps map[string]struct{}
 }
 
-func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
+func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	// requestID is stored in ctx; sub-methods retrieve it via requestIDFromContext.
 	ctx, _ = initReconcileContext(ctx)
 
-	dd := &dbaasv1.DatabaseDeclaration{}
+	dd := &dbaasv1.InternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
 		if apierrors.IsNotFound(err) {
 			key := req.Namespace + "/" + req.Name
@@ -106,7 +106,7 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 	// WaitingForDependency/BackingOff are not terminal — don't stamp.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dd, original, &retErr,
-			func(dd *dbaasv1.DatabaseDeclaration, _ error) bool {
+			func(dd *dbaasv1.InternalDatabase, _ error) bool {
 				return dd.Status.Phase == dbaasv1.PhaseSucceeded ||
 					dd.Status.Phase == dbaasv1.PhaseInvalidConfiguration
 			},
@@ -139,11 +139,11 @@ func (r *DatabaseDeclarationReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // reconcileSubmit handles the SUBMIT branch: pre-flight validation + POST /apply.
-func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1.DatabaseDeclaration) (ctrl.Result, error) {
+func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1.InternalDatabase) (ctrl.Result, error) {
 	requestID := requestIDFromContext(ctx)
 	dd.Status.Phase = dbaasv1.PhaseProcessing
 
-	if msg := validateDatabaseDeclarationSpec(dd); msg != "" {
+	if msg := validateInternalDatabaseSpec(dd); msg != "" {
 		return r.invalidSpec(ctx, dd, msg)
 	}
 
@@ -154,7 +154,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 	resp, err := r.Aggregator.ApplyConfig(ctx, payload)
 	recordAggregatorCall(controllerDD, operationApplyConfig, aggStart, err)
 	if err != nil {
-		log.ErrorC(ctx, "failed to apply DatabaseDeclaration to dbaas-aggregator: %v", err)
+		log.ErrorC(ctx, "failed to apply InternalDatabase to dbaas-aggregator: %v", err)
 		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
 	}
 
@@ -185,7 +185,7 @@ func (r *DatabaseDeclarationReconciler) reconcileSubmit(ctx context.Context, dd 
 }
 
 // reconcilePoll handles the POLL branch: GET /operation/{trackingId}/status.
-func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1.DatabaseDeclaration) (ctrl.Result, error) {
+func (r *InternalDatabaseReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1.InternalDatabase) (ctrl.Result, error) {
 	requestID := requestIDFromContext(ctx)
 
 	trackingID := dd.Status.TrackingID
@@ -204,14 +204,14 @@ func (r *DatabaseDeclarationReconciler) reconcilePoll(ctx context.Context, dd *d
 	return r.handlePollResponse(ctx, dd, trackingID, requestID, resp)
 }
 
-func (r *DatabaseDeclarationReconciler) invalidSpec(ctx context.Context, dd *dbaasv1.DatabaseDeclaration, msg string) (ctrl.Result, error) {
+func (r *InternalDatabaseReconciler) invalidSpec(ctx context.Context, dd *dbaasv1.InternalDatabase, msg string) (ctrl.Result, error) {
 	return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
 // kind/subKind are hardcoded to what the aggregator expects.
 // microserviceName goes into metadata; the entire spec is forwarded as-is.
-func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclaration) *aggregatorclient.DeclarativePayload {
+func (r *InternalDatabaseReconciler) buildPayload(dd *dbaasv1.InternalDatabase) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
 		APIVersion: apiVersionV1,
 		Kind:       "DBaaS",
@@ -225,7 +225,7 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclara
 	}
 }
 
-// toWireSpec converts a DatabaseDeclarationSpec (CRD shape) into the wire format
+// toWireSpec converts a InternalDatabaseSpec (CRD shape) into the wire format
 // expected by dbaas-aggregator. namespace is the owning CR's metadata.namespace,
 // used to default classifier.namespace when omitted.
 //
@@ -239,7 +239,7 @@ func (r *DatabaseDeclarationReconciler) buildPayload(dd *dbaasv1.DatabaseDeclara
 // value equals metadata.namespace). sourceClassifier is left as-is — a clone
 // source may legitimately live in a different namespace, and no equality
 // constraint is enforced on it.
-func toWireSpec(spec dbaasv1.DatabaseDeclarationSpec, namespace string) aggregatorclient.DatabaseDeclarationSpecWire {
+func toWireSpec(spec dbaasv1.InternalDatabaseSpec, namespace string) aggregatorclient.DatabaseDeclarationSpecWire {
 	wire := aggregatorclient.DatabaseDeclarationSpecWire{
 		ClassifierConfig: aggregatorclient.ClassifierConfigWire{
 			Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(spec.Classifier, namespace)),
@@ -310,7 +310,7 @@ func pollConditionText(resp *aggregatorclient.DeclarativeResponse, fallback stri
 	return fallback
 }
 
-func validateDatabaseDeclarationSpec(dd *dbaasv1.DatabaseDeclaration) string {
+func validateInternalDatabaseSpec(dd *dbaasv1.InternalDatabase) string {
 	// CRD enforces: classifier.required, classifier.microserviceName/scope required+minLength,
 	// type required+minLength. Controller handles cross-field constraints only.
 
@@ -344,7 +344,7 @@ func validateDatabaseDeclarationSpec(dd *dbaasv1.DatabaseDeclaration) string {
 	return ""
 }
 
-func markProvisioningStarted(dd *dbaasv1.DatabaseDeclaration, trackingID string) {
+func markProvisioningStarted(dd *dbaasv1.InternalDatabase, trackingID string) {
 	dd.Status.TrackingID = trackingID
 	dd.Status.PendingOperationGeneration = dd.Generation
 	dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
@@ -355,7 +355,7 @@ func markProvisioningStarted(dd *dbaasv1.DatabaseDeclaration, trackingID string)
 		conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
 }
 
-func clearPendingOperation(dd *dbaasv1.DatabaseDeclaration) {
+func clearPendingOperation(dd *dbaasv1.InternalDatabase) {
 	dd.Status.TrackingID = ""
 	dd.Status.PendingOperationGeneration = 0
 }
@@ -363,7 +363,7 @@ func clearPendingOperation(dd *dbaasv1.DatabaseDeclaration) {
 // observeAsyncCompletion records the end-to-end async operation duration and
 // consumes the in-memory start stamp. Safe to call even when no start stamp exists
 // (e.g. operator restarted mid-operation — in that case duration is not recorded).
-func (r *DatabaseDeclarationReconciler) observeAsyncCompletion(dd *dbaasv1.DatabaseDeclaration, result string) {
+func (r *InternalDatabaseReconciler) observeAsyncCompletion(dd *dbaasv1.InternalDatabase, result string) {
 	ddKey := dd.Namespace + "/" + dd.Name
 	r.asyncStartMu.Lock()
 	start, ok := r.asyncStartTimes[ddKey]
@@ -377,15 +377,15 @@ func (r *DatabaseDeclarationReconciler) observeAsyncCompletion(dd *dbaasv1.Datab
 }
 
 // clearAsyncStart drops any pending async-operation start stamp for key.
-func (r *DatabaseDeclarationReconciler) clearAsyncStart(key string) {
+func (r *InternalDatabaseReconciler) clearAsyncStart(key string) {
 	r.asyncStartMu.Lock()
 	defer r.asyncStartMu.Unlock()
 	delete(r.asyncStartTimes, key)
 }
 
-func (r *DatabaseDeclarationReconciler) handlePollError(
+func (r *InternalDatabaseReconciler) handlePollError(
 	ctx context.Context,
-	dd *dbaasv1.DatabaseDeclaration,
+	dd *dbaasv1.InternalDatabase,
 	trackingID string,
 	requestID string,
 	err error,
@@ -428,9 +428,9 @@ func (r *DatabaseDeclarationReconciler) handlePollError(
 	return ctrl.Result{}, err
 }
 
-func (r *DatabaseDeclarationReconciler) handlePollResponse(
+func (r *InternalDatabaseReconciler) handlePollResponse(
 	ctx context.Context,
-	dd *dbaasv1.DatabaseDeclaration,
+	dd *dbaasv1.InternalDatabase,
 	trackingID string,
 	requestID string,
 	resp *aggregatorclient.DeclarativeResponse,
@@ -497,26 +497,26 @@ func pollProgressMessage(resp *aggregatorclient.DeclarativeResponse) string {
 // GenerationChangedPredicate ensures reconcile fires only on spec changes,
 // not on the controller's own status updates. Timer-based requeues (RequeueAfter)
 // bypass the predicate and always trigger reconcile.
-func (r *DatabaseDeclarationReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dbaasv1.DatabaseDeclaration{},
+		For(&dbaasv1.InternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all DatabaseDeclarations in a namespace when its NamespaceBinding
+		// Re-enqueue all InternalDatabases in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		WithOptions(opts).
-		Named("databasedeclaration").
+		Named("internaldatabase").
 		Complete(r)
 }
 
 // enqueueForBinding maps an NamespaceBinding event to reconcile requests for
-// all DatabaseDeclarations that live in the same namespace.
-func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.DatabaseDeclarationList{}
+// all InternalDatabases that live in the same namespace.
+func (r *InternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &dbaasv1.InternalDatabaseList{}
 	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: list DatabaseDeclarations in %s: %v", obj.GetNamespace(), err)
+		log.ErrorC(ctx, "enqueueForBinding: list InternalDatabases in %s: %v", obj.GetNamespace(), err)
 		return nil
 	}
 	reqs := make([]reconcile.Request, 0, len(list.Items))
@@ -531,7 +531,7 @@ func (r *DatabaseDeclarationReconciler) enqueueForBinding(ctx context.Context, o
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
 // or ownership skips can swap or drop labels between queued reconciles, so the
 // metric is informational and should not be used as exact causal tracing.
-func (r *DatabaseDeclarationReconciler) stampBindingTrigger(key string) {
+func (r *InternalDatabaseReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
 	if r.bindingTriggerStamps == nil {
@@ -544,7 +544,7 @@ func (r *DatabaseDeclarationReconciler) stampBindingTrigger(key string) {
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
 // or ownership skips can swap or drop labels between queued reconciles, so the
 // metric is informational and should not be used as exact causal tracing.
-func (r *DatabaseDeclarationReconciler) consumeBindingTrigger(key string) bool {
+func (r *InternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
 	if _, ok := r.bindingTriggerStamps[key]; !ok {
@@ -555,7 +555,7 @@ func (r *DatabaseDeclarationReconciler) consumeBindingTrigger(key string) bool {
 }
 
 // clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
-func (r *DatabaseDeclarationReconciler) clearBindingTrigger(key string) {
+func (r *InternalDatabaseReconciler) clearBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
 	delete(r.bindingTriggerStamps, key)

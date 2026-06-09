@@ -73,7 +73,7 @@ type Classifier struct {
 //	                     ↘ BackingOff (transient error, will retry)
 //	                     ↘ InvalidConfiguration (permanent error, no retry)
 //
-// DatabaseDeclaration additionally uses WaitingForDependency while polling
+// InternalDatabase additionally uses WaitingForDependency while polling
 // an asynchronous provisioning operation in dbaas-aggregator.
 // ExternalDatabase and DbPolicy never transition into WaitingForDependency —
 // their reconcile flows are fully synchronous.
@@ -92,7 +92,7 @@ const (
 
 	// PhaseWaitingForDependency indicates the controller is polling an
 	// asynchronous provisioning operation in dbaas-aggregator (HTTP 202 +
-	// trackingId flow). Used only by DatabaseDeclaration — ExternalDatabase
+	// trackingId flow). Used only by InternalDatabase — ExternalDatabase
 	// and DbPolicy have synchronous reconcile flows and never use this phase.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
@@ -125,12 +125,12 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, DatabaseDeclaration):
+	// Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, InternalDatabase):
 	//   - "Ready"   — True when the resource was successfully processed by
 	//                 dbaas-aggregator for the current generation.
 	//                 ExternalDatabase: reason "DatabaseRegistered" on success.
 	//                 DbPolicy: reason "PolicyApplied" on success.
-	//                 DatabaseDeclaration: reason "DatabaseProvisioned" on success;
+	//                 InternalDatabase: reason "DatabaseProvisioned" on success;
 	//                   reason "ProvisioningStarted" while the async operation is in progress.
 	//                 False on any error; see Reason for the error category.
 	//   - "Stalled" — True when the error is permanent and the controller will

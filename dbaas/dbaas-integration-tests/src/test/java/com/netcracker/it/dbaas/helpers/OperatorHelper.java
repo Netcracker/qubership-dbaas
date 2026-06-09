@@ -70,11 +70,11 @@ public class OperatorHelper {
             .withScope("Namespaced")
             .build();
 
-    public static final CustomResourceDefinitionContext CRD_DATABASE_DECLARATION =
+    public static final CustomResourceDefinitionContext CRD_INTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
                     .withGroup("dbaas.netcracker.com")
                     .withVersion("v1")
-                    .withPlural("databasedeclarations")
+                    .withPlural("internaldatabases")
                     .withScope("Namespaced")
                     .build();
 
@@ -327,17 +327,17 @@ public class OperatorHelper {
         return "operator-autotests-" + UUID.randomUUID();
     }
 
-    public static GenericKubernetesResource buildDatabaseDeclarationCR(String crName, String microserviceName,
+    public static GenericKubernetesResource buildInternalDatabaseCR(String crName, String microserviceName,
                                                                        String namespace, String type) {
-        return buildDatabaseDeclarationCR(crName, microserviceName, namespace, type, false, new HashMap<>());
+        return buildInternalDatabaseCR(crName, microserviceName, namespace, type, false, new HashMap<>());
     }
 
-    public static GenericKubernetesResource buildDatabaseDeclarationCR(String crName, String microserviceName,
+    public static GenericKubernetesResource buildInternalDatabaseCR(String crName, String microserviceName,
                                                                        String namespace, String type, boolean lazy,
                                                                        Map<String, Object> extraSpecFields) {
         GenericKubernetesResource cr = new GenericKubernetesResource();
         cr.setApiVersion("dbaas.netcracker.com/v1");
-        cr.setKind("DatabaseDeclaration");
+        cr.setKind("InternalDatabase");
 
         ObjectMeta meta = new ObjectMeta();
         meta.setName(crName);
