@@ -71,7 +71,7 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	key := req.Namespace + "/" + req.Name
 	bindingTriggered := r.consumeBindingTrigger(key)
 
-	owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DbPolicy")
+	owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DatabaseAccessPolicy")
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -92,7 +92,7 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dp, original, &retErr,
 			func(_ *dbaasv1.DatabaseAccessPolicy, retErr error) bool { return retErr == nil },
-			"DbPolicy")
+			"DatabaseAccessPolicy")
 	}()
 
 	// Mark as Processing while we work.

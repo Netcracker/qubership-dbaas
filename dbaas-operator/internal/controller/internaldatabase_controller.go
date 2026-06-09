@@ -90,7 +90,7 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	key := req.Namespace + "/" + req.Name
 	bindingTriggered := r.consumeBindingTrigger(key)
 
-	owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "DatabaseDeclaration")
+	owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "InternalDatabase")
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -110,7 +110,7 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				return dd.Status.Phase == dbaasv1.PhaseSucceeded ||
 					dd.Status.Phase == dbaasv1.PhaseInvalidConfiguration
 			},
-			"DatabaseDeclaration")
+			"InternalDatabase")
 	}()
 
 	// If spec changed while an async operation was in progress, discard the
