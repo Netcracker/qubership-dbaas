@@ -6,6 +6,7 @@ import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -21,16 +22,15 @@ public class OperatorEventRepository implements PanacheRepositoryBase<OperatorEv
      * Uses SELECT FOR UPDATE SKIP LOCKED so multiple replicas can dispatch concurrently without contention.
      */
     @SuppressWarnings("unchecked")
-    public List<OperatorEvent> claimPendingBatch(int limit) {
-        return getEntityManager()
-                .createNativeQuery(
-                        "SELECT * FROM operator_event_outbox " +
-                                "WHERE status = :status AND next_attempt_at <= NOW() " +
-                                "ORDER BY next_attempt_at " +
-                                "LIMIT :limit " +
-                                "FOR UPDATE SKIP LOCKED",
-                        OperatorEvent.class)
-                .setParameter("status", OperatorEventStatus.PENDING.name())
+    public List<OperatorEvent> claimPendingBatch(int limit, Duration invisibleTime) {
+        return getEntityManager().createNativeQuery(
+                        "UPDATE operator_event_outbox SET next_attempt_at = NOW() + :invisibleTime " +
+                                "WHERE id IN (" +
+                                "  SELECT id FROM operator_event_outbox " +
+                                "  WHERE status = 'PENDING' AND next_attempt_at <= NOW() " +
+                                "  ORDER BY next_attempt_at LIMIT :limit FOR UPDATE SKIP LOCKED" +
+                                ") RETURNING *", OperatorEvent.class)
+                .setParameter("invisibleTime", invisibleTime)
                 .setParameter("limit", limit)
                 .getResultList();
     }
@@ -55,6 +55,10 @@ public class OperatorEventRepository implements PanacheRepositoryBase<OperatorEv
     /**
      * Returns the most recent occurredAt timestamp for the given (classifier, type, role) tuple,
      * used to populate previousRotatedAt in new outbox events.
+     *
+     * Returns null if no matching row exists — including when cleanup() has already purged it
+     * past sentTtl. previousRotatedAt is best-effort ("last rotation within the retention window"),
+     * not a durable record of all past rotations.
      */
     public OffsetDateTime findPreviousOccurredAt(String classifierJson, String type, String role) {
         Object result = getEntityManager()

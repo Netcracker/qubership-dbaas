@@ -12,7 +12,6 @@ import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
-import com.netcracker.cloud.dbaas.enums.OperatorEventType;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.utils.RestClientExceptionUtil;
@@ -1412,16 +1411,15 @@ public class DbBackupV2Service {
                 encryption.encryptPassword(newDatabase);
                 databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
                 for (DatabaseRegistry registry : newDatabase.getDatabaseRegistry()) {
-                    for (EnsuredUser eu : ensuredUsers) {
-                        String euRole = (String) eu.getConnectionProperties().get(ROLE);
-                        if (euRole != null) {
-                            operatorEventOutboxWriter.enqueue(
+                    ensuredUsers.stream()
+                            .map(eu -> (String) eu.getConnectionProperties().get(ROLE))
+                            .filter(Objects::nonNull)
+                            .distinct()
+                            .forEach(role -> operatorEventOutboxWriter.enqueue(
                                     OperatorEventType.RESTORE_COMPLETED,
                                     registry.getClassifier(),
                                     type,
-                                    euRole);
-                        }
-                    }
+                                    role));
                 }
                 log.info("Based on restoreDatabase={}, database with id={} created", restoreDatabase.getName(), newDatabase.getId());
             });

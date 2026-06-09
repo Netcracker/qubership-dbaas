@@ -16,4 +16,5 @@ public interface RotationNotificationProperty {
     Duration failedTtl();
     Duration connectTimeout();
     Duration readTimeout();
+    Duration invisibilityTime();
 }

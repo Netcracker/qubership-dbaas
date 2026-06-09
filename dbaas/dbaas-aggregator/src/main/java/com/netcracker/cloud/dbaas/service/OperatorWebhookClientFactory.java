@@ -33,8 +33,8 @@ public class OperatorWebhookClientFactory {
         OperatorWebhookRestClient restClient = RestClientBuilder.newBuilder().baseUri(URI.create(rotationNotificationProperty.callbackUrl()))
                 .register(kubernetesTokenAuthFilter)
                 .register(new DbaasAdapterRestClientLoggingFilter())
-                .connectTimeout(3, TimeUnit.MINUTES)
-                .readTimeout(3, TimeUnit.MINUTES)
+                .connectTimeout(rotationNotificationProperty.connectTimeout().toMillis(), TimeUnit.MILLISECONDS)
+                .readTimeout(rotationNotificationProperty.readTimeout().toMillis(), TimeUnit.MILLISECONDS)
                 .build(OperatorWebhookRestClient.class);
 
         return (OperatorWebhook) Proxy.newProxyInstance(OperatorWebhook.class.getClassLoader(), new Class[]{OperatorWebhook.class},

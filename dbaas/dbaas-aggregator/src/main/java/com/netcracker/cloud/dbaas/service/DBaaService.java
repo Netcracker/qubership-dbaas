@@ -10,6 +10,7 @@ import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.enums.OperatorEventType;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -344,12 +345,9 @@ public class DBaaService {
 
                     response.putSuccessEntity(databaseRegistry.getClassifier(), new HashMap<>(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), (String) cp.get(ROLE))));
                     encryption.encryptPassword(database, (String) cp.get(ROLE));
-                    logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveInternalDatabase(databaseRegistry);
-                    operatorEventOutboxWriter.enqueue(
-                            OperatorEventType.ROTATION_OCCURRED,
-                            databaseRegistry.getClassifier(),
-                            databaseRegistry.getType(),
-                            (String) cp.get(ROLE));
+                    commitPasswordRotation(databaseRegistry, databaseRegistry.getClassifier(),
+                            databaseRegistry.getType(), (String) cp.get(ROLE));
+
                     log.info("The password was changed successfully from database with classifier {} and type {} and role {}", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE));
                     sum += 1L;
                 } catch (WebApplicationException e) {
@@ -364,6 +362,17 @@ public class DBaaService {
         }).mapToLong(Long::valueOf).sum();
         log.info("From {} databases was changed password", count);
         return response;
+    }
+
+    protected void commitPasswordRotation(DatabaseRegistry databaseRegistry,
+                                          SortedMap<String, Object> classifier,
+                                          String type, String role) {
+        QuarkusTransaction.requiringNew().run(() -> {
+            logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
+                    .saveInternalDatabase(databaseRegistry);
+            operatorEventOutboxWriter.enqueue(
+                    OperatorEventType.ROTATION_OCCURRED, classifier, type, role);
+        });
     }
 
     public boolean decryptPassword(Database database) {

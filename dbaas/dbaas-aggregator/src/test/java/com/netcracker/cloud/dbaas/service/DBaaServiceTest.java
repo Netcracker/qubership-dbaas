@@ -27,10 +27,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.platform.commons.util.StringUtils;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
+import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
@@ -53,6 +50,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class DBaaServiceTest {
 
+    @Spy
     @InjectMocks
     private DBaaService dBaaService;
 
@@ -116,8 +114,8 @@ class DBaaServiceTest {
         DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
         database.setConnectionProperties(Arrays.asList(connection));
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        Mockito.when(databaseRegistryDbaasRepository.saveInternalDatabase(eq(database))).thenReturn(database);
         Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any(), any());
 
         adapterSupportUsers(namespace, dbType, connection, classifierRequest);
         doReturn(false).when(mongoDefaultAdapter).isUsersSupported();
@@ -251,6 +249,7 @@ class DBaaServiceTest {
         doReturn(createEnsureUser(connection2)).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
         doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
         doReturn(true).when(mongoNotDefaultAdapter).isUsersSupported();
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any(), any());
 
         checkSuccessChangePassword(namespace, dbType, classifier1, classifier2, connection1, connection2, mongoDefaultAdapter, mongoNotDefaultAdapter);
         doThrow(new WebApplicationException(Response.Status.NOT_FOUND)).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
@@ -263,7 +262,8 @@ class DBaaServiceTest {
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
         when(adapter.identifier()).thenReturn(adapterId);
 
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any(), any());
+
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Stream.of(adapter).collect(Collectors.toList()));
         SortedMap<String, Object> classifier = new TreeMap<>() {{
             put("namespace", "test-namespace");
@@ -333,8 +333,8 @@ class DBaaServiceTest {
 
         DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
         database.setConnectionProperties(Arrays.asList(connection));
-        Mockito.when(databaseRegistryDbaasRepository.saveInternalDatabase(eq(database))).thenReturn(database);
         Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any(), any());
 
         adapterSupportUsers(namespace, dbType, connection, classifierRequest);
     }
@@ -375,6 +375,7 @@ class DBaaServiceTest {
         DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
         database.setConnectionProperties(Arrays.asList(connection));
         Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any(), any());
 
         adapterSupportUsers(namespace, dbType, connection, classifierRequest);
     }

@@ -5,11 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.netcracker.cloud.dbaas.entity.configProperty.RotationNotificationProperty;
+import com.netcracker.cloud.dbaas.entity.dto.RotationEventPayload;
 import com.netcracker.cloud.dbaas.entity.pg.OperatorEvent;
 import com.netcracker.cloud.dbaas.enums.OperatorEventStatus;
 import com.netcracker.cloud.dbaas.enums.OperatorEventType;
-import com.netcracker.cloud.dbaas.entity.dto.RotationEventPayload;
-import com.netcracker.cloud.dbaas.entity.configProperty.RotationNotificationProperty;
 import com.netcracker.cloud.dbaas.monitoring.OperatorEventMetrics;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.OperatorEventRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -38,8 +38,7 @@ public class OperatorEventOutboxWriter {
     public OperatorEventOutboxWriter(RotationNotificationProperty rotationProperty,
                                      OperatorEventRepository operatorEventRepository,
                                      OperatorEventMetrics operatorEventMetrics
-                                     )
-    {
+    ) {
         this.rotationProperty = rotationProperty;
         this.operatorEventRepository = operatorEventRepository;
         this.operatorEventMetrics = operatorEventMetrics;
@@ -48,6 +47,8 @@ public class OperatorEventOutboxWriter {
     /**
      * Enqueues a rotation notification event into the outbox.
      * Must be called inside an active transaction — if persistence fails the caller's transaction rolls back.
+     *
+     * If {@code role} is null, previousRotatedAt is always null (SQL = comparison with NULL never matches).
      */
     @Transactional(MANDATORY)
     public void enqueue(OperatorEventType eventType, SortedMap<String, Object> classifier, String type, String role) {

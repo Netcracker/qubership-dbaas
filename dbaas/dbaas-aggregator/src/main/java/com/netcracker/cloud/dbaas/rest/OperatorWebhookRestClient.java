@@ -1,17 +1,14 @@
 package com.netcracker.cloud.dbaas.rest;
 
 import com.netcracker.cloud.dbaas.entity.dto.RotationEventPayload;
-import io.vertx.core.impl.NoStackTraceTimeoutException;
-import jakarta.ws.rs.*;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import org.eclipse.microprofile.faulttolerance.Retry;
 
-import java.net.SocketTimeoutException;
-import java.time.temporal.ChronoUnit;
 
-@Retry(delay = 1, delayUnit = ChronoUnit.SECONDS, maxRetries = 5,
-        retryOn = {SocketTimeoutException.class, NoStackTraceTimeoutException.class})
-public interface OperatorWebhookRestClient extends AutoCloseable{
+public interface OperatorWebhookRestClient extends AutoCloseable {
 
     @POST
     @Path("/api/rotation/v1/notify")
