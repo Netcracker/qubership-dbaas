@@ -4,16 +4,16 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: databasedeclarations.dbaas.netcracker.com
+  name: internaldatabases.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: DatabaseDeclaration
-    listKind: DatabaseDeclarationList
-    plural: databasedeclarations
+    kind: InternalDatabase
+    listKind: InternalDatabaseList
+    plural: internaldatabases
     shortNames:
-    - dbdd
-    singular: databasedeclaration
+    - dbidb
+    singular: internaldatabase
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          DatabaseDeclaration is the Schema for the databasedeclarations API.
+          InternalDatabase is the Schema for the internaldatabases API.
           It declares a logical database that dbaas should provision and manage on behalf
           of the owning microservice.
         properties:
@@ -55,7 +55,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DatabaseDeclaration.
+            description: spec defines the desired state of InternalDatabase.
             properties:
               classifier:
                 description: |-
@@ -63,7 +63,7 @@ spec:
                   The aggregator uses it to look up or create the physical database.
                   Required keys: microserviceName, scope.
                   Immutable after creation — changing the classifier of an existing
-                  DatabaseDeclaration would switch the CR onto a different database while
+                  InternalDatabase would switch the CR onto a different database while
                   the controller's status (trackingID, observedGeneration) still references
                   the original one. To rebind to a different database, delete and recreate
                   the CR.
@@ -206,17 +206,17 @@ spec:
             - type
             type: object
           status:
-            description: status defines the observed state of DatabaseDeclaration.
+            description: status defines the observed state of InternalDatabase.
             properties:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, DatabaseDeclaration):
+                  Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, InternalDatabase):
                     - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   ExternalDatabase: reason "DatabaseRegistered" on success.
                                   DbPolicy: reason "PolicyApplied" on success.
-                                  DatabaseDeclaration: reason "DatabaseProvisioned" on success;
+                                  InternalDatabase: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will

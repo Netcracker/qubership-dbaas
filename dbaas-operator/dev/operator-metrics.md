@@ -12,7 +12,7 @@ Each metric is registered at startup and scraped by Prometheus.
 
 **Labels:** `controller`, `trigger`
 
-`controller`: `externaldatabase` | `dbpolicy` | `databasedeclaration`
+`controller`: `externaldatabase` | `dbpolicy` | `internaldatabase`
 
 `trigger`: `spec_change` | `secret_change` | `namespace_binding_change` | `polling`
 
@@ -140,13 +140,13 @@ min_over_time(dbaas_resource_phase{phase=~"BackingOff|InvalidConfiguration"}[15m
 
 ### Substitute for `dbaas_async_operations_in_flight`
 
-`dbaas_async_operations_in_flight` would answer: "how many DatabaseDeclarations currently have an active tracking ID?"
+`dbaas_async_operations_in_flight` would answer: "how many InternalDatabases currently have an active tracking ID?"
 
 Without a direct state gauge, use a backlog proxy: polling activity without matching terminal completions.
 
 ```promql
 sum(
-  rate(dbaas_reconcile_trigger_total{controller="databasedeclaration",trigger="polling"}[15m])
+  rate(dbaas_reconcile_trigger_total{controller="internaldatabase",trigger="polling"}[15m])
 )
 ```
 
@@ -158,7 +158,7 @@ sum(
 
 Dashboard title: `Async Provisioning Activity`
 
-If the first query is non-zero while the second is near zero, DatabaseDeclarations are being polled but not reaching terminal states. It does not count currently in-flight operations.
+If the first query is non-zero while the second is near zero, InternalDatabases are being polled but not reaching terminal states. It does not count currently in-flight operations.
 
 ---
 
@@ -169,7 +169,7 @@ If the first query is non-zero while the second is near zero, DatabaseDeclaratio
 
 **Labels:** `result` (`success` | `failed` | `terminated`)
 
-End-to-end provisioning time from async submission (HTTP 202) to a terminal state. This is the user-visible provisioning SLO: the time a user waits from submitting a DatabaseDeclaration to having a usable database.
+End-to-end provisioning time from async submission (HTTP 202) to a terminal state. This is the user-visible provisioning SLO: the time a user waits from submitting a InternalDatabase to having a usable database.
 
 `terminated` means the aggregator cancelled the operation mid-flight; the operator resubmits automatically.
 

@@ -85,7 +85,7 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 // ApplyConfig posts a declarative payload to POST /api/declarations/v1/apply.
 //
 // The caller constructs the payload with the appropriate kind/subKind/spec for
-// the resource (DatabaseDeclaration or DbPolicy).
+// the resource (InternalDatabase or DbPolicy).
 //
 // Return semantics:
 //   - response.TrackingID != "" → operation is asynchronous (HTTP 202 from the

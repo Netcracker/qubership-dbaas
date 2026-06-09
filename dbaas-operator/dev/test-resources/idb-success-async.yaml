@@ -1,0 +1,14 @@
+# InternalDatabase — asynchronous success (HTTP 202 → poll → COMPLETED)
+# No apply-rule → default 202 IN_PROGRESS with trackingId="tracking-idb-svc-async"
+# No poll-rule → default COMPLETED
+# Expected: Phase=WaitingForDependency → Phase=Succeeded
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: idb-success-async
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: idb-svc-async
+      scope: service
+  type: postgresql

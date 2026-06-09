@@ -16,6 +16,6 @@ resources:
 - dbpolicy_admin_role.yaml
 - dbpolicy_editor_role.yaml
 - dbpolicy_viewer_role.yaml
-- databasedeclaration_admin_role.yaml
-- databasedeclaration_editor_role.yaml
-- databasedeclaration_viewer_role.yaml
+- internaldatabase_admin_role.yaml
+- internaldatabase_editor_role.yaml
+- internaldatabase_viewer_role.yaml

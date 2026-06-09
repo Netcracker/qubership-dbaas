@@ -19,7 +19,7 @@ package v1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // VersioningConfig defines the strategy for managing database versions during
-// blue-green deployments. Mirrors DatabaseDeclaration.VersioningConfig in the aggregator.
+// blue-green deployments. Mirrors InternalDatabase.VersioningConfig in the aggregator.
 type VersioningConfig struct {
 	// approach defines how a new database version is created during a blue-green update.
 	// Supported values depend on the dbaas adapter; the aggregator defaults to "clone".
@@ -28,7 +28,7 @@ type VersioningConfig struct {
 }
 
 // InitialInstantiation defines how the database is created on the very first deployment.
-// Mirrors DatabaseDeclaration.InitialInstantiation in the aggregator.
+// Mirrors InternalDatabase.InitialInstantiation in the aggregator.
 type InitialInstantiation struct {
 	// approach defines the strategy for initial database creation.
 	// "clone" — clone from sourceClassifier (lazy=true is prohibited in this mode).
@@ -43,7 +43,7 @@ type InitialInstantiation struct {
 	SourceClassifier *Classifier `json:"sourceClassifier,omitempty"`
 }
 
-// DatabaseDeclarationSpec defines the desired state of DatabaseDeclaration.
+// InternalDatabaseSpec defines the desired state of InternalDatabase.
 //
 // This spec is serialized by the controller and sent as the "spec" field of the
 // DeclarativePayload body to dbaas-aggregator:
@@ -51,13 +51,13 @@ type InitialInstantiation struct {
 //	POST /api/declarations/v1/apply
 //	{ "kind": "DBaaS", "subKind": "DatabaseDeclaration", "spec": <this struct>, ... }
 //
-// Field names and semantics match the DatabaseDeclaration Java DTO in the aggregator.
-type DatabaseDeclarationSpec struct {
+// Field names and semantics match the InternalDatabase Java DTO in the aggregator.
+type InternalDatabaseSpec struct {
 	// classifier uniquely identifies this database in dbaas.
 	// The aggregator uses it to look up or create the physical database.
 	// Required keys: microserviceName, scope.
 	// Immutable after creation — changing the classifier of an existing
-	// DatabaseDeclaration would switch the CR onto a different database while
+	// InternalDatabase would switch the CR onto a different database while
 	// the controller's status (trackingID, observedGeneration) still references
 	// the original one. To rebind to a different database, delete and recreate
 	// the CR.
@@ -101,8 +101,8 @@ type DatabaseDeclarationSpec struct {
 	InitialInstantiation *InitialInstantiation `json:"initialInstantiation,omitempty"`
 }
 
-// DatabaseDeclarationStatus defines the observed state of DatabaseDeclaration.
-type DatabaseDeclarationStatus struct {
+// InternalDatabaseStatus defines the observed state of InternalDatabase.
+type InternalDatabaseStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// trackingID is the identifier returned by dbaas-aggregator when a database
@@ -124,43 +124,43 @@ type DatabaseDeclarationStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=databasedeclarations,singular=databasedeclaration,shortName=dbdd
+// +kubebuilder:resource:scope=Namespaced,path=internaldatabases,singular=internaldatabase,shortName=dbidb
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.classifier.microserviceName"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// DatabaseDeclaration is the Schema for the databasedeclarations API.
+// InternalDatabase is the Schema for the internaldatabases API.
 // It declares a logical database that dbaas should provision and manage on behalf
 // of the owning microservice.
-type DatabaseDeclaration struct {
+type InternalDatabase struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is standard object metadata.
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of DatabaseDeclaration.
-	Spec DatabaseDeclarationSpec `json:"spec"`
+	// spec defines the desired state of InternalDatabase.
+	Spec InternalDatabaseSpec `json:"spec"`
 
-	// status defines the observed state of DatabaseDeclaration.
+	// status defines the observed state of InternalDatabase.
 	// +optional
-	Status DatabaseDeclarationStatus `json:"status,omitempty"`
+	Status InternalDatabaseStatus `json:"status,omitempty"`
 }
 
-func (d *DatabaseDeclaration) SetObservedGeneration(generation int64) {
+func (d *InternalDatabase) SetObservedGeneration(generation int64) {
 	d.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true
 
-// DatabaseDeclarationList contains a list of DatabaseDeclaration.
-type DatabaseDeclarationList struct {
+// InternalDatabaseList contains a list of InternalDatabase.
+type InternalDatabaseList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []DatabaseDeclaration `json:"items"`
+	Items           []InternalDatabase `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&DatabaseDeclaration{}, &DatabaseDeclarationList{})
+	SchemeBuilder.Register(&InternalDatabase{}, &InternalDatabaseList{})
 }

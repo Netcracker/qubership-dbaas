@@ -1,19 +1,19 @@
-# DatabaseDeclaration — controller pre-flight rejects lazy=true + approach=clone
+# InternalDatabase — controller pre-flight rejects lazy=true + approach=clone
 # No aggregator call is made — the controller catches this cross-field constraint.
 # Expected: Phase=InvalidConfiguration/InvalidSpec, Stalled=True (no requeue)
 apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseDeclaration
+kind: InternalDatabase
 metadata:
-  name: dd-invalid-lazy-clone
+  name: idb-invalid-lazy-clone
   namespace: test-ns
 spec:
   classifier:
-      microserviceName: dd-svc-lazy
+      microserviceName: idb-svc-lazy
       scope: service
   type: postgresql
   lazy: true
   initialInstantiation:
     approach: clone
     sourceClassifier:
-      microserviceName: dd-svc-lazy
+      microserviceName: idb-svc-lazy
       scope: service

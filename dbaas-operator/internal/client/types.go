@@ -96,7 +96,7 @@ type ExternalDatabaseRequest struct {
 	UpdateConnectionProperties bool                `json:"updateConnectionProperties,omitempty"`
 }
 
-// ─── DatabaseDeclaration wire types ──────────────────────────────────────────
+// ─── InternalDatabase wire types ──────────────────────────────────────────
 
 // DatabaseDeclarationSpecWire is the wire representation of the spec field
 // in POST /api/declarations/v1/apply for subKind=DatabaseDeclaration.
@@ -104,7 +104,7 @@ type ExternalDatabaseRequest struct {
 // in dbaas-aggregator.
 type DatabaseDeclarationSpecWire struct {
 	// ClassifierConfig wraps the classifier flat map.
-	// Mirrors DatabaseDeclaration.ClassifierConfig (static nested class).
+	// Mirrors InternalDatabase.ClassifierConfig (static nested class).
 	ClassifierConfig     ClassifierConfigWire      `json:"classifierConfig"`
 	Type                 string                    `json:"type"`
 	Lazy                 bool                      `json:"lazy,omitempty"`
@@ -114,7 +114,7 @@ type DatabaseDeclarationSpecWire struct {
 	InitialInstantiation *InitialInstantiationWire `json:"initialInstantiation,omitempty"`
 }
 
-// ClassifierConfigWire mirrors DatabaseDeclaration.ClassifierConfig in dbaas-aggregator:
+// ClassifierConfigWire mirrors InternalDatabase.ClassifierConfig in dbaas-aggregator:
 //
 //	public static class ClassifierConfig {
 //	    @JsonProperty("classifier")
@@ -127,12 +127,12 @@ type ClassifierConfigWire struct {
 	Classifier map[string]any `json:"classifier"`
 }
 
-// VersioningConfigWire mirrors DatabaseDeclaration.VersioningConfig in dbaas-aggregator.
+// VersioningConfigWire mirrors InternalDatabase.VersioningConfig in dbaas-aggregator.
 type VersioningConfigWire struct {
 	Approach string `json:"approach,omitempty"`
 }
 
-// InitialInstantiationWire mirrors DatabaseDeclaration.InitialInstantiation in dbaas-aggregator:
+// InitialInstantiationWire mirrors InternalDatabase.InitialInstantiation in dbaas-aggregator:
 //
 //	public static class InitialInstantiation {
 //	    @JsonProperty("approach")         String approach;

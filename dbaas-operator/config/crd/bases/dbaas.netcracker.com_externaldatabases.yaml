@@ -208,12 +208,12 @@ spec:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, DatabaseDeclaration):
+                  Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, InternalDatabase):
                     - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   ExternalDatabase: reason "DatabaseRegistered" on success.
                                   DbPolicy: reason "PolicyApplied" on success.
-                                  DatabaseDeclaration: reason "DatabaseProvisioned" on success;
+                                  InternalDatabase: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will

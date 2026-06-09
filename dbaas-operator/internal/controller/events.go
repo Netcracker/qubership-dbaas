@@ -36,11 +36,11 @@ const (
 	EventReasonPolicyApplied = "PolicyApplied"
 
 	// EventReasonProvisioningStarted is emitted when dbaas-aggregator returns HTTP 202
-	// for a DatabaseDeclaration, meaning the async operation has been accepted.
+	// for a InternalDatabase, meaning the async operation has been accepted.
 	// Type: Normal (informational — not yet complete).
 	EventReasonProvisioningStarted = "ProvisioningStarted"
 
-	// EventReasonDatabaseProvisioned is emitted when a DatabaseDeclaration is
+	// EventReasonDatabaseProvisioned is emitted when a InternalDatabase is
 	// successfully provisioned by dbaas-aggregator (either via HTTP 200 sync or
 	// after polling completes with COMPLETED). Type: Normal.
 	EventReasonDatabaseProvisioned = "DatabaseProvisioned"
@@ -86,7 +86,7 @@ const (
 
 	// EventReasonBindingBlocked is emitted when an NamespaceBinding deletion is
 	// deferred because the namespace still contains dbaas workload resources
-	// (ExternalDatabase, DatabaseDeclaration, or DbPolicy). Type: Warning.
+	// (ExternalDatabase, InternalDatabase, or DbPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
 
 	// EventReasonSecretCreated is emitted when a DatabaseSecret successfully

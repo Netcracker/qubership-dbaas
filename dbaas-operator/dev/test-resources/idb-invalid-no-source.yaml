@@ -1,14 +1,14 @@
-# DatabaseDeclaration — controller pre-flight rejects approach=clone without sourceClassifier
+# InternalDatabase — controller pre-flight rejects approach=clone without sourceClassifier
 # No aggregator call is made — the controller catches this before sending the request.
 # Expected: Phase=InvalidConfiguration/InvalidSpec, Stalled=True (no requeue)
 apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseDeclaration
+kind: InternalDatabase
 metadata:
-  name: dd-invalid-no-source
+  name: idb-invalid-no-source
   namespace: test-ns
 spec:
   classifier:
-      microserviceName: dd-svc-nosrc
+      microserviceName: idb-svc-nosrc
       scope: service
   type: postgresql
   initialInstantiation:

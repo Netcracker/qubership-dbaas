@@ -1,4 +1,4 @@
-# Migrating `DbPolicy` and `DatabaseDeclaration` from Core Operator to DBaaS Operator
+# Migrating `DbPolicy` and `DatabaseDeclaration` (now `InternalDatabase`) from Core Operator to DBaaS Operator
 
 The legacy **Core Operator** consumed DBaaS declarations as generic
 `kind: DBaaS` resources (with a `subKind`) and forwarded them to
@@ -18,7 +18,7 @@ behavior (role grants, provisioning, cloning) is unchanged.
 | Aspect | Core Operator (old) | DBaaS Operator (new) |
 |---|---|---|
 | `apiVersion` | `core.netcracker.com/v1` | `dbaas.netcracker.com/v1` |
-| `kind` / `subKind` | `kind: DBaaS` + `subKind: DbPolicy\|DatabaseDeclaration` | `kind: DbPolicy` / `kind: DatabaseDeclaration` (no `subKind`) |
+| `kind` / `subKind` | `kind: DBaaS` + `subKind: DbPolicy\|DatabaseDeclaration` | `kind: DbPolicy` / `kind: InternalDatabase` (no `subKind`) |
 | `spec.apiVersion: v1` | present (declaration version) | **removed** — not part of the CRD |
 | Owning microservice | derived from label `app.kubernetes.io/name` (fallback `app.kubernetes.io/instance`) | **explicit field in `spec`** (see per-type sections) |
 | Labels | `app.kubernetes.io/instance`, `app.kubernetes.io/managed-by: operator` | `app.kubernetes.io/name` recommended; `managed-by` no longer required |
@@ -101,16 +101,18 @@ spec:
 
 ---
 
-## DatabaseDeclaration
+## DatabaseDeclaration → InternalDatabase
+
+The legacy `subKind: DatabaseDeclaration` becomes the native CRD `kind: InternalDatabase`.
 
 The biggest structural change: the old `spec.declarations` is an **array**, so a
 single legacy resource could declare several databases. The new CRD describes
 **exactly one** database. **Split each entry of `spec.declarations[]` into its
-own `DatabaseDeclaration` CR.**
+own `InternalDatabase` CR.**
 
 ### Field mapping
 
-| Old (`subKind: DatabaseDeclaration`) | New (`kind: DatabaseDeclaration`) |
+| Old (`subKind: DatabaseDeclaration`) | New (`kind: InternalDatabase`) |
 |---|---|
 | `spec.declarations[]` (array) | one CR **per array entry** |
 | `declarations[].classifierConfig.classifier{...}` | `spec.classifier{...}` (the `classifierConfig` wrapper is dropped) |
@@ -158,7 +160,7 @@ One CR per `declarations[]` entry:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseDeclaration
+kind: InternalDatabase
 metadata:
   name: {{ .Values.SERVICE_NAME }}-configs   # one stable name per database
   namespace: {{ .Values.NAMESPACE }}
@@ -189,7 +191,7 @@ spec:
 ## Gotchas
 
 - **Immutable fields.** `DbPolicy.spec.microserviceName` and
-  `DatabaseDeclaration.spec.classifier` + `spec.type` are immutable after
+  `InternalDatabase.spec.classifier` + `spec.type` are immutable after
   creation (enforced by CEL validation). To repoint a CR at a different service
   or database, **delete and recreate** it rather than editing in place.
 - **`classifier.namespace`.** Optional. If omitted, the aggregator defaults it
@@ -198,7 +200,7 @@ spec:
 - **No more `subKind` / `spec.apiVersion`.** Remove both; they have no place in
   the CRDs. The aggregator still receives them internally (the operator fills
   `kind: DBaaS` / `subKind` on the wire), so you don't need to.
-- **One database per `DatabaseDeclaration`.** There is no `declarations[]` array;
+- **One database per `InternalDatabase`.** There is no `declarations[]` array;
   fan a multi-entry legacy resource out into multiple CRs with distinct names.
 - **`clone` requires a source.** When `initialInstantiation.approach: clone`,
   `sourceClassifier` is required and `spec.lazy: true` is prohibited.
@@ -219,7 +221,7 @@ For each legacy `kind: DBaaS` resource:
        `kind: DBaaS` + `subKind: X` with `kind: X`.
 3. [ ] Delete `spec.apiVersion`.
 4. [ ] **DbPolicy:** add `spec.microserviceName` with the value from step 1.
-5. [ ] **DatabaseDeclaration:** split `spec.declarations[]` into one CR each;
+5. [ ] **InternalDatabase:** split `spec.declarations[]` into one CR each;
        unwrap `classifierConfig.classifier` into `spec.classifier`; add
        `spec.classifier.microserviceName` from step 1; add
        `microserviceName` to every `sourceClassifier`.

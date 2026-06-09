@@ -27,11 +27,11 @@
     - [How It Works](#how-dbpolicy-works)
     - [Status Reference](#dbpolicy-status-reference)
     - [Usage Examples](#dbpolicy-usage-examples)
-  - [DatabaseDeclaration](#databasedeclaration)
-    - [Resource Fields](#databasedeclaration-resource-fields)
-    - [How It Works](#how-databasedeclaration-works)
-    - [Status Reference](#databasedeclaration-status-reference)
-    - [Usage Examples](#databasedeclaration-usage-examples)
+  - [InternalDatabase](#internaldatabase)
+    - [Resource Fields](#internaldatabase-resource-fields)
+    - [How It Works](#how-internaldatabase-works)
+    - [Status Reference](#internaldatabase-status-reference)
+    - [Usage Examples](#internaldatabase-usage-examples)
   - [DatabaseSecret](#databasesecret)
     - [Resource Fields](#databasesecret-resource-fields)
     - [How It Works](#how-databasesecret-works)
@@ -52,7 +52,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 | `NamespaceBinding` | `dbaas.netcracker.com/v1` | Namespaced | Declares that a namespace is managed by this operator instance |
 | `ExternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Registers a pre-existing database with dbaas-aggregator |
 | `DbPolicy` | `dbaas.netcracker.com/v1` | Namespaced | Declares database role assignments for microservices in a namespace |
-| `DatabaseDeclaration` | `dbaas.netcracker.com/v1` | Namespaced | Declares a logical database that dbaas-aggregator should provision and manage |
+| `InternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Declares a logical database that dbaas-aggregator should provision and manage |
 
 ---
 
@@ -71,7 +71,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 │  │  │  NamespaceBinding controller             │   │  │
 │  │  │  ExternalDatabase controller             │   │  │
 │  │  │  DbPolicy controller                     │   │  │
-│  │  │  DatabaseDeclaration controller          │   │  │
+│  │  │  InternalDatabase controller          │   │  │
 │  │  └──────────────────────────────────────────┘   │  │
 │  └──────────────────────────────────────────────────┘  │
 │                          │                              │
@@ -83,7 +83,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 │  │  NamespaceBinding    ── ownership check          │  │
 │  │  ExternalDatabase    ── reconcile ─────────────── ┼──┼──▶ dbaas-aggregator
 │  │  DbPolicy            ── reconcile ─────────────── ┼──┤
-│  │  DatabaseDeclaration ── reconcile ─────────────── ┼──┤
+│  │  InternalDatabase ── reconcile ─────────────── ┼──┤
 │  │  Secret (credentials)                            │  │
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
@@ -108,8 +108,8 @@ The operator calls the following dbaas-aggregator endpoints:
 | Method | URL | Used by | Purpose |
 |--------|-----|---------|---------|
 | `PUT` | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable` | `ExternalDatabase` reconciler | Register or update an externally managed database |
-| `POST` | `/api/declarations/v1/apply` | `DbPolicy` and `DatabaseDeclaration` reconcilers | Apply a declarative database role policy or database declaration |
-| `GET` | `/api/declarations/v1/operation/{trackingId}/status` | `DatabaseDeclaration` reconciler | Poll the status of an asynchronous provisioning operation |
+| `POST` | `/api/declarations/v1/apply` | `DbPolicy` and `InternalDatabase` reconcilers | Apply a declarative database role policy or database declaration |
+| `GET` | `/api/declarations/v1/operation/{trackingId}/status` | `InternalDatabase` reconciler | Poll the status of an asynchronous provisioning operation |
 
 ### ExternalDatabase Registration Endpoint
 
@@ -243,14 +243,14 @@ rules:
     resources: ["dbpolicies/status"]
     verbs: ["get", "update", "patch"]
 
-  # DatabaseDeclaration: the controller reads and watches CRs.
+  # InternalDatabase: the controller reads and watches CRs.
   # Status is written via the /status subresource.
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["databasedeclarations"]
+    resources: ["internaldatabases"]
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["databasedeclarations/status"]
+    resources: ["internaldatabases/status"]
     verbs: ["get", "update", "patch"]
 
   # ExternalDatabase: the controller only reads (Get/List) and watches CRs.
@@ -368,8 +368,8 @@ subjects:
 |-----------|----------|-------|-----------------|
 | `dbaas.netcracker.com` | `dbpolicies` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `dbpolicies/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
-| `dbaas.netcracker.com` | `databasedeclarations` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
-| `dbaas.netcracker.com` | `databasedeclarations/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, and `status.trackingID` |
+| `dbaas.netcracker.com` | `internaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
+| `dbaas.netcracker.com` | `internaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, and `status.trackingID` |
 | `dbaas.netcracker.com` | `externaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `databasesecrets` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required for the rotation webhook to stamp the `dbaas.netcracker.com/rotation-trigger` annotation on matched CRs |
@@ -421,12 +421,12 @@ spec:
 
 #### How NamespaceBinding Works
 
-The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource (`ExternalDatabase`, `DbPolicy`, `DatabaseDeclaration`), it checks whether the resource's namespace is owned by this operator instance.
+The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource (`ExternalDatabase`, `DbPolicy`, `InternalDatabase`), it checks whether the resource's namespace is owned by this operator instance.
 
 Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing `spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable.
 
 ```
-ExternalDatabase / DbPolicy / DatabaseDeclaration reconcile triggered
+ExternalDatabase / DbPolicy / InternalDatabase reconcile triggered
          │
          ▼
   Look up NamespaceBinding "binding" in the same namespace
@@ -438,7 +438,7 @@ ExternalDatabase / DbPolicy / DatabaseDeclaration reconcile triggered
          └── Found, operatorNamespace = CLOUD_NAMESPACE (Mine) ──▶ Proceed with reconcile
 ```
 
-When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase`, `DbPolicy`, and `DatabaseDeclaration` objects are reconciled immediately without requiring a spec change.
+When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase`, `DbPolicy`, and `InternalDatabase` objects are reconciled immediately without requiring a spec change.
 
 | Cache state | Meaning | Operator action |
 |-------------|---------|-----------------|
@@ -459,7 +459,7 @@ This finalizer prevents the `NamespaceBinding` from being deleted while workload
 
 | Situation | Result |
 |-----------|--------|
-| Namespace still contains `ExternalDatabase`, `DbPolicy`, or `DatabaseDeclaration` resources | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
+| Namespace still contains `ExternalDatabase`, `DbPolicy`, or `InternalDatabase` resources | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
 | No blocking workload resources remain | Finalizer is removed; Kubernetes completes the deletion |
 
 #### NamespaceBinding Usage Examples
@@ -495,7 +495,7 @@ This is intentional. `NamespaceBinding` is a declaration of ownership, not a job
 
 ```bash
 # Remove all workload resources first
-kubectl delete externaldatabase,dbpolicy,databasedeclaration --all -n my-namespace
+kubectl delete externaldatabase,dbpolicy,internaldatabase --all -n my-namespace
 
 # Then delete the binding
 kubectl delete namespacebinding binding -n my-namespace
@@ -1040,9 +1040,9 @@ kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 
 ---
 
-### DatabaseDeclaration
+### InternalDatabase
 
-`DatabaseDeclaration` declares a logical database that dbaas-aggregator should provision and manage on behalf of the owning microservice. Unlike `ExternalDatabase`, the database does **not** need to exist in advance — the aggregator creates it (and, depending on the configured adapter, the underlying physical DB / user / schema).
+`InternalDatabase` declares a logical database that dbaas-aggregator should provision and manage on behalf of the owning microservice. Unlike `ExternalDatabase`, the database does **not** need to exist in advance — the aggregator creates it (and, depending on the configured adapter, the underlying physical DB / user / schema).
 
 Provisioning is **asynchronous**: the aggregator returns `202 Accepted` with a `trackingId`, and the operator polls the operation status until it reaches a terminal state.
 
@@ -1050,11 +1050,11 @@ Short name: `dbdd`
 
 `kubectl get dbdd` columns: `PHASE`, `MICROSERVICENAME`, `TYPE`, `AGE`
 
-#### DatabaseDeclaration Resource Fields
+#### InternalDatabase Resource Fields
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseDeclaration
+kind: InternalDatabase
 metadata:
   name: my-app-db
   namespace: my-namespace
@@ -1117,9 +1117,9 @@ spec:
 | `approach` | No | `clone` (clone from `sourceClassifier`) or `new` (create an empty database). Default behaviour when the field is absent is `new` |
 | `sourceClassifier` | Required when `approach=clone` | Classifier of the source database to clone from. **Constraint:** `sourceClassifier.microserviceName` must equal `classifier.microserviceName` (enforced by the controller) |
 
-> **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingID` and polls until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingID` and start a fresh submission — see [Status Reference](#databasedeclaration-status-reference).
+> **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingID` and polls until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingID` and start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
 
-#### How DatabaseDeclaration Works
+#### How InternalDatabase Works
 
 A reconcile is triggered when any of the following happens:
 
@@ -1171,7 +1171,7 @@ CR created / spec changed
                                 └─────────────────────────┘
 ```
 
-#### DatabaseDeclaration Status Reference
+#### InternalDatabase Status Reference
 
 **`status.phase`** — human-readable summary for `kubectl get dbdd`.
 
@@ -1231,13 +1231,13 @@ CR created / spec changed
 - **`Stalled=False` + `Ready=False`, phase=`BackingOff`** — transient error, controller is retrying with exponential backoff.
 - **`status.lastRequestId`** — correlate operator logs with aggregator logs.
 
-#### DatabaseDeclaration Usage Examples
+#### InternalDatabase Usage Examples
 
 **Minimal declaration (synchronous-friendly, non-versioned):**
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseDeclaration
+kind: InternalDatabase
 metadata:
   name: my-app-db
   namespace: my-namespace
@@ -1252,7 +1252,7 @@ spec:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseDeclaration
+kind: InternalDatabase
 metadata:
   name: my-app-db-clone
   namespace: my-namespace
@@ -1272,7 +1272,7 @@ spec:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseDeclaration
+kind: InternalDatabase
 metadata:
   name: payments-db
   namespace: my-namespace
@@ -1354,7 +1354,7 @@ spec:
   secretName: my-app-db-secret     # required; name of the Secret to create/update
 ```
 
-**`spec.classifier`** — identifies the database in dbaas-aggregator. Same structure and semantics as [DatabaseDeclaration](#databasedeclaration-resource-fields).
+**`spec.classifier`** — identifies the database in dbaas-aggregator. Same structure and semantics as [InternalDatabase](#internaldatabase-resource-fields).
 
 **Top-level spec fields:**
 
@@ -1554,7 +1554,7 @@ The over-fetch is bounded and cheap: a classifier is typically referenced by 1�
 **Diagnostic rules:**
 
 - **`Stalled=True`** — fix the spec (or the conflicting sibling / pre-existing Secret). The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`** — transient; the controller retries with exponential backoff. A persistent `DatabaseNotFound` usually means the `DatabaseDeclaration` for this classifier has not provisioned yet — or the classifier is wrong (watch for `DatabaseNotFoundTimeout`).
+- **`Stalled=False` + `Ready=False`** — transient; the controller retries with exponential backoff. A persistent `DatabaseNotFound` usually means the `InternalDatabase` for this classifier has not provisioned yet — or the classifier is wrong (watch for `DatabaseNotFoundTimeout`).
 - **`status.lastRotatedAt`** — when this was last advanced tells you when credentials last actually changed.
 - **`status.lastRequestId`** — correlate operator logs with aggregator logs.
 

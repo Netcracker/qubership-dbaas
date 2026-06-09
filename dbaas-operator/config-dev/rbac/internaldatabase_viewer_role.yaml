@@ -11,12 +11,12 @@ metadata:
   labels:
     app.kubernetes.io/name: dbaas-operator
     app.kubernetes.io/managed-by: kustomize
-  name: databasedeclaration-viewer-role
+  name: internaldatabase-viewer-role
 rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations
+  - internaldatabases
   verbs:
   - get
   - list
@@ -24,6 +24,6 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations/status
+  - internaldatabases/status
   verbs:
   - get
