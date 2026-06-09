@@ -12,7 +12,7 @@ Each metric is registered at startup and scraped by Prometheus.
 
 **Labels:** `controller`, `trigger`
 
-`controller`: `externaldatabase` | `dbpolicy` | `internaldatabase`
+`controller`: `externaldatabase` | `databaseaccesspolicy` | `internaldatabase`
 
 `trigger`: `spec_change` | `secret_change` | `namespace_binding_change` | `polling`
 

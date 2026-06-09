@@ -16,8 +16,8 @@ limitations under the License.
 
 package controller
 
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=dbpolicies/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databaseaccesspolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databaseaccesspolicies/status,verbs=get;update;patch
 
 import (
 	"context"
@@ -41,12 +41,12 @@ import (
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
-// DbPolicyReconciler reconciles DbPolicy objects.
+// DatabaseAccessPolicyReconciler reconciles DatabaseAccessPolicy objects.
 //
 // On every reconcile it validates the spec, assembles a DeclarativePayload, calls
 // POST /api/declarations/v1/apply on dbaas-aggregator, and updates the CR status.
 // Key outcomes are also emitted as Kubernetes Events.
-type DbPolicyReconciler struct {
+type DatabaseAccessPolicyReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Aggregator *aggregatorclient.AggregatorClient
@@ -57,10 +57,10 @@ type DbPolicyReconciler struct {
 	bindingTriggerStamps map[string]struct{}
 }
 
-func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
+func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
-	dp := &dbaasv1.DbPolicy{}
+	dp := &dbaasv1.DatabaseAccessPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, dp); err != nil {
 		if apierrors.IsNotFound(err) {
 			r.clearBindingTrigger(req.Namespace + "/" + req.Name)
@@ -91,7 +91,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	// Always patch status on exit, even if reconcile fails.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dp, original, &retErr,
-			func(_ *dbaasv1.DbPolicy, retErr error) bool { return retErr == nil },
+			func(_ *dbaasv1.DatabaseAccessPolicy, retErr error) bool { return retErr == nil },
 			"DbPolicy")
 	}()
 
@@ -114,11 +114,11 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	_, aggErr := r.Aggregator.ApplyConfig(ctx, payload)
 	recordAggregatorCall(controllerDP, operationApplyConfig, aggStart, aggErr)
 	if aggErr != nil {
-		log.ErrorC(ctx, "failed to apply DbPolicy to dbaas-aggregator: %v", aggErr)
+		log.ErrorC(ctx, "failed to apply DatabaseAccessPolicy to dbaas-aggregator: %v", aggErr)
 		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, aggErr, requestID)
 	}
 
-	log.InfoC(ctx, "DbPolicy applied successfully microserviceName=%v", dp.Spec.MicroserviceName)
+	log.InfoC(ctx, "DatabaseAccessPolicy applied successfully microserviceName=%v", dp.Spec.MicroserviceName)
 	markSucceeded(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, EventReasonPolicyApplied)
 	r.Recorder.Eventf(dp, corev1.EventTypeNormal, EventReasonPolicyApplied,
 		"policy applied to dbaas-aggregator (microserviceName=%s, requestId=%s)",
@@ -126,7 +126,7 @@ func (r *DbPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (r
 	return ctrl.Result{}, nil
 }
 
-func (r *DbPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1.DbPolicy, msg string) (ctrl.Result, error) {
+func (r *DatabaseAccessPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1.DatabaseAccessPolicy, msg string) (ctrl.Result, error) {
 	return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, msg)
 }
 
@@ -140,7 +140,7 @@ type dbPolicyAggregatorSpec struct {
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
 // MicroserviceName goes into metadata (not into the spec that is forwarded to the aggregator).
-func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1.DbPolicy) *aggregatorclient.DeclarativePayload {
+func (r *DatabaseAccessPolicyReconciler) buildPayload(dp *dbaasv1.DatabaseAccessPolicy) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
 		APIVersion: apiVersionV1,
 		Kind:       "DBaaS",
@@ -161,9 +161,9 @@ func (r *DbPolicyReconciler) buildPayload(dp *dbaasv1.DbPolicy) *aggregatorclien
 // SetupWithManager sets up the controller with the Manager.
 // GenerationChangedPredicate ensures reconcile fires only on spec changes,
 // not on the controller's own status updates.
-func (r *DbPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dbaasv1.DbPolicy{},
+		For(&dbaasv1.DatabaseAccessPolicy{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue all DbPolicies in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
@@ -171,14 +171,14 @@ func (r *DbPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontrol
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
 		WithOptions(opts).
-		Named("dbpolicy").
+		Named("databaseaccesspolicy").
 		Complete(r)
 }
 
 // enqueueForBinding maps an NamespaceBinding event to reconcile requests for
 // all DbPolicies that live in the same namespace.
-func (r *DbPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.DbPolicyList{}
+func (r *DatabaseAccessPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &dbaasv1.DatabaseAccessPolicyList{}
 	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
 		log.ErrorC(ctx, "enqueueForBinding: list DbPolicies in %s: %v", obj.GetNamespace(), err)
 		return nil
@@ -195,7 +195,7 @@ func (r *DbPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.O
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
 // or ownership skips can swap or drop labels between queued reconciles, so the
 // metric is informational and should not be used as exact causal tracing.
-func (r *DbPolicyReconciler) stampBindingTrigger(key string) {
+func (r *DatabaseAccessPolicyReconciler) stampBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
 	if r.bindingTriggerStamps == nil {
@@ -208,7 +208,7 @@ func (r *DbPolicyReconciler) stampBindingTrigger(key string) {
 // caused by a NamespaceBinding change. This is best-effort: overlapping triggers
 // or ownership skips can swap or drop labels between queued reconciles, so the
 // metric is informational and should not be used as exact causal tracing.
-func (r *DbPolicyReconciler) consumeBindingTrigger(key string) bool {
+func (r *DatabaseAccessPolicyReconciler) consumeBindingTrigger(key string) bool {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
 	if _, ok := r.bindingTriggerStamps[key]; !ok {
@@ -219,7 +219,7 @@ func (r *DbPolicyReconciler) consumeBindingTrigger(key string) bool {
 }
 
 // clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
-func (r *DbPolicyReconciler) clearBindingTrigger(key string) {
+func (r *DatabaseAccessPolicyReconciler) clearBindingTrigger(key string) {
 	r.bindingTriggerMu.Lock()
 	defer r.bindingTriggerMu.Unlock()
 	delete(r.bindingTriggerStamps, key)

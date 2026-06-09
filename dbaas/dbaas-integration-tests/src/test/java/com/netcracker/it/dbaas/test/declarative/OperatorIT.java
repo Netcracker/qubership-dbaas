@@ -54,7 +54,7 @@ public class OperatorIT extends AbstractIT {
         kubernetesClient.genericKubernetesResources(CRD_INTERNAL_DATABASE)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
-        kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+        kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
@@ -962,38 +962,38 @@ public class OperatorIT extends AbstractIT {
 
             @Nested
             @EnableExtension
-            class DbPolicy {
+            class DatabaseAccessPolicy {
 
                 @Test
-                void testDbPolicyBothServicesAndPolicyEmpty() {
+                void testDatabaseAccessPolicyBothServicesAndPolicyEmpty() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(), List.of());
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(), List.of());
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
                     helperV3.getAccessRoles(NAMESPACE, microserviceName, 404);
                 }
 
                 @Test
-                void testDbPolicyOnlyServicesSet() {
+                void testDatabaseAccessPolicyOnlyServicesSet() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
-                    OperatorIT.this.testDbPolicyOnlyServicesSet(crName, microserviceName, "svc-a", List.of("admin"));
+                    OperatorIT.this.testDatabaseAccessPolicyOnlyServicesSet(crName, microserviceName, "svc-a", List.of("admin"));
                 }
 
                 @Test
-                void testDbPolicyOnlyPolicySet() {
+                void testDatabaseAccessPolicyOnlyPolicySet() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var policy = Map.<String, Object>of("type", "backup", "defaultRole", "admin");
-                    var cr = buildDbPolicyCR(crName, microserviceName, null, List.of(policy));
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, null, List.of(policy));
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
                     assertTrue(roles.getServices() == null || roles.getServices().isEmpty());
@@ -1008,16 +1008,16 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyBothServicesAndPolicySet() {
+                void testDatabaseAccessPolicyBothServicesAndPolicySet() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
                     var policy = Map.<String, Object>of("type", "backup", "defaultRole", "admin");
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), List.of(policy));
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), List.of(policy));
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
 
@@ -1039,18 +1039,18 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyDisableGlobalPermissions() {
+                void testDatabaseAccessPolicyDisableGlobalPermissions() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), null);
 
                     Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
                     spec.put("disableGlobalPermissions", true);
 
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
                     assertEquals(Boolean.TRUE, roles.getDisableGlobalPermissions());
@@ -1065,18 +1065,18 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyTryToUpdateMicroserviceName() {
+                void testDatabaseAccessPolicyTryToUpdateMicroserviceName() {
                     String crName = generateName();
                     String microserviceName = generateName();
                     String updatedMicroserviceName = generateName();
                     assertNotEquals(microserviceName, updatedMicroserviceName);
 
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(service), null);
-                    createCR(CRD_DB_POLICY, cr);
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), null);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
 
                     KubernetesClientException ex = assertThrows(KubernetesClientException.class, () ->
-                            kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+                            kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
                                     .inNamespace(NAMESPACE)
                                     .resource(cr)
                                     .edit(r -> {
@@ -1089,18 +1089,18 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDbPolicyCanUpdateServices() {
+                void testDatabaseAccessPolicyCanUpdateServices() {
                     String crName = generateName();
                     String microserviceName = generateName();
 
                     var initialService = Map.of("name", "svc-a", "roles", List.of("admin"));
-                    var cr = buildDbPolicyCR(crName, microserviceName, List.of(initialService), null);
-                    createCR(CRD_DB_POLICY, cr);
-                    waitForDesiredState(CRD_DB_POLICY, cr,
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(initialService), null);
+                    createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr,
                             PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
                     var updatedService = Map.of("name", "svc-b", "roles", List.of("readonly"));
-                    var updatedResource = kubernetesClient.genericKubernetesResources(CRD_DB_POLICY)
+                    var updatedResource = kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
                             .inNamespace(NAMESPACE)
                             .resource(cr)
                             .edit(r -> {
@@ -1108,7 +1108,7 @@ public class OperatorIT extends AbstractIT {
                                 currSpec.put("services", List.of(updatedService));
                                 return r;
                             });
-                    waitForDesiredState(CRD_DB_POLICY, updatedResource,
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, updatedResource,
                             PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE, true);
 
                     var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
@@ -1257,9 +1257,9 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseSecretApplyDbPolicy() throws IOException {
+                void testDatabaseSecretApplyDatabaseAccessPolicy() throws IOException {
                     String dbSecretCrName = generateName();
-                    String dbPolicyCrName = generateName();
+                    String databaseAccessPolicyCrName = generateName();
                     String microserviceName = generateName();
                     String originService = generateName();
                     String secretName = generateName();
@@ -1278,7 +1278,7 @@ public class OperatorIT extends AbstractIT {
                             .withName(dbSecretCrName)
                             .delete();
 
-                    OperatorIT.this.testDbPolicyOnlyServicesSet(dbPolicyCrName, microserviceName, originService, List.of("admin"));
+                    OperatorIT.this.testDatabaseAccessPolicyOnlyServicesSet(databaseAccessPolicyCrName, microserviceName, originService, List.of("admin"));
                     var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
                     waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
                     var secret = getSecret(secretName);
@@ -1308,12 +1308,12 @@ public class OperatorIT extends AbstractIT {
         bgHelper.destroyDomain(new BgNamespaceRequest(NAMESPACE, TEST_NAMESPACE_CANDIDATE)).close();
     }
 
-    private void testDbPolicyOnlyServicesSet(String crName, String originService, String microserviceName, List<String> roles) {
+    private void testDatabaseAccessPolicyOnlyServicesSet(String crName, String originService, String microserviceName, List<String> roles) {
         var service = Map.of("name", microserviceName, "roles", roles);
-        var cr = buildDbPolicyCR(crName, originService, List.of(service), null);
+        var cr = buildDatabaseAccessPolicyCR(crName, originService, List.of(service), null);
 
-        createCR(CRD_DB_POLICY, cr);
-        waitForDesiredState(CRD_DB_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+        createCR(CRD_DATABASE_ACCESS_POLICY, cr);
+        waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
 
         var accessRoles = helperV3.getAccessRoles(NAMESPACE, originService, 200);
         assertTrue(accessRoles.getPolicies() == null || accessRoles.getPolicies().isEmpty());

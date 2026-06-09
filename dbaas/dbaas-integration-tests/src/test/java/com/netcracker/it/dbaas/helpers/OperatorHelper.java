@@ -78,11 +78,11 @@ public class OperatorHelper {
                     .withScope("Namespaced")
                     .build();
 
-    public static final CustomResourceDefinitionContext CRD_DB_POLICY =
+    public static final CustomResourceDefinitionContext CRD_DATABASE_ACCESS_POLICY =
             new CustomResourceDefinitionContext.Builder()
                     .withGroup("dbaas.netcracker.com")
                     .withVersion("v1")
-                    .withPlural("dbpolicies")
+                    .withPlural("databaseaccesspolicies")
                     .withScope("Namespaced")
                     .build();
 
@@ -393,12 +393,12 @@ public class OperatorHelper {
         return cr;
     }
 
-    public static GenericKubernetesResource buildDbPolicyCR(String crName, String microserviceName,
+    public static GenericKubernetesResource buildDatabaseAccessPolicyCR(String crName, String microserviceName,
                                                             List<Map<String, Object>> services,
                                                             List<Map<String, Object>> policy) {
         GenericKubernetesResource cr = new GenericKubernetesResource();
         cr.setApiVersion("dbaas.netcracker.com/v1");
-        cr.setKind("DbPolicy");
+        cr.setKind("DatabaseAccessPolicy");
 
         ObjectMeta meta = new ObjectMeta();
         meta.setName(crName);

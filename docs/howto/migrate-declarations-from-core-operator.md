@@ -1,4 +1,4 @@
-# Migrating `DbPolicy` and `DatabaseDeclaration` (now `InternalDatabase`) from Core Operator to DBaaS Operator
+# Migrating `DbPolicy` (now `DatabaseAccessPolicy`) and `DatabaseDeclaration` (now `InternalDatabase`) from Core Operator to DBaaS Operator
 
 The legacy **Core Operator** consumed DBaaS declarations as generic
 `kind: DBaaS` resources (with a `subKind`) and forwarded them to
@@ -18,7 +18,7 @@ behavior (role grants, provisioning, cloning) is unchanged.
 | Aspect | Core Operator (old) | DBaaS Operator (new) |
 |---|---|---|
 | `apiVersion` | `core.netcracker.com/v1` | `dbaas.netcracker.com/v1` |
-| `kind` / `subKind` | `kind: DBaaS` + `subKind: DbPolicy\|DatabaseDeclaration` | `kind: DbPolicy` / `kind: InternalDatabase` (no `subKind`) |
+| `kind` / `subKind` | `kind: DBaaS` + `subKind: DbPolicy\|DatabaseDeclaration` | `kind: DatabaseAccessPolicy` / `kind: InternalDatabase` (no `subKind`) |
 | `spec.apiVersion: v1` | present (declaration version) | **removed** — not part of the CRD |
 | Owning microservice | derived from label `app.kubernetes.io/name` (fallback `app.kubernetes.io/instance`) | **explicit field in `spec`** (see per-type sections) |
 | Labels | `app.kubernetes.io/instance`, `app.kubernetes.io/managed-by: operator` | `app.kubernetes.io/name` recommended; `managed-by` no longer required |
@@ -30,11 +30,13 @@ behavior (role grants, provisioning, cloning) is unchanged.
 
 ---
 
-## DbPolicy
+## DbPolicy → DatabaseAccessPolicy
+
+The legacy `subKind: DbPolicy` becomes the native CRD `kind: DatabaseAccessPolicy`.
 
 ### Field mapping
 
-| Old (`subKind: DbPolicy`) | New (`kind: DbPolicy`) |
+| Old (`subKind: DbPolicy`) | New (`kind: DatabaseAccessPolicy`) |
 |---|---|
 | label `app.kubernetes.io/name` / `app.kubernetes.io/instance` | `spec.microserviceName` (**required, immutable**) |
 | `spec.services[].name` / `.roles[]` | `spec.services[].name` / `.roles[]` — unchanged |
@@ -75,9 +77,9 @@ spec:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DbPolicy
+kind: DatabaseAccessPolicy
 metadata:
-  name: {{ .Values.SERVICE_NAME }}-dbpolicy
+  name: {{ .Values.SERVICE_NAME }}-databaseaccesspolicy
   namespace: {{ .Values.NAMESPACE }}
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
@@ -190,7 +192,7 @@ spec:
 
 ## Gotchas
 
-- **Immutable fields.** `DbPolicy.spec.microserviceName` and
+- **Immutable fields.** `DatabaseAccessPolicy.spec.microserviceName` and
   `InternalDatabase.spec.classifier` + `spec.type` are immutable after
   creation (enforced by CEL validation). To repoint a CR at a different service
   or database, **delete and recreate** it rather than editing in place.
@@ -220,7 +222,7 @@ For each legacy `kind: DBaaS` resource:
 2. [ ] Change `apiVersion` to `dbaas.netcracker.com/v1` and replace
        `kind: DBaaS` + `subKind: X` with `kind: X`.
 3. [ ] Delete `spec.apiVersion`.
-4. [ ] **DbPolicy:** add `spec.microserviceName` with the value from step 1.
+4. [ ] **DatabaseAccessPolicy:** add `spec.microserviceName` with the value from step 1.
 5. [ ] **InternalDatabase:** split `spec.declarations[]` into one CR each;
        unwrap `classifierConfig.classifier` into `spec.classifier`; add
        `spec.classifier.microserviceName` from step 1; add

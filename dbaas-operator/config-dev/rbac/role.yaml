@@ -23,18 +23,18 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasesecrets
-  - namespacebindings
+  - databaseaccesspolicies
+  - externaldatabases
+  - internaldatabases
   verbs:
   - get
   - list
-  - patch
   - watch
 - apiGroups:
   - dbaas.netcracker.com
   resources:
+  - databaseaccesspolicies/status
   - databasesecrets/status
-  - dbpolicies/status
   - externaldatabases/status
   - internaldatabases/status
   verbs:
@@ -44,12 +44,12 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - dbpolicies
-  - externaldatabases
-  - internaldatabases
+  - databasesecrets
+  - namespacebindings
   verbs:
   - get
   - list
+  - patch
   - watch
 - apiGroups:
   - dbaas.netcracker.com

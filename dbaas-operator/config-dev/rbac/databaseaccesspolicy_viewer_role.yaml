@@ -11,12 +11,12 @@ metadata:
   labels:
     app.kubernetes.io/name: dbaas-operator
     app.kubernetes.io/managed-by: kustomize
-  name: dbpolicy-viewer-role
+  name: databaseaccesspolicy-viewer-role
 rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - dbpolicies
+  - databaseaccesspolicies
   verbs:
   - get
   - list
@@ -24,6 +24,6 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - dbpolicies/status
+  - databaseaccesspolicies/status
   verbs:
   - get

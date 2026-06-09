@@ -1,20 +1,19 @@
-{{- if .Values.DBAAS_OPERATOR_ENABLED }}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: dbpolicies.dbaas.netcracker.com
+  name: databaseaccesspolicies.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: DbPolicy
-    listKind: DbPolicyList
-    plural: dbpolicies
+    kind: DatabaseAccessPolicy
+    listKind: DatabaseAccessPolicyList
+    plural: databaseaccesspolicies
     shortNames:
-    - dbdp
-    singular: dbpolicy
+    - dbdap
+    singular: databaseaccesspolicy
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -31,7 +30,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          DbPolicy is the Schema for the dbpolicies API.
+          DatabaseAccessPolicy is the Schema for the databaseaccesspolicies API.
           It declares the database role assignments for microservices in a namespace,
           applied by dbaas-aggregator when provisioning or connecting to databases.
         properties:
@@ -53,7 +52,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DbPolicy.
+            description: spec defines the desired state of DatabaseAccessPolicy.
             properties:
               disableGlobalPermissions:
                 description: |-
@@ -65,7 +64,7 @@ spec:
                 description: |-
                   microserviceName is the microservice that owns this policy.
                   Mapped to metadata.microserviceName in the DBaaS declarative payload.
-                  Immutable after creation — repointing a DbPolicy CR at a different
+                  Immutable after creation — repointing a DatabaseAccessPolicy CR at a different
                   microservice would rewrite role grants under the same K8s object,
                   destroying the audit trail of who owned the policy originally. Create
                   a new CR for a different service instead.
@@ -140,16 +139,16 @@ spec:
             - microserviceName
             type: object
           status:
-            description: status defines the observed state of DbPolicy.
+            description: status defines the observed state of DatabaseAccessPolicy.
             properties:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by all dbaas operator resources (ExternalDatabase, DbPolicy, InternalDatabase):
+                  Condition types used by all dbaas operator resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase):
                     - "Ready"   — True when the resource was successfully processed by
                                   dbaas-aggregator for the current generation.
                                   ExternalDatabase: reason "DatabaseRegistered" on success.
-                                  DbPolicy: reason "PolicyApplied" on success.
+                                  DatabaseAccessPolicy: reason "PolicyApplied" on success.
                                   InternalDatabase: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
                                   False on any error; see Reason for the error category.
@@ -252,4 +251,3 @@ spec:
     storage: true
     subresources:
       status: {}
-{{- end }}

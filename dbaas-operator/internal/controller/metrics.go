@@ -32,7 +32,7 @@ import (
 const (
 	controllerEDB = "externaldatabase"
 	controllerDD  = "internaldatabase"
-	controllerDP  = "dbpolicy"
+	controllerDP  = "databaseaccesspolicy"
 
 	triggerSpecChange             = "spec_change"
 	triggerSecretChange           = "secret_change"
