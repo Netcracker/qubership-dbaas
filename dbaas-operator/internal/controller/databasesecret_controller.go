@@ -144,7 +144,7 @@ func (r *DatabaseSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// ── Step 9 / write Secret ─────────────────────────────────────────────────
-	secretData, err := buildSecretData(s, dbResp.ConnectionProperties)
+	secretData, err := buildSecretData(s, dbResp)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -291,9 +291,13 @@ func (r *DatabaseSecretReconciler) writeSecret(
 // When the existing Secret already carries exactly the credentials and managed
 // labels we would write, the Update is skipped entirely: a rotation-triggered
 // reconcile that finds unchanged content must not churn the Secret, since every
-// rewrite wakes mounting pods via the kubelet's secret sync. A real content
-// change is treated as a rotation — it stamps Status.LastRotatedAt and emits
-// SecretRotated, distinct from the SecretCreated used on first creation.
+// rewrite wakes mounting pods via the kubelet's secret sync.
+//
+// Only a change to connectionProperties.json is treated as a rotation — it
+// stamps Status.LastRotatedAt and emits SecretRotated. A metadata.json or label
+// backfill (credentials unchanged) still rewrites the Secret but reports plain
+// success (SecretCreated reason, no LastRotatedAt, no SecretRotated event), so
+// the rotation timestamp stays faithful to its connection-properties contract.
 func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecret,
@@ -304,11 +308,20 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 	// No-op fast path: already in the desired state.
 	if secretUpToDate(s, existing, secretData) {
 		log.InfoC(ctx, "DatabaseSecret already up-to-date, skipping Secret write name=%s secretName=%s", s.Name, s.Spec.SecretName)
-		// Steady state: keep the SecretCreated Ready reason, emit no event,
-		// and do not advance LastRotatedAt — nothing actually changed.
-		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretCreated)
+		// Steady state: report the SecretUpToDate Ready reason, emit no event, and
+		// do not advance LastRotatedAt — nothing actually changed. Using a neutral
+		// reason (rather than reusing SecretCreated) keeps the Ready reason accurate
+		// and avoids clobbering a prior SecretRotated reason on the next safety-net poll.
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, ReasonSecretUpToDate)
 		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
+
+	// Distinguish a credential change (rotation) from a metadata.json / label
+	// backfill: only the former advances LastRotatedAt and emits SecretRotated.
+	// existing.Data is the pre-update content; secretData is the desired content.
+	credentialsChanged := !bytes.Equal(
+		existing.Data[secretKeyConnectionProperties],
+		secretData[secretKeyConnectionProperties])
 
 	updated := existing.DeepCopy()
 	updated.Data = secretData
@@ -350,8 +363,16 @@ func (r *DatabaseSecretReconciler) updateOwnedSecret(
 			return ctrl.Result{}, err
 		}
 	}
-	// Content changed and written — this is a rotation (or first fill of an
-	// adopted Secret). Stamp the rotation timestamp and emit SecretRotated.
+	// The Secret was written. Only stamp LastRotatedAt and emit SecretRotated
+	// when the credentials actually changed. A metadata.json or label backfill
+	// rewrites the Secret once but is not a rotation, so it must not advance the
+	// rotation timestamp nor report SecretRotated.
+	if !credentialsChanged {
+		log.InfoC(ctx, "DatabaseSecret Secret updated without credential change (metadata/label backfill) name=%s secretName=%s",
+			s.Name, s.Spec.SecretName)
+		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, ReasonSecretUpToDate)
+		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
+	}
 	now := metav1.Now()
 	s.Status.LastRotatedAt = &now
 	r.markSecretSucceeded(s, requestID, EventReasonSecretRotated,
@@ -487,18 +508,30 @@ const (
 // metadata.namespace, empty optional fields omitted — so both sides agree on
 // the key. UserRole is the requested role (DatabaseSecret.spec.userRole), not
 // the role the aggregator resolved at runtime; it is omitted when empty.
+//
+// Id, Name, Namespace, and Settings mirror the aggregator's
+// DatabaseResponseV3SingleCP so dbaas-client can reconstruct a full LogicalDb
+// from a mounted Secret without a REST call. They are descriptive only (not
+// part of the match key) and are omitted when empty; Id in particular may be
+// empty because the aggregator returns it best-effort on a by-classifier lookup.
 type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
 	Type       string         `json:"type"`
 	UserRole   string         `json:"userRole,omitempty"`
+	Id         string         `json:"id,omitempty"`
+	Name       string         `json:"name,omitempty"`
+	Namespace  string         `json:"namespace,omitempty"`
+	Settings   map[string]any `json:"settings,omitempty"`
 }
 
 // buildSecretData serializes the connectionProperties and the self-describing
 // metadata descriptor into the two keys of the managed Secret. The descriptor
 // classifier is canonicalized identically to the aggregator request (see
-// ClassifierFlatMap / EffectiveClassifier) so dbaas-client can match it.
-func buildSecretData(s *dbaasv1.DatabaseSecret, props map[string]any) (map[string][]byte, error) {
-	connRaw, err := json.Marshal(props)
+// ClassifierFlatMap / EffectiveClassifier) so dbaas-client can match it, and the
+// id/name/namespace/settings fields mirror the aggregator response so the client
+// can reconstruct a full LogicalDb from the mounted Secret.
+func buildSecretData(s *dbaasv1.DatabaseSecret, dbResp *aggregatorclient.DatabaseResponseSingleCP) (map[string][]byte, error) {
+	connRaw, err := json.Marshal(dbResp.ConnectionProperties)
 	if err != nil {
 		return nil, fmt.Errorf("marshal connectionProperties: %w", err)
 	}
@@ -506,6 +539,10 @@ func buildSecretData(s *dbaasv1.DatabaseSecret, props map[string]any) (map[strin
 		Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		Type:       s.Spec.Type,
 		UserRole:   s.Spec.UserRole,
+		Id:         dbResp.Id,
+		Name:       dbResp.Name,
+		Namespace:  dbResp.Namespace,
+		Settings:   dbResp.Settings,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal metadata: %w", err)

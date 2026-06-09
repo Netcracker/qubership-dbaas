@@ -73,6 +73,11 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 	successBody := func() string {
 		b, _ := json.Marshal(map[string]any{
+			"id":        "db-uuid-123",
+			"name":      "dbaas_abc123",
+			"namespace": ns,
+			"type":      "postgresql",
+			"settings":  map[string]any{"microserviceName": "test-service"},
 			"connectionProperties": map[string]any{
 				"host":     "pg-patroni.dbaas-dev",
 				"port":     5432,
@@ -200,6 +205,14 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(metaClassifier).To(HaveKeyWithValue("namespace", ns),
 				"classifier.namespace is defaulted to metadata.namespace in the descriptor")
 
+			// metadata.json also mirrors the aggregator's id/name/namespace/settings.
+			Expect(meta).To(HaveKeyWithValue("id", "db-uuid-123"))
+			Expect(meta).To(HaveKeyWithValue("name", "dbaas_abc123"))
+			Expect(meta).To(HaveKeyWithValue("namespace", ns))
+			metaSettings, ok := meta["settings"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(metaSettings).To(HaveKeyWithValue("microserviceName", "test-service"))
+
 			Expect(secret.OwnerReferences).To(HaveLen(1))
 			Expect(secret.OwnerReferences[0].Name).To(Equal(resourceName))
 			Expect(secret.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "dbaas-operator"))
@@ -291,8 +304,8 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 			ready := findCondition(got.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonSecretCreated),
-				"steady-state Ready reason stays SecretCreated, not SecretRotated")
+			Expect(ready.Reason).To(Equal(ReasonSecretUpToDate),
+				"steady-state Ready reason is SecretUpToDate, not SecretRotated")
 
 			secret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
@@ -345,6 +358,56 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(cp).To(HaveKeyWithValue("password", "ROTATED"))
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretRotated)
+			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("HTTP 200 — Secret owned by this CR, only metadata.json missing (backfill)", func() {
+		It("rewrites the Secret to add metadata.json but is not a rotation: LastRotatedAt stays nil, no SecretRotated", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			ds := &dbaasv1.DatabaseSecret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			// First reconcile — creates the Secret with both keys.
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			drainRecordedEvents(fixture.recorder.Events)
+
+			// Simulate an older Secret that predates the metadata.json key:
+			// drop it while leaving connectionProperties.json unchanged.
+			secret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			Expect(secret.Data).To(HaveKey("metadata.json"))
+			delete(secret.Data, "metadata.json")
+			Expect(k8sClient.Update(ctx, secret)).To(Succeed())
+
+			// Reconcile — must backfill metadata.json without reporting a rotation.
+			got, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(got.Status.LastRotatedAt).To(BeNil(),
+				"a metadata-only backfill must not advance LastRotatedAt")
+
+			ready := findCondition(got.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(ReasonSecretUpToDate),
+				"metadata backfill reports SecretUpToDate, not SecretRotated")
+
+			// metadata.json restored; connectionProperties.json untouched.
+			secret = &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			Expect(secret.Data).To(HaveKey("metadata.json"))
+
+			// No rotation event emitted.
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})
@@ -1379,6 +1442,18 @@ var _ = Describe("DatabaseSecret Controller — secretUpToDate", func() {
 var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 	props := map[string]any{"host": "h", "password": "p", "port": 5432}
 
+	// fullResp mirrors a complete aggregator DatabaseResponseV3SingleCP.
+	fullResp := func() *aggregatorclient.DatabaseResponseSingleCP {
+		return &aggregatorclient.DatabaseResponseSingleCP{
+			Id:                   "db-123",
+			Name:                 "dbaas_svc_xyz",
+			Namespace:            "team-a",
+			Type:                 "postgresql",
+			Settings:             map[string]any{"microserviceName": "svc"},
+			ConnectionProperties: props,
+		}
+	}
+
 	newCR := func(userRole string) *dbaasv1.DatabaseSecret {
 		return &dbaasv1.DatabaseSecret{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
@@ -1392,8 +1467,8 @@ var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 		}
 	}
 
-	mustBuild := func(cr *dbaasv1.DatabaseSecret, props map[string]any) map[string][]byte {
-		data, err := buildSecretData(cr, props)
+	mustBuild := func(cr *dbaasv1.DatabaseSecret, resp *aggregatorclient.DatabaseResponseSingleCP) map[string][]byte {
+		data, err := buildSecretData(cr, resp)
 		Expect(err).NotTo(HaveOccurred())
 		return data
 	}
@@ -1405,14 +1480,14 @@ var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 	}
 
 	It("writes both connectionProperties.json and metadata.json", func() {
-		data, err := buildSecretData(newCR("admin"), props)
+		data, err := buildSecretData(newCR("admin"), fullResp())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(data).To(HaveKey("connectionProperties.json"))
 		Expect(data).To(HaveKey("metadata.json"))
 	})
 
 	It("serializes connectionProperties verbatim", func() {
-		data, err := buildSecretData(newCR("admin"), props)
+		data, err := buildSecretData(newCR("admin"), fullResp())
 		Expect(err).NotTo(HaveOccurred())
 		var cp map[string]any
 		Expect(json.Unmarshal(data["connectionProperties.json"], &cp)).To(Succeed())
@@ -1421,7 +1496,7 @@ var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 	})
 
 	It("descriptor carries type and the canonical classifier with namespace defaulted", func() {
-		meta := unmarshalMeta(mustBuild(newCR("admin"), props))
+		meta := unmarshalMeta(mustBuild(newCR("admin"), fullResp()))
 		Expect(meta).To(HaveKeyWithValue("type", "postgresql"))
 		clf, ok := meta["classifier"].(map[string]any)
 		Expect(ok).To(BeTrue())
@@ -1431,13 +1506,32 @@ var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 	})
 
 	It("includes userRole when set", func() {
-		meta := unmarshalMeta(mustBuild(newCR("ro"), props))
+		meta := unmarshalMeta(mustBuild(newCR("ro"), fullResp()))
 		Expect(meta).To(HaveKeyWithValue("userRole", "ro"))
 	})
 
 	It("omits userRole when spec.userRole is empty", func() {
-		meta := unmarshalMeta(mustBuild(newCR(""), props))
+		meta := unmarshalMeta(mustBuild(newCR(""), fullResp()))
 		Expect(meta).NotTo(HaveKey("userRole"))
+	})
+
+	It("mirrors id/name/namespace/settings from the aggregator response", func() {
+		meta := unmarshalMeta(mustBuild(newCR("admin"), fullResp()))
+		Expect(meta).To(HaveKeyWithValue("id", "db-123"))
+		Expect(meta).To(HaveKeyWithValue("name", "dbaas_svc_xyz"))
+		Expect(meta).To(HaveKeyWithValue("namespace", "team-a"))
+		settings, ok := meta["settings"].(map[string]any)
+		Expect(ok).To(BeTrue())
+		Expect(settings).To(HaveKeyWithValue("microserviceName", "svc"))
+	})
+
+	It("omits id/name/namespace/settings when the aggregator omits them", func() {
+		meta := unmarshalMeta(mustBuild(newCR("admin"),
+			&aggregatorclient.DatabaseResponseSingleCP{ConnectionProperties: props}))
+		Expect(meta).NotTo(HaveKey("id"))
+		Expect(meta).NotTo(HaveKey("name"))
+		Expect(meta).NotTo(HaveKey("namespace"))
+		Expect(meta).NotTo(HaveKey("settings"))
 	})
 })
 

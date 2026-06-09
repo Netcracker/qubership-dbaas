@@ -322,6 +322,15 @@ public class OperatorHelper {
         } else {
             assertEquals(expectedUserRole, meta.path("userRole").asText(), "metadata.userRole");
         }
+
+        // Descriptor fields mirrored from the aggregator response: name and the
+        // database namespace must be present so dbaas-client can reconstruct a
+        // full LogicalDb. id is best-effort on a by-classifier lookup, so it is
+        // not asserted strictly.
+        assertTrue(meta.has("name") && !meta.path("name").asText().isBlank(),
+                "metadata.name must be present");
+        assertEquals(expectedNamespace, meta.path("namespace").asText(),
+                "metadata.namespace must mirror the database namespace");
     }
 
     public static String generateName() {
