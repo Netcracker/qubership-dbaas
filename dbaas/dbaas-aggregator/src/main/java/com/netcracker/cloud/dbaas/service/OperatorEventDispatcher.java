@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -29,6 +30,7 @@ public class OperatorEventDispatcher {
     private final OperatorEventRepository operatorEventRepository;
     private final OperatorWebhook operatorWebhook;
     private final OperatorEventStatusUpdater statusUpdater;
+    private final Duration invisibilityTime;
 
     @Inject
     public OperatorEventDispatcher(RotationNotificationProperty rotationProperty,
@@ -39,6 +41,7 @@ public class OperatorEventDispatcher {
         this.operatorEventRepository = operatorEventRepository;
         this.operatorWebhook = operatorWebhook;
         this.statusUpdater = statusUpdater;
+        this.invisibilityTime = rotationProperty.connectTimeout().plus(rotationProperty.readTimeout()).plus(Duration.ofSeconds(60));
     }
 
     @Scheduled(every = "${dbaas.operator.notification.dispatch-interval:5s}", concurrentExecution = SKIP)
@@ -47,7 +50,7 @@ public class OperatorEventDispatcher {
             return;
         }
 
-        List<OperatorEvent> batch = operatorEventRepository.claimPendingBatch(BATCH_SIZE, rotationProperty.invisibilityTime());
+        List<OperatorEvent> batch = operatorEventRepository.claimPendingBatch(BATCH_SIZE, invisibilityTime);
         if (batch.isEmpty()) {
             return;
         }
