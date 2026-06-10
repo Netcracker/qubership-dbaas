@@ -167,8 +167,8 @@ class DBaaServiceTest {
         List<DbResource> result = dBaaService.getMergedResources(prev, curr);
         Assertions.assertNotNull(result);
         Assertions.assertEquals(2, result.size());
-        Assertions.assertTrue(result.contains(currUsernameResource));
-        Assertions.assertTrue(result.contains(currResourcePrefix));
+        Assertions.assertTrue(result.contains(prevUsernameResource));
+        Assertions.assertTrue(result.contains(prevResourcePrefix));
     }
 
     @Test
