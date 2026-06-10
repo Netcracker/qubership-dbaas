@@ -4,23 +4,23 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: dbnamespacebalancingrules.dbaas.netcracker.com
+  name: permanentbalancingrules.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: DbNamespaceBalancingRule
-    listKind: DbNamespaceBalancingRuleList
-    plural: dbnamespacebalancingrules
+    kind: PermanentBalancingRule
+    listKind: PermanentBalancingRuleList
+    plural: permanentbalancingrules
     shortNames:
-    - dbnbr
-    singular: dbnamespacebalancingrule
+    - dbpbr
+    singular: permanentbalancingrule
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .spec.rules[*].type
+    - jsonPath: .spec.rules[*].dbType
       name: Rules
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -30,8 +30,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          DbNamespaceBalancingRule is the Schema for the dbnamespacebalancingrules API.
-          It declares a namespace-level physical database placement rule.
+          PermanentBalancingRule is the Schema for the permanentbalancingrules API.
+          It declares a permanent namespace-level physical database placement rule.
         properties:
           apiVersion:
             description: |-
@@ -51,26 +51,29 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DbNamespaceBalancingRule.
+            description: spec defines the desired state of PermanentBalancingRule.
             properties:
               rules:
-                description: rules is the set of namespace balancing rules managed
+                description: rules is the set of permanent balancing rules managed
                   by this singleton CR.
                 items:
-                  description: DbNamespaceBalancingRuleItem defines one on-namespace
-                    balancing rule entry.
+                  description: PermanentBalancingRuleItem defines one permanent balancing
+                    rule entry.
                   properties:
-                    name:
-                      description: name is the aggregator rule name used in the namespace
-                        balancing rule endpoint.
+                    dbType:
+                      description: dbType is the database engine type this rule applies
+                        to, e.g. "postgresql" or "mongodb".
                       minLength: 1
                       type: string
-                    order:
-                      description: |-
-                        order is the aggregator rule priority. Higher order wins when multiple
-                        namespace rules match the same database type.
-                      format: int64
-                      type: integer
+                    namespaces:
+                      description: namespaces is the list of namespaces where the
+                        permanent rule applies.
+                      items:
+                        minLength: 1
+                        type: string
+                      minItems: 1
+                      type: array
+                      x-kubernetes-list-type: set
                     physicalDatabaseId:
                       description: |-
                         physicalDatabaseId is the physical database identifier where new logical
@@ -80,16 +83,10 @@ spec:
                         database.
                       minLength: 1
                       type: string
-                    type:
-                      description: type is the database engine type this rule applies
-                        to, e.g. "postgresql" or "mongodb".
-                      minLength: 1
-                      type: string
                   required:
-                  - name
-                  - order
+                  - dbType
+                  - namespaces
                   - physicalDatabaseId
-                  - type
                   type: object
                 minItems: 1
                 type: array
@@ -98,36 +95,31 @@ spec:
             - rules
             type: object
           status:
-            description: status defines the observed state of DbNamespaceBalancingRule.
+            description: status defines the observed state of PermanentBalancingRule.
             properties:
               appliedRules:
                 description: |-
-                  appliedRules are the namespace rule entries last successfully applied
+                  appliedRules are the permanent rule entries last successfully applied
                   to dbaas-aggregator. They are used to delete removed entries when spec
                   changes. They do not guarantee that referenced physical databases exist.
                 items:
-                  description: DbNamespaceBalancingRuleAppliedRule tracks one namespace
-                    rule entry last applied.
+                  description: |-
+                    PermanentBalancingRuleAppliedRule tracks one successfully applied permanent
+                    rule entry for cleanup on update/delete.
                   properties:
-                    name:
-                      description: name is the aggregator rule name last applied.
+                    dbType:
+                      description: dbType is the database engine type last applied.
                       type: string
-                    order:
-                      description: order is the aggregator rule priority last applied.
-                      format: int64
-                      type: integer
-                    physicalDatabaseId:
-                      description: physicalDatabaseId is the physical database identifier
-                        last applied.
-                      type: string
-                    type:
-                      description: type is the database engine type last applied.
-                      type: string
+                    namespaces:
+                      description: namespaces is the namespace set last applied for
+                        dbType.
+                      items:
+                        type: string
+                      type: array
+                      x-kubernetes-list-type: set
                   required:
-                  - name
-                  - order
-                  - physicalDatabaseId
-                  - type
+                  - dbType
+                  - namespaces
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic

@@ -4,16 +4,16 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: dbmicroservicebalancingrules.dbaas.netcracker.com
+  name: namespacebalancingrules.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: DbMicroserviceBalancingRule
-    listKind: DbMicroserviceBalancingRuleList
-    plural: dbmicroservicebalancingrules
+    kind: NamespaceBalancingRule
+    listKind: NamespaceBalancingRuleList
+    plural: namespacebalancingrules
     shortNames:
-    - dbmbr
-    singular: dbmicroservicebalancingrule
+    - dbnbr
+    singular: namespacebalancingrule
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -30,8 +30,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          DbMicroserviceBalancingRule is the Schema for the dbmicroservicebalancingrules API.
-          It declares a physical database placement rule for specific microservices in a namespace.
+          NamespaceBalancingRule is the Schema for the namespacebalancingrules API.
+          It declares a namespace-level physical database placement rule.
         properties:
           apiVersion:
             description: |-
@@ -51,42 +51,44 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DbMicroserviceBalancingRule.
+            description: spec defines the desired state of NamespaceBalancingRule.
             properties:
               rules:
-                description: rules is the set of microservice balancing rules managed
+                description: rules is the set of namespace balancing rules managed
                   by this singleton CR.
                 items:
-                  description: DbMicroserviceBalancingRuleItem defines one on-microservice
+                  description: NamespaceBalancingRuleItem defines one on-namespace
                     balancing rule entry.
                   properties:
-                    label:
-                      description: |-
-                        label is the physical database label expression used by dbaas-aggregator
-                        to resolve exactly one physical database, e.g. "zone=fast". The operator
-                        validates this value for shape only; a Succeeded status means
-                        dbaas-aggregator accepted the rule, not that future provisioning is
-                        guaranteed to find a matching physical database.
+                    name:
+                      description: name is the aggregator rule name used in the namespace
+                        balancing rule endpoint.
                       minLength: 1
-                      pattern: ^[^=]+=[^=]+$
                       type: string
-                    microservices:
-                      description: microservices is the list of microservice names
-                        to which the rule applies.
-                      items:
-                        minLength: 1
-                        type: string
-                      minItems: 1
-                      type: array
-                      x-kubernetes-list-type: set
+                    order:
+                      description: |-
+                        order is the aggregator rule priority. Higher order wins when multiple
+                        namespace rules match the same database type.
+                      format: int64
+                      type: integer
+                    physicalDatabaseId:
+                      description: |-
+                        physicalDatabaseId is the physical database identifier where new logical
+                        databases of this type should be created. The operator validates this
+                        value for shape only; a Succeeded status means dbaas-aggregator stored
+                        the rule, not that this identifier was resolved to a registered physical
+                        database.
+                      minLength: 1
+                      type: string
                     type:
                       description: type is the database engine type this rule applies
                         to, e.g. "postgresql" or "mongodb".
                       minLength: 1
                       type: string
                   required:
-                  - label
-                  - microservices
+                  - name
+                  - order
+                  - physicalDatabaseId
                   - type
                   type: object
                 minItems: 1
@@ -96,31 +98,35 @@ spec:
             - rules
             type: object
           status:
-            description: status defines the observed state of DbMicroserviceBalancingRule.
+            description: status defines the observed state of NamespaceBalancingRule.
             properties:
               appliedRules:
                 description: |-
-                  appliedRules are the microservice rule entries last successfully applied
-                  to dbaas-aggregator. They are used to clean up removed entries when spec
-                  changes. They do not guarantee that referenced physical database labels
-                  still resolve.
+                  appliedRules are the namespace rule entries last successfully applied
+                  to dbaas-aggregator. They are used to delete removed entries when spec
+                  changes. They do not guarantee that referenced physical databases exist.
                 items:
-                  description: |-
-                    DbMicroserviceBalancingRuleAppliedRule tracks one successfully applied
-                    microservice rule entry for cleanup on update/delete.
+                  description: NamespaceBalancingRuleAppliedRule tracks one namespace
+                    rule entry last applied.
                   properties:
-                    microservices:
-                      description: microservices is the microservice set last applied
-                        for type.
-                      items:
-                        type: string
-                      type: array
-                      x-kubernetes-list-type: set
+                    name:
+                      description: name is the aggregator rule name last applied.
+                      type: string
+                    order:
+                      description: order is the aggregator rule priority last applied.
+                      format: int64
+                      type: integer
+                    physicalDatabaseId:
+                      description: physicalDatabaseId is the physical database identifier
+                        last applied.
+                      type: string
                     type:
                       description: type is the database engine type last applied.
                       type: string
                   required:
-                  - microservices
+                  - name
+                  - order
+                  - physicalDatabaseId
                   - type
                   type: object
                 type: array

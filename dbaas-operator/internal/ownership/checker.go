@@ -82,10 +82,10 @@ func NewPermanentBalancingRuleChecker(cl client.Client, operatorNamespace string
 // HasBlockingResources returns true when a permanent balancing rule in the
 // operator namespace still references namespace in spec or status.appliedRules.
 func (c *PermanentBalancingRuleChecker) HasBlockingResources(ctx context.Context, namespace string) (bool, error) {
-	list := &dbaasv1.DbPermanentBalancingRuleList{}
+	list := &dbaasv1.PermanentBalancingRuleList{}
 	log.InfoC(ctx, "Checking permanent balancing rules operatorNamespace=%s namespace=%s", c.operatorNamespace, namespace)
 	if err := c.cl.List(ctx, list, client.InNamespace(c.operatorNamespace)); err != nil {
-		return false, fmt.Errorf("list DbPermanentBalancingRule in namespace %q: %w", c.operatorNamespace, err)
+		return false, fmt.Errorf("list PermanentBalancingRule in namespace %q: %w", c.operatorNamespace, err)
 	}
 	for _, rule := range list.Items {
 		if permanentBalancingRuleTargetsNamespace(&rule, namespace) {
@@ -98,7 +98,7 @@ func (c *PermanentBalancingRuleChecker) HasBlockingResources(ctx context.Context
 	return false, nil
 }
 
-func permanentBalancingRuleTargetsNamespace(rule *dbaasv1.DbPermanentBalancingRule, namespace string) bool {
+func permanentBalancingRuleTargetsNamespace(rule *dbaasv1.PermanentBalancingRule, namespace string) bool {
 	for _, item := range rule.Spec.Rules {
 		if slices.Contains(item.Namespaces, namespace) {
 			return true

@@ -3,9 +3,9 @@
 # It should be run by config/default
 resources:
 - bases/dbaas.netcracker.com_internaldatabases.yaml
-- bases/dbaas.netcracker.com_dbmicroservicebalancingrules.yaml
-- bases/dbaas.netcracker.com_dbnamespacebalancingrules.yaml
-- bases/dbaas.netcracker.com_dbpermanentbalancingrules.yaml
+- bases/dbaas.netcracker.com_microservicebalancingrules.yaml
+- bases/dbaas.netcracker.com_namespacebalancingrules.yaml
+- bases/dbaas.netcracker.com_permanentbalancingrules.yaml
 - bases/dbaas.netcracker.com_databaseaccesspolicies.yaml
 - bases/dbaas.netcracker.com_externaldatabases.yaml
 - bases/dbaas.netcracker.com_namespacebindings.yaml

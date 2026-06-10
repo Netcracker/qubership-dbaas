@@ -1,5 +1,5 @@
 apiVersion: dbaas.netcracker.com/v1
-kind: DbMicroserviceBalancingRule
+kind: MicroserviceBalancingRule
 metadata:
   name: microservice-balancing-rules
 spec:

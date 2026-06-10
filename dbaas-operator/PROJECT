@@ -51,7 +51,7 @@ resources:
   controller: true
   domain: netcracker.com
   group: dbaas
-  kind: DbMicroserviceBalancingRule
+  kind: MicroserviceBalancingRule
   path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
   version: v1
 - api:
@@ -60,7 +60,7 @@ resources:
   controller: true
   domain: netcracker.com
   group: dbaas
-  kind: DbNamespaceBalancingRule
+  kind: NamespaceBalancingRule
   path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
   version: v1
 - api:
@@ -69,7 +69,7 @@ resources:
   controller: true
   domain: netcracker.com
   group: dbaas
-  kind: DbPermanentBalancingRule
+  kind: PermanentBalancingRule
   path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
   version: v1
 version: "3"

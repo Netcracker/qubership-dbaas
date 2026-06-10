@@ -15,7 +15,7 @@ import (
 
 var _ = Describe("BalancingRule payload helpers", func() {
 	It("builds on-microservice requests from spec", func() {
-		got := microserviceRequestsFromSpec([]dbaasv1.DbMicroserviceBalancingRuleItem{
+		got := microserviceRequestsFromSpec([]dbaasv1.MicroserviceBalancingRuleItem{
 			{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing", "ledger"}},
 			{Type: "cassandra", Label: "region=west", Microservices: []string{"audit"}},
 		})
@@ -31,7 +31,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 	It("builds namespace rule requests from spec items", func() {
 		order := int64(7)
 
-		got := namespaceRequestFromSpecItem(dbaasv1.DbNamespaceBalancingRuleItem{
+		got := namespaceRequestFromSpecItem(dbaasv1.NamespaceBalancingRuleItem{
 			Type:               "mongodb",
 			PhysicalDatabaseID: "mongodb-payments",
 			Order:              order,
@@ -48,7 +48,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 	})
 
 	It("builds permanent rule requests from spec", func() {
-		got := permanentRequestsFromSpec([]dbaasv1.DbPermanentBalancingRuleItem{
+		got := permanentRequestsFromSpec([]dbaasv1.PermanentBalancingRuleItem{
 			{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments", "orders"}},
 			{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
 		})
@@ -108,12 +108,12 @@ var _ = Describe("BalancingRule payload helpers", func() {
 				return testToken, nil
 			}),
 		}
-		rule := &dbaasv1.DbMicroserviceBalancingRule{}
+		rule := &dbaasv1.MicroserviceBalancingRule{}
 		rule.Namespace = "payments"
-		rule.Spec.Rules = []dbaasv1.DbMicroserviceBalancingRuleItem{
+		rule.Spec.Rules = []dbaasv1.MicroserviceBalancingRuleItem{
 			{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
 		}
-		rule.Status.AppliedRules = []dbaasv1.DbMicroserviceBalancingRuleAppliedRule{
+		rule.Status.AppliedRules = []dbaasv1.MicroserviceBalancingRuleAppliedRule{
 			{Type: "mongodb", Microservices: []string{"billing", "ledger"}},
 		}
 
@@ -164,12 +164,12 @@ var _ = Describe("BalancingRule payload helpers", func() {
 				return testToken, nil
 			}),
 		}
-		rule := &dbaasv1.DbNamespaceBalancingRule{}
+		rule := &dbaasv1.NamespaceBalancingRule{}
 		rule.Namespace = "payments"
-		rule.Spec.Rules = []dbaasv1.DbNamespaceBalancingRuleItem{
+		rule.Spec.Rules = []dbaasv1.NamespaceBalancingRuleItem{
 			{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 		}
-		rule.Status.AppliedRules = []dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+		rule.Status.AppliedRules = []dbaasv1.NamespaceBalancingRuleAppliedRule{
 			{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 			{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
 		}
@@ -181,7 +181,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 		Expect(gotPath).To(Equal("/api/v3/dbaas/payments/physical_databases/balancing/rules/payments-cassandra"))
 		// The deleted rule must be pruned from status so a later reconcile/delete
 		// that iterates status.AppliedRules does not re-process or orphan it.
-		Expect(rule.Status.AppliedRules).To(Equal([]dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+		Expect(rule.Status.AppliedRules).To(Equal([]dbaasv1.NamespaceBalancingRuleAppliedRule{
 			{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 		}))
 	})
@@ -232,11 +232,11 @@ var _ = Describe("BalancingRule payload helpers", func() {
 				return testToken, nil
 			}),
 		}
-		rule := &dbaasv1.DbPermanentBalancingRule{}
-		rule.Spec.Rules = []dbaasv1.DbPermanentBalancingRuleItem{
+		rule := &dbaasv1.PermanentBalancingRule{}
+		rule.Spec.Rules = []dbaasv1.PermanentBalancingRuleItem{
 			{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
 		}
-		rule.Status.AppliedRules = []dbaasv1.DbPermanentBalancingRuleAppliedRule{
+		rule.Status.AppliedRules = []dbaasv1.PermanentBalancingRuleAppliedRule{
 			{DbType: "cassandra", Namespaces: []string{"blue", "green"}},
 		}
 

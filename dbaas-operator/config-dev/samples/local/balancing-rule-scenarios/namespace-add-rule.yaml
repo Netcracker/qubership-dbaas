@@ -1,5 +1,5 @@
 apiVersion: dbaas.netcracker.com/v1
-kind: DbNamespaceBalancingRule
+kind: NamespaceBalancingRule
 metadata:
   name: namespace-balancing-rules
   namespace: dbaas-system

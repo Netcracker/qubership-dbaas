@@ -251,13 +251,13 @@ var _ = Describe("OwnershipResolver", func() {
 		}
 
 		It("returns false when no permanent rule targets the namespace", func() {
-			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+			checker := newChecker(&dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Name:      dbaasv1.PermanentBalancingRuleName,
 					Namespace: myNS,
 				},
-				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
-					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DbType: "postgresql", PhysicalDatabaseID: "pg-a", Namespaces: []string{ns2}},
 					},
 				},
@@ -269,13 +269,13 @@ var _ = Describe("OwnershipResolver", func() {
 		})
 
 		It("returns true when a permanent rule spec targets the namespace", func() {
-			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+			checker := newChecker(&dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Name:      dbaasv1.PermanentBalancingRuleName,
 					Namespace: myNS,
 				},
-				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
-					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DbType: "postgresql", PhysicalDatabaseID: "pg-a", Namespaces: []string{ns1}},
 					},
 				},
@@ -287,13 +287,13 @@ var _ = Describe("OwnershipResolver", func() {
 		})
 
 		It("returns true when applied permanent rule status targets the namespace", func() {
-			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+			checker := newChecker(&dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Name:      dbaasv1.PermanentBalancingRuleName,
 					Namespace: myNS,
 				},
-				Status: dbaasv1.DbPermanentBalancingRuleStatus{
-					AppliedRules: []dbaasv1.DbPermanentBalancingRuleAppliedRule{
+				Status: dbaasv1.PermanentBalancingRuleStatus{
+					AppliedRules: []dbaasv1.PermanentBalancingRuleAppliedRule{
 						{DbType: "postgresql", Namespaces: []string{ns1}},
 					},
 				},
@@ -305,18 +305,18 @@ var _ = Describe("OwnershipResolver", func() {
 		})
 
 		It("ignores permanent rules owned by another operator namespace", func() {
-			checker := newChecker(&dbaasv1.DbPermanentBalancingRule{
+			checker := newChecker(&dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      dbaasv1.DbPermanentBalancingRuleName,
+					Name:      dbaasv1.PermanentBalancingRuleName,
 					Namespace: otherNS,
 				},
-				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
-					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DbType: "postgresql", PhysicalDatabaseID: "pg-a", Namespaces: []string{ns1}},
 					},
 				},
-				Status: dbaasv1.DbPermanentBalancingRuleStatus{
-					AppliedRules: []dbaasv1.DbPermanentBalancingRuleAppliedRule{
+				Status: dbaasv1.PermanentBalancingRuleStatus{
+					AppliedRules: []dbaasv1.PermanentBalancingRuleAppliedRule{
 						{DbType: "postgresql", Namespaces: []string{ns1}},
 					},
 				},

@@ -1,15 +1,14 @@
 apiVersion: dbaas.netcracker.com/v1
-kind: DbNamespaceBalancingRule
+kind: NamespaceBalancingRule
 metadata:
   name: namespace-balancing-rules
-  namespace: dbaas-system
 spec:
   rules:
-    - name: pg-namespace-rule
+    - name: pg-sample
       type: postgresql
       physicalDatabaseId: postgresql-sample
       order: 0
-    - name: mongo-namespace-rule
+    - name: mongo-sample
       type: mongodb
       physicalDatabaseId: mongodb-sample
       order: 1

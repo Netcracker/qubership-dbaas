@@ -199,13 +199,13 @@ func main() {
 	)
 	microserviceRuleChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
-		func() *dbaasv1.DbMicroserviceBalancingRuleList { return &dbaasv1.DbMicroserviceBalancingRuleList{} },
-		func(l *dbaasv1.DbMicroserviceBalancingRuleList) int { return len(l.Items) },
+		func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} },
+		func(l *dbaasv1.MicroserviceBalancingRuleList) int { return len(l.Items) },
 	)
 	namespaceRuleChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
-		func() *dbaasv1.DbNamespaceBalancingRuleList { return &dbaasv1.DbNamespaceBalancingRuleList{} },
-		func(l *dbaasv1.DbNamespaceBalancingRuleList) int { return len(l.Items) },
+		func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} },
+		func(l *dbaasv1.NamespaceBalancingRuleList) int { return len(l.Items) },
 	)
 	permanentRuleChecker := ownership.NewPermanentBalancingRuleChecker(mgr.GetClient(), cloudNamespace)
 	dsChecker := ownership.NewKindChecker(

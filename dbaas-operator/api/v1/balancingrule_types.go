@@ -19,43 +19,43 @@ package v1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	// DbMicroserviceBalancingRuleName is the fixed singleton name for
+	// MicroserviceBalancingRuleName is the fixed singleton name for
 	// microservice balancing rules in each business namespace.
-	DbMicroserviceBalancingRuleName = "microservice-balancing-rules"
+	MicroserviceBalancingRuleName = "microservice-balancing-rules"
 
-	// DbNamespaceBalancingRuleName is the fixed singleton name for namespace
+	// NamespaceBalancingRuleName is the fixed singleton name for namespace
 	// balancing rules in each business namespace.
-	DbNamespaceBalancingRuleName = "namespace-balancing-rules"
+	NamespaceBalancingRuleName = "namespace-balancing-rules"
 
-	// DbPermanentBalancingRuleName is the fixed singleton name for permanent
+	// PermanentBalancingRuleName is the fixed singleton name for permanent
 	// balancing rules in the operator namespace.
-	DbPermanentBalancingRuleName = "permanent-balancing-rules"
+	PermanentBalancingRuleName = "permanent-balancing-rules"
 
-	// DbMicroserviceBalancingRuleFinalizer lets the operator disable the
+	// MicroserviceBalancingRuleFinalizer lets the operator disable the
 	// previously applied microservice rule in dbaas-aggregator before deletion.
-	DbMicroserviceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/dbmicroservicebalancingrule-cleanup"
+	MicroserviceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/microservicebalancingrules-cleanup"
 
-	// DbNamespaceBalancingRuleFinalizer lets the operator delete the previously
+	// NamespaceBalancingRuleFinalizer lets the operator delete the previously
 	// applied namespace rules in dbaas-aggregator before deletion.
-	DbNamespaceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/dbnamespacebalancingrule-cleanup"
+	NamespaceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/namespacebalancingrules-cleanup"
 
-	// DbPermanentBalancingRuleFinalizer lets the operator delete the previously
+	// PermanentBalancingRuleFinalizer lets the operator delete the previously
 	// applied permanent rule in dbaas-aggregator before deletion.
-	DbPermanentBalancingRuleFinalizer = "platform.dbaas.netcracker.com/dbpermanentbalancingrule-cleanup"
+	PermanentBalancingRuleFinalizer = "platform.dbaas.netcracker.com/permanentbalancingrules-cleanup"
 )
 
-// DbMicroserviceBalancingRuleSpec defines an on-microservice physical database
+// MicroserviceBalancingRuleSpec defines an on-microservice physical database
 // balancing rule. It maps to the dbaas-aggregator onMicroservices rule payload.
-type DbMicroserviceBalancingRuleSpec struct {
+type MicroserviceBalancingRuleSpec struct {
 	// rules is the set of microservice balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +listType=atomic
-	Rules []DbMicroserviceBalancingRuleItem `json:"rules"`
+	Rules []MicroserviceBalancingRuleItem `json:"rules"`
 }
 
-// DbMicroserviceBalancingRuleItem defines one on-microservice balancing rule entry.
-type DbMicroserviceBalancingRuleItem struct {
+// MicroserviceBalancingRuleItem defines one on-microservice balancing rule entry.
+type MicroserviceBalancingRuleItem struct {
 	// type is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -79,9 +79,9 @@ type DbMicroserviceBalancingRuleItem struct {
 	Label string `json:"label"`
 }
 
-// DbMicroserviceBalancingRuleAppliedRule tracks one successfully applied
+// MicroserviceBalancingRuleAppliedRule tracks one successfully applied
 // microservice rule entry for cleanup on update/delete.
-type DbMicroserviceBalancingRuleAppliedRule struct {
+type MicroserviceBalancingRuleAppliedRule struct {
 	// type is the database engine type last applied.
 	Type string `json:"type"`
 
@@ -90,8 +90,8 @@ type DbMicroserviceBalancingRuleAppliedRule struct {
 	Microservices []string `json:"microservices"`
 }
 
-// DbMicroserviceBalancingRuleStatus defines the observed state of DbMicroserviceBalancingRule.
-type DbMicroserviceBalancingRuleStatus struct {
+// MicroserviceBalancingRuleStatus defines the observed state of MicroserviceBalancingRule.
+type MicroserviceBalancingRuleStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// appliedRules are the microservice rule entries last successfully applied
@@ -100,58 +100,58 @@ type DbMicroserviceBalancingRuleStatus struct {
 	// still resolve.
 	// +optional
 	// +listType=atomic
-	AppliedRules []DbMicroserviceBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
+	AppliedRules []MicroserviceBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=dbmicroservicebalancingrules,singular=dbmicroservicebalancingrule,shortName=dbmbr
+// +kubebuilder:resource:scope=Namespaced,path=microservicebalancingrules,singular=microservicebalancingrule,shortName=dbmbr
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Rules",type="string",JSONPath=".spec.rules[*].type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// DbMicroserviceBalancingRule is the Schema for the dbmicroservicebalancingrules API.
+// MicroserviceBalancingRule is the Schema for the microservicebalancingrules API.
 // It declares a physical database placement rule for specific microservices in a namespace.
-type DbMicroserviceBalancingRule struct {
+type MicroserviceBalancingRule struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is standard object metadata.
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of DbMicroserviceBalancingRule.
-	Spec DbMicroserviceBalancingRuleSpec `json:"spec"`
+	// spec defines the desired state of MicroserviceBalancingRule.
+	Spec MicroserviceBalancingRuleSpec `json:"spec"`
 
-	// status defines the observed state of DbMicroserviceBalancingRule.
+	// status defines the observed state of MicroserviceBalancingRule.
 	// +optional
-	Status DbMicroserviceBalancingRuleStatus `json:"status,omitempty"`
+	Status MicroserviceBalancingRuleStatus `json:"status,omitempty"`
 }
 
-func (r *DbMicroserviceBalancingRule) SetObservedGeneration(generation int64) {
+func (r *MicroserviceBalancingRule) SetObservedGeneration(generation int64) {
 	r.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true
 
-// DbMicroserviceBalancingRuleList contains a list of DbMicroserviceBalancingRule.
-type DbMicroserviceBalancingRuleList struct {
+// MicroserviceBalancingRuleList contains a list of MicroserviceBalancingRule.
+type MicroserviceBalancingRuleList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []DbMicroserviceBalancingRule `json:"items"`
+	Items           []MicroserviceBalancingRule `json:"items"`
 }
 
-// DbNamespaceBalancingRuleSpec defines an on-namespace physical database
+// NamespaceBalancingRuleSpec defines an on-namespace physical database
 // balancing rule. It maps to the dbaas-aggregator perNamespace rule payload.
-type DbNamespaceBalancingRuleSpec struct {
+type NamespaceBalancingRuleSpec struct {
 	// rules is the set of namespace balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +listType=atomic
-	Rules []DbNamespaceBalancingRuleItem `json:"rules"`
+	Rules []NamespaceBalancingRuleItem `json:"rules"`
 }
 
-// DbNamespaceBalancingRuleItem defines one on-namespace balancing rule entry.
-type DbNamespaceBalancingRuleItem struct {
+// NamespaceBalancingRuleItem defines one on-namespace balancing rule entry.
+type NamespaceBalancingRuleItem struct {
 	// name is the aggregator rule name used in the namespace balancing rule endpoint.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -177,8 +177,8 @@ type DbNamespaceBalancingRuleItem struct {
 	Order int64 `json:"order"`
 }
 
-// DbNamespaceBalancingRuleAppliedRule tracks one namespace rule entry last applied.
-type DbNamespaceBalancingRuleAppliedRule struct {
+// NamespaceBalancingRuleAppliedRule tracks one namespace rule entry last applied.
+type NamespaceBalancingRuleAppliedRule struct {
 	// name is the aggregator rule name last applied.
 	Name string `json:"name"`
 
@@ -192,8 +192,8 @@ type DbNamespaceBalancingRuleAppliedRule struct {
 	Order int64 `json:"order"`
 }
 
-// DbNamespaceBalancingRuleStatus defines the observed state of DbNamespaceBalancingRule.
-type DbNamespaceBalancingRuleStatus struct {
+// NamespaceBalancingRuleStatus defines the observed state of NamespaceBalancingRule.
+type NamespaceBalancingRuleStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// appliedRules are the namespace rule entries last successfully applied
@@ -201,58 +201,58 @@ type DbNamespaceBalancingRuleStatus struct {
 	// changes. They do not guarantee that referenced physical databases exist.
 	// +optional
 	// +listType=atomic
-	AppliedRules []DbNamespaceBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
+	AppliedRules []NamespaceBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=dbnamespacebalancingrules,singular=dbnamespacebalancingrule,shortName=dbnbr
+// +kubebuilder:resource:scope=Namespaced,path=namespacebalancingrules,singular=namespacebalancingrule,shortName=dbnbr
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Rules",type="string",JSONPath=".spec.rules[*].type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// DbNamespaceBalancingRule is the Schema for the dbnamespacebalancingrules API.
+// NamespaceBalancingRule is the Schema for the namespacebalancingrules API.
 // It declares a namespace-level physical database placement rule.
-type DbNamespaceBalancingRule struct {
+type NamespaceBalancingRule struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is standard object metadata.
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of DbNamespaceBalancingRule.
-	Spec DbNamespaceBalancingRuleSpec `json:"spec"`
+	// spec defines the desired state of NamespaceBalancingRule.
+	Spec NamespaceBalancingRuleSpec `json:"spec"`
 
-	// status defines the observed state of DbNamespaceBalancingRule.
+	// status defines the observed state of NamespaceBalancingRule.
 	// +optional
-	Status DbNamespaceBalancingRuleStatus `json:"status,omitempty"`
+	Status NamespaceBalancingRuleStatus `json:"status,omitempty"`
 }
 
-func (r *DbNamespaceBalancingRule) SetObservedGeneration(generation int64) {
+func (r *NamespaceBalancingRule) SetObservedGeneration(generation int64) {
 	r.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true
 
-// DbNamespaceBalancingRuleList contains a list of DbNamespaceBalancingRule.
-type DbNamespaceBalancingRuleList struct {
+// NamespaceBalancingRuleList contains a list of NamespaceBalancingRule.
+type NamespaceBalancingRuleList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []DbNamespaceBalancingRule `json:"items"`
+	Items           []NamespaceBalancingRule `json:"items"`
 }
 
-// DbPermanentBalancingRuleSpec defines a permanent namespace physical database
+// PermanentBalancingRuleSpec defines a permanent namespace physical database
 // balancing rule. It maps to the dbaas-aggregator permanent rule payload.
-type DbPermanentBalancingRuleSpec struct {
+type PermanentBalancingRuleSpec struct {
 	// rules is the set of permanent balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +listType=atomic
-	Rules []DbPermanentBalancingRuleItem `json:"rules"`
+	Rules []PermanentBalancingRuleItem `json:"rules"`
 }
 
-// DbPermanentBalancingRuleItem defines one permanent balancing rule entry.
-type DbPermanentBalancingRuleItem struct {
+// PermanentBalancingRuleItem defines one permanent balancing rule entry.
+type PermanentBalancingRuleItem struct {
 	// dbType is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -275,9 +275,9 @@ type DbPermanentBalancingRuleItem struct {
 	Namespaces []string `json:"namespaces"`
 }
 
-// DbPermanentBalancingRuleAppliedRule tracks one successfully applied permanent
+// PermanentBalancingRuleAppliedRule tracks one successfully applied permanent
 // rule entry for cleanup on update/delete.
-type DbPermanentBalancingRuleAppliedRule struct {
+type PermanentBalancingRuleAppliedRule struct {
 	// dbType is the database engine type last applied.
 	DbType string `json:"dbType"`
 
@@ -286,8 +286,8 @@ type DbPermanentBalancingRuleAppliedRule struct {
 	Namespaces []string `json:"namespaces"`
 }
 
-// DbPermanentBalancingRuleStatus defines the observed state of DbPermanentBalancingRule.
-type DbPermanentBalancingRuleStatus struct {
+// PermanentBalancingRuleStatus defines the observed state of PermanentBalancingRule.
+type PermanentBalancingRuleStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// appliedRules are the permanent rule entries last successfully applied
@@ -295,53 +295,53 @@ type DbPermanentBalancingRuleStatus struct {
 	// changes. They do not guarantee that referenced physical databases exist.
 	// +optional
 	// +listType=atomic
-	AppliedRules []DbPermanentBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
+	AppliedRules []PermanentBalancingRuleAppliedRule `json:"appliedRules,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=dbpermanentbalancingrules,singular=dbpermanentbalancingrule,shortName=dbpbr
+// +kubebuilder:resource:scope=Namespaced,path=permanentbalancingrules,singular=permanentbalancingrule,shortName=dbpbr
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Rules",type="string",JSONPath=".spec.rules[*].dbType"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// DbPermanentBalancingRule is the Schema for the dbpermanentbalancingrules API.
+// PermanentBalancingRule is the Schema for the permanentbalancingrules API.
 // It declares a permanent namespace-level physical database placement rule.
-type DbPermanentBalancingRule struct {
+type PermanentBalancingRule struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is standard object metadata.
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of DbPermanentBalancingRule.
-	Spec DbPermanentBalancingRuleSpec `json:"spec"`
+	// spec defines the desired state of PermanentBalancingRule.
+	Spec PermanentBalancingRuleSpec `json:"spec"`
 
-	// status defines the observed state of DbPermanentBalancingRule.
+	// status defines the observed state of PermanentBalancingRule.
 	// +optional
-	Status DbPermanentBalancingRuleStatus `json:"status,omitempty"`
+	Status PermanentBalancingRuleStatus `json:"status,omitempty"`
 }
 
-func (r *DbPermanentBalancingRule) SetObservedGeneration(generation int64) {
+func (r *PermanentBalancingRule) SetObservedGeneration(generation int64) {
 	r.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true
 
-// DbPermanentBalancingRuleList contains a list of DbPermanentBalancingRule.
-type DbPermanentBalancingRuleList struct {
+// PermanentBalancingRuleList contains a list of PermanentBalancingRule.
+type PermanentBalancingRuleList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []DbPermanentBalancingRule `json:"items"`
+	Items           []PermanentBalancingRule `json:"items"`
 }
 
 func init() {
 	SchemeBuilder.Register(
-		&DbMicroserviceBalancingRule{},
-		&DbMicroserviceBalancingRuleList{},
-		&DbNamespaceBalancingRule{},
-		&DbNamespaceBalancingRuleList{},
-		&DbPermanentBalancingRule{},
-		&DbPermanentBalancingRuleList{},
+		&MicroserviceBalancingRule{},
+		&MicroserviceBalancingRuleList{},
+		&NamespaceBalancingRule{},
+		&NamespaceBalancingRuleList{},
+		&PermanentBalancingRule{},
+		&PermanentBalancingRuleList{},
 	)
 }

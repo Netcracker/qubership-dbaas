@@ -1,15 +1,15 @@
 apiVersion: dbaas.netcracker.com/v1
-kind: DbPermanentBalancingRule
+kind: PermanentBalancingRule
 metadata:
   name: permanent-balancing-rules
-  namespace: dbaas-system
 spec:
   rules:
     - dbType: postgresql
       physicalDatabaseId: postgresql-prod-a
       namespaces:
-        - dbaas-system
+        - payments
+        - orders
     - dbType: mongodb
       physicalDatabaseId: mongodb-prod-a
       namespaces:
-        - dbaas-system
+        - notifications
