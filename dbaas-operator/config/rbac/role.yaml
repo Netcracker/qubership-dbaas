@@ -37,6 +37,9 @@ rules:
   - databasesecrets/status
   - externaldatabases/status
   - internaldatabases/status
+  - microservicebalancingrules/status
+  - namespacebalancingrules/status
+  - permanentbalancingrules/status
   verbs:
   - get
   - patch
@@ -45,7 +48,10 @@ rules:
   - dbaas.netcracker.com
   resources:
   - databasesecrets
+  - microservicebalancingrules
+  - namespacebalancingrules
   - namespacebindings
+  - permanentbalancingrules
   verbs:
   - get
   - list
@@ -54,6 +60,9 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
+  - microservicebalancingrules/finalizers
+  - namespacebalancingrules/finalizers
   - namespacebindings/finalizers
+  - permanentbalancingrules/finalizers
   verbs:
   - update

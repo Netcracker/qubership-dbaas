@@ -23,6 +23,26 @@ rules:
       - databaseaccesspolicies/status
       - externaldatabases/status
     verbs: [get, update, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - microservicebalancingrules
+      - namespacebalancingrules
+      - permanentbalancingrules
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - microservicebalancingrules/status
+      - namespacebalancingrules/status
+      - permanentbalancingrules/status
+    verbs: [get, update, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - microservicebalancingrules/finalizers
+      - namespacebalancingrules/finalizers
+      - permanentbalancingrules/finalizers
+    verbs: [update]
+  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
+  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
   # databasesecrets / namespacebindings: patch on the main resource is needed —
   # databasesecrets for the rotation-trigger annotation, namespacebindings for
   # the protection finalizer (client.MergeFrom).

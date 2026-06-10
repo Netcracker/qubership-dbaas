@@ -197,12 +197,31 @@ func main() {
 		func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} },
 		func(l *dbaasv1.InternalDatabaseList) int { return len(l.Items) },
 	)
+	microserviceRuleChecker := ownership.NewKindChecker(
+		mgr.GetClient(),
+		func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} },
+		func(l *dbaasv1.MicroserviceBalancingRuleList) int { return len(l.Items) },
+	)
+	namespaceRuleChecker := ownership.NewKindChecker(
+		mgr.GetClient(),
+		func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} },
+		func(l *dbaasv1.NamespaceBalancingRuleList) int { return len(l.Items) },
+	)
+	permanentRuleChecker := ownership.NewPermanentBalancingRuleChecker(mgr.GetClient(), cloudNamespace)
 	dsChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
 		func() *dbaasv1.DatabaseSecretList { return &dbaasv1.DatabaseSecretList{} },
 		func(l *dbaasv1.DatabaseSecretList) int { return len(l.Items) },
 	)
-	blockingChecker := ownership.NewCompositeChecker(edbChecker, dpChecker, ddChecker, dsChecker)
+	blockingChecker := ownership.NewCompositeChecker(
+		edbChecker,
+		dpChecker,
+		ddChecker,
+		dsChecker,
+		microserviceRuleChecker,
+		namespaceRuleChecker,
+		permanentRuleChecker,
+	)
 	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
@@ -247,6 +266,19 @@ func main() {
 		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
 		os.Exit(1)
 	}
+
+	if err := (&controller.BalancingRuleReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Aggregator:  aggregator,
+		Recorder:    recorderFor(mgr, "balancingrule", eventsEnabled),
+		Ownership:   ownershipResolver,
+		MyNamespace: cloudNamespace,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
+		os.Exit(1)
+	}
+
 	if err := (&controller.DatabaseSecretReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),

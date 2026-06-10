@@ -33,6 +33,17 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databasesecrets/status ]
     verbs: [ get, update, patch ]
+  # balancing rule CRs: operator reads and watches list-based singleton rules and
+  # requires patch/finalizer permissions for cleanup on deletion.
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ microservicebalancingrules, namespacebalancingrules, permanentbalancingrules ]
+    verbs: [ get, list, watch, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ microservicebalancingrules/status, namespacebalancingrules/status, permanentbalancingrules/status ]
+    verbs: [ get, update, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ microservicebalancingrules/finalizers, namespacebalancingrules/finalizers, permanentbalancingrules/finalizers ]
+    verbs: [ update ]
   # externaldatabases: operator only reads (Get/List) and watches; status is updated via the /status subresource.
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ externaldatabases ]

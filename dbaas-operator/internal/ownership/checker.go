@@ -19,8 +19,11 @@ package ownership
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 )
 
 // BlockingResourceChecker reports whether a namespace contains resources that
@@ -61,6 +64,52 @@ func (c *KindChecker[L]) HasBlockingResources(ctx context.Context, namespace str
 	found := c.items(list) > 0
 	log.InfoC(ctx, "Checked blocking resources kind=%T namespace=%s found=%v", list, namespace, found)
 	return found, nil
+}
+
+// PermanentBalancingRuleChecker checks permanent balancing rules that live in
+// the operator namespace but target business namespaces through spec/status.
+type PermanentBalancingRuleChecker struct {
+	cl                client.Client
+	operatorNamespace string
+}
+
+// NewPermanentBalancingRuleChecker creates a checker for permanent rules owned
+// by this operator instance.
+func NewPermanentBalancingRuleChecker(cl client.Client, operatorNamespace string) *PermanentBalancingRuleChecker {
+	return &PermanentBalancingRuleChecker{cl: cl, operatorNamespace: operatorNamespace}
+}
+
+// HasBlockingResources returns true when a permanent balancing rule in the
+// operator namespace still references namespace in spec or status.appliedRules.
+func (c *PermanentBalancingRuleChecker) HasBlockingResources(ctx context.Context, namespace string) (bool, error) {
+	list := &dbaasv1.PermanentBalancingRuleList{}
+	log.InfoC(ctx, "Checking permanent balancing rules operatorNamespace=%s namespace=%s", c.operatorNamespace, namespace)
+	if err := c.cl.List(ctx, list, client.InNamespace(c.operatorNamespace)); err != nil {
+		return false, fmt.Errorf("list PermanentBalancingRule in namespace %q: %w", c.operatorNamespace, err)
+	}
+	for _, rule := range list.Items {
+		if permanentBalancingRuleTargetsNamespace(&rule, namespace) {
+			log.InfoC(ctx, "Found permanent balancing rule %s/%s targeting namespace=%s",
+				rule.Namespace, rule.Name, namespace)
+			return true, nil
+		}
+	}
+	log.InfoC(ctx, "No permanent balancing rule targets namespace=%s", namespace)
+	return false, nil
+}
+
+func permanentBalancingRuleTargetsNamespace(rule *dbaasv1.PermanentBalancingRule, namespace string) bool {
+	for _, item := range rule.Spec.Rules {
+		if slices.Contains(item.Namespaces, namespace) {
+			return true
+		}
+	}
+	for _, item := range rule.Status.AppliedRules {
+		if slices.Contains(item.Namespaces, namespace) {
+			return true
+		}
+	}
+	return false
 }
 
 // CompositeChecker aggregates multiple BlockingResourceCheckers with OR
