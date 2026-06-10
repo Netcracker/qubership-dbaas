@@ -24,13 +24,13 @@ public class OperatorEventRepository implements PanacheRepositoryBase<OperatorEv
     @SuppressWarnings("unchecked")
     public List<OperatorEvent> claimPendingBatch(int limit, Duration invisibleTime) {
         return getEntityManager().createNativeQuery(
-                        "UPDATE operator_event_outbox SET next_attempt_at = NOW() + :invisibleTime " +
+                        "UPDATE operator_event_outbox SET next_attempt_at = NOW() + make_interval(secs => :invisibleTimeSecs) " +
                                 "WHERE id IN (" +
                                 "  SELECT id FROM operator_event_outbox " +
                                 "  WHERE status = 'PENDING' AND next_attempt_at <= NOW() " +
                                 "  ORDER BY next_attempt_at LIMIT :limit FOR UPDATE SKIP LOCKED" +
                                 ") RETURNING *", OperatorEvent.class)
-                .setParameter("invisibleTime", invisibleTime)
+                .setParameter("invisibleTimeSecs", (double) invisibleTime.toSeconds())
                 .setParameter("limit", limit)
                 .getResultList();
     }

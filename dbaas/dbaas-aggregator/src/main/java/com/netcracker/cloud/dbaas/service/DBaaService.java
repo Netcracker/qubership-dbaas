@@ -416,7 +416,11 @@ public class DBaaService {
         Map<Pair<String, String>, DbResource> previousMap = previous != null ? previous.stream().collect(collector) : Collections.emptyMap();
         Map<Pair<String, String>, DbResource> currentMap = current != null ? current.stream().collect(collector) : Collections.emptyMap();
         return Stream.concat(previousMap.keySet().stream(), currentMap.keySet().stream()).distinct()
-                .map(kindAndName -> currentMap.getOrDefault(kindAndName, previousMap.get(kindAndName))).collect(Collectors.toList());
+                .map(kindAndName -> {
+                    DbResource prev = previousMap.get(kindAndName);
+                    DbResource curr = currentMap.get(kindAndName);
+                    return prev != null ? prev : curr;
+                }).collect(Collectors.toList());
     }
 
     protected Map<String, Object> getMergedConnectionProperties(Map<String, Object> previous, Map<String, Object> current) {
