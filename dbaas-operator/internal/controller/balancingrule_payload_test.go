@@ -179,6 +179,11 @@ var _ = Describe("BalancingRule payload helpers", func() {
 		Expect(calls).To(Equal(1))
 		Expect(gotMethod).To(Equal(http.MethodDelete))
 		Expect(gotPath).To(Equal("/api/v3/dbaas/payments/physical_databases/balancing/rules/payments-cassandra"))
+		// The deleted rule must be pruned from status so a later reconcile/delete
+		// that iterates status.AppliedRules does not re-process or orphan it.
+		Expect(rule.Status.AppliedRules).To(Equal([]dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+			{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+		}))
 	})
 
 	It("sends delete requests for permanent rule cleanup", func() {

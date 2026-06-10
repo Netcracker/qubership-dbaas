@@ -227,6 +227,47 @@ var _ = Describe("BalancingRule Controller", func() {
 			}))
 		})
 
+		It("keeps previously-applied rules recorded when an updated spec fails to apply a new earlier rule", func() {
+			// D1 follow-up: status already records two rules that are live in the
+			// aggregator. The updated spec prepends a new rule whose apply fails, so
+			// the loop never re-applies the existing two. They must stay recorded —
+			// emptying status here would orphan rules still live aggregator-side.
+			rule := &dbaasv1.DbNamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.DbNamespaceBalancingRuleName,
+					Namespace:  businessNS,
+					Finalizers: []string{dbaasv1.DbNamespaceBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+						{Name: "payments-redis", Type: "redis", PhysicalDatabaseID: "redis-payments", Order: 5},
+						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+						{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+			updateNamespaceStatus(rule, []dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+				{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
+			})
+			fixture.statuses = []int{http.StatusConflict}
+
+			stored, _, err := reconcileNamespaceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			// No cleanup deletes (every recorded rule is still desired); only the
+			// first apply (payments-redis) is attempted, and it fails.
+			Expect(fixture.calls).To(HaveLen(1))
+			Expect(fixture.calls[0].method).To(Equal(http.MethodPut))
+			Expect(fixture.calls[0].path).To(Equal("/api/v3/dbaas/default/physical_databases/balancing/rules/payments-redis"))
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(stored.Status.AppliedRules).To(Equal([]dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+				{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
+			}))
+		})
+
 		It("deletes removed rules before applying the new desired list", func() {
 			rule := &dbaasv1.DbNamespaceBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{

@@ -221,32 +221,63 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
 	}
 
+	// Delete rules no longer present in spec. cleanupSupersededNamespaceRules
+	// prunes each successfully-deleted entry from status.AppliedRules, so a
+	// mid-list delete failure leaves the still-live rules recorded — preventing
+	// orphans on a later reconcile/delete that iterates status.AppliedRules.
 	if err := r.cleanupSupersededNamespaceRules(ctx, rule); err != nil {
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
 
-	appliedRules := make([]dbaasv1.DbNamespaceBalancingRuleAppliedRule, 0, len(rule.Spec.Rules))
+	// Seed the applied set from the (now-pruned) status, preserving insertion
+	// order. A failure partway through apply must not drop rules that are still
+	// live aggregator-side: an entry is upserted only after a successful apply,
+	// so status.AppliedRules always reflects what the aggregator currently holds.
+	applied := make(map[string]dbaasv1.DbNamespaceBalancingRuleAppliedRule, len(rule.Status.AppliedRules))
+	appliedOrder := make([]string, 0, len(rule.Status.AppliedRules))
+	for _, a := range rule.Status.AppliedRules {
+		if a.Name == "" {
+			continue
+		}
+		if _, ok := applied[a.Name]; !ok {
+			appliedOrder = append(appliedOrder, a.Name)
+		}
+		applied[a.Name] = a
+	}
+	syncAppliedStatus := func() {
+		out := make([]dbaasv1.DbNamespaceBalancingRuleAppliedRule, 0, len(appliedOrder))
+		for _, name := range appliedOrder {
+			if a, ok := applied[name]; ok {
+				out = append(out, a)
+			}
+		}
+		rule.Status.AppliedRules = out
+	}
 
+	// Apply desired rules; upsert into the applied set only on a successful apply.
 	for _, item := range rule.Spec.Rules {
 		aggStart := time.Now()
 		err = r.Aggregator.ApplyNamespaceBalancingRule(ctx, rule.Namespace, item.Name, namespaceRequestFromSpecItem(item))
 		recordAggregatorCall(controllerBR, operationApplyNamespaceRule, aggStart, err)
 		if err != nil {
-			rule.Status.AppliedRules = appliedRules
+			syncAppliedStatus()
 			log.ErrorC(ctx, "failed to apply DbNamespaceBalancingRule to dbaas-aggregator: %v", err)
 			return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 		}
-		appliedRules = append(appliedRules, dbaasv1.DbNamespaceBalancingRuleAppliedRule{
+		if _, ok := applied[item.Name]; !ok {
+			appliedOrder = append(appliedOrder, item.Name)
+		}
+		applied[item.Name] = dbaasv1.DbNamespaceBalancingRuleAppliedRule{
 			Name:               item.Name,
 			Type:               item.Type,
 			PhysicalDatabaseID: item.PhysicalDatabaseID,
 			Order:              item.Order,
-		})
-		rule.Status.AppliedRules = appliedRules
+		}
+		syncAppliedStatus()
 	}
 
 	markSucceeded(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, EventReasonBalancingRuleApplied)
-	rule.Status.AppliedRules = appliedRules
+	syncAppliedStatus()
 	log.InfoC(ctx, "DbNamespaceBalancingRule applied to dbaas-aggregator namespace=%s name=%s rules=%d requestId=%s",
 		rule.Namespace, rule.Name, len(rule.Spec.Rules), requestID)
 	r.Recorder.Eventf(rule, corev1.EventTypeNormal, EventReasonBalancingRuleApplied,
@@ -477,19 +508,51 @@ func (r *BalancingRuleReconciler) cleanupSupersededMicroserviceRules(
 	return nil
 }
 
+// cleanupSupersededNamespaceRules deletes rules recorded in status but no longer
+// present in spec. Each successfully-deleted entry is pruned from
+// status.AppliedRules immediately; on the first failed delete it returns,
+// leaving the not-yet-deleted (still live aggregator-side) rules recorded so a
+// subsequent reconcile retries them rather than orphaning them.
 func (r *BalancingRuleReconciler) cleanupSupersededNamespaceRules(
 	ctx context.Context,
 	rule *dbaasv1.DbNamespaceBalancingRule,
 ) error {
-	for _, removed := range removedNamespaceAppliedRules(rule.Status.AppliedRules, rule.Spec.Rules) {
-		if removed.Name == "" {
+	removed := removedNamespaceAppliedRules(rule.Status.AppliedRules, rule.Spec.Rules)
+	if len(removed) == 0 {
+		return nil
+	}
+	deleted := make(map[string]struct{}, len(removed))
+	for _, item := range removed {
+		if item.Name == "" {
 			continue
 		}
-		if err := r.deleteNamespaceRule(ctx, rule.Namespace, removed.Name); err != nil {
+		if err := r.deleteNamespaceRule(ctx, rule.Namespace, item.Name); err != nil {
+			rule.Status.AppliedRules = retainNamespaceAppliedExcept(rule.Status.AppliedRules, deleted)
 			return err
 		}
+		deleted[item.Name] = struct{}{}
 	}
+	rule.Status.AppliedRules = retainNamespaceAppliedExcept(rule.Status.AppliedRules, deleted)
 	return nil
+}
+
+// retainNamespaceAppliedExcept returns the applied rules with every entry whose
+// name is in deleted removed, preserving order. The input slice is not mutated.
+func retainNamespaceAppliedExcept(
+	applied []dbaasv1.DbNamespaceBalancingRuleAppliedRule,
+	deleted map[string]struct{},
+) []dbaasv1.DbNamespaceBalancingRuleAppliedRule {
+	if len(deleted) == 0 {
+		return applied
+	}
+	out := make([]dbaasv1.DbNamespaceBalancingRuleAppliedRule, 0, len(applied))
+	for _, a := range applied {
+		if _, gone := deleted[a.Name]; gone {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 func (r *BalancingRuleReconciler) cleanupSupersededPermanentRules(
