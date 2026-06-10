@@ -4,23 +4,23 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: dbpermanentbalancingrules.dbaas.netcracker.com
+  name: microservicebalancingrules.dbaas.netcracker.com
 spec:
   group: dbaas.netcracker.com
   names:
-    kind: DbPermanentBalancingRule
-    listKind: DbPermanentBalancingRuleList
-    plural: dbpermanentbalancingrules
+    kind: MicroserviceBalancingRule
+    listKind: MicroserviceBalancingRuleList
+    plural: microservicebalancingrules
     shortNames:
-    - dbpbr
-    singular: dbpermanentbalancingrule
+    - dbmbr
+    singular: microservicebalancingrule
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .spec.rules[*].dbType
+    - jsonPath: .spec.rules[*].type
       name: Rules
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -30,8 +30,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          DbPermanentBalancingRule is the Schema for the dbpermanentbalancingrules API.
-          It declares a permanent namespace-level physical database placement rule.
+          MicroserviceBalancingRule is the Schema for the microservicebalancingrules API.
+          It declares a physical database placement rule for specific microservices in a namespace.
         properties:
           apiVersion:
             description: |-
@@ -51,42 +51,43 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DbPermanentBalancingRule.
+            description: spec defines the desired state of MicroserviceBalancingRule.
             properties:
               rules:
-                description: rules is the set of permanent balancing rules managed
+                description: rules is the set of microservice balancing rules managed
                   by this singleton CR.
                 items:
-                  description: DbPermanentBalancingRuleItem defines one permanent
+                  description: MicroserviceBalancingRuleItem defines one on-microservice
                     balancing rule entry.
                   properties:
-                    dbType:
-                      description: dbType is the database engine type this rule applies
-                        to, e.g. "postgresql" or "mongodb".
+                    label:
+                      description: |-
+                        label is the physical database label expression used by dbaas-aggregator
+                        to resolve exactly one physical database, e.g. "zone=fast". The operator
+                        validates this value for shape only; a Succeeded status means
+                        dbaas-aggregator accepted the rule, not that future provisioning is
+                        guaranteed to find a matching physical database.
                       minLength: 1
+                      pattern: ^[^=]+=[^=]+$
                       type: string
-                    namespaces:
-                      description: namespaces is the list of namespaces where the
-                        permanent rule applies.
+                    microservices:
+                      description: microservices is the list of microservice names
+                        to which the rule applies.
                       items:
                         minLength: 1
                         type: string
                       minItems: 1
                       type: array
                       x-kubernetes-list-type: set
-                    physicalDatabaseId:
-                      description: |-
-                        physicalDatabaseId is the physical database identifier where new logical
-                        databases of this type should be created. The operator validates this
-                        value for shape only; a Succeeded status means dbaas-aggregator stored
-                        the rule, not that this identifier was resolved to a registered physical
-                        database.
+                    type:
+                      description: type is the database engine type this rule applies
+                        to, e.g. "postgresql" or "mongodb".
                       minLength: 1
                       type: string
                   required:
-                  - dbType
-                  - namespaces
-                  - physicalDatabaseId
+                  - label
+                  - microservices
+                  - type
                   type: object
                 minItems: 1
                 type: array
@@ -95,31 +96,32 @@ spec:
             - rules
             type: object
           status:
-            description: status defines the observed state of DbPermanentBalancingRule.
+            description: status defines the observed state of MicroserviceBalancingRule.
             properties:
               appliedRules:
                 description: |-
-                  appliedRules are the permanent rule entries last successfully applied
-                  to dbaas-aggregator. They are used to delete removed entries when spec
-                  changes. They do not guarantee that referenced physical databases exist.
+                  appliedRules are the microservice rule entries last successfully applied
+                  to dbaas-aggregator. They are used to clean up removed entries when spec
+                  changes. They do not guarantee that referenced physical database labels
+                  still resolve.
                 items:
                   description: |-
-                    DbPermanentBalancingRuleAppliedRule tracks one successfully applied permanent
-                    rule entry for cleanup on update/delete.
+                    MicroserviceBalancingRuleAppliedRule tracks one successfully applied
+                    microservice rule entry for cleanup on update/delete.
                   properties:
-                    dbType:
-                      description: dbType is the database engine type last applied.
-                      type: string
-                    namespaces:
-                      description: namespaces is the namespace set last applied for
-                        dbType.
+                    microservices:
+                      description: microservices is the microservice set last applied
+                        for type.
                       items:
                         type: string
                       type: array
                       x-kubernetes-list-type: set
+                    type:
+                      description: type is the database engine type last applied.
+                      type: string
                   required:
-                  - dbType
-                  - namespaces
+                  - microservices
+                  - type
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic

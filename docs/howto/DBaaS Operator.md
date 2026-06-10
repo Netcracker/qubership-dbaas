@@ -59,9 +59,9 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 | `ExternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Registers a pre-existing database with dbaas-aggregator |
 | `DatabaseAccessPolicy` | `dbaas.netcracker.com/v1` | Namespaced | Declares database role assignments for microservices in a namespace |
 | `InternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Declares a logical database that dbaas-aggregator should provision and manage |
-| `DbMicroserviceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-microservice physical database placement rules in a business namespace |
-| `DbNamespaceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-namespace physical database placement rules in a business namespace |
-| `DbPermanentBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares permanent placement rules from the operator namespace, targeting owned business namespaces |
+| `MicroserviceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-microservice physical database placement rules in a business namespace |
+| `NamespaceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-namespace physical database placement rules in a business namespace |
+| `PermanentBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares permanent placement rules from the operator namespace, targeting owned business namespaces |
 
 ---
 
@@ -119,10 +119,10 @@ The operator calls the following dbaas-aggregator endpoints:
 | `PUT` | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable` | `ExternalDatabase` reconciler | Register or update an externally managed database |
 | `POST` | `/api/declarations/v1/apply` | `DatabaseAccessPolicy` and `InternalDatabase` reconcilers | Apply a declarative database role policy or database declaration |
 | `GET` | `/api/declarations/v1/operation/{trackingId}/status` | `InternalDatabase` reconciler | Poll the status of an asynchronous provisioning operation |
-| `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices` | `DbMicroserviceBalancingRule` reconciler | Apply the microservice balancing rule set for a business namespace |
-| `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` | `DbNamespaceBalancingRule` reconciler | Create or update one named namespace balancing rule |
-| `PUT` | `/api/v3/dbaas/balancing/rules/permanent` | `DbPermanentBalancingRule` reconciler | Apply permanent balancing rules for target namespaces |
-| `DELETE` | `/api/v3/dbaas/balancing/rules/permanent` | `DbPermanentBalancingRule` reconciler | Remove previously applied permanent balancing rules during update or deletion |
+| `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices` | `MicroserviceBalancingRule` reconciler | Apply the microservice balancing rule set for a business namespace |
+| `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` | `NamespaceBalancingRule` reconciler | Create or update one named namespace balancing rule |
+| `PUT` | `/api/v3/dbaas/balancing/rules/permanent` | `PermanentBalancingRule` reconciler | Apply permanent balancing rules for target namespaces |
+| `DELETE` | `/api/v3/dbaas/balancing/rules/permanent` | `PermanentBalancingRule` reconciler | Remove previously applied permanent balancing rules during update or deletion |
 
 ### ExternalDatabase Registration Endpoint
 
@@ -302,35 +302,35 @@ rules:
   # Microservice and permanent rules use finalizers for aggregator-side cleanup.
   # Namespace rules do not use a finalizer until the aggregator exposes a delete API.
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbmicroservicebalancingrules"]
+    resources: ["microservicebalancingrules"]
     verbs: ["get", "list", "watch", "patch"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbmicroservicebalancingrules/finalizers"]
+    resources: ["microservicebalancingrules/finalizers"]
     verbs: ["update"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbmicroservicebalancingrules/status"]
+    resources: ["microservicebalancingrules/status"]
     verbs: ["get", "update", "patch"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbnamespacebalancingrules"]
+    resources: ["namespacebalancingrules"]
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbnamespacebalancingrules/status"]
+    resources: ["namespacebalancingrules/status"]
     verbs: ["get", "update", "patch"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbpermanentbalancingrules"]
+    resources: ["permanentbalancingrules"]
     verbs: ["get", "list", "watch", "patch"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbpermanentbalancingrules/finalizers"]
+    resources: ["permanentbalancingrules/finalizers"]
     verbs: ["update"]
 
   - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["dbpermanentbalancingrules/status"]
+    resources: ["permanentbalancingrules/status"]
     verbs: ["get", "update", "patch"]
 
   # Read Secrets to resolve credentials referenced by ExternalDatabase CRs.
@@ -428,14 +428,14 @@ subjects:
 | `dbaas.netcracker.com` | `databasesecrets/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, `status.lastRotatedAt`, and `status.firstNotFoundAt` |
 | `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
 | `dbaas.netcracker.com` | `namespacebindings/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `dbaas.netcracker.com` | `dbmicroservicebalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton microservice balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
-| `dbaas.netcracker.com` | `dbmicroservicebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `dbaas.netcracker.com` | `dbmicroservicebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
-| `dbaas.netcracker.com` | `dbnamespacebalancingrules` | `get`, `list`, `watch` | Watch and read singleton namespace balancing rule CRs |
-| `dbaas.netcracker.com` | `dbnamespacebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
-| `dbaas.netcracker.com` | `dbpermanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton permanent balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
-| `dbaas.netcracker.com` | `dbpermanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `dbaas.netcracker.com` | `dbpermanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
+| `dbaas.netcracker.com` | `microservicebalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton microservice balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
+| `dbaas.netcracker.com` | `microservicebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
+| `dbaas.netcracker.com` | `microservicebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
+| `dbaas.netcracker.com` | `namespacebalancingrules` | `get`, `list`, `watch` | Watch and read singleton namespace balancing rule CRs |
+| `dbaas.netcracker.com` | `namespacebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
+| `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton permanent balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
+| `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
+| `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 | `""` (core) | `secrets` | `get`, `list`, `watch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). Secret bodies are not cached. |
 | `""` (core) | `secrets` | `get`, `list`, `watch`, `create`, `update`, `patch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). `create`/`update`/`patch`: materialize the Secret managed by a `DatabaseSecret` CR. Secret bodies are not cached. |
 | _non-resource URLs_ | `/.well-known/openid-configuration`, `/openid/v1/jwks` | `get` | OIDC discovery for the rotation webhook's token verifier — fetch the cluster's OIDC config and JWKS to validate inbound aggregator tokens. Needed explicitly on hardened clusters that do not grant `system:service-account-issuer-discovery` to all service accounts |
@@ -1388,19 +1388,19 @@ The operator exposes three balancing rule CRDs. Each CR stores a **list** of rul
 
 | Kind | Fixed `metadata.name` | Where the CR lives | What it controls |
 |------|------------------------|--------------------|------------------|
-| `DbMicroserviceBalancingRule` | `microservice-balancing-rules` | Business namespace | Per-microservice placement rules for that namespace |
-| `DbNamespaceBalancingRule` | `namespace-balancing-rules` | Business namespace | Per-namespace placement rules for that namespace |
-| `DbPermanentBalancingRule` | `permanent-balancing-rules` | Operator namespace (`CLOUD_NAMESPACE`) | Permanent placement rules that target owned business namespaces |
+| `MicroserviceBalancingRule` | `microservice-balancing-rules` | Business namespace | Per-microservice placement rules for that namespace |
+| `NamespaceBalancingRule` | `namespace-balancing-rules` | Business namespace | Per-namespace placement rules for that namespace |
+| `PermanentBalancingRule` | `permanent-balancing-rules` | Operator namespace (`CLOUD_NAMESPACE`) | Permanent placement rules that target owned business namespaces |
 
 Any other `metadata.name` is rejected by the controller as `InvalidConfiguration` / `InvalidSpec`. For the two business-namespace CRDs, use one CR per business namespace and edit `spec.rules` to add, update, or remove entries. For permanent rules, use one CR in the operator namespace.
 
 #### Balancing Rule Resource Fields
 
-**`DbMicroserviceBalancingRule`**
+**`MicroserviceBalancingRule`**
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DbMicroserviceBalancingRule
+kind: MicroserviceBalancingRule
 metadata:
   name: microservice-balancing-rules
   namespace: payments
@@ -1424,11 +1424,11 @@ spec:
 
 Within one CR, the same `type + microservice` pair cannot appear more than once.
 
-**`DbNamespaceBalancingRule`**
+**`NamespaceBalancingRule`**
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DbNamespaceBalancingRule
+kind: NamespaceBalancingRule
 metadata:
   name: namespace-balancing-rules
   namespace: payments
@@ -1452,11 +1452,11 @@ spec:
 
 `order` is mandatory so rule priority is explicit. Without it, omitted values would default to `0`, which makes rule precedence easy to change accidentally and makes duplicate priorities harder to detect. The controller rejects duplicate `type + order` pairs within the singleton CR; cross-CR order conflicts are ultimately enforced by the aggregator with `409 Conflict`.
 
-**`DbPermanentBalancingRule`**
+**`PermanentBalancingRule`**
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DbPermanentBalancingRule
+kind: PermanentBalancingRule
 metadata:
   name: permanent-balancing-rules
   namespace: dbaas-system
@@ -1499,9 +1499,9 @@ Aggregator calls by kind:
 
 | Kind | Aggregator operation |
 |------|----------------------|
-| `DbMicroserviceBalancingRule` | Sends the full microservice rule list to `PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices`. |
-| `DbNamespaceBalancingRule` | Sends one `PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` request per `spec.rules[]` entry. |
-| `DbPermanentBalancingRule` | Sends the full permanent rule list to `PUT /api/v3/dbaas/balancing/rules/permanent`. |
+| `MicroserviceBalancingRule` | Sends the full microservice rule list to `PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices`. |
+| `NamespaceBalancingRule` | Sends one `PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` request per `spec.rules[]` entry. |
+| `PermanentBalancingRule` | Sends the full permanent rule list to `PUT /api/v3/dbaas/balancing/rules/permanent`. |
 
 #### Balancing Rule Lifecycle and Cleanup
 
@@ -1509,9 +1509,9 @@ Aggregator calls by kind:
 
 | Kind | On create/update | On item removal from `spec.rules` | On CR deletion |
 |------|------------------|------------------------------------|----------------|
-| `DbMicroserviceBalancingRule` | Adds a finalizer, applies the full desired list, stores applied `type + microservices`. | Sends cleanup for removed applied `type + microservices` by applying an empty rule set for those entries, then applies the new desired list. | Finalizer cleans up all applied microservice entries before Kubernetes removes the CR. |
-| `DbNamespaceBalancingRule` | Adds a finalizer, applies each desired namespace rule by name, and stores applied entries. | Calls `DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` for removed applied rule names, then applies the new desired list. | Finalizer deletes all applied namespace rules before Kubernetes removes the CR. |
-| `DbPermanentBalancingRule` | Adds a finalizer, verifies target namespace ownership, applies the full desired list, stores applied `dbType + namespaces`. | Sends cleanup through `DELETE /api/v3/dbaas/balancing/rules/permanent` for removed applied entries, then applies the new desired list. | Finalizer deletes all applied permanent entries before Kubernetes removes the CR. |
+| `MicroserviceBalancingRule` | Adds a finalizer, applies the full desired list, stores applied `type + microservices`. | Sends cleanup for removed applied `type + microservices` by applying an empty rule set for those entries, then applies the new desired list. | Finalizer cleans up all applied microservice entries before Kubernetes removes the CR. |
+| `NamespaceBalancingRule` | Adds a finalizer, applies each desired namespace rule by name, and stores applied entries. | Calls `DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` for removed applied rule names, then applies the new desired list. | Finalizer deletes all applied namespace rules before Kubernetes removes the CR. |
+| `PermanentBalancingRule` | Adds a finalizer, verifies target namespace ownership, applies the full desired list, stores applied `dbType + namespaces`. | Sends cleanup through `DELETE /api/v3/dbaas/balancing/rules/permanent` for removed applied entries, then applies the new desired list. | Finalizer deletes all applied permanent entries before Kubernetes removes the CR. |
 
 For blue-green cleanup, keep the old operator running until any finalizers on microservice, namespace, and permanent rule CRs have completed.
 
@@ -1561,7 +1561,7 @@ spec:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DbMicroserviceBalancingRule
+kind: MicroserviceBalancingRule
 metadata:
   name: microservice-balancing-rules
   namespace: payments
@@ -1582,7 +1582,7 @@ spec:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DbNamespaceBalancingRule
+kind: NamespaceBalancingRule
 metadata:
   name: namespace-balancing-rules
   namespace: payments
@@ -1602,7 +1602,7 @@ spec:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
-kind: DbPermanentBalancingRule
+kind: PermanentBalancingRule
 metadata:
   name: permanent-balancing-rules
   namespace: dbaas-system
@@ -1618,9 +1618,9 @@ spec:
 **Check status:**
 
 ```bash
-kubectl get dbmicroservicebalancingrule microservice-balancing-rules -n payments -o yaml
-kubectl get dbnamespacebalancingrule namespace-balancing-rules -n payments -o yaml
-kubectl get dbpermanentbalancingrule permanent-balancing-rules -n dbaas-system -o yaml
+kubectl get microservicebalancingrule microservice-balancing-rules -n payments -o yaml
+kubectl get namespacebalancingrule namespace-balancing-rules -n payments -o yaml
+kubectl get permanentbalancingrule permanent-balancing-rules -n dbaas-system -o yaml
 ### DatabaseSecret
 
 `DatabaseSecret` requests credentials for a database already managed by dbaas-aggregator and materializes them into a named Kubernetes `Secret` in the same namespace. The operator does **not** provision the database — it looks the database up by classifier and writes the returned `connectionProperties` into the target Secret, keeping it in sync as credentials rotate.

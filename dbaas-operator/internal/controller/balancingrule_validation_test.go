@@ -19,18 +19,18 @@ var _ = Describe("BalancingRule validation", func() {
 	)
 
 	AfterEach(func() {
-		deleteIfExists(&dbaasv1.DbMicroserviceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbMicroserviceBalancingRuleName, Namespace: businessNS}})
-		deleteIfExists(&dbaasv1.DbMicroserviceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: businessNS}})
-		deleteIfExists(&dbaasv1.DbNamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS}})
-		deleteIfExists(&dbaasv1.DbNamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: "other-namespace-rules", Namespace: businessNS}})
-		deleteIfExists(&dbaasv1.DbPermanentBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbPermanentBalancingRuleName, Namespace: operatorNS}})
+		deleteIfExists(&dbaasv1.MicroserviceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS}})
+		deleteIfExists(&dbaasv1.MicroserviceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: businessNS}})
+		deleteIfExists(&dbaasv1.NamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: businessNS}})
+		deleteIfExists(&dbaasv1.NamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: "other-namespace-rules", Namespace: businessNS}})
+		deleteIfExists(&dbaasv1.PermanentBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.PermanentBalancingRuleName, Namespace: operatorNS}})
 	})
 
 	Context("CRD admission schema", func() {
 		It("rejects microservice rules with an empty rules list", func() {
 			err := k8sClient.Create(ctx, unstructuredBalancingRule(
-				"DbMicroserviceBalancingRule",
-				dbaasv1.DbMicroserviceBalancingRuleName,
+				"MicroserviceBalancingRule",
+				dbaasv1.MicroserviceBalancingRuleName,
 				businessNS,
 				map[string]any{"rules": []any{}},
 			))
@@ -39,10 +39,10 @@ var _ = Describe("BalancingRule validation", func() {
 		})
 
 		It("rejects microservice labels that do not match key=value", func() {
-			err := k8sClient.Create(ctx, &dbaasv1.DbMicroserviceBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbMicroserviceBalancingRuleName, Namespace: businessNS},
-				Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
-					Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
+			err := k8sClient.Create(ctx, &dbaasv1.MicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
 						{Type: "mongodb", Label: "bad-label", Microservices: []string{"billing"}},
 					},
 				},
@@ -53,8 +53,8 @@ var _ = Describe("BalancingRule validation", func() {
 
 		It("rejects namespace rules when order is omitted", func() {
 			err := k8sClient.Create(ctx, unstructuredBalancingRule(
-				"DbNamespaceBalancingRule",
-				dbaasv1.DbNamespaceBalancingRuleName,
+				"NamespaceBalancingRule",
+				dbaasv1.NamespaceBalancingRuleName,
 				businessNS,
 				map[string]any{
 					"rules": []any{
@@ -72,8 +72,8 @@ var _ = Describe("BalancingRule validation", func() {
 
 		It("rejects permanent rules with an empty namespace list", func() {
 			err := k8sClient.Create(ctx, unstructuredBalancingRule(
-				"DbPermanentBalancingRule",
-				dbaasv1.DbPermanentBalancingRuleName,
+				"PermanentBalancingRule",
+				dbaasv1.PermanentBalancingRuleName,
 				operatorNS,
 				map[string]any{
 					"rules": []any{
@@ -93,10 +93,10 @@ var _ = Describe("BalancingRule validation", func() {
 	Context("controller singleton validation", func() {
 		It("accepts a valid microservice singleton and rejects duplicate type/microservice entries", func() {
 			reconciler := &BalancingRuleReconciler{}
-			valid := &dbaasv1.DbMicroserviceBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbMicroserviceBalancingRuleName, Namespace: businessNS},
-				Spec: dbaasv1.DbMicroserviceBalancingRuleSpec{
-					Rules: []dbaasv1.DbMicroserviceBalancingRuleItem{
+			valid := &dbaasv1.MicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
 						{Type: "postgresql", Label: "zone=fast", Microservices: []string{"billing"}},
 						{Type: "mongodb", Label: "tier=standard", Microservices: []string{"notifications"}},
 					},
@@ -111,10 +111,10 @@ var _ = Describe("BalancingRule validation", func() {
 			invalidName.Name = "other"
 			reason, err = reconciler.validateMicroserviceRule(invalidName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(reason).To(ContainSubstring(dbaasv1.DbMicroserviceBalancingRuleName))
+			Expect(reason).To(ContainSubstring(dbaasv1.MicroserviceBalancingRuleName))
 
 			duplicate := valid.DeepCopy()
-			duplicate.Spec.Rules = append(duplicate.Spec.Rules, dbaasv1.DbMicroserviceBalancingRuleItem{
+			duplicate.Spec.Rules = append(duplicate.Spec.Rules, dbaasv1.MicroserviceBalancingRuleItem{
 				Type:          "postgresql",
 				Label:         "zone=slow",
 				Microservices: []string{"billing"},
@@ -126,10 +126,10 @@ var _ = Describe("BalancingRule validation", func() {
 
 		It("validates namespace rule list uniqueness locally", func() {
 			reconciler := &BalancingRuleReconciler{}
-			valid := &dbaasv1.DbNamespaceBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS},
-				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
-					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+			valid := &dbaasv1.NamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "pg-primary", Type: "postgresql", PhysicalDatabaseID: "postgresql-a", Order: 0},
 						{Name: "pg-secondary", Type: "postgresql", PhysicalDatabaseID: "postgresql-b", Order: 1},
 						{Name: "mongo-primary", Type: "mongodb", PhysicalDatabaseID: "mongodb-a", Order: 0},
@@ -155,10 +155,10 @@ var _ = Describe("BalancingRule validation", func() {
 		})
 
 		It("keeps global namespace-rule name checks best-effort and leaves type/order conflicts to aggregator 409", func() {
-			existing := &dbaasv1.DbNamespaceBalancingRule{
+			existing := &dbaasv1.NamespaceBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{Name: "other-namespace-rules", Namespace: businessNS},
-				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
-					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "orders-postgres-primary", Type: "postgresql", PhysicalDatabaseID: "postgresql-orders", Order: 10},
 					},
 				},
@@ -166,10 +166,10 @@ var _ = Describe("BalancingRule validation", func() {
 			Expect(k8sClient.Create(ctx, existing)).To(Succeed())
 			reconciler := &BalancingRuleReconciler{Client: k8sClient}
 
-			duplicateName := &dbaasv1.DbNamespaceBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbNamespaceBalancingRuleName, Namespace: businessNS},
-				Spec: dbaasv1.DbNamespaceBalancingRuleSpec{
-					Rules: []dbaasv1.DbNamespaceBalancingRuleItem{
+			duplicateName := &dbaasv1.NamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "orders-postgres-primary", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 11},
 					},
 				},
@@ -189,10 +189,10 @@ var _ = Describe("BalancingRule validation", func() {
 
 		It("accepts a valid permanent singleton and rejects operator namespace/duplicate target violations", func() {
 			reconciler := &BalancingRuleReconciler{MyNamespace: operatorNS}
-			valid := &dbaasv1.DbPermanentBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.DbPermanentBalancingRuleName, Namespace: operatorNS},
-				Spec: dbaasv1.DbPermanentBalancingRuleSpec{
-					Rules: []dbaasv1.DbPermanentBalancingRuleItem{
+			valid := &dbaasv1.PermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.PermanentBalancingRuleName, Namespace: operatorNS},
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DbType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments", "orders"}},
 						{DbType: "mongodb", PhysicalDatabaseID: "mongodb-a", Namespaces: []string{"notifications"}},
 					},
@@ -210,7 +210,7 @@ var _ = Describe("BalancingRule validation", func() {
 			Expect(reason).To(ContainSubstring("operator namespace"))
 
 			duplicateTarget := valid.DeepCopy()
-			duplicateTarget.Spec.Rules = append(duplicateTarget.Spec.Rules, dbaasv1.DbPermanentBalancingRuleItem{
+			duplicateTarget.Spec.Rules = append(duplicateTarget.Spec.Rules, dbaasv1.PermanentBalancingRuleItem{
 				DbType:             "postgresql",
 				PhysicalDatabaseID: "postgresql-b",
 				Namespaces:         []string{"payments"},

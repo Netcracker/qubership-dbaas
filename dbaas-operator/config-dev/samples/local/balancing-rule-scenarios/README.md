@@ -4,15 +4,15 @@ Start from the base local samples:
 
 ```bash
 kubectl apply -f config-dev/samples/local/dbaas-system-namespacebinding.yaml
-kubectl apply -f config-dev/samples/local/dbnamespacebalancingrule.yaml
-kubectl apply -f config-dev/samples/local/dbpermanentbalancingrule.yaml
-kubectl apply -f config-dev/samples/local/dbmicroservicebalancingrule.yaml
+kubectl apply -f config-dev/samples/local/namespacebalancingrule.yaml
+kubectl apply -f config-dev/samples/local/permanentbalancingrule.yaml
+kubectl apply -f config-dev/samples/local/microservicebalancingrule.yaml
 ```
 
 Watch status:
 
 ```bash
-kubectl get dbnamespacebalancingrules,dbpermanentbalancingrules,dbmicroservicebalancingrules -n dbaas-system -w
+kubectl get namespacebalancingrules,permanentbalancingrules,microservicebalancingrules -n dbaas-system -w
 ```
 
 Apply add/remove updates:
@@ -41,7 +41,7 @@ kubectl apply -f config-dev/samples/local/balancing-rule-scenarios/permanent-dup
 To return to the baseline, reapply:
 
 ```bash
-kubectl apply -f config-dev/samples/local/dbnamespacebalancingrule.yaml
-kubectl apply -f config-dev/samples/local/dbpermanentbalancingrule.yaml
-kubectl apply -f config-dev/samples/local/dbmicroservicebalancingrule.yaml
+kubectl apply -f config-dev/samples/local/namespacebalancingrule.yaml
+kubectl apply -f config-dev/samples/local/permanentbalancingrule.yaml
+kubectl apply -f config-dev/samples/local/microservicebalancingrule.yaml
 ```

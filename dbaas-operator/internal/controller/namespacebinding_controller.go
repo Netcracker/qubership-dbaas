@@ -165,15 +165,15 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		Watches(
-			&dbaasv1.DbMicroserviceBalancingRule{},
+			&dbaasv1.MicroserviceBalancingRule{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		Watches(
-			&dbaasv1.DbNamespaceBalancingRule{},
+			&dbaasv1.NamespaceBalancingRule{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		Watches(
-			&dbaasv1.DbPermanentBalancingRule{},
+			&dbaasv1.PermanentBalancingRule{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		Watches(

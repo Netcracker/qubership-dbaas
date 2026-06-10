@@ -1,5 +1,5 @@
 apiVersion: dbaas.netcracker.com/v1
-kind: DbPermanentBalancingRule
+kind: PermanentBalancingRule
 metadata:
   name: permanent-balancing-rules
   namespace: dbaas-system
