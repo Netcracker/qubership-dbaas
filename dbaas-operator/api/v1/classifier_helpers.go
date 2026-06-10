@@ -27,7 +27,7 @@ import (
 // the API package guarantees they stay in sync.
 //
 // The index intentionally excludes spec.userRole. The aggregator resolves
-// userRole through DbPolicy (defaultRole, additionalRole) and the global
+// userRole through DatabaseAccessPolicy (defaultRole, additionalRole) and the global
 // permission registry, so the operator cannot reliably map its local
 // spec.userRole to the aggregator's effective role without replicating that
 // resolution. The webhook handler fans out to every DatabaseSecret matching

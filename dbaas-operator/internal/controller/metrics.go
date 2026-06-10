@@ -31,8 +31,8 @@ import (
 // Keeping the constants here because they are only relevant to Prometheus metrics.
 const (
 	controllerEDB = "externaldatabase"
-	controllerDD  = "databasedeclaration"
-	controllerDP  = "dbpolicy"
+	controllerDD  = "internaldatabase"
+	controllerDP  = "databaseaccesspolicy"
 	controllerBR  = "balancingrule"
 
 	triggerSpecChange             = "spec_change"
@@ -130,7 +130,7 @@ var dbaasAggregatorRequestsTotal = prometheus.NewCounterVec(
 var dbaasAsyncOperationDurationSeconds = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Name:    "dbaas_async_operation_duration_seconds",
-		Help:    "End-to-end duration of async DatabaseDeclaration provisioning operations.",
+		Help:    "End-to-end duration of async InternalDatabase provisioning operations.",
 		Buckets: []float64{1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200},
 	},
 	[]string{"result"},

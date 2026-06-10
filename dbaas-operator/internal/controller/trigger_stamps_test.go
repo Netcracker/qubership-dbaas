@@ -57,14 +57,14 @@ func TestExternalDatabaseBindingTriggerLifecycle(t *testing.T) {
 	assertBindingTriggerLifecycle(t, r.stampBindingTrigger, r.consumeBindingTrigger, r.clearBindingTrigger)
 }
 
-func TestDatabaseDeclarationBindingTriggerLifecycle(t *testing.T) {
-	r := &DatabaseDeclarationReconciler{}
+func TestInternalDatabaseBindingTriggerLifecycle(t *testing.T) {
+	r := &InternalDatabaseReconciler{}
 	assertBindingTriggerLifecycle(t, r.stampBindingTrigger, r.consumeBindingTrigger, r.clearBindingTrigger)
 }
 
-func TestDatabaseDeclarationClearAsyncStart(t *testing.T) {
+func TestInternalDatabaseClearAsyncStart(t *testing.T) {
 	key := "test-ns/test-dd"
-	r := &DatabaseDeclarationReconciler{
+	r := &InternalDatabaseReconciler{
 		asyncStartTimes: map[string]time.Time{
 			key: time.Unix(100, 0),
 		},
@@ -78,8 +78,8 @@ func TestDatabaseDeclarationClearAsyncStart(t *testing.T) {
 	}
 }
 
-func TestDbPolicyBindingTriggerLifecycle(t *testing.T) {
-	r := &DbPolicyReconciler{}
+func TestDatabaseAccessPolicyBindingTriggerLifecycle(t *testing.T) {
+	r := &DatabaseAccessPolicyReconciler{}
 	assertBindingTriggerLifecycle(t, r.stampBindingTrigger, r.consumeBindingTrigger, r.clearBindingTrigger)
 }
 

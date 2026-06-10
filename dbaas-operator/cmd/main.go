@@ -189,13 +189,13 @@ func main() {
 	)
 	dpChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
-		func() *dbaasv1.DbPolicyList { return &dbaasv1.DbPolicyList{} },
-		func(l *dbaasv1.DbPolicyList) int { return len(l.Items) },
+		func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} },
+		func(l *dbaasv1.DatabaseAccessPolicyList) int { return len(l.Items) },
 	)
 	ddChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
-		func() *dbaasv1.DatabaseDeclarationList { return &dbaasv1.DatabaseDeclarationList{} },
-		func(l *dbaasv1.DatabaseDeclarationList) int { return len(l.Items) },
+		func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} },
+		func(l *dbaasv1.InternalDatabaseList) int { return len(l.Items) },
 	)
 	microserviceRuleChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
@@ -245,25 +245,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.DbPolicyReconciler{
+	if err := (&controller.DatabaseAccessPolicyReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "dbpolicy", eventsEnabled),
+		Recorder:   recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
+		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
 		os.Exit(1)
 	}
 
-	if err := (&controller.DatabaseDeclarationReconciler{
+	if err := (&controller.InternalDatabaseReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "databasedeclaration", eventsEnabled),
+		Recorder:   recorderFor(mgr, "internaldatabase", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
+		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
 		os.Exit(1)
 	}
 

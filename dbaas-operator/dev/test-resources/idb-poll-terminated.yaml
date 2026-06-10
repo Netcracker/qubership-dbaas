@@ -1,0 +1,24 @@
+# InternalDatabase — async submit succeeds but the operation is TERMINATED during polling
+# (simulates an aggregator pod restart mid-operation).
+#
+# No apply-rule → default 202 with trackingId="tracking-idb-poll-terminated"
+# poll-rules.json key: "tracking-idb-poll-terminated" → TERMINATED
+#
+# Expected behaviour (new):
+#   Phase=WaitingForDependency → Phase=BackingOff (OperationTerminated, Stalled=False)
+#   trackingID cleared → next reconcile resubmits → Phase=WaitingForDependency again
+#   The operator retries continuously (NOT stuck in InvalidConfiguration).
+#
+# Observable via:
+#   kubectl -n test-ns get internaldatabase idb-poll-terminated -o yaml
+#   kubectl -n test-ns get events --field-selector involvedObject.name=idb-poll-terminated
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: idb-poll-terminated
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: idb-poll-terminated
+      scope: service
+  type: postgresql

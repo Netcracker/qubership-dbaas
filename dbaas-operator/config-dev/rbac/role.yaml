@@ -4,6 +4,11 @@ kind: ClusterRole
 metadata:
   name: manager-role
 rules:
+- nonResourceURLs:
+  - /.well-known/openid-configuration
+  - /openid/v1/jwks
+  verbs:
+  - get
 - apiGroups:
   - ""
   resources:
@@ -18,10 +23,9 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations
-  - databasesecrets
-  - dbpolicies
+  - databaseaccesspolicies
   - externaldatabases
+  - internaldatabases
   verbs:
   - get
   - list
@@ -29,13 +33,13 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasedeclarations/status
+  - databaseaccesspolicies/status
   - databasesecrets/status
   - dbmicroservicebalancingrules/status
   - dbnamespacebalancingrules/status
   - dbpermanentbalancingrules/status
-  - dbpolicies/status
   - externaldatabases/status
+  - internaldatabases/status
   verbs:
   - get
   - patch
@@ -43,6 +47,7 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
+  - databasesecrets
   - dbmicroservicebalancingrules
   - dbnamespacebalancingrules
   - dbpermanentbalancingrules

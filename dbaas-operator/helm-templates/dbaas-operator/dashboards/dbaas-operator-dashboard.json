@@ -462,7 +462,7 @@
                        "id":  11,
                        "type":  "timeseries",
                        "title":  "Async Provisioning Activity",
-                       "description":  "Dashboard-only substitute for async operations in flight. Compares DatabaseDeclaration polling activity with terminal completions.",
+                       "description":  "Dashboard-only substitute for async operations in flight. Compares InternalDatabase polling activity with terminal completions.",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  24,
@@ -494,7 +494,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum(rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"databasedeclaration\",trigger=\"polling\"}[15m]))",
+                                           "expr":  "sum(rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"internaldatabase\",trigger=\"polling\"}[15m]))",
                                            "legendFormat":  "polling rate",
                                            "refId":  "A"
                                        },
