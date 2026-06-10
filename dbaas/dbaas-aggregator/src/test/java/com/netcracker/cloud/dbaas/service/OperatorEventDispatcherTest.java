@@ -17,6 +17,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static com.netcracker.cloud.dbaas.enums.OperatorEventStatus.FAILED;
 import static com.netcracker.cloud.dbaas.enums.OperatorEventStatus.PENDING;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -167,6 +168,39 @@ class OperatorEventDispatcherTest {
         dispatcher.dispatch();
 
         verify(statusUpdater).markRetry(eq(event.getId()), any());
+        verify(statusUpdater, never()).markSent(any());
+        verify(statusUpdater, never()).markFailed(any(), any());
+    }
+
+    // ---- retry exhaustion: notify called exactly maxAttempts times -----
+
+    @Test
+    void dispatch_notifyCalledExactlyMaxAttemptsTimes() {
+        int maxAttempts = 10;
+        enableDispatcher();
+        OperatorEvent event = pendingEvent();
+
+        // real repo behaviour: only claims the event while it is still PENDING
+        when(operatorEventRepository.claimPendingBatch(anyInt(), any()))
+                .thenAnswer(inv -> event.getStatus() == PENDING ? List.of(event) : List.of());
+
+        // simulates real OperatorEventStatusUpdater: stamp + exhaust check
+        doAnswer(inv -> {
+            event.increaseAttempt();
+            if (event.getAttempts() >= maxAttempts) {
+                event.setStatus(FAILED);
+            }
+            return null;
+        }).when(statusUpdater).markRetry(eq(event.getId()), any());
+
+        doThrow(waeWithStatus(503)).when(operatorWebhook).notify(any());
+
+        for (int i = 0; i < maxAttempts + 5; i++) {
+            dispatcher.dispatch();
+        }
+
+        verify(operatorWebhook, times(maxAttempts)).notify(any());
+        verify(statusUpdater, times(maxAttempts)).markRetry(eq(event.getId()), any());
         verify(statusUpdater, never()).markSent(any());
         verify(statusUpdater, never()).markFailed(any(), any());
     }

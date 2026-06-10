@@ -72,11 +72,11 @@ public class OperatorEventStatusUpdater {
             return;
         }
         event.setLastError(msg);
+        stamp(event);
         if (event.getAttempts() >= rotationProperty.maxAttempts()) {
             log.error("Operator webhook event {} permanently failed after {} attempt(s): {}",
                     id, event.getAttempts(), msg);
             event.setStatus(FAILED);
-            stamp(event);
             operatorEventRepository.save(event);
             operatorEventMetrics.incrementFailed(event.getEventType());
         } else {
@@ -84,7 +84,6 @@ public class OperatorEventStatusUpdater {
                     id, event.getAttempts(), rotationProperty.maxAttempts(), msg);
             event.setStatus(PENDING);
             event.setNextAttemptAt(OffsetDateTime.now().plus(rotationProperty.retryDelay()));
-            stamp(event);
             operatorEventRepository.save(event);
             operatorEventMetrics.incrementRetried(event.getEventType());
         }
