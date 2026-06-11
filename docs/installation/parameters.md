@@ -329,7 +329,7 @@ If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator w
 
 #### KUBERNETES_M2M_ENABLED
 
-If KUBERNETES_M2M_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens M2M.
+If KUBERNETES_M2M_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens for M2M authentication.
 
 | Default | Recommended                                              |
 |---------|----------------------------------------------------------|

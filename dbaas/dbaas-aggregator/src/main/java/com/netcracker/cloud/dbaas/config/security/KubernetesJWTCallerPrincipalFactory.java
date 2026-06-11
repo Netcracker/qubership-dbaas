@@ -26,7 +26,7 @@ public class KubernetesJWTCallerPrincipalFactory extends JWTCallerPrincipalFacto
             @ConfigProperty(name = "dbaas.security.k8s.m2m.audience") String m2mAudience
     ) {
         if (!m2mEnabled) {
-            log.info("JWT not enabled, skipping verifier initialization");
+            log.info("M2M support is not enabled, skipping verifier initialization");
             this.verifier = null;
             return;
         }
