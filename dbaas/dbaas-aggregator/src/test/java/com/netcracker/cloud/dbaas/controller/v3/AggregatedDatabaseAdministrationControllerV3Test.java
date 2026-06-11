@@ -843,7 +843,39 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(deletionService).dropRegistrySafe(database);
+        verify(deletionService).dropRegistrySafe(database, false);
+        verifyNoMoreInteractions(deletionService);
+    }
+
+    @Test
+    void testDeleteDatabaseByClassifier_ForceTrue() throws JsonProcessingException {
+        final UUID id = UUID.randomUUID();
+        TreeMap<String, Object> classifier = new TreeMap<>(getSampleClassifier());
+        ClassifierWithRolesRequest classifierWithRolesRequest = new ClassifierWithRolesRequest();
+        classifierWithRolesRequest.setClassifier(classifier);
+        classifierWithRolesRequest.setUserRole(ADMIN.toString());
+        classifierWithRolesRequest.setOriginService(TEST_MS_NAME);
+        when(dbaaSHelper.isProductionMode()).thenReturn(false);
+        doReturn(ADMIN.toString()).when(databaseRolesService).getSupportedRoleFromRequest(any(ClassifierWithRolesRequest.class), any(), any());
+        String requestBody = objectMapper.writer().withDefaultPrettyPrinter().writeValueAsString(classifierWithRolesRequest);
+
+        final DatabaseRegistry database = getDatabaseSample();
+        database.setId(id);
+        database.setType(POSTGRESQL.toString());
+        database.setClassifier(classifier);
+        database.setNamespace(TEST_NAMESPACE);
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .queryParam("force", "true")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .when().delete("/{type}", POSTGRESQL.toString())
+                .then()
+                .statusCode(OK.getStatusCode());
+
+        verify(deletionService).dropRegistrySafe(database, true);
         verifyNoMoreInteractions(deletionService);
     }
 
@@ -893,7 +925,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(deletionService).dropRegistrySafe(database);
+        verify(deletionService).dropRegistrySafe(database, false);
         verifyNoMoreInteractions(deletionService);
     }
 
@@ -969,7 +1001,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(deletionService).dropRegistrySafe(database);
+        verify(deletionService).dropRegistrySafe(database, false);
         verify(databaseRegistryDbaasRepository, times(3)).getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString());
         verify(databaseRegistryDbaasRepository, times(1)).getDatabaseByClassifierAndType(classifier, anotherType);
         verify(databaseRegistryDbaasRepository, times(1)).getDatabaseByClassifierAndType(anotherClassifier, POSTGRESQL.toString());

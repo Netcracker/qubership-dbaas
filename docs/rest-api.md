@@ -578,11 +578,12 @@ Deletes database by classifier in the specific namespace.
   [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
-| Type     | Name                                  | Description                                                              | Schema                                                    |
-|----------|---------------------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------|
-| **Path** | **namespace**  <br>*required*         | Project namespace in which the base is used                              | string                                                    |
-| **Path** | **type**  <br>*required*              | The physical type of logical database. For example mongodb or postgresql | string                                                    |
-| **Body** | **classifierRequest**  <br>*required* | A unique identifier of the document in the database                      | [ClassifierWithRolesRequest](#classifierwithrolesrequest) |
+| Type      | Name                                  | Description                                                                       | Schema                                                    |
+|-----------|---------------------------------------|-----------------------------------------------------------------------------------|-----------------------------------------------------------|
+| **Path**  | **namespace**  <br>*required*         | Project namespace in which the base is used                                       | string                                                    |
+| **Path**  | **type**  <br>*required*              | The physical type of logical database. For example mongodb or postgresql          | string                                                    |
+| **Query** | **force**  <br>*optional*             | If true, errors from the physical adapter during drop are ignored. Default: false | boolean                                                   |
+| **Body**  | **classifierRequest**  <br>*required* | A unique identifier of the document in the database                               | [ClassifierWithRolesRequest](#classifierwithrolesrequest) |
 
 * **Success Response:**
 
