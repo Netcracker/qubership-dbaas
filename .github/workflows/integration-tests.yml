@@ -252,7 +252,10 @@ jobs:
           EMAIL_TO: ${{ vars.EMAIL_TO }}
         with:
           subject: ${{ steps.build_report.outputs.title }}
+          # convert-markdown only applies to html-body (dawidd6/action-send-mail
+          # renders markdown→HTML for the html part); body stays as the plain-text fallback.
           body: file://report.md
+          html-body: file://report.md
           convert-markdown: "true"
 
       - name: Fail job if any tests failed
