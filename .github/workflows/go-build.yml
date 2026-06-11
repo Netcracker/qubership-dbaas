@@ -9,12 +9,8 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'dbaas-operator/**'
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - 'dbaas-operator/**'
   workflow_dispatch:
 
 jobs:
