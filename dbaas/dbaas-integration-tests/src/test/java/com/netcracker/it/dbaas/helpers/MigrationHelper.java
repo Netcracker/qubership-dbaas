@@ -45,6 +45,7 @@ public class MigrationHelper {
             .build();
 
     private static final String DBAAS_METADATA = "_dbaas_metadata";
+    private static final String ADAPTER_CREDS_SECRET_NAME = "dbaas-aggregator-credentials.v1";
     public static final String CONNECTION_PROPERTIES = "connectionProperties";
 
     public static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";
@@ -133,27 +134,34 @@ public class MigrationHelper {
                 adapterPod,
                 adapterNamespace,
                 List.of("DBAAS_ADAPTER_API_USER", "DBAAS_AGGREGATOR_USERNAME")
-        );
+        ).orElseGet(() -> readFromAggregatorCredentialsSecret(adapterNamespace, "username"));
 
         String password = readFirstAvailableSecretFromEnv(
                 adapterPod,
                 adapterNamespace,
                 List.of("DBAAS_ADAPTER_API_PASSWORD", "DBAAS_AGGREGATOR_PASSWORD")
-        );
+        ).orElseGet(() -> readFromAggregatorCredentialsSecret(adapterNamespace, "password"));
 
         return username + ":" + password;
     }
 
-    private String readFirstAvailableSecretFromEnv(Pod pod, String namespace, List<String> envNames) {
+    private Optional<String> readFirstAvailableSecretFromEnv(Pod pod, String namespace, List<String> envNames) {
         for (String envName : envNames) {
             Optional<String> value = helperV3.readSecretFromEnvVariable(pod, namespace, envName);
             if (value.isPresent()) {
-                return value.get();
+                return value;
             }
         }
-        throw new RuntimeException("None of env variables " + envNames
-                + " found in pod " + pod.getMetadata().getName()
-                + " in namespace " + namespace);
+        return Optional.empty();
+    }
+
+    private String readFromAggregatorCredentialsSecret(String namespace, String key) {
+        var secret = helperV3.getKubernetesClientSecret(namespace, ADAPTER_CREDS_SECRET_NAME);
+        if (secret == null || secret.getData() == null || !secret.getData().containsKey(key)) {
+            throw new RuntimeException("Key '" + key + "' not found in secret '" + ADAPTER_CREDS_SECRET_NAME + "'"
+                    + " in namespace " + namespace);
+        }
+        return new String(Base64.getDecoder().decode(secret.getData().get(key)));
     }
 
     public DatabaseResponse prepareMigratedExternalToInternalPostgresDatabase(String sourceNamespace,
