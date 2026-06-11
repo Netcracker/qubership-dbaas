@@ -166,11 +166,11 @@ spec:
               {{- end }}
                 -   name: DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
                     value: '{{ .Values.DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED }}'
-                -   name: KUBERNETES_JWT_ENABLED
-                    value: '{{ .Values.KUBERNETES_JWT_ENABLED }}'
-              {{- if .Values.KUBERNETES_JWT_AUDIENCE }}
-                -   name: KUBERNETES_JWT_AUDIENCE
-                    value: '{{ .Values.KUBERNETES_JWT_AUDIENCE }}'
+                -   name: KUBERNETES_M2M_ENABLED
+                    value: '{{ .Values.KUBERNETES_M2M_ENABLED }}'
+              {{- if .Values.KUBERNETES_M2M_AUDIENCE }}
+                -   name: KUBERNETES_M2M_AUDIENCE
+                    value: '{{ .Values.KUBERNETES_M2M_AUDIENCE }}'
               {{- end }}
                 resources:
                     requests:
