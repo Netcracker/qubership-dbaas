@@ -22,10 +22,10 @@ public class KubernetesJWTCallerPrincipalFactory extends JWTCallerPrincipalFacto
 
     @Inject
     public KubernetesJWTCallerPrincipalFactory(
-            @ConfigProperty(name = "dbaas.security.k8s.jwt.enabled") boolean jwtEnabled,
-            @ConfigProperty(name = "dbaas.security.k8s.jwt.audience") String jwtAudience
+            @ConfigProperty(name = "dbaas.security.k8s.m2m.enabled") boolean m2mEnabled,
+            @ConfigProperty(name = "dbaas.security.k8s.m2m.audience") String m2mAudience
     ) {
-        if (!jwtEnabled) {
+        if (!m2mEnabled) {
             log.info("JWT not enabled, skipping verifier initialization");
             this.verifier = null;
             return;
@@ -33,7 +33,7 @@ public class KubernetesJWTCallerPrincipalFactory extends JWTCallerPrincipalFacto
 
         log.info("Initializing KubernetesTokenVerifier");
         try {
-            this.verifier = new KubernetesTokenVerifier(jwtAudience);
+            this.verifier = new KubernetesTokenVerifier(m2mAudience);
             log.info("KubernetesTokenVerifier initialized successfully");
         } catch (RuntimeException e) {
             log.error("Failed to initialize KubernetesTokenVerifier", e);
