@@ -246,10 +246,9 @@ jobs:
         env:
           EMAIL_SMTP_HOST: ${{ vars.EMAIL_SMTP_HOST }}
           EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
-          EMAIL_SECURE: ${{ vars.EMAIL_SECURE }}
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          EMAIL_USERNAME: ${{ vars.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_TO: ${{ vars.EMAIL_TO }}
         with:
           subject: ${{ steps.build_report.outputs.title }}
