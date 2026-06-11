@@ -9,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
 
     steps:
       - name: Checkout repository
@@ -237,19 +236,24 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           RUN_NUMBER: ${{ github.run_number }}
-          MENTIONS: "@ArkuNC @TheHollowMonarch @Logaka"
         run: python3 .github/scripts/build-test-report.py
 
-      - name: Post report to sticky issue
+      - name: Email test report
         if: always() && steps.build_report.outcome == 'success'
         continue-on-error: true
+        uses: Netcracker/qubership-workflow-hub/actions/email-action@v2.3.0
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_TITLE: ${{ steps.build_report.outputs.title }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh issue edit 467 --repo "$REPO" --title "$ISSUE_TITLE"
-          gh issue comment 467 --repo "$REPO" --body-file report.md
+          EMAIL_SMTP_HOST: ${{ vars.EMAIL_SMTP_HOST }}
+          EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
+          EMAIL_SECURE: ${{ vars.EMAIL_SECURE }}
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          EMAIL_TO: ${{ vars.EMAIL_TO }}
+        with:
+          subject: ${{ steps.build_report.outputs.title }}
+          body: file://report.md
+          convert-markdown: "true"
 
       - name: Fail job if any tests failed
         if: always() && steps.build_report.outputs.status == 'failed'
