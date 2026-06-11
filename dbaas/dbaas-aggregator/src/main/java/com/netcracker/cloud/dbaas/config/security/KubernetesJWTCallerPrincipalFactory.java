@@ -48,7 +48,7 @@ public class KubernetesJWTCallerPrincipalFactory extends JWTCallerPrincipalFacto
     @Override
     public JWTCallerPrincipal parse(String token, JWTAuthContextInfo authContextInfo) throws ParseException {
         if (verifier == null) {
-            throw new IllegalStateException("JWT verification is disabled");
+            throw new ParseException("JWT verification is disabled");
         }
         try {
             return new DefaultJWTCallerPrincipal(verifier.verify(token));

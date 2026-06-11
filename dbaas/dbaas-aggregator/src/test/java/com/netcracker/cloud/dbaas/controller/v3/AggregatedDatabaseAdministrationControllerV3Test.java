@@ -23,6 +23,7 @@ import io.quarkus.test.junit.mockito.MockitoConfig;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
 import lombok.extern.slf4j.Slf4j;
+import org.hamcrest.Matchers;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -1360,5 +1361,18 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .peek(db -> db.getDatabase().setTimeDbCreation(null))
                 .toList();
         Assertions.assertEquals(database, capturedDatabase);
+    }
+
+    @Test
+    void bearerRequestWhenM2mDisabled_shouldReturn401WithBasicChallenge() {
+        given().auth().preemptive().oauth2("some.fake.bearer.token")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"type\":\"mongodb\", \"classifier\":{\"scope\":\"service\", \"microserviceName\":\"test\", \"namespace\":\"" + TEST_NAMESPACE + "\"}, \"originService\":\"test\"}")
+                .accept(MediaType.APPLICATION_JSON)
+                .when().put()
+                .then()
+                .statusCode(UNAUTHORIZED.getStatusCode())
+                .header("WWW-Authenticate", Matchers.startsWith("basic"));
     }
 }

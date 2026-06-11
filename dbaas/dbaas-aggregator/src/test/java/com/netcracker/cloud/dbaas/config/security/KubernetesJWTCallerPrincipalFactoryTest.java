@@ -26,4 +26,10 @@ class KubernetesJWTCallerPrincipalFactoryTest {
         assertNotNull(factory.parse("token", null));
         assertThrows(ParseException.class, () -> factory.parse("invalidToken", null));
     }
+
+    @Test
+    void parseWhenM2mDisabled_shouldThrowParseException() {
+        factory = new KubernetesJWTCallerPrincipalFactory(false, "unused-audience");
+        assertThrows(ParseException.class, () -> factory.parse("some.bearer.token", null));
+    }
 }
