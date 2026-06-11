@@ -11,6 +11,7 @@ import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.enums.OperatorEventType;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -25,8 +26,7 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.*;
 
 /**
  * Verifies that a successful rotation in a partial-batch is committed to the DB even when a
@@ -52,6 +52,9 @@ class DBaaServiceQuarkusTest {
 
     @InjectMock
     PhysicalDatabasesService physicalDatabasesService;
+
+    @InjectMock
+    OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     @AfterEach
     void cleanUp() {
@@ -129,6 +132,31 @@ class DBaaServiceQuarkusTest {
         Map<String, Object> cp2 = getConnectionProperties(persistedReg2.get(), Role.ADMIN.toString());
         assertEquals(oldUsername2, cp2.get("username"),
                 "db2 must still have the old username — its adapter call threw before commitRotation");
+    }
+
+    @Test
+    void multiRoleDatabase_enqueueCalledOncePerDatabase() {
+        SortedMap<String, Object> classifier = buildClassifier(NAMESPACE, "ms-multi-role");
+        DatabaseRegistry registry = buildRegistry(classifier, ADAPTER_ID_1, "user-admin", "db-multi");
+        registry.getConnectionProperties().add(new HashMap<>() {{
+            put("username", "user-rw");
+            put("role", "rw");
+        }});
+        databaseRegistryDbaasRepository.saveInternalDatabase(registry);
+
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+        Mockito.when(adapter.identifier()).thenReturn(ADAPTER_ID_1);
+        Mockito.when(adapter.isUsersSupported()).thenReturn(true);
+        doReturn(buildEnsuredUser(Map.of("username", "user-admin", "role", Role.ADMIN.toString())))
+                .when(adapter).ensureUser(eq("user-admin"), any(), any(), eq(Role.ADMIN.toString()));
+        doReturn(buildEnsuredUser(Map.of("username", "user-rw", "role", "rw")))
+                .when(adapter).ensureUser(eq("user-rw"), any(), any(), eq("rw"));
+        Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(List.of(adapter));
+
+        dBaaService.performChangePassword(List.of(registry), null);
+
+        verify(operatorEventOutboxWriter, times(1))
+                .enqueue(eq(OperatorEventType.ROTATION_OCCURRED), any(), any());
     }
 
     // ---------------------------------------------------------------------------
