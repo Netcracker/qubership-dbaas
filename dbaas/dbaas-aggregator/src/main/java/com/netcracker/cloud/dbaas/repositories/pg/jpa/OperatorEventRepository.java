@@ -60,16 +60,14 @@ public class OperatorEventRepository implements PanacheRepositoryBase<OperatorEv
      * past sentTtl. previousRotatedAt is best-effort ("last rotation within the retention window"),
      * not a durable record of all past rotations.
      */
-    public OffsetDateTime findPreviousOccurredAt(String classifierJson, String type, String role) {
+    public OffsetDateTime findPreviousOccurredAt(String classifierJson, String type) {
         Object result = getEntityManager()
                 .createNativeQuery(
                         "SELECT MAX((payload->>'occurredAt')::timestamptz) " +
                                 "FROM operator_event_outbox " +
                                 "WHERE payload->>'type' = :type " +
-                                "AND payload->>'userRole' = :role " +
                                 "AND payload->'classifier' = CAST(:classifier AS jsonb)")
                 .setParameter("type", type)
-                .setParameter("role", role)
                 .setParameter("classifier", classifierJson)
                 .getSingleResult();
         if (result == null) {

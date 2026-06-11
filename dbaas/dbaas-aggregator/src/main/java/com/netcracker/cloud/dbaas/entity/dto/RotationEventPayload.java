@@ -22,5 +22,4 @@ public class RotationEventPayload {
     private OffsetDateTime previousRotatedAt;
     private SortedMap<String, Object> classifier;
     private String type;
-    private String userRole;
 }

@@ -39,13 +39,13 @@ class OperatorEventOutboxWriterTest {
     }
 
     @Test
-    void enqueue_persistsPayload() throws Exception {
+    void enqueue_persistsPayload() {
         TreeMap<String, Object> classifier = new TreeMap<>();
         classifier.put("namespace", "test-ns");
         classifier.put("microserviceName", "svc");
 
         QuarkusTransaction.requiringNew().run(() ->
-                operatorEventOutboxWriter.enqueue(OperatorEventType.ROTATION_OCCURRED, classifier, "admin", "admin")
+                operatorEventOutboxWriter.enqueue(OperatorEventType.ROTATION_OCCURRED, classifier, "postgresql")
         );
 
         assertEquals(1, operatorEventRepository.count());
@@ -58,7 +58,7 @@ class OperatorEventOutboxWriterTest {
         classifier.put("microserviceName", "svc");
         String classifierJson = objectMapper.writeValueAsString(classifier);
 
-        OffsetDateTime result = operatorEventRepository.findPreviousOccurredAt(classifierJson, "admin", "admin");
+        OffsetDateTime result = operatorEventRepository.findPreviousOccurredAt(classifierJson, "postgresql");
 
         assertNull(result);
     }
@@ -75,10 +75,10 @@ class OperatorEventOutboxWriterTest {
         String classifierJson = objectMapper.writeValueAsString(classifier);
 
         QuarkusTransaction.requiringNew().run(() ->
-                operatorEventOutboxWriter.enqueue(OperatorEventType.ROTATION_OCCURRED, classifier, "admin", "admin")
+                operatorEventOutboxWriter.enqueue(OperatorEventType.ROTATION_OCCURRED, classifier, "postgresql")
         );
 
-        OffsetDateTime result = operatorEventRepository.findPreviousOccurredAt(classifierJson, "admin", "admin");
+        OffsetDateTime result = operatorEventRepository.findPreviousOccurredAt(classifierJson, "postgresql");
 
         assertNotNull(result, "findPreviousOccurredAt must return the persisted occurredAt timestamp");
         assertTrue(result.isBefore(OffsetDateTime.now().plusSeconds(5)));

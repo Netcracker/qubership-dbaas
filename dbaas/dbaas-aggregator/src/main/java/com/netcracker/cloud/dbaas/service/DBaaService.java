@@ -346,7 +346,7 @@ public class DBaaService {
                     response.putSuccessEntity(databaseRegistry.getClassifier(), new HashMap<>(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), (String) cp.get(ROLE))));
                     encryption.encryptPassword(database, (String) cp.get(ROLE));
                     commitPasswordRotation(databaseRegistry, databaseRegistry.getClassifier(),
-                            databaseRegistry.getType(), (String) cp.get(ROLE));
+                            databaseRegistry.getType());
 
                     log.info("The password was changed successfully from database with classifier {} and type {} and role {}", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE));
                     sum += 1L;
@@ -366,12 +366,12 @@ public class DBaaService {
 
     protected void commitPasswordRotation(DatabaseRegistry databaseRegistry,
                                           SortedMap<String, Object> classifier,
-                                          String type, String role) {
+                                          String type) {
         QuarkusTransaction.requiringNew().run(() -> {
             logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
                     .saveInternalDatabase(databaseRegistry);
             operatorEventOutboxWriter.enqueue(
-                    OperatorEventType.ROTATION_OCCURRED, classifier, type, role);
+                    OperatorEventType.ROTATION_OCCURRED, classifier, type);
         });
     }
 

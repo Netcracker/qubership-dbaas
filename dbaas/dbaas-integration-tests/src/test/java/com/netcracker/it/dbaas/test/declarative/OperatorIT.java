@@ -4,6 +4,7 @@ import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtensio
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v1.BackupStatus;
 import com.netcracker.it.dbaas.entity.backup.v1.RestoreStatus;
+import com.netcracker.it.dbaas.entity.backup.v3.Status;
 import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
@@ -38,6 +39,7 @@ public class OperatorIT extends AbstractIT {
 
     private static BGHelper bgHelper;
     private static BackupHelperV1 backupHelperV1;
+    private static BackupHelperV3 backupHelperV3;
 
     @BeforeAll
     static void setUp() throws IOException {
@@ -45,6 +47,7 @@ public class OperatorIT extends AbstractIT {
         dbaasOperatorExistOrSkipTests();
         bgHelper = new BGHelper(helperV3);
         backupHelperV1 = new BackupHelperV1(helperV3);
+        backupHelperV3 = new BackupHelperV3(helperV3);
         cleanUp();
         createNamespaceBindingCROrSkipTests();
     }
@@ -498,7 +501,7 @@ public class OperatorIT extends AbstractIT {
                                         // Provide all CRD-required fields so the schema validation passes
                                         // and the XValidation immutability rule is the one that fires.
                                         spec.put("classifier", Map.of(
-                                                "microserviceName", "updatedMicroservice",
+                                                "microserviceName", generateName(),
                                                 "scope", "service"
                                         ));
 
@@ -898,7 +901,7 @@ public class OperatorIT extends AbstractIT {
                                         // Provide all CRD-required fields so the schema validation passes
                                         // and the XValidation immutability rule is the one that fires.
                                         spec.put("classifier", Map.of(
-                                                "microserviceName", "updatedMicroservice",
+                                                "microserviceName", generateName(),
                                                 "scope", "service"
                                         ));
                                         return r;
@@ -1358,7 +1361,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseSecretRotationTriggeredByBackupRestore() throws IOException, InterruptedException {
+                void testDatabaseSecretRotationTriggeredByBackupRestore() throws IOException {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
@@ -1382,10 +1385,45 @@ public class OperatorIT extends AbstractIT {
                     var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
                     assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
 
+                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
                     var passwordAfter = extractPasswordFromSecret(getSecret(secretName));
                     assertNotEquals(passwordBefore, passwordAfter, "secret password must change after rotation");
                 }
-                // TODO check do need to inject rotation method to old backup restore
+
+                @Test
+                void testDatabaseSecretUpdatedAfterBackupRestoreV3() throws IOException {
+                    String sourceNamespace = helperV3.generateTestNamespace();
+                    String dbSecretCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    var sourceClassifier = new ClassifierBuilder().ms(microserviceName).ns(sourceNamespace).build();
+
+                    try {
+                        helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
+
+                        var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+                        helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
+
+                        var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                        var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
+                        waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                        String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
+
+                        var namespaceBackup = backupHelperV3.collectBackup(helperV3.getBackupDaemonAuthorization(), sourceNamespace, false);
+                        assertTrue(namespaceBackup.canRestore(), "backup must be in restorable state");
+
+                        var namespaceRestoreResult = backupHelperV3.restoreBackup(helperV3.getBackupDaemonAuthorization(), namespaceBackup, NAMESPACE);
+                        assertEquals(Status.SUCCESS, namespaceRestoreResult.getStatus(), "restore must succeed");
+
+                        waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+
+                        String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
+                        assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
+                    } finally {
+                        deleteDb(sourceClassifier, POSTGRES_TYPE);
+                    }
+                }
             }
         }
     }
@@ -1404,7 +1442,9 @@ public class OperatorIT extends AbstractIT {
         var failedDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
         waitForDesiredState(CRD_DATABASE_SECRET, failedDatabaseSecretCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_AGGREGATOR_ERROR, STATUS_FALSE);
         assertNull(getSecret(secretName));
-        bgHelper.destroyDomain(new BgNamespaceRequest(NAMESPACE, TEST_NAMESPACE_CANDIDATE)).close();
+        try (Response response = bgHelper.destroyDomain(new BgNamespaceRequest(NAMESPACE, TEST_NAMESPACE_CANDIDATE))) {
+            assertEquals(200, response.code());
+        }
     }
 
     private void testDatabaseAccessPolicyOnlyServicesSet(String crName, String originService, String microserviceName, List<String> roles) {
@@ -1702,13 +1742,16 @@ public class OperatorIT extends AbstractIT {
                 .toList();
 
         for (DatabaseV3 logicalDb : logicalDbs) {
-            var classifier = logicalDb.getClassifier();
-            ClassifierWithRolesRequest classifierWithRolesRequest = new ClassifierWithRolesRequest();
-            classifierWithRolesRequest.setClassifier(classifier);
-            classifierWithRolesRequest.setUserRole(Role.ADMIN.getRoleValue());
-            classifierWithRolesRequest.setOriginService((String) classifier.get("microserviceName"));
-
-            helperV3.deleteDatabasesByClassifierRequest(NAMESPACE, logicalDb.getType(), classifierWithRolesRequest, 200);
+            deleteDb(logicalDb.getClassifier(), logicalDb.getType());
         }
+    }
+
+    private static void deleteDb(Map<String, Object> classifier, String type) throws IOException {
+        ClassifierWithRolesRequest classifierWithRolesRequest = new ClassifierWithRolesRequest();
+        classifierWithRolesRequest.setClassifier(classifier);
+        classifierWithRolesRequest.setUserRole(Role.ADMIN.getRoleValue());
+        classifierWithRolesRequest.setOriginService((String) classifier.get("microserviceName"));
+
+        helperV3.deleteDatabasesByClassifierRequest((String) classifier.get("namespace"), type, classifierWithRolesRequest, 200);
     }
 }

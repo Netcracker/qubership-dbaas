@@ -1411,15 +1411,11 @@ public class DbBackupV2Service {
                 encryption.encryptPassword(newDatabase);
                 databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
                 for (DatabaseRegistry registry : newDatabase.getDatabaseRegistry()) {
-                    ensuredUsers.stream()
-                            .map(eu -> (String) eu.getConnectionProperties().get(ROLE))
-                            .filter(Objects::nonNull)
-                            .distinct()
-                            .forEach(role -> operatorEventOutboxWriter.enqueue(
-                                    OperatorEventType.RESTORE_COMPLETED,
-                                    registry.getClassifier(),
-                                    type,
-                                    role));
+                    operatorEventOutboxWriter.enqueue(
+                            OperatorEventType.RESTORE_COMPLETED,
+                            registry.getClassifier(),
+                            type
+                    );
                 }
                 log.info("Based on restoreDatabase={}, database with id={} created", restoreDatabase.getName(), newDatabase.getId());
             });

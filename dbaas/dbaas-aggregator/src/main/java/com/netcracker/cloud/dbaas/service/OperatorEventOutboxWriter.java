@@ -47,25 +47,23 @@ public class OperatorEventOutboxWriter {
     /**
      * Enqueues a rotation notification event into the outbox.
      * Must be called inside an active transaction — if persistence fails the caller's transaction rolls back.
-     *
-     * If {@code role} is null, previousRotatedAt is always null (SQL = comparison with NULL never matches).
+
      */
     @Transactional(MANDATORY)
-    public void enqueue(OperatorEventType eventType, SortedMap<String, Object> classifier, String type, String role) {
+    public void enqueue(OperatorEventType eventType, SortedMap<String, Object> classifier, String type) {
         if (!rotationProperty.enabled()) {
             return;
         }
 
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime previousRotatedAt = lookupPreviousRotatedAt(classifier, type, role);
+        OffsetDateTime previousRotatedAt = lookupPreviousRotatedAt(classifier, type);
 
         RotationEventPayload payload = new RotationEventPayload(
                 UUID.randomUUID(),
                 now,
                 previousRotatedAt,
                 classifier,
-                type,
-                role
+                type
         );
 
         OperatorEvent event = new OperatorEvent();
@@ -79,13 +77,13 @@ public class OperatorEventOutboxWriter {
 
         operatorEventRepository.persist(event);
         operatorEventMetrics.incrementEnqueued(eventType);
-        log.debug("Enqueued rotation event id={} type={} classifier={}", event.getId(), eventType, classifier);
+        log.debug("Enqueued rotation event id={} type={}, classifier={}", event.getId(), eventType, classifier);
     }
 
-    private OffsetDateTime lookupPreviousRotatedAt(SortedMap<String, Object> classifier, String type, String role) {
+    private OffsetDateTime lookupPreviousRotatedAt(SortedMap<String, Object> classifier, String type) {
         try {
             String classifierJson = objectMapper.writeValueAsString(classifier);
-            return operatorEventRepository.findPreviousOccurredAt(classifierJson, type, role);
+            return operatorEventRepository.findPreviousOccurredAt(classifierJson, type);
         } catch (JsonProcessingException e) {
             log.warn("Failed to serialize classifier for previousRotatedAt lookup, using null", e);
             return null;

@@ -881,17 +881,10 @@ public class DBBackupsService {
                     db.setConnectionProperties(describedDatabase.getConnectionProperties());
                     db.setResources(describedDatabase.getResources());
                     databaseRegistryDbaasRepository.saveInternalDatabase(db);
-
-                    for (Map<String, Object> cp : db.getConnectionProperties()) {
-                        String role = (String) cp.get(ROLE);
-                        if (role != null) {
-                            operatorEventOutboxWriter.enqueue(
-                                    OperatorEventType.RESTORE_COMPLETED,
-                                    db.getClassifier(),
-                                    db.getType(),
-                                    role);
-                        }
-                    }
+                    operatorEventOutboxWriter.enqueue(
+                            OperatorEventType.RESTORE_COMPLETED,
+                            db.getClassifier(),
+                            db.getType());
                     log.info("Database {} described and saved", dbName);
                 }
                 res.skipped++;
@@ -944,17 +937,10 @@ public class DBBackupsService {
                 encryption.encryptPassword(db.getDatabase());
                 databaseRegistryDbaasRepository.saveInternalDatabase(db);
                 if (regenerateCredentials) {
-                    for (EnsuredUser eu : users) {
-                        String role = (String) eu.getConnectionProperties().get(ROLE);
-                        if (role != null) {
-                            log.info("DBCLASSIFIER: {}, ROLE:{}", db.getClassifier(), role);
-                            operatorEventOutboxWriter.enqueue(
-                                    OperatorEventType.RESTORE_COMPLETED,
-                                    db.getClassifier(),
-                                    db.getType(),
-                                    role);
-                        }
-                    }
+                    operatorEventOutboxWriter.enqueue(
+                            OperatorEventType.RESTORE_COMPLETED,
+                            db.getClassifier(),
+                            db.getType());
                 }
                 log.info("Users {} ensured access to db {}",
                         users.stream()
