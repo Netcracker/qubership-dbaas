@@ -408,7 +408,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                 throw new ForbiddenNamespaceException(namespace, databaseRegistry.getNamespace(),
                         Source.builder().pathVariable("namespace").build());
             }
-            deletionService.dropRegistrySafe(databaseRegistry, Boolean.TRUE.equals(force));
+            boolean dropped = deletionService.dropRegistrySafe(databaseRegistry, Boolean.TRUE.equals(force));
+            if (!dropped) {
+                throw new RuntimeException("Database deletion failed. Check DBaaS Aggregator logs for details.");
+            }
             log.info("Database in namespace={} with classifier={} is dropped", namespace, databaseRegistry.getClassifier());
         }
         //should return ok if db not found

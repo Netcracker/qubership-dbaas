@@ -828,6 +828,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.setClassifier(classifier);
         database.setNamespace(TEST_NAMESPACE);
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(true);
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_ANOTHER_NAMESPACE)
@@ -866,6 +867,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.setClassifier(classifier);
         database.setNamespace(TEST_NAMESPACE);
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, true)).thenReturn(true);
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
@@ -878,6 +880,35 @@ class AggregatedDatabaseAdministrationControllerV3Test {
 
         verify(deletionService).dropRegistrySafe(database, true);
         verifyNoMoreInteractions(deletionService);
+    }
+
+    @Test
+    void testDeleteDatabaseByClassifier_DeletionError() throws JsonProcessingException {
+        final UUID id = UUID.randomUUID();
+        TreeMap<String, Object> classifier = new TreeMap<>(getSampleClassifier());
+        ClassifierWithRolesRequest classifierWithRolesRequest = new ClassifierWithRolesRequest();
+        classifierWithRolesRequest.setClassifier(classifier);
+        classifierWithRolesRequest.setUserRole(ADMIN.toString());
+        classifierWithRolesRequest.setOriginService(TEST_MS_NAME);
+        when(dbaaSHelper.isProductionMode()).thenReturn(false);
+        doReturn(ADMIN.toString()).when(databaseRolesService).getSupportedRoleFromRequest(any(ClassifierWithRolesRequest.class), any(), any());
+        String requestBody = objectMapper.writer().withDefaultPrettyPrinter().writeValueAsString(classifierWithRolesRequest);
+
+        final DatabaseRegistry database = getDatabaseSample();
+        database.setId(id);
+        database.setType(POSTGRESQL.toString());
+        database.setClassifier(classifier);
+        database.setNamespace(TEST_NAMESPACE);
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(false);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .when().delete("/{type}", POSTGRESQL.toString())
+                .then()
+                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode());
     }
 
     @Test
@@ -910,6 +941,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.getDatabaseRegistry().getFirst().setClassifier(classifier);
         database.setMarkedForDrop(true);
         doReturn(Optional.of(database.getDatabaseRegistry().getFirst())).when(databaseRegistryDbaasRepository).getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString());
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(true);
+
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_ANOTHER_NAMESPACE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -957,6 +990,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.setNamespace(TEST_NAMESPACE);
         database.setMarkedForDrop(false);
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(true);
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_ANOTHER_NAMESPACE)
