@@ -13,7 +13,7 @@ jobs:
     if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Validate version
         run: |
@@ -30,7 +30,7 @@ jobs:
   mvn:
     needs: check-version
     if: always() && (needs.check-version.result == 'success' || needs.check-version.result == 'skipped')
-    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@bc2a0bd082147e23b4091616c608a21cc2957728 # v2.4.1
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@afe90353c9a086f22355f99e14e24a06cfb5195b # v2.4.3
     with:
       upload-artifact: true
       java-version: 21
