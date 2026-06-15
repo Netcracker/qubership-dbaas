@@ -13,6 +13,8 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
+const nsPayments = "payments"
+
 var _ = Describe("BalancingRule payload helpers", func() {
 	It("builds on-microservice requests from spec", func() {
 		got := microserviceRequestsFromSpec([]dbaasv1.MicroserviceBalancingRuleItem{
@@ -49,14 +51,14 @@ var _ = Describe("BalancingRule payload helpers", func() {
 
 	It("builds permanent rule requests from spec", func() {
 		got := permanentRequestsFromSpec([]dbaasv1.PermanentBalancingRuleItem{
-			{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments", "orders"}},
+			{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{nsPayments, "orders"}},
 			{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
 		})
 
 		Expect(got).To(HaveLen(2))
 		Expect(got[0].DbType).To(Equal("mongodb"))
 		Expect(got[0].PhysicalDatabaseID).To(Equal("mongodb-prod-a"))
-		Expect(got[0].Namespaces).To(Equal([]string{"payments", "orders"}))
+		Expect(got[0].Namespaces).To(Equal([]string{nsPayments, "orders"}))
 		Expect(got[1].DbType).To(Equal("cassandra"))
 		Expect(got[1].PhysicalDatabaseID).To(Equal("cassandra-prod-a"))
 	})
@@ -80,7 +82,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 			}),
 		}
 
-		Expect(reconciler.cleanupMicroserviceTargets(ctx, "payments", "mongodb", []string{"billing", "ledger"})).To(Succeed())
+		Expect(reconciler.cleanupMicroserviceTargets(ctx, nsPayments, "mongodb", []string{"billing", "ledger"})).To(Succeed())
 
 		Expect(decodeErr).NotTo(HaveOccurred())
 		Expect(gotMethod).To(Equal(http.MethodPut))
@@ -109,7 +111,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 			}),
 		}
 		rule := &dbaasv1.MicroserviceBalancingRule{}
-		rule.Namespace = "payments"
+		rule.Namespace = nsPayments
 		rule.Spec.Rules = []dbaasv1.MicroserviceBalancingRuleItem{
 			{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
 		}
@@ -141,7 +143,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 			}),
 		}
 
-		Expect(reconciler.deleteNamespaceRule(ctx, "payments", "payments-cassandra")).To(Succeed())
+		Expect(reconciler.deleteNamespaceRule(ctx, nsPayments, "payments-cassandra")).To(Succeed())
 
 		Expect(gotMethod).To(Equal(http.MethodDelete))
 		Expect(gotPath).To(Equal("/api/v3/dbaas/payments/physical_databases/balancing/rules/payments-cassandra"))
@@ -165,7 +167,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 			}),
 		}
 		rule := &dbaasv1.NamespaceBalancingRule{}
-		rule.Namespace = "payments"
+		rule.Namespace = nsPayments
 		rule.Spec.Rules = []dbaasv1.NamespaceBalancingRuleItem{
 			{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 		}

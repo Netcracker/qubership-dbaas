@@ -103,14 +103,12 @@ var _ = Describe("BalancingRule validation", func() {
 				},
 			}
 
-			reason, err := reconciler.validateMicroserviceRule(valid)
-			Expect(err).NotTo(HaveOccurred())
+			reason := reconciler.validateMicroserviceRule(valid)
 			Expect(reason).To(BeEmpty())
 
 			invalidName := valid.DeepCopy()
 			invalidName.Name = "other"
-			reason, err = reconciler.validateMicroserviceRule(invalidName)
-			Expect(err).NotTo(HaveOccurred())
+			reason = reconciler.validateMicroserviceRule(invalidName)
 			Expect(reason).To(ContainSubstring(dbaasv1.MicroserviceBalancingRuleName))
 
 			duplicate := valid.DeepCopy()
@@ -119,8 +117,7 @@ var _ = Describe("BalancingRule validation", func() {
 				Label:         "zone=slow",
 				Microservices: []string{"billing"},
 			})
-			reason, err = reconciler.validateMicroserviceRule(duplicate)
-			Expect(err).NotTo(HaveOccurred())
+			reason = reconciler.validateMicroserviceRule(duplicate)
 			Expect(reason).To(ContainSubstring("duplicate microservice"))
 		})
 
@@ -199,24 +196,21 @@ var _ = Describe("BalancingRule validation", func() {
 				},
 			}
 
-			reason, err := reconciler.validatePermanentRule(valid)
-			Expect(err).NotTo(HaveOccurred())
+			reason := reconciler.validatePermanentRule(valid)
 			Expect(reason).To(BeEmpty())
 
 			foreignNamespace := valid.DeepCopy()
-			foreignNamespace.Namespace = "payments"
-			reason, err = reconciler.validatePermanentRule(foreignNamespace)
-			Expect(err).NotTo(HaveOccurred())
+			foreignNamespace.Namespace = nsPayments
+			reason = reconciler.validatePermanentRule(foreignNamespace)
 			Expect(reason).To(ContainSubstring("operator namespace"))
 
 			duplicateTarget := valid.DeepCopy()
 			duplicateTarget.Spec.Rules = append(duplicateTarget.Spec.Rules, dbaasv1.PermanentBalancingRuleItem{
 				DbType:             "postgresql",
 				PhysicalDatabaseID: "postgresql-b",
-				Namespaces:         []string{"payments"},
+				Namespaces:         []string{nsPayments},
 			})
-			reason, err = reconciler.validatePermanentRule(duplicateTarget)
-			Expect(err).NotTo(HaveOccurred())
+			reason = reconciler.validatePermanentRule(duplicateTarget)
 			Expect(reason).To(ContainSubstring("duplicate namespace"))
 		})
 	})

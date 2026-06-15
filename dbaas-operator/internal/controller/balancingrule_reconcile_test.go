@@ -38,10 +38,12 @@ type balancingRuleReconcileFixture struct {
 	recorder   *record.FakeRecorder
 }
 
+const balancingTestNS = "default"
+
 var _ = Describe("BalancingRule Controller", func() {
 	const (
-		businessNS = "default"
-		operatorNS = "default"
+		businessNS = balancingTestNS
+		operatorNS = balancingTestNS
 	)
 
 	var fixture *balancingRuleReconcileFixture
@@ -211,7 +213,7 @@ var _ = Describe("BalancingRule Controller", func() {
 		})
 
 		It("records successfully applied namespace rules when a later apply fails", func() {
-			rule := namespaceRuleWithFinalizer(businessNS)
+			rule := namespaceRuleWithFinalizer()
 			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 			fixture.statuses = []int{http.StatusOK, http.StatusConflict}
 
@@ -316,7 +318,7 @@ var _ = Describe("BalancingRule Controller", func() {
 		})
 
 		It("cleans applied rules and removes the finalizer when deleted", func() {
-			rule := namespaceRuleWithFinalizer(businessNS)
+			rule := namespaceRuleWithFinalizer()
 			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 			updateNamespaceStatus(rule, []dbaasv1.NamespaceBalancingRuleAppliedRule{
 				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
@@ -341,7 +343,7 @@ var _ = Describe("BalancingRule Controller", func() {
 		})
 
 		It("keeps the finalizer when cleanup fails", func() {
-			rule := namespaceRuleWithFinalizer(businessNS)
+			rule := namespaceRuleWithFinalizer()
 			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 			updateNamespaceStatus(rule, []dbaasv1.NamespaceBalancingRuleAppliedRule{
 				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
@@ -358,7 +360,7 @@ var _ = Describe("BalancingRule Controller", func() {
 		})
 
 		It("removes the finalizer when cleanup retry receives not found", func() {
-			rule := namespaceRuleWithFinalizer(businessNS)
+			rule := namespaceRuleWithFinalizer()
 			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 			updateNamespaceStatus(rule, []dbaasv1.NamespaceBalancingRuleAppliedRule{
 				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
@@ -550,11 +552,11 @@ func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleRecon
 	return fixture
 }
 
-func namespaceRuleWithFinalizer(namespace string) *dbaasv1.NamespaceBalancingRule {
+func namespaceRuleWithFinalizer() *dbaasv1.NamespaceBalancingRule {
 	return &dbaasv1.NamespaceBalancingRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       dbaasv1.NamespaceBalancingRuleName,
-			Namespace:  namespace,
+			Namespace:  balancingTestNS,
 			Finalizers: []string{dbaasv1.NamespaceBalancingRuleFinalizer},
 		},
 		Spec: dbaasv1.NamespaceBalancingRuleSpec{
