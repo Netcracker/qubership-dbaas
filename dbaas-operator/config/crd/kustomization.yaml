@@ -6,7 +6,7 @@ resources:
 - bases/dbaas.netcracker.com_microservicebalancingrules.yaml
 - bases/dbaas.netcracker.com_namespacebalancingrules.yaml
 - bases/dbaas.netcracker.com_permanentbalancingrules.yaml
-- bases/dbaas.netcracker.com_databasesecrets.yaml
+- bases/dbaas.netcracker.com_databasesecretclaims.yaml
 - bases/dbaas.netcracker.com_databaseaccesspolicies.yaml
 - bases/dbaas.netcracker.com_externaldatabases.yaml
 - bases/dbaas.netcracker.com_namespacebindings.yaml

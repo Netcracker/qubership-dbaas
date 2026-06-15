@@ -17,7 +17,7 @@ limitations under the License.
 package v1
 
 // AnnotationRotationTrigger is the annotation key that the rotation webhook
-// receiver writes on a DatabaseSecret CR to signal that the aggregator
+// receiver writes on a DatabaseSecretClaim CR to signal that the aggregator
 // reported a credentials change for the CR's (classifier, type). The
 // annotation's value is the rotation event's UUID; storing a fresh value on
 // each event guarantees the underlying Kubernetes watch fires (an identical

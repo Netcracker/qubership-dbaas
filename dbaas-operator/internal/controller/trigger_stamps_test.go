@@ -9,7 +9,7 @@ import (
 // testEDBKey is the namespace/name key reused across trigger-stamp tests.
 const testEDBKey = "test-ns/test-edb"
 
-func TestExternalDatabaseSecretTriggerLifecycle(t *testing.T) {
+func TestExternalDatabaseSecretClaimTriggerLifecycle(t *testing.T) {
 	r := &ExternalDatabaseReconciler{}
 	key := testEDBKey
 	start := time.Unix(100, 0)

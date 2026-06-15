@@ -48,7 +48,7 @@ type RotationEventPayload struct {
 	// EventID is the UUID assigned to this rotation event by the aggregator's
 	// outbox writer. The handler stores it as the value of the
 	// dbaas.netcracker.com/rotation-trigger annotation it patches on each
-	// affected DatabaseSecret CR, both as a correlation ID and to guarantee
+	// affected DatabaseSecretClaim CR, both as a correlation ID and to guarantee
 	// the underlying watch fires on every event (a no-op patch — identical
 	// annotation value — would not).
 	EventID string `json:"eventId"`
@@ -72,7 +72,7 @@ type RotationEventPayload struct {
 
 	// Type is the database engine type (e.g. "postgresql", "mongodb").
 	// Part of the (classifier, type) compound key used to resolve which
-	// DatabaseSecret CRs the rotation affects.
+	// DatabaseSecretClaim CRs the rotation affects.
 	Type string `json:"type"`
 
 	// UserRole is the database role whose password was rotated. Not used

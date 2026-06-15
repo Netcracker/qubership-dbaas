@@ -87,11 +87,11 @@ public class OperatorHelper {
                     .withScope("Namespaced")
                     .build();
 
-    public static final CustomResourceDefinitionContext CRD_DATABASE_SECRET =
+    public static final CustomResourceDefinitionContext CRD_DATABASE_SECRET_CLAIM =
             new CustomResourceDefinitionContext.Builder()
                     .withGroup("dbaas.netcracker.com")
                     .withVersion("v1")
-                    .withPlural("databasesecrets")
+                    .withPlural("databasesecretclaims")
                     .withScope("Namespaced")
                     .build();
 
@@ -370,13 +370,13 @@ public class OperatorHelper {
         return cr;
     }
 
-    public static GenericKubernetesResource buildDatabaseSecretCR(String crName, String originService, String microserviceName,
+    public static GenericKubernetesResource buildDatabaseSecretClaimCR(String crName, String originService, String microserviceName,
                                                                   String namespace, String secretName, String role,
                                                                   String type) {
 
         GenericKubernetesResource cr = new GenericKubernetesResource();
         cr.setApiVersion("dbaas.netcracker.com/v1");
-        cr.setKind("DatabaseSecret");
+        cr.setKind("DatabaseSecretClaim");
 
         ObjectMeta meta = new ObjectMeta();
         meta.setName(crName);

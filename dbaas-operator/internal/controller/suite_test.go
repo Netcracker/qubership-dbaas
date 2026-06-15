@@ -114,19 +114,19 @@ var _ = BeforeSuite(func() {
 
 	Expect(mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&dbaasv1.DatabaseSecret{},
+		&dbaasv1.DatabaseSecretClaim{},
 		secretNameIndex,
 		func(obj client.Object) []string {
-			return []string{obj.(*dbaasv1.DatabaseSecret).Spec.SecretName}
+			return []string{obj.(*dbaasv1.DatabaseSecretClaim).Spec.SecretName}
 		},
 	)).To(Succeed())
 
 	Expect(mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&dbaasv1.DatabaseSecret{},
+		&dbaasv1.DatabaseSecretClaim{},
 		dbaasv1.ClassifierTypeIndex,
 		func(obj client.Object) []string {
-			ds := obj.(*dbaasv1.DatabaseSecret)
+			ds := obj.(*dbaasv1.DatabaseSecretClaim)
 			c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
 			return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
 		},

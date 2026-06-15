@@ -97,13 +97,13 @@ const (
 	// its namespace ownership dependency to become available.
 	EventReasonWaitingForNamespaceBinding = "WaitingForNamespaceBinding"
 
-	// EventReasonSecretCreated is emitted when a DatabaseSecret successfully
+	// EventReasonSecretCreated is emitted when a DatabaseSecretClaim successfully
 	// creates the target Kubernetes Secret with connection properties for the
 	// first time. Subsequent content changes (e.g. rotation) use SecretRotated.
 	// Type: Normal.
 	EventReasonSecretCreated = "SecretCreated"
 
-	// EventReasonSecretRotated is emitted when a DatabaseSecret reconcile detects
+	// EventReasonSecretRotated is emitted when a DatabaseSecretClaim reconcile detects
 	// that the connectionProperties returned by dbaas-aggregator differ from what
 	// is currently stored in the target Kubernetes Secret, and writes the new
 	// content. Triggered both by rotation events from the aggregator and by
@@ -137,7 +137,7 @@ const (
 	// Type: Warning.
 	EventReasonEmptyConnectionProperties = "EmptyConnectionProperties"
 
-	// EventReasonDatabaseNotFoundTimeout is emitted once when a DatabaseSecret has been
+	// EventReasonDatabaseNotFoundTimeout is emitted once when a DatabaseSecretClaim has been
 	// waiting on a DatabaseNotFound (HTTP 404) response from dbaas-aggregator for longer
 	// than databaseNotFoundTimeout. The controller continues polling (Phase remains
 	// BackingOff, Stalled remains False — the CR may still self-heal once the database
