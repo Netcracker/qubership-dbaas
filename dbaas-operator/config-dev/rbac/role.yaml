@@ -34,7 +34,7 @@ rules:
   - dbaas.netcracker.com
   resources:
   - databaseaccesspolicies/status
-  - databasesecrets/status
+  - databasesecretclaims/status
   - externaldatabases/status
   - internaldatabases/status
   - microservicebalancingrules/status
@@ -47,7 +47,7 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
-  - databasesecrets
+  - databasesecretclaims
   - microservicebalancingrules
   - namespacebalancingrules
   - namespacebindings

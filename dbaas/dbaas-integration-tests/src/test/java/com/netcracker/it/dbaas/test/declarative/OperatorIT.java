@@ -63,7 +63,7 @@ public class OperatorIT extends AbstractIT {
         kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
-        kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
+        kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
@@ -124,7 +124,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testExternalDatabaseSecretRotation() {
+                void testExternalDatabaseSecretClaimRotation() {
                     String crName = generateName();
                     String secretName = generateName();
                     String microserviceName = generateName();
@@ -159,7 +159,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testExternalDatabaseSecretCreatedAfterEDB() {
+                void testExternalDatabaseSecretClaimCreatedAfterEDB() {
                     String crName = generateName();
                     String secretName = generateName();
                     String microserviceName = generateName();
@@ -184,7 +184,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testExternalDatabaseSecretDeleted() {
+                void testExternalDatabaseSecretClaimDeleted() {
                     String crName = generateName();
                     String secretName = generateName();
                     String microserviceName = generateName();
@@ -210,7 +210,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testExternalDatabaseSecretSharedByMultipleEDBs() {
+                void testExternalDatabaseSecretClaimSharedByMultipleEDBs() {
                     String secretName = generateName();
                     String crName1 = generateName();
                     String crName2 = generateName();
@@ -314,7 +314,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testExternalDatabaseSecretMissingKey() throws IOException {
+                void testExternalDatabaseSecretClaimMissingKey() throws IOException {
                     String crName = generateName();
                     String secretName = generateName();
                     String microserviceName = generateName();
@@ -331,7 +331,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testExternalDatabaseSecretEmptyKey() throws IOException {
+                void testExternalDatabaseSecretClaimEmptyKey() throws IOException {
                     String crName = generateName();
                     String secretName = generateName();
                     String microserviceName = generateName();
@@ -1129,9 +1129,9 @@ public class OperatorIT extends AbstractIT {
 
             @Nested
             @EnableExtension
-            class DatabaseSecret {
+            class DatabaseSecretClaim {
                 @Test
-                void testDatabaseSecretCreatedSuccessfully() throws IOException {
+                void testDatabaseSecretClaimCreatedSuccessfully() throws IOException {
                     String internalDatabaseCRName = generateName();
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
@@ -1142,19 +1142,19 @@ public class OperatorIT extends AbstractIT {
                     waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
                     var expectedConnections = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, POSTGRES_TYPE, 200).getConnectionProperties();
 
-                    var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
                     var secret = getSecret(secretName);
-                    assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
+                    assertSecretOwnedByCR(secret, createdDatabaseSecretClaimCR);
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
                     // userRole is empty in this CR → descriptor must omit it.
                     assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "");
                 }
 
                 @Test
-                void testDatabaseSecretSecretAlreadyExistsNoOwnerRef() {
+                void testDatabaseSecretClaimSecretAlreadyExistsNoOwnerRef() {
                     String crName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
@@ -1163,13 +1163,13 @@ public class OperatorIT extends AbstractIT {
                             "key", "value"
                     ));
 
-                    var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_SECRET_CONFLICT, STATUS_TRUE);
                 }
 
                 @Test
-                void testDatabaseSecretSharedSecretName() {
+                void testDatabaseSecretClaimSharedSecretName() {
                     String crName1 = generateName();
                     String crName2 = generateName();
                     String microserviceName = generateName();
@@ -1183,33 +1183,33 @@ public class OperatorIT extends AbstractIT {
                     // UID-dependent when both are created within the same second (k8s stores
                     // creationTimestamp at second granularity), so the test asserts the
                     // invariant — exactly one conflict — without assuming an order.
-                    var databaseSecretCR1 = buildDatabaseSecretCR(crName1, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    var databaseSecretCR2 = buildDatabaseSecretCR(crName2, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
-                    createCR(CRD_DATABASE_SECRET, databaseSecretCR2);
+                    var databaseSecretCR1 = buildDatabaseSecretClaimCR(crName1, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var databaseSecretCR2 = buildDatabaseSecretClaimCR(crName2, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR1);
+                    createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR2);
 
                     assertExactlyOneSecretConflict(crName1, crName2);
                 }
 
                 @Test
-                void testDatabaseSecretMissingLabel() {
+                void testDatabaseSecretClaimMissingLabel() {
                     String crName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
                     String requiredLabel = "app.kubernetes.io/name";
 
-                    var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
                     databaseSecretCR.getMetadata().getLabels().remove(requiredLabel);
 
-                    createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                    createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
 
                     var secret = getSecret(secretName);
                     assertNull(secret);
                 }
 
                 @Test
-                void testDatabaseSecretDbNotExist() throws IOException {
+                void testDatabaseSecretClaimDbNotExist() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
@@ -1218,44 +1218,44 @@ public class OperatorIT extends AbstractIT {
                             new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(),
                             NAMESPACE, POSTGRES_TYPE, 404);
 
-                    var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
 
                     assertNull(getSecret(secretName));
 
                     var expectedConnections = helperV3.createDatabase(new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), POSTGRES_TYPE, 201).getConnectionProperties();
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
                     var secret = getSecret(secretName);
-                    assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
+                    assertSecretOwnedByCR(secret, createdDatabaseSecretClaimCR);
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
                 }
 
                 @Test
-                void testDatabaseSecretCascadeDeleting() throws IOException {
+                void testDatabaseSecretClaimCascadeDeleting() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
 
                     helperV3.createDatabase(new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), POSTGRES_TYPE, 201);
 
-                    var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
                     var secret = getSecret(secretName);
-                    assertSecretOwnedByCR(secret, createdDatabaseSecretCR);
+                    assertSecretOwnedByCR(secret, createdDatabaseSecretClaimCR);
 
-                    kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
+                    kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
                             .withName(crName)
                             .delete();
 
-                    var deletedDatabaseSecretCR = kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
+                    var deletedDatabaseSecretClaimCR = kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
                             .inNamespace(NAMESPACE)
                             .withName(crName)
                             .delete();
-                    assertTrue(deletedDatabaseSecretCR.isEmpty());
+                    assertTrue(deletedDatabaseSecretClaimCR.isEmpty());
 
                     waitForSecretDeleted(secretName);
                     var deletedSecret = getSecret(secretName);
@@ -1263,7 +1263,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseSecretApplyDatabaseAccessPolicy() throws IOException {
+                void testDatabaseSecretClaimApplyDatabaseAccessPolicy() throws IOException {
                     String dbSecretCrName = generateName();
                     String databaseAccessPolicyCrName = generateName();
                     String microserviceName = generateName();
@@ -1275,18 +1275,18 @@ public class OperatorIT extends AbstractIT {
                             POSTGRES_TYPE, 201
                     ).getConnectionProperties();
 
-                    var databaseSecretCR = buildDatabaseSecretCR(dbSecretCrName, originService, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE);
-                    var failedDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, failedDatabaseSecretCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_AGGREGATOR_REJECTED, STATUS_TRUE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCrName, originService, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE);
+                    var failedDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, failedDatabaseSecretClaimCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_AGGREGATOR_REJECTED, STATUS_TRUE);
                     assertNull(getSecret(secretName));
 
-                    kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET)
+                    kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
                             .withName(dbSecretCrName)
                             .delete();
 
                     OperatorIT.this.testDatabaseAccessPolicyOnlyServicesSet(databaseAccessPolicyCrName, microserviceName, originService, List.of("admin"));
-                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
                     var secret = getSecret(secretName);
                     assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
                     // userRole "admin" is requested in this CR → descriptor must carry it.
@@ -1294,7 +1294,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseSecretApplyRotation() throws IOException {
+                void testDatabaseSecretClaimApplyRotation() throws IOException {
                     String internalDatabaseCRName = generateName();
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
@@ -1305,16 +1305,16 @@ public class OperatorIT extends AbstractIT {
                     createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
                     waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
 
-                    var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
                     var secretBefore = getSecret(secretName);
                     assertNotNull(secretBefore, "secret must exist");
                     var passwordBefore = extractPasswordFromSecret(secretBefore);
 
                     helperV3.changePassword(classifier, POSTGRES_TYPE, 200, NAMESPACE);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
 
                     var secretAfter = getSecret(secretName);
                     assertNotNull(secretAfter, "secret must exist after rotation");
@@ -1324,7 +1324,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseSecretRotationFanOutToSameClassifier() throws IOException {
+                void testDatabaseSecretClaimRotationFanOutToSameClassifier() throws IOException {
                     String internalDatabaseCRName = generateName();
                     String dbSecretCRName1 = generateName();
                     String dbSecretCRName2 = generateName();
@@ -1337,21 +1337,21 @@ public class OperatorIT extends AbstractIT {
                     createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
                     waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
 
-                    var databaseSecretCR1 = buildDatabaseSecretCR(dbSecretCRName1, microserviceName, microserviceName, NAMESPACE, secretName1, "", POSTGRES_TYPE);
-                    var createdDatabaseSecretCR1 = createCR(CRD_DATABASE_SECRET, databaseSecretCR1);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var databaseSecretCR1 = buildDatabaseSecretClaimCR(dbSecretCRName1, microserviceName, microserviceName, NAMESPACE, secretName1, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR1 = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR1);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
-                    var databaseSecretCR2 = buildDatabaseSecretCR(dbSecretCRName2, microserviceName, microserviceName, NAMESPACE, secretName2, "", POSTGRES_TYPE);
-                    var createdDatabaseSecretCR2 = createCR(CRD_DATABASE_SECRET, databaseSecretCR2);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var databaseSecretCR2 = buildDatabaseSecretClaimCR(dbSecretCRName2, microserviceName, microserviceName, NAMESPACE, secretName2, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR2 = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR2);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
                     var passwordBefore1 = extractPasswordFromSecret(getSecret(secretName1));
                     var passwordBefore2 = extractPasswordFromSecret(getSecret(secretName2));
 
                     helperV3.changePassword(classifier, POSTGRES_TYPE, 200, NAMESPACE);
 
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
 
                     var passwordAfter1 = extractPasswordFromSecret(getSecret(secretName1));
                     var passwordAfter2 = extractPasswordFromSecret(getSecret(secretName2));
@@ -1361,7 +1361,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
-                void testDatabaseSecretRotationTriggeredByBackupRestore() throws IOException {
+                void testDatabaseSecretClaimRotationTriggeredByBackupRestore() throws IOException {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
@@ -1369,9 +1369,9 @@ public class OperatorIT extends AbstractIT {
 
                     helperV3.createDatabase(classifier, POSTGRES_TYPE, 201);
 
-                    var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                    var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
                     var passwordBefore = extractPasswordFromSecret(getSecret(secretName));
 
@@ -1385,13 +1385,13 @@ public class OperatorIT extends AbstractIT {
                     var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
                     assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
 
-                    waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
                     var passwordAfter = extractPasswordFromSecret(getSecret(secretName));
                     assertNotEquals(passwordBefore, passwordAfter, "secret password must change after rotation");
                 }
 
                 @Test
-                void testDatabaseSecretUpdatedAfterBackupRestoreV3() throws IOException {
+                void testDatabaseSecretClaimUpdatedAfterBackupRestoreV3() throws IOException {
                     String sourceNamespace = helperV3.generateTestNamespace();
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
@@ -1404,9 +1404,9 @@ public class OperatorIT extends AbstractIT {
                         var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
                         helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
 
-                        var databaseSecretCR = buildDatabaseSecretCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                        var createdDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-                        waitForDesiredState(CRD_DATABASE_SECRET, createdDatabaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                        var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                        var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
                         String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
 
@@ -1416,7 +1416,7 @@ public class OperatorIT extends AbstractIT {
                         var namespaceRestoreResult = backupHelperV3.restoreBackup(helperV3.getBackupDaemonAuthorization(), namespaceBackup, NAMESPACE);
                         assertEquals(Status.SUCCESS, namespaceRestoreResult.getStatus(), "restore must succeed");
 
-                        waitForDesiredState(CRD_DATABASE_SECRET, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
 
                         String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
                         assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
@@ -1429,7 +1429,7 @@ public class OperatorIT extends AbstractIT {
     }
 
     @Test
-    void testDatabaseSecretDatabaseIsAbsentInActiveNamespace() throws IOException {
+    void testDatabaseSecretClaimDatabaseIsAbsentInActiveNamespace() throws IOException {
         String crName = generateName();
         String microserviceName = generateName();
         String secretName = generateName();
@@ -1438,9 +1438,9 @@ public class OperatorIT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        var databaseSecretCR = buildDatabaseSecretCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE);
-        var failedDatabaseSecretCR = createCR(CRD_DATABASE_SECRET, databaseSecretCR);
-        waitForDesiredState(CRD_DATABASE_SECRET, failedDatabaseSecretCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_AGGREGATOR_ERROR, STATUS_FALSE);
+        var databaseSecretCR = buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE);
+        var failedDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, failedDatabaseSecretClaimCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_AGGREGATOR_ERROR, STATUS_FALSE);
         assertNull(getSecret(secretName));
         try (Response response = bgHelper.destroyDomain(new BgNamespaceRequest(NAMESPACE, TEST_NAMESPACE_CANDIDATE))) {
             assertEquals(200, response.code());
@@ -1522,7 +1522,7 @@ public class OperatorIT extends AbstractIT {
     }
 
     // waitForSecretDeleted polls until the owned Secret is gone. Deleting the
-    // DatabaseSecret CR removes its Secret via owner-reference garbage
+    // DatabaseSecretClaim CR removes its Secret via owner-reference garbage
     // collection, which is asynchronous, so callers must wait rather than assert
     // immediately. fabric8 passes null to the predicate once the resource is
     // absent. The exception is swallowed so the caller's assertNull surfaces a
@@ -1538,14 +1538,14 @@ public class OperatorIT extends AbstractIT {
         }
     }
 
-    // assertExactlyOneSecretConflict waits until exactly one of the two DatabaseSecret CRs
+    // assertExactlyOneSecretConflict waits until exactly one of the two DatabaseSecretClaim CRs
     // that share a secretName loses the sibling tiebreak (InvalidConfiguration/SecretConflict)
     // while the other keeps claiming it (BackingOff/DatabaseNotFound). It does NOT assume which
     // CR wins: when both CRs are created within the same second their creationTimestamps are
     // equal (k8s second granularity) and the winner is decided by UID, so the outcome is
     // deterministic but order-independent.
     private void assertExactlyOneSecretConflict(String crNameA, String crNameB) {
-        var dsClient = kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET).inNamespace(NAMESPACE);
+        var dsClient = kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM).inNamespace(NAMESPACE);
         try {
             dsClient.withName(crNameA).waitUntilCondition(a -> {
                 var b = dsClient.withName(crNameB).get();
@@ -1557,7 +1557,7 @@ public class OperatorIT extends AbstractIT {
         var a = dsClient.withName(crNameA).get();
         var b = dsClient.withName(crNameB).get();
         assertTrue(exactlyOneSecretConflict(a, b),
-                "exactly one of two DatabaseSecret CRs sharing a secretName must be in "
+                "exactly one of two DatabaseSecretClaim CRs sharing a secretName must be in "
                         + "InvalidConfiguration/SecretConflict and the other in BackingOff/DatabaseNotFound");
     }
 

@@ -45,7 +45,7 @@ const ownershipUnboundRetryInterval = 5 * time.Minute
 // when two namespaces share a secret with the same name.
 const secretNamesIndex = "spec.credentialSecretNames"
 
-// databaseNotFoundTimeout is the duration after which a DatabaseSecret that has
+// databaseNotFoundTimeout is the duration after which a DatabaseSecretClaim that has
 // been continuously receiving DatabaseNotFound (404) responses from the aggregator
 // is considered stuck. Polling continues (so the CR can recover if the database
 // eventually appears), but the controller switches to EventReasonDatabaseNotFoundTimeout
@@ -54,7 +54,7 @@ const secretNamesIndex = "spec.credentialSecretNames"
 const databaseNotFoundTimeout = 10 * time.Minute
 
 // secretRotationSafetyNetInterval is the requeue delay applied after a
-// successful DatabaseSecret reconcile. The rotation webhook is the primary,
+// successful DatabaseSecretClaim reconcile. The rotation webhook is the primary,
 // near-instant trigger for credential updates; this slow periodic re-poll is a
 // safety net that recovers from missed webhook events (operator restart,
 // network partition that outlasts the aggregator's retry budget, or a

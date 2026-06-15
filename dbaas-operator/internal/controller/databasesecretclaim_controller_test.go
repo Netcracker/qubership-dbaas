@@ -42,10 +42,10 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-var _ = Describe("DatabaseSecret Controller", func() {
+var _ = Describe("DatabaseSecretClaim Controller", func() {
 	const (
 		ns           = "default"
-		resourceName = "test-databasesecret"
+		resourceName = "test-databasesecretclaim"
 		secretName   = "test-db-secret"
 
 		// databaseNotFoundResponseBody is the canonical TMF error body the aggregator
@@ -55,12 +55,12 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 	var (
 		fixture        *aggregatorSyncFixture
-		reconciler     *DatabaseSecretReconciler
+		reconciler     *DatabaseSecretClaimReconciler
 		namespacedName types.NamespacedName
 	)
 
-	baseSpec := func() dbaasv1.DatabaseSecretSpec {
-		return dbaasv1.DatabaseSecretSpec{
+	baseSpec := func() dbaasv1.DatabaseSecretClaimSpec {
+		return dbaasv1.DatabaseSecretClaimSpec{
 			Classifier: dbaasv1.Classifier{
 				MicroserviceName: "test-service",
 				Scope:            "service",
@@ -93,7 +93,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	BeforeEach(func() {
 		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
-		reconciler = &DatabaseSecretReconciler{
+		reconciler = &DatabaseSecretClaimReconciler{
 			Client:     cacheClient,
 			Scheme:     cacheClient.Scheme(),
 			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
@@ -104,15 +104,15 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 	AfterEach(func() {
 		fixture.close()
-		deleteIfExists(&dbaasv1.DatabaseSecret{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+		deleteIfExists(&dbaasv1.DatabaseSecretClaim{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 		deleteIfExists(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns}})
 		// clean up any second CR created in duplicate-name tests
-		deleteIfExists(&dbaasv1.DatabaseSecret{ObjectMeta: metav1.ObjectMeta{Name: resourceName + "-2", Namespace: ns}})
+		deleteIfExists(&dbaasv1.DatabaseSecretClaim{ObjectMeta: metav1.ObjectMeta{Name: resourceName + "-2", Namespace: ns}})
 	})
 
-	reconcileAndFetch := func() (*dbaasv1.DatabaseSecret, reconcile.Result, error) {
-		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1.DatabaseSecret {
-			return &dbaasv1.DatabaseSecret{}
+	reconcileAndFetch := func() (*dbaasv1.DatabaseSecretClaim, reconcile.Result, error) {
+		return reconcileAndFetchObject(reconciler, namespacedName, func() *dbaasv1.DatabaseSecretClaim {
+			return &dbaasv1.DatabaseSecretClaim{}
 		})
 	}
 
@@ -120,7 +120,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 	Context("Missing app.kubernetes.io/name label", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, InvalidSpec event, no aggregator call", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -157,7 +157,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("creates Secret, sets Phase=Succeeded, emits Normal/SecretCreated, ownerRef set", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -231,7 +231,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			// baseSpec() omits spec.classifier.namespace. The aggregator requires
 			// it, and the rotation index/webhook must agree on it — the controller
 			// defaults it to metadata.namespace (EffectiveClassifier).
-			cr := &dbaasv1.DatabaseSecret{
+			cr := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -259,7 +259,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			indexKey := dbaasv1.ClassifierIndexKey(
 				dbaasv1.EffectiveClassifier(cr.Spec.Classifier, ns), cr.Spec.Type)
 			Eventually(func() ([]string, error) {
-				list := &dbaasv1.DatabaseSecretList{}
+				list := &dbaasv1.DatabaseSecretClaimList{}
 				if err := cacheClient.List(ctx, list,
 					client.InNamespace(ns),
 					client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
@@ -279,7 +279,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
 
-			ds := &dbaasv1.DatabaseSecret{
+			ds := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -322,7 +322,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
 
-			ds := &dbaasv1.DatabaseSecret{
+			ds := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -367,7 +367,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
 
-			ds := &dbaasv1.DatabaseSecret{
+			ds := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -416,7 +416,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, EmptyConnectionProperties event, requeues", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = `{"connectionProperties":{}}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -446,7 +446,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, DatabaseNotReady event, requeues", func() {
 			fixture.statusCode = http.StatusNotFound
 			fixture.body = databaseNotFoundResponseBody
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -481,7 +481,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			fixture.statusCode = http.StatusNotFound
 			fixture.body = databaseNotFoundResponseBody
 
-			ds := &dbaasv1.DatabaseSecret{
+			ds := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -503,7 +503,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			// the backdated FirstNotFoundAt; otherwise Reconcile may see a stale
 			// nil value and skip the timeout branch.
 			Eventually(func() *metav1.Time {
-				cur := &dbaasv1.DatabaseSecret{}
+				cur := &dbaasv1.DatabaseSecretClaim{}
 				if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
 					return nil
 				}
@@ -537,7 +537,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			fixture.statusCode = http.StatusNotFound
 			fixture.body = databaseNotFoundResponseBody
 
-			ds := &dbaasv1.DatabaseSecret{
+			ds := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -554,7 +554,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			ds.Status.FirstNotFoundAt = &past
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
 			Eventually(func() *metav1.Time {
-				cur := &dbaasv1.DatabaseSecret{}
+				cur := &dbaasv1.DatabaseSecretClaim{}
 				if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
 					return nil
 				}
@@ -580,7 +580,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			fixture.statusCode = http.StatusNotFound
 			fixture.body = databaseNotFoundResponseBody
 
-			ds := &dbaasv1.DatabaseSecret{
+			ds := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -597,7 +597,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			ds.Status.FirstNotFoundAt = &past
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
 			Eventually(func() *metav1.Time {
-				cur := &dbaasv1.DatabaseSecret{}
+				cur := &dbaasv1.DatabaseSecretClaim{}
 				if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
 					return nil
 				}
@@ -624,7 +624,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, AggregatorRejected event", func() {
 			fixture.statusCode = http.StatusBadRequest
 			fixture.body = `{"code":"CORE-DBAAS-4010","message":"Invalid classifier","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -652,7 +652,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, Unauthorized event, requeues", func() {
 			fixture.statusCode = http.StatusUnauthorized
 			fixture.body = body401Unauthorized
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -683,7 +683,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=InvalidConfiguration, Stalled=True, AggregatorRejected event, no requeue", func() {
 			fixture.statusCode = http.StatusForbidden
 			fixture.body = `{"code":"CORE-DBAAS-4023","message":"Role not permitted"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -715,7 +715,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=BackingOff, Stalled=False, AggregatorError event, requeues", func() {
 			fixture.statusCode = http.StatusInternalServerError
 			fixture.body = `{"code":"CORE-DBAAS-2000","message":"Unexpected exception","@type":"NC.TMFErrorResponse.v1.0"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -742,7 +742,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=BackingOff, reason=AggregatorError, requeues", func() {
 			fixture.statusCode = http.StatusNotFound
 			fixture.body = ``
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -774,7 +774,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("sets Phase=BackingOff, reason=AggregatorError, requeues", func() {
 			fixture.statusCode = http.StatusInternalServerError
 			fixture.body = `{"code":"CORE-DBAAS-4041","message":"Can't find database in active namespace"}`
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -805,7 +805,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 	Context("Network error — aggregator unreachable", func() {
 		It("sets Phase=BackingOff, Stalled=False, AggregatorError event, requeues", func() {
 			fixture.server.Close()
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -844,7 +844,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, other)).To(Succeed())
 
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -875,7 +875,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
 			})).To(Succeed())
 
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -900,12 +900,12 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		})
 	})
 
-	Context("Pre-flight: two DatabaseSecret CRs share the same secretName", func() {
+	Context("Pre-flight: two DatabaseSecretClaim CRs share the same secretName", func() {
 		It("second CR gets Phase=InvalidConfiguration, Stalled=True, SecretConflict event", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
 
-			cr1 := &dbaasv1.DatabaseSecret{
+			cr1 := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -921,7 +921,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			// Second CR with same secretName
 			cr2Name := resourceName + "-2"
 			spec2 := baseSpec()
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      cr2Name,
 					Namespace: ns,
@@ -930,7 +930,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 				Spec: spec2,
 			})).To(Succeed())
 
-			reconciler2 := &DatabaseSecretReconciler{
+			reconciler2 := &DatabaseSecretClaimReconciler{
 				Client:     cacheClient,
 				Scheme:     cacheClient.Scheme(),
 				Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
@@ -939,13 +939,13 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			}
 			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
 			Eventually(func() error {
-				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecretClaim{})
 			}).Should(Succeed())
 			result2, err2 := reconciler2.Reconcile(ctx, reconcile.Request{NamespacedName: cr2Key})
 			Expect(err2).NotTo(HaveOccurred())
 			Expect(result2.RequeueAfter).To(BeZero())
 
-			ds2 := &dbaasv1.DatabaseSecret{}
+			ds2 := &dbaasv1.DatabaseSecretClaim{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cr2Name, Namespace: ns}, ds2)).To(Succeed())
 			Expect(ds2.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 
@@ -966,7 +966,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			// Create the older CR first (cr1), then the younger CR (cr2). Neither
 			// has reconciled yet, so the target Secret does not exist. The conflict
 			// is detected by the sibling-list check (not the ownership check).
-			cr1 := &dbaasv1.DatabaseSecret{
+			cr1 := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -982,7 +982,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			time.Sleep(1100 * time.Millisecond)
 
 			cr2Name := resourceName + "-2"
-			cr2 := &dbaasv1.DatabaseSecret{
+			cr2 := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      cr2Name,
 					Namespace: ns,
@@ -997,10 +997,10 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			cr1Key := types.NamespacedName{Name: resourceName, Namespace: ns}
 			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
 			Eventually(func() error {
-				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{}); err != nil {
+				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecretClaim{}); err != nil {
 					return err
 				}
-				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecretClaim{})
 			}).Should(Succeed())
 
 			// Reconcile cr2 (the younger). It must lose to cr1.
@@ -1008,7 +1008,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result2.RequeueAfter).To(BeZero())
 
-			got2 := &dbaasv1.DatabaseSecret{}
+			got2 := &dbaasv1.DatabaseSecretClaim{}
 			Expect(k8sClient.Get(ctx, cr2Key, got2)).To(Succeed())
 			Expect(got2.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
@@ -1020,7 +1020,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(result1.RequeueAfter).To(Equal(secretRotationSafetyNetInterval),
 				"the older claimant succeeds and schedules the safety-net re-poll")
 
-			got1 := &dbaasv1.DatabaseSecret{}
+			got1 := &dbaasv1.DatabaseSecretClaim{}
 			Expect(k8sClient.Get(ctx, cr1Key, got1)).To(Succeed())
 			Expect(got1.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded),
 				"older claimant must not be marked SecretConflict by the younger sibling")
@@ -1032,7 +1032,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
 
-			cr1 := &dbaasv1.DatabaseSecret{
+			cr1 := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -1048,7 +1048,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			time.Sleep(1100 * time.Millisecond)
 
 			cr2Name := resourceName + "-2"
-			cr2 := &dbaasv1.DatabaseSecret{
+			cr2 := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      cr2Name,
 					Namespace: ns,
@@ -1061,16 +1061,16 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			cr1Key := types.NamespacedName{Name: resourceName, Namespace: ns}
 			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
 			Eventually(func() error {
-				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{}); err != nil {
+				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecretClaim{}); err != nil {
 					return err
 				}
-				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecretClaim{})
 			}).Should(Succeed())
 
 			// cr2 loses initially.
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr2Key})
 			Expect(err).NotTo(HaveOccurred())
-			got2 := &dbaasv1.DatabaseSecret{}
+			got2 := &dbaasv1.DatabaseSecretClaim{}
 			Expect(k8sClient.Get(ctx, cr2Key, got2)).To(Succeed())
 			Expect(got2.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
 			drainRecordedEvents(fixture.recorder.Events)
@@ -1078,7 +1078,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			// Winner (cr1) is removed.
 			Expect(k8sClient.Delete(ctx, cr1)).To(Succeed())
 			Eventually(func() bool {
-				err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{})
+				err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecretClaim{})
 				return err != nil
 			}).Should(BeTrue())
 
@@ -1087,7 +1087,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: cr2Key})
 			Expect(err).NotTo(HaveOccurred())
 
-			got2 = &dbaasv1.DatabaseSecret{}
+			got2 = &dbaasv1.DatabaseSecretClaim{}
 			Expect(k8sClient.Get(ctx, cr2Key, got2)).To(Succeed())
 			Expect(got2.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded),
 				"loser must recover once the older claimant is deleted")
@@ -1096,7 +1096,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 	Context("Watches: enqueueSiblingsBySecretName fans out by secretName", func() {
 		It("returns only siblings sharing spec.secretName, excluding the source object", func() {
-			cr1 := &dbaasv1.DatabaseSecret{
+			cr1 := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -1112,7 +1112,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			time.Sleep(1100 * time.Millisecond)
 
 			cr2Name := resourceName + "-2"
-			cr2 := &dbaasv1.DatabaseSecret{
+			cr2 := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      cr2Name,
 					Namespace: ns,
@@ -1125,13 +1125,13 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			cr1Key := types.NamespacedName{Name: resourceName, Namespace: ns}
 			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
 			Eventually(func() error {
-				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecret{}); err != nil {
+				if err := cacheClient.Get(ctx, cr1Key, &dbaasv1.DatabaseSecretClaim{}); err != nil {
 					return err
 				}
-				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecret{})
+				return cacheClient.Get(ctx, cr2Key, &dbaasv1.DatabaseSecretClaim{})
 			}).Should(Succeed())
 
-			got1 := &dbaasv1.DatabaseSecret{}
+			got1 := &dbaasv1.DatabaseSecretClaim{}
 			Expect(cacheClient.Get(ctx, cr1Key, got1)).To(Succeed())
 
 			reqs := reconciler.enqueueSiblingsBySecretName(ctx, got1)
@@ -1148,7 +1148,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 	Context("Foreign namespace — ownership check skips reconcile", func() {
 		It("does not update status and does not call aggregator", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -1157,7 +1157,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 				Spec: baseSpec(),
 			})).To(Succeed())
 
-			foreignReconciler := &DatabaseSecretReconciler{
+			foreignReconciler := &DatabaseSecretClaimReconciler{
 				Client:     k8sClient,
 				Scheme:     k8sClient.Scheme(),
 				Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
@@ -1168,7 +1168,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fixture.capturedPath).To(BeEmpty(), "aggregator must not be called for foreign namespace")
 
-			ds := &dbaasv1.DatabaseSecret{}
+			ds := &dbaasv1.DatabaseSecretClaim{}
 			Expect(k8sClient.Get(ctx, namespacedName, ds)).To(Succeed())
 			Expect(ds.Status.Phase).To(BeEmpty())
 		})
@@ -1180,7 +1180,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 		It("POSTs to /api/v3/dbaas/{ns}/databases/get-by-classifier/{type}", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecret{
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
@@ -1200,7 +1200,7 @@ var _ = Describe("DatabaseSecret Controller", func() {
 
 // ── dbaasv1.ClassifierIndexKey + dbaasv1.ClassifierTypeIndex ────────────────
 
-var _ = Describe("DatabaseSecret Controller — classifier+type field index", func() {
+var _ = Describe("DatabaseSecretClaim Controller — classifier+type field index", func() {
 	const ns = "default"
 
 	Context("dbaasv1.EffectiveClassifier()", func() {
@@ -1290,41 +1290,41 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 
 	Context("cache field index lookup", func() {
 		var (
-			crA *dbaasv1.DatabaseSecret
-			crB *dbaasv1.DatabaseSecret
-			crC *dbaasv1.DatabaseSecret
+			crA *dbaasv1.DatabaseSecretClaim
+			crB *dbaasv1.DatabaseSecretClaim
+			crC *dbaasv1.DatabaseSecretClaim
 		)
 
 		BeforeEach(func() {
-			crA = &dbaasv1.DatabaseSecret{
+			crA = &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "idx-cr-a", Namespace: ns,
 					Labels: map[string]string{"app.kubernetes.io/name": "svc-a"},
 				},
-				Spec: dbaasv1.DatabaseSecretSpec{
+				Spec: dbaasv1.DatabaseSecretClaimSpec{
 					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
 					Type:       "postgresql",
 					SecretName: "idx-secret-a",
 				},
 			}
-			crB = &dbaasv1.DatabaseSecret{
+			crB = &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "idx-cr-b", Namespace: ns,
 					Labels: map[string]string{"app.kubernetes.io/name": "svc-b"},
 				},
-				Spec: dbaasv1.DatabaseSecretSpec{
+				Spec: dbaasv1.DatabaseSecretClaimSpec{
 					// Same classifier as A, same type → should match A's key.
 					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
 					Type:       "postgresql",
 					SecretName: "idx-secret-b",
 				},
 			}
-			crC = &dbaasv1.DatabaseSecret{
+			crC = &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "idx-cr-c", Namespace: ns,
 					Labels: map[string]string{"app.kubernetes.io/name": "svc-c"},
 				},
-				Spec: dbaasv1.DatabaseSecretSpec{
+				Spec: dbaasv1.DatabaseSecretClaimSpec{
 					// Different classifier — must NOT match A's key.
 					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-c", Scope: "service"},
 					Type:       "postgresql",
@@ -1350,14 +1350,14 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 
 			// Wait for the cache to observe all three CRs before querying via the index.
 			Eventually(func() (int, error) {
-				list := &dbaasv1.DatabaseSecretList{}
+				list := &dbaasv1.DatabaseSecretClaimList{}
 				if err := cacheClient.List(ctx, list, client.InNamespace(ns)); err != nil {
 					return 0, err
 				}
 				return len(list.Items), nil
 			}).Should(BeNumerically(">=", 3))
 
-			list := &dbaasv1.DatabaseSecretList{}
+			list := &dbaasv1.DatabaseSecretClaimList{}
 			Expect(cacheClient.List(ctx, list,
 				client.InNamespace(ns),
 				client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey})).To(Succeed())
@@ -1374,7 +1374,7 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 			missingKey := dbaasv1.ClassifierIndexKey(
 				dbaasv1.Classifier{MicroserviceName: "svc-nonexistent", Scope: "service"},
 				"postgresql")
-			list := &dbaasv1.DatabaseSecretList{}
+			list := &dbaasv1.DatabaseSecretClaimList{}
 			Expect(cacheClient.List(ctx, list,
 				client.InNamespace(ns),
 				client.MatchingFields{dbaasv1.ClassifierTypeIndex: missingKey})).To(Succeed())
@@ -1385,8 +1385,8 @@ var _ = Describe("DatabaseSecret Controller — classifier+type field index", fu
 
 // ── secretUpToDate ───────────────────────────────────────────────────────────
 
-var _ = Describe("DatabaseSecret Controller — secretUpToDate", func() {
-	cr := &dbaasv1.DatabaseSecret{
+var _ = Describe("DatabaseSecretClaim Controller — secretUpToDate", func() {
+	cr := &dbaasv1.DatabaseSecretClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{"app.kubernetes.io/name": "svc-a"},
 		},
@@ -1439,7 +1439,7 @@ var _ = Describe("DatabaseSecret Controller — secretUpToDate", func() {
 
 // ── buildSecretData ──────────────────────────────────────────────────────────
 
-var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
+var _ = Describe("DatabaseSecretClaim Controller — buildSecretData", func() {
 	props := map[string]any{"host": "h", "password": "p", "port": 5432}
 
 	// fullResp mirrors a complete aggregator DatabaseResponseV3SingleCP.
@@ -1454,10 +1454,10 @@ var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 		}
 	}
 
-	newCR := func(userRole string) *dbaasv1.DatabaseSecret {
-		return &dbaasv1.DatabaseSecret{
+	newCR := func(userRole string) *dbaasv1.DatabaseSecretClaim {
+		return &dbaasv1.DatabaseSecretClaim{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
-			Spec: dbaasv1.DatabaseSecretSpec{
+			Spec: dbaasv1.DatabaseSecretClaimSpec{
 				// namespace omitted from the classifier on purpose — must be defaulted.
 				Classifier: dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"},
 				Type:       "postgresql",
@@ -1467,7 +1467,7 @@ var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 		}
 	}
 
-	mustBuild := func(cr *dbaasv1.DatabaseSecret, resp *aggregatorclient.DatabaseResponseSingleCP) map[string][]byte {
+	mustBuild := func(cr *dbaasv1.DatabaseSecretClaim, resp *aggregatorclient.DatabaseResponseSingleCP) map[string][]byte {
 		data, err := buildSecretData(cr, resp)
 		Expect(err).NotTo(HaveOccurred())
 		return data
@@ -1537,11 +1537,11 @@ var _ = Describe("DatabaseSecret Controller — buildSecretData", func() {
 
 // ── specOrRotationTriggerPredicate ───────────────────────────────────────────
 
-var _ = Describe("DatabaseSecret Controller — rotation-trigger predicate", func() {
+var _ = Describe("DatabaseSecretClaim Controller — rotation-trigger predicate", func() {
 	pred := specOrRotationTriggerPredicate{}
 
-	secretWith := func(generation int64, rotationTrigger string) *dbaasv1.DatabaseSecret {
-		ds := &dbaasv1.DatabaseSecret{
+	secretWith := func(generation int64, rotationTrigger string) *dbaasv1.DatabaseSecretClaim {
+		ds := &dbaasv1.DatabaseSecretClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       "ds",
 				Namespace:  "default",
@@ -1614,7 +1614,7 @@ var _ = Describe("DatabaseSecret Controller — rotation-trigger predicate", fun
 
 // ── Rate limiter / SetupWithManager ──────────────────────────────────────────
 
-var _ = Describe("DatabaseSecret Controller — rate limiter", func() {
+var _ = Describe("DatabaseSecretClaim Controller — rate limiter", func() {
 	It("registers the controller with a custom exponential rate limiter", func() {
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
@@ -1628,7 +1628,7 @@ var _ = Describe("DatabaseSecret Controller — rate limiter", func() {
 
 		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
 
-		err = (&DatabaseSecretReconciler{
+		err = (&DatabaseSecretClaimReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Recorder:   mgr.GetEventRecorderFor("ds-rate-limiter-test"), //nolint:staticcheck

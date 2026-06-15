@@ -210,8 +210,8 @@ func main() {
 	permanentRuleChecker := ownership.NewPermanentBalancingRuleChecker(mgr.GetClient(), cloudNamespace)
 	dsChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
-		func() *dbaasv1.DatabaseSecretList { return &dbaasv1.DatabaseSecretList{} },
-		func(l *dbaasv1.DatabaseSecretList) int { return len(l.Items) },
+		func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} },
+		func(l *dbaasv1.DatabaseSecretClaimList) int { return len(l.Items) },
 	)
 	blockingChecker := ownership.NewCompositeChecker(
 		edbChecker,
@@ -279,14 +279,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.DatabaseSecretReconciler{
+	if err := (&controller.DatabaseSecretClaimReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "databasesecret", eventsEnabled),
+		Recorder:   recorderFor(mgr, "databasesecretclaim", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DatabaseSecret: %v", err)
+		setupLog.Errorf("Failed to create controller controller=DatabaseSecretClaim: %v", err)
 		os.Exit(1)
 	}
 
@@ -303,7 +303,7 @@ func main() {
 
 	// ── Rotation webhook receiver ────────────────────────────────────────────
 	// Authenticates inbound rotation events from dbaas-aggregator and patches
-	// the AnnotationRotationTrigger annotation on each affected DatabaseSecret
+	// the AnnotationRotationTrigger annotation on each affected DatabaseSecretClaim
 	// CR. The handler is mounted on the same HTTP listener as /metrics via the
 	// controller-runtime ExtraHandlers hook; it runs on every replica so any
 	// pod can accept the webhook, and the annotation propagates through the

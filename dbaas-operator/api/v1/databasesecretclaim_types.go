@@ -20,8 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// DatabaseSecretSpec defines the desired state of DatabaseSecret.
-type DatabaseSecretSpec struct {
+// DatabaseSecretClaimSpec defines the desired state of DatabaseSecretClaim.
+type DatabaseSecretClaimSpec struct {
 	// classifier uniquely identifies the database whose credentials this secret tracks.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="classifier is immutable after creation"
@@ -45,8 +45,8 @@ type DatabaseSecretSpec struct {
 	SecretName string `json:"secretName"`
 }
 
-// DatabaseSecretStatus defines the observed state of DatabaseSecret.
-type DatabaseSecretStatus struct {
+// DatabaseSecretClaimStatus defines the observed state of DatabaseSecretClaim.
+type DatabaseSecretClaimStatus struct {
 	OperatorStatus `json:",inline"`
 
 	// firstNotFoundAt records the first time dbaas-aggregator returned
@@ -74,43 +74,43 @@ type DatabaseSecretStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=databasesecrets,singular=databasesecret
+// +kubebuilder:resource:scope=Namespaced,path=databasesecretclaims,singular=databasesecretclaim,shortName=dbdsc
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// DatabaseSecret is the Schema for the databasesecrets API (dbaas.netcracker.com group).
+// DatabaseSecretClaim is the Schema for the databasesecretclaims API (dbaas.netcracker.com group).
 // The label app.kubernetes.io/name is required — its value is sent as originService in the
 // get-by-classifier request to dbaas-aggregator. CEL validation of metadata.labels at root
 // schema level is not supported by controller-gen; enforcement is done through a controller-level
 // pre-flight check before the aggregator is called.
 // It requests dbaas-aggregator to provision credentials for a managed database
 // and write them into a named Kubernetes Secret in the same namespace.
-type DatabaseSecret struct {
+type DatabaseSecretClaim struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec DatabaseSecretSpec `json:"spec"`
+	Spec DatabaseSecretClaimSpec `json:"spec"`
 
 	// +optional
-	Status DatabaseSecretStatus `json:"status,omitempty"`
+	Status DatabaseSecretClaimStatus `json:"status,omitempty"`
 }
 
-func (s *DatabaseSecret) SetObservedGeneration(generation int64) {
+func (s *DatabaseSecretClaim) SetObservedGeneration(generation int64) {
 	s.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true
 
-// DatabaseSecretList contains a list of DatabaseSecret.
-type DatabaseSecretList struct {
+// DatabaseSecretClaimList contains a list of DatabaseSecretClaim.
+type DatabaseSecretClaimList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []DatabaseSecret `json:"items"`
+	Items           []DatabaseSecretClaim `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&DatabaseSecret{}, &DatabaseSecretList{})
+	SchemeBuilder.Register(&DatabaseSecretClaim{}, &DatabaseSecretClaimList{})
 }

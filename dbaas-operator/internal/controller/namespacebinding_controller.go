@@ -177,7 +177,7 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		Watches(
-			&dbaasv1.DatabaseSecret{},
+			&dbaasv1.DatabaseSecretClaim{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
 		WithOptions(opts).

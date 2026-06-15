@@ -24,14 +24,14 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databaseaccesspolicies/status ]
     verbs: [ get, update, patch ]
-  # databasesecrets: operator reads and watches; creates/updates the target core v1.Secret; status via /status subresource.
+  # databasesecretclaims: operator reads and watches; creates/updates the target core v1.Secret; status via /status subresource.
   # patch on the resource itself is required for the rotation webhook to stamp the
   # dbaas.netcracker.com/rotation-trigger annotation on matched CRs.
   - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ databasesecrets ]
+    resources: [ databasesecretclaims ]
     verbs: [ get, list, watch, patch ]
   - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ databasesecrets/status ]
+    resources: [ databasesecretclaims/status ]
     verbs: [ get, update, patch ]
   # balancing rule CRs: operator reads and watches list-based singleton rules and
   # requires patch/finalizer permissions for cleanup on deletion.
@@ -59,8 +59,8 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ namespacebindings/finalizers ]
     verbs: [ update ]
-  # Secrets (for credentials in ExternalDatabase, create/update/patch for DatabaseSecret materialization)
-  # list + watch required for WatchesMetadata (ExternalDatabase, secret rotation watch), list required for pre-flight sibling check(DatabaseSecret); get required for reconcile reads.
+  # Secrets (for credentials in ExternalDatabase, create/update/patch for DatabaseSecretClaim materialization)
+  # list + watch required for WatchesMetadata (ExternalDatabase, secret rotation watch), list required for pre-flight sibling check(DatabaseSecretClaim); get required for reconcile reads.
   - apiGroups: [ "" ]
     resources: [ secrets ]
     verbs: [ get, list, create, update, patch, watch ]

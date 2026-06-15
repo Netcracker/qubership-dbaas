@@ -48,7 +48,7 @@ const classifierNamespaceKey = "namespace"
 
 // RotationHandler is the operator-side receiver for rotation events emitted
 // by dbaas-aggregator's outbox dispatcher. The handler authenticates the
-// caller, looks up every DatabaseSecret CR matching (classifier, type) via
+// caller, looks up every DatabaseSecretClaim CR matching (classifier, type) via
 // the cache field index, and patches each match with a fresh
 // dbaasv1.AnnotationRotationTrigger value. A controller-side predicate added
 // in a later commit will react to the annotation change and reconcile the
@@ -56,7 +56,7 @@ const classifierNamespaceKey = "namespace"
 // HTTP receiver remains thin and the reconcile path stays leader-bound.
 type RotationHandler struct {
 	// Client is the controller-runtime client used to list affected
-	// DatabaseSecret CRs and to patch annotations on them. Must be backed
+	// DatabaseSecretClaim CRs and to patch annotations on them. Must be backed
 	// by an informer cache that has the ClassifierTypeIndex registered.
 	Client client.Client
 
@@ -200,11 +200,11 @@ func (h *RotationHandler) processEvent(ctx context.Context, payload RotationEven
 	indexKey := dbaasv1.ClassifierIndexKey(typed, payload.Type)
 	namespace, _ := payload.Classifier[classifierNamespaceKey].(string)
 
-	list := &dbaasv1.DatabaseSecretList{}
+	list := &dbaasv1.DatabaseSecretClaimList{}
 	if err := h.Client.List(ctx, list,
 		client.InNamespace(namespace),
 		client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
-		return 0, 0, fmt.Errorf("list DatabaseSecret in %s: %w", namespace, err)
+		return 0, 0, fmt.Errorf("list DatabaseSecretClaim in %s: %w", namespace, err)
 	}
 	matched = len(list.Items)
 

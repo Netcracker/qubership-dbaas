@@ -52,7 +52,7 @@ func (s *stubAuthenticator) Authenticate(_ context.Context, authHeader string) (
 }
 
 // newFakeClient builds a controller-runtime fake client that knows about the
-// DatabaseSecret type and has ClassifierTypeIndex registered, mirroring the
+// DatabaseSecretClaim type and has ClassifierTypeIndex registered, mirroring the
 // production manager setup. Initial objects are persisted in-memory so the
 // handler's List queries return them.
 func newFakeClient(initial ...client.Object) client.Client {
@@ -60,9 +60,9 @@ func newFakeClient(initial ...client.Object) client.Client {
 	Expect(dbaasv1.AddToScheme(scheme)).To(Succeed())
 	builder := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithIndex(&dbaasv1.DatabaseSecret{}, dbaasv1.ClassifierTypeIndex,
+		WithIndex(&dbaasv1.DatabaseSecretClaim{}, dbaasv1.ClassifierTypeIndex,
 			func(obj client.Object) []string {
-				ds := obj.(*dbaasv1.DatabaseSecret)
+				ds := obj.(*dbaasv1.DatabaseSecretClaim)
 				c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
 				return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
 			})
@@ -95,12 +95,12 @@ func buildPayloadBody(eventID, namespace, microserviceName string) []byte {
 	return body
 }
 
-// newDatabaseSecret constructs a minimal DatabaseSecret CR for fake-client
+// newDatabaseSecretClaim constructs a minimal DatabaseSecretClaim CR for fake-client
 // seeding.
-func newDatabaseSecret(name, namespace, microserviceName string) *dbaasv1.DatabaseSecret {
-	return &dbaasv1.DatabaseSecret{
+func newDatabaseSecretClaim(name, namespace, microserviceName string) *dbaasv1.DatabaseSecretClaim {
+	return &dbaasv1.DatabaseSecretClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec: dbaasv1.DatabaseSecretSpec{
+		Spec: dbaasv1.DatabaseSecretClaimSpec{
 			Classifier: dbaasv1.Classifier{
 				MicroserviceName: microserviceName,
 				Scope:            "service",
@@ -196,7 +196,7 @@ var _ = Describe("RotationHandler", func() {
 			}
 			// Seed a CR that would match the payload, to prove the body is never
 			// processed for an unauthorized caller.
-			crA := newDatabaseSecret("cr-a", "team-a", "svc-a")
+			crA := newDatabaseSecretClaim("cr-a", "team-a", "svc-a")
 			fakeClient = newFakeClient(crA)
 			handler.Client = fakeClient
 
@@ -209,7 +209,7 @@ var _ = Describe("RotationHandler", func() {
 
 			Expect(rec.Code).To(Equal(http.StatusForbidden))
 			// The matching CR must NOT have been patched.
-			got := &dbaasv1.DatabaseSecret{}
+			got := &dbaasv1.DatabaseSecretClaim{}
 			Expect(fakeClient.Get(context.Background(),
 				client.ObjectKey{Namespace: "team-a", Name: "cr-a"}, got)).To(Succeed())
 			Expect(got.Annotations).NotTo(HaveKey(dbaasv1.AnnotationRotationTrigger))
@@ -303,9 +303,9 @@ var _ = Describe("RotationHandler", func() {
 
 	Describe("CR resolution and annotation patch", func() {
 		It("patches matching CRs and returns the counts", func() {
-			crA := newDatabaseSecret("cr-a", "team-a", "svc-a")
-			crB := newDatabaseSecret("cr-b", "team-a", "svc-a")
-			crOther := newDatabaseSecret("cr-other", "team-a", "svc-different")
+			crA := newDatabaseSecretClaim("cr-a", "team-a", "svc-a")
+			crB := newDatabaseSecretClaim("cr-b", "team-a", "svc-a")
+			crOther := newDatabaseSecretClaim("cr-other", "team-a", "svc-different")
 			fakeClient = newFakeClient(crA, crB, crOther)
 			handler.Client = fakeClient
 
@@ -321,7 +321,7 @@ var _ = Describe("RotationHandler", func() {
 			Expect(resp.Patched).To(Equal(2))
 
 			// Annotation present on the two matches.
-			got := &dbaasv1.DatabaseSecret{}
+			got := &dbaasv1.DatabaseSecretClaim{}
 			Expect(fakeClient.Get(context.Background(),
 				client.ObjectKey{Namespace: "team-a", Name: "cr-a"}, got)).To(Succeed())
 			Expect(got.Annotations).To(HaveKeyWithValue(dbaasv1.AnnotationRotationTrigger, "evt-42"))
@@ -353,8 +353,8 @@ var _ = Describe("RotationHandler", func() {
 
 		It("scopes the lookup to the classifier's namespace", func() {
 			// Same (microserviceName, scope, type) in two different namespaces.
-			crSameNs := newDatabaseSecret("cr-x", "team-a", "svc-a")
-			crDifferentNs := newDatabaseSecret("cr-x", "team-b", "svc-a")
+			crSameNs := newDatabaseSecretClaim("cr-x", "team-a", "svc-a")
+			crDifferentNs := newDatabaseSecretClaim("cr-x", "team-b", "svc-a")
 			fakeClient = newFakeClient(crSameNs, crDifferentNs)
 			handler.Client = fakeClient
 
@@ -369,7 +369,7 @@ var _ = Describe("RotationHandler", func() {
 			Expect(resp.Matched).To(Equal(1),
 				"only the CR in the classifier's namespace should match")
 
-			got := &dbaasv1.DatabaseSecret{}
+			got := &dbaasv1.DatabaseSecretClaim{}
 			Expect(fakeClient.Get(context.Background(),
 				client.ObjectKey{Namespace: "team-b", Name: "cr-x"}, got)).To(Succeed())
 			Expect(got.Annotations).NotTo(HaveKey(dbaasv1.AnnotationRotationTrigger),
@@ -380,8 +380,8 @@ var _ = Describe("RotationHandler", func() {
 			// Same setup as above but the payload now targets team-b, so the
 			// roles are swapped — guards against a bug where the handler
 			// accidentally hard-codes the namespace.
-			crA := newDatabaseSecret("cr-x", "team-a", "svc-a")
-			crB := newDatabaseSecret("cr-x", "team-b", "svc-a")
+			crA := newDatabaseSecretClaim("cr-x", "team-a", "svc-a")
+			crB := newDatabaseSecretClaim("cr-x", "team-b", "svc-a")
 			fakeClient = newFakeClient(crA, crB)
 			handler.Client = fakeClient
 
@@ -391,7 +391,7 @@ var _ = Describe("RotationHandler", func() {
 			handler.ServeHTTP(rec, req)
 
 			Expect(rec.Code).To(Equal(http.StatusOK))
-			got := &dbaasv1.DatabaseSecret{}
+			got := &dbaasv1.DatabaseSecretClaim{}
 			Expect(fakeClient.Get(context.Background(),
 				client.ObjectKey{Namespace: "team-b", Name: "cr-x"}, got)).To(Succeed())
 			Expect(got.Annotations).To(HaveKeyWithValue(dbaasv1.AnnotationRotationTrigger, "evt-8"))
