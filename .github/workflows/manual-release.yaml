@@ -38,7 +38,7 @@ jobs:
       upload-artifact: true
       ref: "refs/tags/v${{ inputs.version }}"
       maven-command: ${{ inputs.dry-run && 'verify' || 'deploy' }}
-      java-version: 21
+      java-version: 25
       dry-run: ${{ inputs.dry-run }}
 
   go-build:
