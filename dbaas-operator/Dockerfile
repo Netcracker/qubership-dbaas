@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -o dbaas-operator ./cmd/
 
-FROM ghcr.io/netcracker/qubership-core-base:2.3.0@sha256:3ef9a4b348dcf26d1e9f63d375209c9b4b2359e0080fbcab1a566f6f6291b789
+FROM ghcr.io/netcracker/qubership-core-base:2.3.1@sha256:541d3ace16c310fed889ef0cfb23d62f810dd9879fb4086c0d8a37694b01d364
 WORKDIR /app
 COPY --chown=10001:0 --chmod=555 --from=builder /app/dbaas-operator /app/dbaas-operator
 USER 10001:10001
