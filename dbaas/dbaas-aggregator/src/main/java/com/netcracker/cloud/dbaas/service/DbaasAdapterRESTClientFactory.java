@@ -23,8 +23,8 @@ import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class DbaasAdapterRESTClientFactory {
-    @ConfigProperty(name = "dbaas.security.k8s.jwt.enabled")
-    boolean jwtEnabled;
+    @ConfigProperty(name = "dbaas.security.k8s.m2m.enabled")
+    boolean m2mEnabled;
 
     @Inject
     TimeMeasurementManager timeMeasurementManager;
@@ -45,7 +45,7 @@ public class DbaasAdapterRESTClientFactory {
                                                    String identifier, AdapterActionTrackerClient tracker, ApiVersion apiVersions) {
         BasicAuthFilter basicAuthFilter = new BasicAuthFilter(username, password);
         KubernetesTokenAuthFilter kubernetesTokenAuthFilter = null;
-        if (jwtEnabled) {
+        if (m2mEnabled) {
             kubernetesTokenAuthFilter = new KubernetesTokenAuthFilter(KubernetesServiceAccountToken::getToken);
         }
         DynamicAuthFilter dynamicAuthFilter = new DynamicAuthFilter(kubernetesTokenAuthFilter != null ? kubernetesTokenAuthFilter : basicAuthFilter);
@@ -57,7 +57,7 @@ public class DbaasAdapterRESTClientFactory {
                 .readTimeout(3, TimeUnit.MINUTES)
                 .build(DbaasAdapterRestClientV2.class);
 
-        SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, jwtEnabled);
+        SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, m2mEnabled);
 
         return (DbaasAdapter) Proxy.newProxyInstance(DbaasAdapter.class.getClassLoader(), new Class[]{DbaasAdapter.class},
                 timeMeasurementManager.provideTimeMeasurementInvocationHandler(new DbaasAdapterRESTClientV2(adapterAddress, type, secureRestClient, identifier, tracker, apiVersions)));
