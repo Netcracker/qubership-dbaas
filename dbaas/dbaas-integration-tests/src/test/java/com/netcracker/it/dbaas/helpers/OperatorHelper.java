@@ -41,6 +41,7 @@ public class OperatorHelper {
 
     public static final String REASON_DATABASE_REGISTERED = "DatabaseRegistered";
     public static final String REASON_AGGREGATOR_REJECTED = "AggregatorRejected";
+    public static final String REASON_SECRET_ROTATED = "SecretRotated";
     public static final String REASON_SECRET_CREATED = "SecretCreated";
     public static final String REASON_SECRET_ERROR = "SecretError";
     public static final String REASON_SECRET_CONFLICT = "SecretConflict";
@@ -321,6 +322,15 @@ public class OperatorHelper {
         } else {
             assertEquals(expectedUserRole, meta.path("userRole").asText(), "metadata.userRole");
         }
+
+        // Descriptor fields mirrored from the aggregator response: name and the
+        // database namespace must be present so dbaas-client can reconstruct a
+        // full LogicalDb. id is best-effort on a by-classifier lookup, so it is
+        // not asserted strictly.
+        assertTrue(meta.has("name") && !meta.path("name").asText().isBlank(),
+                "metadata.name must be present");
+        assertEquals(expectedNamespace, meta.path("namespace").asText(),
+                "metadata.namespace must mirror the database namespace");
     }
 
     public static String generateName() {
@@ -417,5 +427,16 @@ public class OperatorHelper {
 
         cr.setAdditionalProperty("spec", specBody);
         return cr;
+    }
+
+    public static String extractPasswordFromSecret(Secret secret) {
+        assertNotNull(secret, "secret must exist");
+        String decodedJson = new String(
+                Base64.getDecoder().decode(secret.getData().get(CONNECTION_PROPERTIES_KEY)),
+                StandardCharsets.UTF_8
+        );
+        int startIdx = decodedJson.indexOf("\"password\":\"") + 12;
+        int endIdx = decodedJson.indexOf("\"", startIdx);
+        return decodedJson.substring(startIdx, endIdx);
     }
 }

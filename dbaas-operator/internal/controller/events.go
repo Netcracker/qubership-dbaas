@@ -116,6 +116,15 @@ const (
 	// has no ownerReference at all. Type: Warning.
 	EventReasonSecretConflict = "SecretConflict"
 
+	// ReasonSecretUpToDate is the Ready condition reason for a steady-state
+	// reconcile that wrote nothing because the target Secret already matches the
+	// desired content, and for a metadata/label backfill that rewrote the Secret
+	// without a credential change. It is a condition-only reason — no Kubernetes
+	// event is emitted — so the Ready reason stays accurate (nothing was created
+	// or rotated) instead of reusing SecretCreated, and it does not overwrite the
+	// rotation history carried by Status.LastRotatedAt and the SecretRotated event.
+	ReasonSecretUpToDate = "SecretUpToDate"
+
 	// EventReasonDatabaseNotFound is emitted when dbaas-aggregator returns HTTP 404
 	// for a get-by-classifier request, meaning the database is not yet registered and
 	// the operator retries until it appears. The controller retries with exponential backoff. Type: Warning.

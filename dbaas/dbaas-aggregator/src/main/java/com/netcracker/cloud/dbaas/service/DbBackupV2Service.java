@@ -14,12 +14,12 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
+import com.netcracker.cloud.dbaas.utils.RestClientExceptionUtil;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
@@ -75,6 +75,7 @@ public class DbBackupV2Service {
     private final BgNamespaceRepository bgNamespaceRepository;
     private final LockProvider lockProvider;
     private final DeletionService deletionService;
+    private final OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     private final Duration retryDelay;
     private final int retryAttempts;
@@ -92,6 +93,7 @@ public class DbBackupV2Service {
                              BgNamespaceRepository bgNamespaceRepository,
                              LockProvider lockProvider,
                              DeletionService deletionService,
+                             OperatorEventOutboxWriter operatorEventOutboxWriter,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.attempts") int retryAttempts,
                              @ConfigProperty(name = "dbaas.backup-restore.check.attempts") int retryCount
@@ -107,6 +109,7 @@ public class DbBackupV2Service {
         this.bgNamespaceRepository = bgNamespaceRepository;
         this.lockProvider = lockProvider;
         this.deletionService = deletionService;
+        this.operatorEventOutboxWriter = operatorEventOutboxWriter;
         this.retryDelay = retryDelay;
         this.retryAttempts = retryAttempts;
         this.retryCount = retryCount;
@@ -1087,16 +1090,7 @@ public class DbBackupV2Service {
     }
 
     private boolean is4xxError(Throwable throwable) {
-        Throwable cause = throwable;
-
-        while (cause != null) {
-            if (cause instanceof WebApplicationException ex) {
-                Response res = ex.getResponse();
-                return 400 <= res.getStatus() && res.getStatus() < 500;
-            }
-            cause = cause.getCause();
-        }
-        return false;
+        return RestClientExceptionUtil.is4xxError(throwable);
     }
 
     private void refreshLogicalRestoreState(LogicalRestore logicalRestore, LogicalRestoreAdapterResponse response) {
@@ -1416,6 +1410,13 @@ public class DbBackupV2Service {
                 newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
                 encryption.encryptPassword(newDatabase);
                 databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
+                for (DatabaseRegistry registry : newDatabase.getDatabaseRegistry()) {
+                    operatorEventOutboxWriter.enqueue(
+                            OperatorEventType.RESTORE_COMPLETED,
+                            registry.getClassifier(),
+                            type
+                    );
+                }
                 log.info("Based on restoreDatabase={}, database with id={} created", restoreDatabase.getName(), newDatabase.getId());
             });
         });
@@ -1833,19 +1834,7 @@ public class DbBackupV2Service {
     }
 
     private String extractErrorMessage(Throwable throwable) {
-        Throwable cause = throwable;
-        while (cause != null) {
-            if (cause instanceof WebApplicationException webEx) {
-                Response response = webEx.getResponse();
-                try {
-                    return response.readEntity(String.class);
-                } catch (Exception readEx) {
-                    return "Unable to read response body: " + readEx.getMessage();
-                }
-            }
-            cause = cause.getCause();
-        }
-        return throwable != null ? throwable.getMessage() : "Unknown error";
+        return RestClientExceptionUtil.extractErrorMessage(throwable);
     }
 
     private boolean isEmpty(Collection<?> c) {

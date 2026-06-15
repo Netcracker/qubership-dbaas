@@ -9,6 +9,8 @@ import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.enums.OperatorEventType;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -57,6 +59,8 @@ public class DBaaService {
     UserService userService;
     @Inject
     ProcessConnectionPropertiesService connectionPropertiesService;
+    @Inject
+    OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     @PostConstruct
     public void init() {
@@ -341,7 +345,7 @@ public class DBaaService {
 
                     response.putSuccessEntity(databaseRegistry.getClassifier(), new HashMap<>(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), (String) cp.get(ROLE))));
                     encryption.encryptPassword(database, (String) cp.get(ROLE));
-                    logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveInternalDatabase(databaseRegistry);
+
                     log.info("The password was changed successfully from database with classifier {} and type {} and role {}", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE));
                     sum += 1L;
                 } catch (WebApplicationException e) {
@@ -352,10 +356,25 @@ public class DBaaService {
                     }
                 }
             }
+            if (sum > 0) {
+                commitPasswordRotation(databaseRegistry, databaseRegistry.getClassifier(),
+                        databaseRegistry.getType());
+            }
             return sum;
         }).mapToLong(Long::valueOf).sum();
         log.info("From {} databases was changed password", count);
         return response;
+    }
+
+    protected void commitPasswordRotation(DatabaseRegistry databaseRegistry,
+                                          SortedMap<String, Object> classifier,
+                                          String type) {
+        QuarkusTransaction.requiringNew().run(() -> {
+            logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
+                    .saveInternalDatabase(databaseRegistry);
+            operatorEventOutboxWriter.enqueue(
+                    OperatorEventType.ROTATION_OCCURRED, classifier, type);
+        });
     }
 
     public boolean decryptPassword(Database database) {
@@ -399,7 +418,11 @@ public class DBaaService {
         Map<Pair<String, String>, DbResource> previousMap = previous != null ? previous.stream().collect(collector) : Collections.emptyMap();
         Map<Pair<String, String>, DbResource> currentMap = current != null ? current.stream().collect(collector) : Collections.emptyMap();
         return Stream.concat(previousMap.keySet().stream(), currentMap.keySet().stream()).distinct()
-                .map(kindAndName -> currentMap.getOrDefault(kindAndName, previousMap.get(kindAndName))).collect(Collectors.toList());
+                .map(kindAndName -> {
+                    DbResource prev = previousMap.get(kindAndName);
+                    DbResource curr = currentMap.get(kindAndName);
+                    return prev != null ? prev : curr;
+                }).collect(Collectors.toList());
     }
 
     protected Map<String, Object> getMergedConnectionProperties(Map<String, Object> previous, Map<String, Object> current) {
