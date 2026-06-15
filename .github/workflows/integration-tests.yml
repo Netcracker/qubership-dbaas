@@ -103,7 +103,7 @@ jobs:
       - name: Wait for MinIO Tenant readiness
         run: |
           echo "Waiting for MinIO Tenant to become Ready..."
-      
+
           for i in {1..30}; do
             STATE=$(kubectl get tenant test-minio -n minio -o jsonpath='{.status.currentState}')
             echo "Current state: $STATE"
@@ -113,7 +113,7 @@ jobs:
             fi
             sleep 10
           done
-      
+
           echo "MinIO Tenant did not become ready in time"
           exit 1
 
@@ -121,7 +121,7 @@ jobs:
         run: |
           cat <<'EOF' > "$GITHUB_WORKSPACE/patroni-services-values.yaml"
           postgresPassword: ${POSTGRES_PASSWORD}
-      
+
           backupDaemon:
             install: true
             storage:
@@ -137,7 +137,7 @@ jobs:
             securityContext:
               runAsUser: 101
               fsGroup: 101
-      
+
           dbaas:
             install: true
             aggregator:
@@ -221,6 +221,20 @@ jobs:
         with:
           name: dbaas-logs
           path: logs/*
-      
 
-  
+      - name: Check for test failures
+        if: always() && steps.tests.outcome != 'skipped'
+        run: |
+          FAILED=0
+          while IFS= read -r file; do
+            failures=$(grep -oP '(?<=failures=")[^"]+' "$file" | head -1)
+            errors=$(grep -oP '(?<=errors=")[^"]+' "$file" | head -1)
+            if [[ "${failures:-0}" -gt 0 ]] || [[ "${errors:-0}" -gt 0 ]]; then
+              echo "Test failures in: $file (failures=$failures, errors=$errors)"
+              FAILED=1
+            fi
+          done < <(find . -path "*/surefire-reports/TEST-*.xml")
+          if [[ "$FAILED" -eq 1 ]]; then
+            echo "One or more tests failed — marking workflow as failed"
+            exit 1
+          fi
