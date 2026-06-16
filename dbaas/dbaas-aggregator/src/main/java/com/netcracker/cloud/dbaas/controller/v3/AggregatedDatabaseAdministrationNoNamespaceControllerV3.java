@@ -5,6 +5,7 @@ import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.CleanupMarkedForDropRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.v3.ChangedDatabaseResponse;
+import com.netcracker.cloud.dbaas.dto.v3.ChangedDatabasesCursor;
 import com.netcracker.cloud.dbaas.dto.v3.ChangedDatabasesResponse;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
@@ -36,6 +37,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import static com.netcracker.cloud.dbaas.Constants.CLUSTER_OPERATOR;
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
@@ -217,28 +219,38 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     @GET
     @RolesAllowed(CLUSTER_OPERATOR)
     @Transactional
-    public Response getChangedDatabases(@Parameter(description = "Return databases changed strictly after this ISO-8601 timestamp. Omit on the first call to receive only the current high-water mark.")
-                                        @QueryParam("since") String since,
+    public Response getChangedDatabases(@Parameter(description = "Return databases changed strictly after this ISO-8601 timestamp (keyset cursor, paired with sinceId). Omit on the first call to receive only the current high-water mark.")
+                                        @QueryParam("sinceTs") String sinceTs,
+                                        @Parameter(description = "Registry id component of the keyset cursor (tie-breaker for rows sharing sinceTs). Defaults to the zero UUID when omitted.")
+                                        @QueryParam("sinceId") String sinceId,
                                         @Parameter(description = "Maximum number of databases to return (1..1000).")
                                         @QueryParam("limit") @DefaultValue("500") int limit) {
         if (limit < 1 || limit > 1000) {
             throw new BadRequestException("Query parameter 'limit' must be between 1 and 1000");
         }
-        OffsetDateTime highWaterMark = databaseRegistryDbaasRepository.maxLastRotatedAt().orElse(null);
-        if (since == null || since.isBlank()) {
+        ChangedDatabasesCursor highWaterMark = databaseRegistryDbaasRepository.latestChange()
+                .map(r -> new ChangedDatabasesCursor(r.getLastRotatedAt(), r.getId().toString()))
+                .orElse(null);
+        if (sinceTs == null || sinceTs.isBlank()) {
             // Seed call: hand the operator the current high-water mark without replaying history.
             return Response.ok(new ChangedDatabasesResponse(List.of(), highWaterMark)).build();
         }
-        OffsetDateTime sinceTs;
+        OffsetDateTime ts;
         try {
-            sinceTs = OffsetDateTime.parse(since);
+            ts = OffsetDateTime.parse(sinceTs);
         } catch (DateTimeParseException e) {
-            throw new BadRequestException("Query parameter 'since' must be an ISO-8601 timestamp");
+            throw new BadRequestException("Query parameter 'sinceTs' must be an ISO-8601 timestamp");
         }
-        List<ChangedDatabaseResponse> items = databaseRegistryDbaasRepository.findChangedSince(sinceTs, limit).stream()
+        UUID id;
+        try {
+            id = (sinceId == null || sinceId.isBlank()) ? new UUID(0L, 0L) : UUID.fromString(sinceId);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Query parameter 'sinceId' must be a UUID");
+        }
+        List<ChangedDatabaseResponse> items = databaseRegistryDbaasRepository.findChangedSince(ts, id, limit).stream()
                 .map(ChangedDatabaseResponse::new)
                 .toList();
-        log.debug("Returned {} changed databases since {}", items.size(), sinceTs);
+        log.debug("Returned {} changed databases since ({}, {})", items.size(), ts, id);
         return Response.ok(new ChangedDatabasesResponse(items, highWaterMark)).build();
     }
 }

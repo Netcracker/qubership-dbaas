@@ -58,7 +58,7 @@ public interface DatabaseRegistryDbaasRepository {
 
     List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters);
 
-    List<DatabaseRegistry> findChangedSince(OffsetDateTime since, int limit);
+    List<DatabaseRegistry> findChangedSince(OffsetDateTime sinceTs, UUID sinceId, int limit);
 
-    Optional<OffsetDateTime> maxLastRotatedAt();
+    Optional<DatabaseRegistry> latestChange();
 }

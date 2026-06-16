@@ -36,21 +36,22 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
     }
 
     /**
-     * Returns registries whose credentials changed (password rotation or restore) after the given cursor,
-     * ordered by the marker so the caller can advance its cursor. Consumed by the operator rotation poller.
+     * Returns registries whose credentials changed (password rotation or restore) strictly after the given
+     * keyset cursor (lastRotatedAt, id), ordered by the same pair so the caller can advance the cursor and
+     * make progress even when many rows share an identical last_rotated_at (e.g. a restore stamps one
+     * timestamp on every registry of a database). Consumed by the operator rotation poller.
      */
-    public List<DatabaseRegistry> findChangedSince(OffsetDateTime since, int limit) {
-        return find("lastRotatedAt > ?1 order by lastRotatedAt", since).page(0, limit).list();
+    public List<DatabaseRegistry> findChangedSince(OffsetDateTime sinceTs, UUID sinceId, int limit) {
+        return find("(lastRotatedAt > ?1) or (lastRotatedAt = ?1 and id > ?2) order by lastRotatedAt, id",
+                sinceTs, sinceId).page(0, limit).list();
     }
 
     /**
-     * Current high-water mark across all registries — the largest last_rotated_at, or empty when nothing
-     * has rotated yet. Used to seed the operator's poll cursor without replaying history.
+     * The latest changed registry by the (lastRotatedAt, id) keyset, or empty when nothing has rotated yet.
+     * Used to seed the operator's poll cursor without replaying history.
      */
-    public Optional<OffsetDateTime> maxLastRotatedAt() {
-        return Optional.ofNullable(getEntityManager()
-                .createQuery("select max(dr.lastRotatedAt) from DatabaseRegistry dr", OffsetDateTime.class)
-                .getSingleResult());
+    public Optional<DatabaseRegistry> latestChange() {
+        return find("lastRotatedAt is not null order by lastRotatedAt desc, id desc").firstResultOptional();
     }
 
     public List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters) {

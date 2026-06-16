@@ -5,6 +5,9 @@
 alter table classifier
     add column last_rotated_at timestamptz;
 
+-- Composite (last_rotated_at, id) so the operator's keyset query
+-- "(last_rotated_at, id) > (since_ts, since_id) order by last_rotated_at, id"
+-- and the high-water-mark lookup (order by last_rotated_at desc, id desc) are index-served.
 create index idx_classifier_last_rotated_at
-    on classifier (last_rotated_at)
+    on classifier (last_rotated_at, id)
     where last_rotated_at is not null;

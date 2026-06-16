@@ -15,6 +15,10 @@ import java.util.SortedMap;
         "Carries only the identity needed to locate the consumer; connection properties are fetched separately.")
 public class ChangedDatabaseResponse {
 
+    @Schema(description = "Registry id. Together with lastRotatedAt it forms the keyset cursor the caller " +
+            "echoes back as sinceId to page deterministically through rows that share a timestamp.")
+    private String id;
+
     @Schema(description = "Namespace where the database is placed.")
     private String namespace;
 
@@ -29,6 +33,7 @@ public class ChangedDatabaseResponse {
     private OffsetDateTime lastRotatedAt;
 
     public ChangedDatabaseResponse(DatabaseRegistry registry) {
+        this.id = registry.getId() != null ? registry.getId().toString() : null;
         this.namespace = registry.getNamespace();
         this.classifier = registry.getClassifier();
         this.type = registry.getType();

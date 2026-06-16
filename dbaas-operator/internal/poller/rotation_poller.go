@@ -25,28 +25,24 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-const (
-	// DefaultLimit is the page size requested per poll. Excess changes are
-	// drained on subsequent ticks (the cursor advances by the returned items).
-	DefaultLimit = 500
+// DefaultLimit is the page size requested per poll. Excess changes are drained on
+// subsequent ticks — the keyset cursor advances by the last returned item, so a
+// full page never stalls even when many rows share a timestamp.
+const DefaultLimit = 500
 
-	// pollOverlap is subtracted from the cursor on each request so a registry
-	// row that committed slightly out of timestamp order (the outbox-sequence
-	// visibility gap) is still seen. Re-fetched rows are harmless: re-patching
-	// the same trigger value does not change the annotation, so no extra
-	// reconcile is triggered.
-	pollOverlap = 5 * time.Second
-)
+// zeroUUID is the smallest UUID; paired with the epoch timestamp it forms the
+// baseline cursor used when nothing has rotated yet, so the first future rotation
+// sorts strictly after it. Computed without time.Now so the value is deterministic.
+const zeroUUID = "00000000-0000-0000-0000-000000000000"
 
-// epoch is the baseline cursor used when nothing has rotated yet, so the first
-// future rotation (timestamp > epoch) is caught. Computed without time.Now so
-// the value is deterministic.
-var epoch = time.Unix(0, 0).UTC()
+func epochCursor() aggregatorclient.ChangeCursor {
+	return aggregatorclient.ChangeCursor{LastRotatedAt: time.Unix(0, 0).UTC(), Id: zeroUUID}
+}
 
 // ChangedSource is the subset of the aggregator client the poller depends on.
 // Defined as an interface so tests can supply a fake.
 type ChangedSource interface {
-	GetChangedSince(ctx context.Context, since *time.Time, limit int) (*aggregatorclient.ChangedDatabasesResponse, error)
+	GetChangedSince(ctx context.Context, cursor *aggregatorclient.ChangeCursor, limit int) (*aggregatorclient.ChangedDatabasesResponse, error)
 }
 
 // RotationPoller periodically pulls the aggregator's changed-databases feed and
@@ -58,6 +54,10 @@ type ChangedSource interface {
 // safety-net requeue is the ultimate backstop. The cursor is therefore in-memory
 // — on restart or leader failover the new leader re-seeds from the aggregator's
 // high-water mark and the startup sweep covers the gap.
+//
+// The cursor is a keyset (lastRotatedAt, id) so paging is deterministic even when
+// many rows share an identical timestamp (e.g. a restore stamps one timestamp
+// across a database's registries) — the poller always makes forward progress.
 type RotationPoller struct {
 	// Client lists and patches DatabaseSecretClaim CRs. Must be backed by a
 	// cache with the ClassifierTypeIndex registered.
@@ -74,8 +74,7 @@ type RotationPoller struct {
 // cursor owner drives the fan-out.
 func (p *RotationPoller) NeedLeaderElection() bool { return true }
 
-// Start runs the poll loop until ctx is cancelled. It implements
-// manager.Runnable.
+// Start runs the poll loop until ctx is cancelled. It implements manager.Runnable.
 func (p *RotationPoller) Start(ctx context.Context) error {
 	limit := p.Limit
 	if limit <= 0 {
@@ -83,9 +82,12 @@ func (p *RotationPoller) Start(ctx context.Context) error {
 	}
 	log.Infof("Starting rotation poller interval=%v limit=%d", p.Interval, limit)
 
-	// cursor is nil until seeded; pollOnce performs the seed (and re-seed after
-	// a failed seed) when it sees a nil cursor.
-	var cursor *time.Time
+	// Seed immediately, before the first tick, so the baseline is captured at
+	// ~leadership acquisition — the same point the startup reconcile runs. Any
+	// rotation after this point sorts strictly after the cursor and is fanned out;
+	// anything before is covered by the startup reconcile. Seeding lazily on the
+	// first tick would leave an interval-long window whose rotations are skipped.
+	cursor := p.pollOnce(ctx, nil, limit)
 
 	ticker := time.NewTicker(p.Interval)
 	defer ticker.Stop()
@@ -103,8 +105,9 @@ func (p *RotationPoller) Start(ctx context.Context) error {
 // pollOnce performs one poll iteration and returns the (possibly advanced) cursor.
 // A nil cursor triggers a seed: the seed-only (since-less) call returns the
 // aggregator's current high-water mark, which becomes the baseline so existing
-// rotations — already synced by the startup reconcile — are not replayed.
-func (p *RotationPoller) pollOnce(ctx context.Context, cursor *time.Time, limit int) *time.Time {
+// rotations — already synced by the startup reconcile — are not replayed. A failed
+// seed returns nil so the next tick retries it.
+func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.ChangeCursor, limit int) *aggregatorclient.ChangeCursor {
 	if cursor == nil {
 		resp, err := p.Source.GetChangedSince(ctx, nil, 0)
 		if err != nil {
@@ -112,17 +115,16 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *time.Time, limit 
 			return nil
 		}
 		if resp.HighWaterMark != nil {
-			log.InfoC(ctx, "Rotation poller seeded cursor highWaterMark=%v", resp.HighWaterMark.UTC())
+			log.InfoC(ctx, "Rotation poller seeded cursor lastRotatedAt=%v id=%s",
+				resp.HighWaterMark.LastRotatedAt.UTC(), resp.HighWaterMark.Id)
 			return resp.HighWaterMark
 		}
-		// Nothing has rotated yet — baseline at epoch so the first future
-		// rotation is caught.
+		c := epochCursor()
 		log.InfoC(ctx, "Rotation poller seeded cursor at epoch (no rotations recorded yet)")
-		return &epoch
+		return &c
 	}
 
-	since := cursor.Add(-pollOverlap)
-	resp, err := p.Source.GetChangedSince(ctx, &since, limit)
+	resp, err := p.Source.GetChangedSince(ctx, cursor, limit)
 	if err != nil {
 		log.ErrorC(ctx, "Rotation poller request failed (will retry next tick): %v", err)
 		return cursor
@@ -135,15 +137,15 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *time.Time, limit 
 		if _, _, perr := PatchClaimsForRotation(ctx, p.Client, it.Namespace, it.Classifier, it.Type, trigger); perr != nil {
 			log.ErrorC(ctx, "Rotation poller failed to fan out namespace=%s type=%s err=%v",
 				it.Namespace, it.Type, perr)
-			continue
 		}
-		if it.LastRotatedAt.After(*advanced) {
-			t := it.LastRotatedAt
-			advanced = &t
-		}
+		// Items are ordered by (lastRotatedAt, id) ascending; advance the cursor
+		// unconditionally so a per-namespace list error (logged above) does not
+		// stall it — the safety-net reconcile heals any skipped fan-out.
+		advanced = &aggregatorclient.ChangeCursor{LastRotatedAt: it.LastRotatedAt, Id: it.Id}
 	}
 	if len(resp.Items) > 0 {
-		log.InfoC(ctx, "Rotation poller processed changes count=%d cursor=%v", len(resp.Items), advanced.UTC())
+		log.InfoC(ctx, "Rotation poller processed changes count=%d cursor=(%v,%s)",
+			len(resp.Items), advanced.LastRotatedAt.UTC(), advanced.Id)
 	}
 	return advanced
 }

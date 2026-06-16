@@ -269,18 +269,19 @@ func (c *AggregatorClient) GetDatabaseByClassifier(
 }
 
 // GetChangedSince fetches databases whose credentials changed (password rotation
-// or restore) strictly after the given cursor, ordered by change time.
-// GET /api/v3/dbaas/databases/changed?since={iso}&limit={n}
+// or restore) strictly after the given keyset cursor, ordered by (lastRotatedAt,
+// id). GET /api/v3/dbaas/databases/changed?sinceTs={iso}&sinceId={uuid}&limit={n}
 //
-// Pass since=nil on the first call to receive only the current high-water mark
+// Pass cursor=nil on the first call to receive only the current high-water mark
 // (an empty Items list) — use it to seed the cursor without replaying history.
 // limit <= 0 lets the aggregator apply its default page size.
 // Requires the caller identity to hold the CLUSTER_OPERATOR role.
 // Returns *AggregatorError on non-2xx.
-func (c *AggregatorClient) GetChangedSince(ctx context.Context, since *time.Time, limit int) (*ChangedDatabasesResponse, error) {
+func (c *AggregatorClient) GetChangedSince(ctx context.Context, cursor *ChangeCursor, limit int) (*ChangedDatabasesResponse, error) {
 	req := c.rc.R().SetContext(ctx)
-	if since != nil {
-		req.SetQueryParam("since", since.UTC().Format(time.RFC3339Nano))
+	if cursor != nil {
+		req.SetQueryParam("sinceTs", cursor.LastRotatedAt.UTC().Format(time.RFC3339Nano))
+		req.SetQueryParam("sinceId", cursor.Id)
 	}
 	if limit > 0 {
 		req.SetQueryParam("limit", strconv.Itoa(limit))

@@ -25,16 +25,15 @@ import (
 	"time"
 )
 
-func tp(t time.Time) *time.Time { return &t }
-
-func TestGetChangedSince_SeedCallOmitsSinceParam(t *testing.T) {
-	hwm := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
-	var gotMethod, gotPath, gotSince, gotLimit string
+func TestGetChangedSince_SeedCallOmitsCursorParams(t *testing.T) {
+	hwm := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), Id: "11111111-1111-1111-1111-111111111111"}
+	var gotMethod, gotPath, gotSinceTs, gotSinceID, gotLimit string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
-		gotSince = r.URL.Query().Get("since")
+		gotSinceTs = r.URL.Query().Get("sinceTs")
+		gotSinceID = r.URL.Query().Get("sinceId")
 		gotLimit = r.URL.Query().Get("limit")
 		writeJSON(t, w, http.StatusOK, ChangedDatabasesResponse{HighWaterMark: &hwm})
 	}))
@@ -51,47 +50,51 @@ func TestGetChangedSince_SeedCallOmitsSinceParam(t *testing.T) {
 	if gotPath != "/api/v3/dbaas/databases/changed" {
 		t.Errorf("path = %s", gotPath)
 	}
-	if gotSince != "" {
-		t.Errorf("since must be omitted on the seed call, got %q", gotSince)
+	if gotSinceTs != "" || gotSinceID != "" {
+		t.Errorf("cursor params must be omitted on the seed call, got sinceTs=%q sinceId=%q", gotSinceTs, gotSinceID)
 	}
 	if gotLimit != "" {
 		t.Errorf("limit must be omitted when 0, got %q", gotLimit)
 	}
-	if resp.HighWaterMark == nil || !resp.HighWaterMark.Equal(hwm) {
-		t.Errorf("highWaterMark = %v, want %v", resp.HighWaterMark, hwm)
+	if resp.HighWaterMark == nil || !resp.HighWaterMark.LastRotatedAt.Equal(hwm.LastRotatedAt) || resp.HighWaterMark.Id != hwm.Id {
+		t.Errorf("highWaterMark = %+v, want %+v", resp.HighWaterMark, hwm)
 	}
 	if len(resp.Items) != 0 {
 		t.Errorf("items = %d, want 0", len(resp.Items))
 	}
 }
 
-func TestGetChangedSince_SendsSinceAndLimitAndParsesItems(t *testing.T) {
-	since := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
-	next := since.Add(time.Minute)
-	var gotSince, gotLimit string
+func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
+	cursor := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), Id: "22222222-2222-2222-2222-222222222222"}
+	next := cursor.LastRotatedAt.Add(time.Minute)
+	var gotSinceTs, gotSinceID, gotLimit string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotSince = r.URL.Query().Get("since")
+		gotSinceTs = r.URL.Query().Get("sinceTs")
+		gotSinceID = r.URL.Query().Get("sinceId")
 		gotLimit = r.URL.Query().Get("limit")
 		writeJSON(t, w, http.StatusOK, ChangedDatabasesResponse{
 			Items: []ChangedDatabaseRef{{
+				Id:            "33333333-3333-3333-3333-333333333333",
 				Namespace:     "ns",
 				Classifier:    map[string]any{"microserviceName": "ms", "scope": "service", "namespace": "ns"},
 				Type:          "postgresql",
 				LastRotatedAt: next,
 			}},
-			HighWaterMark: tp(next),
 		})
 	}))
 	defer srv.Close()
 
 	c := NewClientWithTokenFunc(srv.URL, staticToken("tok"))
-	resp, err := c.GetChangedSince(context.Background(), &since, 100)
+	resp, err := c.GetChangedSince(context.Background(), &cursor, 100)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if want := since.Format(time.RFC3339Nano); gotSince != want {
-		t.Errorf("since = %q, want %q", gotSince, want)
+	if want := cursor.LastRotatedAt.Format(time.RFC3339Nano); gotSinceTs != want {
+		t.Errorf("sinceTs = %q, want %q", gotSinceTs, want)
+	}
+	if gotSinceID != cursor.Id {
+		t.Errorf("sinceId = %q, want %q", gotSinceID, cursor.Id)
 	}
 	if gotLimit != "100" {
 		t.Errorf("limit = %q, want 100", gotLimit)
@@ -99,8 +102,9 @@ func TestGetChangedSince_SendsSinceAndLimitAndParsesItems(t *testing.T) {
 	if len(resp.Items) != 1 {
 		t.Fatalf("items = %d, want 1", len(resp.Items))
 	}
-	if resp.Items[0].Type != "postgresql" || resp.Items[0].Namespace != "ns" || !resp.Items[0].LastRotatedAt.Equal(next) {
-		t.Errorf("item = %+v", resp.Items[0])
+	got := resp.Items[0]
+	if got.Id != "33333333-3333-3333-3333-333333333333" || got.Type != "postgresql" || got.Namespace != "ns" || !got.LastRotatedAt.Equal(next) {
+		t.Errorf("item = %+v", got)
 	}
 }
 

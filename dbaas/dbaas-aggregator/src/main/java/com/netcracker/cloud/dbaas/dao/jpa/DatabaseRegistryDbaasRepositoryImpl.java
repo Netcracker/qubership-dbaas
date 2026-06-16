@@ -68,15 +68,15 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     }
 
     @Override
-    public List<DatabaseRegistry> findChangedSince(OffsetDateTime since, int limit) {
+    public List<DatabaseRegistry> findChangedSince(OffsetDateTime sinceTs, UUID sinceId, int limit) {
         // PG-only: the rotation marker (last_rotated_at) is not mirrored to H2, so there is no H2 fallback.
         // If Postgres is unavailable the operator poller simply retries on its next tick.
-        return databaseRegistryRepository.findChangedSince(since, limit);
+        return databaseRegistryRepository.findChangedSince(sinceTs, sinceId, limit);
     }
 
     @Override
-    public Optional<OffsetDateTime> maxLastRotatedAt() {
-        return databaseRegistryRepository.maxLastRotatedAt();
+    public Optional<DatabaseRegistry> latestChange() {
+        return databaseRegistryRepository.latestChange();
     }
 
     @Override
