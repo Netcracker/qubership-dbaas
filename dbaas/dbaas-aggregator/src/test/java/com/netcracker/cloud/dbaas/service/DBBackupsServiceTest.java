@@ -49,7 +49,6 @@ public class DBBackupsServiceTest {
     private DbaaSHelper dbaaSHelper;
     private DBBackupsService dbBackupsService;
     private DeletionService deletionService;
-    private OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     private final String TEST_NAMESPACE = "test-namespace";
     private final String TEST_ADAPTER_ID = "test-adapter-id";
@@ -69,8 +68,7 @@ public class DBBackupsServiceTest {
         databaseRegistryDbaasRepository = Mockito.mock(DatabaseRegistryDbaasRepository.class);
         dbaaSHelper = Mockito.mock(DbaaSHelper.class);
         deletionService = Mockito.mock(DeletionService.class);
-        operatorEventOutboxWriter = Mockito.mock(OperatorEventOutboxWriter.class);
-        dbBackupsService = Mockito.spy(new DBBackupsService(physicalDatabasesService, databaseRegistryDbaasRepository, backupsDbaasRepository, encryption, entityManager, dbaaSHelper, deletionService, operatorEventOutboxWriter));
+        dbBackupsService = Mockito.spy(new DBBackupsService(physicalDatabasesService, databaseRegistryDbaasRepository, backupsDbaasRepository, encryption, entityManager, dbaaSHelper, deletionService));
         doReturn(new Object()).when(dbBackupsService).runInNewTransaction(any());
     }
 

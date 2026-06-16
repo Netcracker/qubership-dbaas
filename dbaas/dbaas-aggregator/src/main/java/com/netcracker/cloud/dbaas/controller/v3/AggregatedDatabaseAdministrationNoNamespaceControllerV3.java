@@ -4,6 +4,8 @@ import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.CleanupMarkedForDropRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
+import com.netcracker.cloud.dbaas.dto.v3.ChangedDatabaseResponse;
+import com.netcracker.cloud.dbaas.dto.v3.ChangedDatabasesResponse;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
@@ -30,9 +32,12 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.jboss.resteasy.annotations.Separator;
 
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Set;
 
+import static com.netcracker.cloud.dbaas.Constants.CLUSTER_OPERATOR;
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
 import static com.netcracker.cloud.dbaas.Constants.NAMESPACE_CLEANER;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
@@ -197,5 +202,43 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
         } else {
             return Response.ok(response).build();
         }
+    }
+
+    @Operation(summary = "V3. List databases changed since a cursor",
+            description = "Returns databases whose credentials changed (password rotation or restore) strictly after the " +
+                    "given cursor, ordered by change time, plus the current high-water mark. Consumed by the dbaas-operator " +
+                    "rotation poller. Cluster-scoped: requires the CLUSTER_OPERATOR role.")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Changed databases and the current high-water mark", content = @Content(schema = @Schema(implementation = ChangedDatabasesResponse.class))),
+            @APIResponse(responseCode = "400", description = "Invalid 'since' or 'limit' parameter", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
+            @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided", content = @Content(schema = @Schema(implementation = String.class)))
+    })
+    @Path("/changed")
+    @GET
+    @RolesAllowed(CLUSTER_OPERATOR)
+    @Transactional
+    public Response getChangedDatabases(@Parameter(description = "Return databases changed strictly after this ISO-8601 timestamp. Omit on the first call to receive only the current high-water mark.")
+                                        @QueryParam("since") String since,
+                                        @Parameter(description = "Maximum number of databases to return (1..1000).")
+                                        @QueryParam("limit") @DefaultValue("500") int limit) {
+        if (limit < 1 || limit > 1000) {
+            throw new BadRequestException("Query parameter 'limit' must be between 1 and 1000");
+        }
+        OffsetDateTime highWaterMark = databaseRegistryDbaasRepository.maxLastRotatedAt().orElse(null);
+        if (since == null || since.isBlank()) {
+            // Seed call: hand the operator the current high-water mark without replaying history.
+            return Response.ok(new ChangedDatabasesResponse(List.of(), highWaterMark)).build();
+        }
+        OffsetDateTime sinceTs;
+        try {
+            sinceTs = OffsetDateTime.parse(since);
+        } catch (DateTimeParseException e) {
+            throw new BadRequestException("Query parameter 'since' must be an ISO-8601 timestamp");
+        }
+        List<ChangedDatabaseResponse> items = databaseRegistryDbaasRepository.findChangedSince(sinceTs, limit).stream()
+                .map(ChangedDatabaseResponse::new)
+                .toList();
+        log.debug("Returned {} changed databases since {}", items.size(), sinceTs);
+        return Response.ok(new ChangedDatabasesResponse(items, highWaterMark)).build();
     }
 }

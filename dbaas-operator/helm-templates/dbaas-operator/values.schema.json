@@ -181,15 +181,16 @@
         false
       ]
     },
-    "ROTATION_WEBHOOK_ALLOWED_SUBJECTS": {
-      "$id": "#/properties/ROTATION_WEBHOOK_ALLOWED_SUBJECTS",
+    "DBAAS_ROTATION_POLL_INTERVAL": {
+      "$id": "#/properties/DBAAS_ROTATION_POLL_INTERVAL",
       "type": "string",
-      "title": "The ROTATION_WEBHOOK_ALLOWED_SUBJECTS schema",
-      "description": "Comma-separated allow-list of Kubernetes subjects (system:serviceaccount:<namespace>:<serviceAccount>) permitted to call the rotation webhook. Callers outside the list are rejected with 403. Leave empty to use the built-in default: the dbaas-aggregator service account in the operator's own namespace. The check is fail-closed.",
+      "title": "The DBAAS_ROTATION_POLL_INTERVAL schema",
+      "description": "Rotation poll period as a Go duration (e.g. 15s, 1m). The leader polls dbaas-aggregator's changed-databases feed at this interval to propagate password rotations. Leave empty to use the operator's built-in default (30s).",
       "default": "",
       "examples": [
         "",
-        "system:serviceaccount:dbaas:dbaas-aggregator"
+        "30s",
+        "1m"
       ]
     },
     "DBAAS_OPERATOR_ENABLED": {

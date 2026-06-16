@@ -20,10 +20,8 @@ import (
 	"context"
 	"flag"
 	"io"
-	"maps"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -53,7 +51,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/webhook"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/poller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -301,42 +299,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── Rotation webhook receiver ────────────────────────────────────────────
-	// Authenticates inbound rotation events from dbaas-aggregator and patches
-	// the AnnotationRotationTrigger annotation on each affected DatabaseSecretClaim
-	// CR. The handler is mounted on the same HTTP listener as /metrics via the
-	// controller-runtime ExtraHandlers hook; it runs on every replica so any
-	// pod can accept the webhook, and the annotation propagates through the
-	// k8s watch so only the leader's reconciler applies the actual Secret
-	// update.
-	authInitCtx, cancelAuthInit := context.WithTimeout(context.Background(), 30*time.Second)
-	rotationAuth, err := webhook.NewKubernetesAuthenticator(authInitCtx, webhook.AudienceDBaaSOperator)
-	cancelAuthInit()
-	if err != nil {
-		setupLog.Errorf("Failed to create rotation webhook authenticator: %v", err)
+	// ── Rotation poller ───────────────────────────────────────────────────────
+	// Leader-only loop that pulls dbaas-aggregator's changed-databases feed and
+	// patches the AnnotationRotationTrigger annotation on each affected
+	// DatabaseSecretClaim CR, waking its reconcile. Replaces the former inbound
+	// rotation webhook: a single outbound direction (operator → aggregator) that
+	// reuses the existing dbaas-audience token, with no inbound endpoint or second
+	// auth surface. Correctness is backstopped by the startup reconcile and the
+	// per-CR safety-net requeue, so the cursor is kept in-memory.
+	pollInterval := 30 * time.Second
+	if v := os.Getenv("DBAAS_ROTATION_POLL_INTERVAL"); v != "" {
+		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
+			pollInterval = d
+		} else {
+			setupLog.Infof("Ignoring invalid DBAAS_ROTATION_POLL_INTERVAL=%q, using default %v", v, pollInterval)
+		}
+	}
+	if err := mgr.Add(&poller.RotationPoller{
+		Client:   mgr.GetClient(),
+		Source:   aggregator,
+		Interval: pollInterval,
+		Limit:    poller.DefaultLimit,
+	}); err != nil {
+		setupLog.Errorf("Failed to register rotation poller: %v", err)
 		os.Exit(1)
 	}
-	// Caller authorization: only allow-listed Kubernetes subjects may trigger
-	// rotations. ROTATION_WEBHOOK_ALLOWED_SUBJECTS is a comma-separated list of
-	// system:serviceaccount:<namespace>:<serviceAccount> entries; when unset it
-	// falls back to the aggregator's derived identity in the operator's own
-	// namespace. The handler is fail-closed against this set.
-	allowedSubjects := webhook.ParseAllowedSubjects(
-		os.Getenv("ROTATION_WEBHOOK_ALLOWED_SUBJECTS"), cloudNamespace)
-	if err := mgr.AddMetricsServerExtraHandler(
-		webhook.PathRotationNotify,
-		&webhook.RotationHandler{
-			Client:          mgr.GetClient(),
-			Auth:            rotationAuth,
-			AllowedSubjects: allowedSubjects,
-		},
-	); err != nil {
-		setupLog.Errorf("Failed to register rotation webhook handler: %v", err)
-		os.Exit(1)
-	}
-	setupLog.Infof("Rotation webhook registered path=%s audience=%s allowedSubjects=%v",
-		webhook.PathRotationNotify, webhook.AudienceDBaaSOperator,
-		slices.Sorted(maps.Keys(allowedSubjects)))
+	setupLog.Infof("Rotation poller registered interval=%v", pollInterval)
 
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

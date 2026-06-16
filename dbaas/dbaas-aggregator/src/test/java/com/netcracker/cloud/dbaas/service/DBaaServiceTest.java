@@ -81,9 +81,6 @@ class DBaaServiceTest {
     @Mock
     private ProcessConnectionPropertiesService connectionPropertiesService;
 
-    @Mock
-    private OperatorEventOutboxWriter operatorEventOutboxWriter;
-
 
     private static final String NAMESPACE = "test-namespace";
     private static final String PG_TYPE = "postgresql";
@@ -115,7 +112,7 @@ class DBaaServiceTest {
         database.setConnectionProperties(Arrays.asList(connection));
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
         Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any());
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
 
         adapterSupportUsers(namespace, dbType, connection, classifierRequest);
         doReturn(false).when(mongoDefaultAdapter).isUsersSupported();
@@ -249,7 +246,7 @@ class DBaaServiceTest {
         doReturn(createEnsureUser(connection2)).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
         doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
         doReturn(true).when(mongoNotDefaultAdapter).isUsersSupported();
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any());
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
 
         checkSuccessChangePassword(namespace, dbType, classifier1, classifier2, connection1, connection2, mongoDefaultAdapter, mongoNotDefaultAdapter);
         doThrow(new WebApplicationException(Response.Status.NOT_FOUND)).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
@@ -262,7 +259,7 @@ class DBaaServiceTest {
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
         when(adapter.identifier()).thenReturn(adapterId);
 
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any());
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
 
         when(physicalDatabasesService.getAllAdapters()).thenReturn(Stream.of(adapter).collect(Collectors.toList()));
         SortedMap<String, Object> classifier = new TreeMap<>() {{
@@ -334,7 +331,7 @@ class DBaaServiceTest {
         DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
         database.setConnectionProperties(Arrays.asList(connection));
         Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any());
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
 
         adapterSupportUsers(namespace, dbType, connection, classifierRequest);
     }
@@ -375,7 +372,7 @@ class DBaaServiceTest {
         DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
         database.setConnectionProperties(Arrays.asList(connection));
         Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any(), any(), any());
+        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
 
         adapterSupportUsers(namespace, dbType, connection, classifierRequest);
     }

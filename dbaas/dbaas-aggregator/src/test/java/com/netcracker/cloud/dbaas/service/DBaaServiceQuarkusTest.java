@@ -11,7 +11,6 @@ import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import com.netcracker.cloud.dbaas.enums.OperatorEventType;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -52,9 +51,6 @@ class DBaaServiceQuarkusTest {
 
     @InjectMock
     PhysicalDatabasesService physicalDatabasesService;
-
-    @InjectMock
-    OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     @AfterEach
     void cleanUp() {
@@ -135,7 +131,7 @@ class DBaaServiceQuarkusTest {
     }
 
     @Test
-    void multiRoleDatabase_enqueueCalledOncePerDatabase() {
+    void multiRoleDatabase_marksRotatedOncePerDatabase() {
         SortedMap<String, Object> classifier = buildClassifier(NAMESPACE, "ms-multi-role");
         DatabaseRegistry registry = buildRegistry(classifier, ADAPTER_ID_1, "user-admin", "db-multi");
         registry.getConnectionProperties().add(new HashMap<>() {{
@@ -155,8 +151,10 @@ class DBaaServiceQuarkusTest {
 
         dBaaService.performChangePassword(List.of(registry), null);
 
-        verify(operatorEventOutboxWriter, times(1))
-                .enqueue(eq(OperatorEventType.ROTATION_OCCURRED), any(), any());
+        DatabaseRegistry persisted = databaseRegistryDbaasRepository
+                .getDatabaseByClassifierAndType(classifier, DB_TYPE).orElseThrow();
+        assertNotNull(persisted.getLastRotatedAt(),
+                "rotation must stamp last_rotated_at on the database registry");
     }
 
     // ---------------------------------------------------------------------------

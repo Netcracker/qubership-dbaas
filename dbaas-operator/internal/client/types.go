@@ -19,6 +19,7 @@ package client
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // ─── Declarative API ──────────────────────────────────────────────────────────
@@ -213,6 +214,29 @@ type DatabaseResponseSingleCP struct {
 	Type                 string         `json:"type,omitempty"`
 	Settings             map[string]any `json:"settings,omitempty"`
 	ConnectionProperties map[string]any `json:"connectionProperties,omitempty"`
+}
+
+// ─── changed-databases (rotation pull) ──────────────────────────────────────────
+
+// ChangedDatabaseRef identifies a database whose credentials changed (password
+// rotation or restore), as returned by GET /api/v3/dbaas/databases/changed. It
+// carries only the identity needed to locate the consuming DatabaseSecretClaim
+// CR(s); connection properties are fetched separately via GetDatabaseByClassifier.
+type ChangedDatabaseRef struct {
+	Namespace     string         `json:"namespace"`
+	Classifier    map[string]any `json:"classifier"`
+	Type          string         `json:"type"`
+	LastRotatedAt time.Time      `json:"lastRotatedAt"`
+}
+
+// ChangedDatabasesResponse is the response from GetChangedSince. HighWaterMark is
+// the largest lastRotatedAt currently known across all databases; it seeds the
+// poll cursor on the first (since-less) call and is nil when nothing has rotated
+// yet. On subsequent calls the cursor is advanced from the returned Items, not
+// from HighWaterMark, so a full page does not skip its tail.
+type ChangedDatabasesResponse struct {
+	Items         []ChangedDatabaseRef `json:"items"`
+	HighWaterMark *time.Time           `json:"highWaterMark"`
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

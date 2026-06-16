@@ -19,11 +19,6 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;create;update;patch
-// The rotation webhook fetches the cluster's OIDC discovery document and JWKS
-// to validate inbound aggregator tokens (see internal/webhook). Hardened
-// clusters do not grant these non-resource URLs to all service accounts, so
-// the operator's own ClusterRole must request them explicitly.
-// +kubebuilder:rbac:urls=/.well-known/openid-configuration;/openid/v1/jwks,verbs=get
 
 import (
 	"bytes"

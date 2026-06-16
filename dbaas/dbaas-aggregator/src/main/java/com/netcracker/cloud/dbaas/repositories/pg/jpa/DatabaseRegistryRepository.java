@@ -8,6 +8,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
@@ -32,6 +33,24 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
 
     public List<DatabaseRegistry> findAllByNamespaceAndDatabase_BgVersionNotNull(String namespace) {
         return list("namespace = ?1 and database.bgVersion is not null", namespace);
+    }
+
+    /**
+     * Returns registries whose credentials changed (password rotation or restore) after the given cursor,
+     * ordered by the marker so the caller can advance its cursor. Consumed by the operator rotation poller.
+     */
+    public List<DatabaseRegistry> findChangedSince(OffsetDateTime since, int limit) {
+        return find("lastRotatedAt > ?1 order by lastRotatedAt", since).page(0, limit).list();
+    }
+
+    /**
+     * Current high-water mark across all registries — the largest last_rotated_at, or empty when nothing
+     * has rotated yet. Used to seed the operator's poll cursor without replaying history.
+     */
+    public Optional<OffsetDateTime> maxLastRotatedAt() {
+        return Optional.ofNullable(getEntityManager()
+                .createQuery("select max(dr.lastRotatedAt) from DatabaseRegistry dr", OffsetDateTime.class)
+                .getSingleResult());
     }
 
     public List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters) {

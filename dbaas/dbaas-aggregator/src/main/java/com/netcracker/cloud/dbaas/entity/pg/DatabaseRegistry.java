@@ -2,24 +2,27 @@ package com.netcracker.cloud.dbaas.entity.pg;
 
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
 import lombok.experimental.Delegate;
 
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 
 @Data
 @Entity(name = "DatabaseRegistry")
 @Table(name = "classifier")
 @ToString(callSuper = true)
-@AllArgsConstructor
 public class DatabaseRegistry extends AbstractDatabaseRegistry {
 
     public DatabaseRegistry() {
         this.id = UUID.randomUUID();
+    }
+
+    public DatabaseRegistry(Database database) {
+        this.database = database;
     }
 
     @Schema(required = true, description = "It lists of database classifiers",
@@ -28,6 +31,11 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
     @JoinColumn(name = "database_id")
     @Delegate(excludes = {IgnoredDelegates.class, AbstractDatabaseRegistry.class})
     private Database database;
+
+    @Schema(description = "Timestamp of the last credential change (password rotation or restore). " +
+            "Used by the operator to pull rotation events; null until the first rotation.")
+    @Column(name = "last_rotated_at")
+    private OffsetDateTime lastRotatedAt;
 
     public DatabaseRegistry(Database database, Date timeDbCreation, SortedMap<String, Object> classifier, String namespace, String type) {
         super(UUID.randomUUID(), timeDbCreation, classifier, namespace, type);

@@ -22,3 +22,7 @@ PAAS_PLATFORM: KUBERNETES
 LOG_LEVEL: info
 K8S_EVENTS_ENABLED: true
 LEADER_ELECT: true
+# Poll the aggregator's changed-databases feed frequently so password rotations
+# propagate within seconds, keeping the rotation integration tests fast and well
+# under their 2-minute wait timeout (production uses the 30s default).
+DBAAS_ROTATION_POLL_INTERVAL: "2s"

@@ -5,6 +5,7 @@ import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 
 import javax.annotation.Nullable;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,4 +57,8 @@ public interface DatabaseRegistryDbaasRepository {
     List<DatabaseRegistry> findAllTransactionalDatabaseRegistries(String namespace);
 
     List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters);
+
+    List<DatabaseRegistry> findChangedSince(OffsetDateTime since, int limit);
+
+    Optional<OffsetDateTime> maxLastRotatedAt();
 }

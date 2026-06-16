@@ -17,7 +17,6 @@ import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
 import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
-import com.netcracker.cloud.dbaas.enums.OperatorEventType;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -36,6 +35,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -60,14 +60,12 @@ public class DBBackupsService {
     private final EntityManager entityManager;
     private final DbaaSHelper dbaaSHelper;
     private final DeletionService deletionService;
-    private final OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     private final ExecutorService asyncExecutorService = Executors.newSingleThreadExecutor();
 
     public DBBackupsService(PhysicalDatabasesService physicalDatabasesService,
                             DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository, BackupsDbaasRepository backupsDbaasRepository,
-                            PasswordEncryption encryption, EntityManager entityManager, DbaaSHelper dbaaSHelper, DeletionService deletionService,
-                            OperatorEventOutboxWriter operatorEventOutboxWriter) {
+                            PasswordEncryption encryption, EntityManager entityManager, DbaaSHelper dbaaSHelper, DeletionService deletionService) {
         this.physicalDatabasesService = physicalDatabasesService;
         this.databaseRegistryDbaasRepository = databaseRegistryDbaasRepository;
         this.backupsDbaasRepository = backupsDbaasRepository;
@@ -75,7 +73,6 @@ public class DBBackupsService {
         this.entityManager = entityManager;
         this.dbaaSHelper = dbaaSHelper;
         this.deletionService = deletionService;
-        this.operatorEventOutboxWriter = operatorEventOutboxWriter;
     }
 
     private Predicate<DatabaseRegistry> notMarkedForDrop() {
@@ -880,11 +877,8 @@ public class DBBackupsService {
                     DescribedDatabase describedDatabase = describeDatabase(adapter, dbName);
                     db.setConnectionProperties(describedDatabase.getConnectionProperties());
                     db.setResources(describedDatabase.getResources());
+                    db.setLastRotatedAt(OffsetDateTime.now());
                     databaseRegistryDbaasRepository.saveInternalDatabase(db);
-                    operatorEventOutboxWriter.enqueue(
-                            OperatorEventType.RESTORE_COMPLETED,
-                            db.getClassifier(),
-                            db.getType());
                     log.info("Database {} described and saved", dbName);
                 }
                 res.skipped++;
@@ -935,13 +929,10 @@ public class DBBackupsService {
                 db.setResources(db.getResources().stream().distinct().collect(Collectors.toList()));
 
                 encryption.encryptPassword(db.getDatabase());
-                databaseRegistryDbaasRepository.saveInternalDatabase(db);
                 if (regenerateCredentials) {
-                    operatorEventOutboxWriter.enqueue(
-                            OperatorEventType.RESTORE_COMPLETED,
-                            db.getClassifier(),
-                            db.getType());
+                    db.setLastRotatedAt(OffsetDateTime.now());
                 }
+                databaseRegistryDbaasRepository.saveInternalDatabase(db);
                 log.info("Users {} ensured access to db {}",
                         users.stream()
                                 .map(EnsuredUser::getName)
