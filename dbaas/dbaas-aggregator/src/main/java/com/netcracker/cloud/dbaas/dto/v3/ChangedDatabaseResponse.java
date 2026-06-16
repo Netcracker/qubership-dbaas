@@ -37,6 +37,7 @@ public class ChangedDatabaseResponse {
         this.namespace = registry.getNamespace();
         this.classifier = registry.getClassifier();
         this.type = registry.getType();
-        this.lastRotatedAt = registry.getLastRotatedAt();
+        // The marker lives on the shared Database, not per-classifier.
+        this.lastRotatedAt = registry.getDatabase() != null ? registry.getDatabase().getLastRotatedAt() : null;
     }
 }

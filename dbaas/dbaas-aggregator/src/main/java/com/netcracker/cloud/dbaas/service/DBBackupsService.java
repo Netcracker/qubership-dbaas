@@ -877,7 +877,7 @@ public class DBBackupsService {
                     DescribedDatabase describedDatabase = describeDatabase(adapter, dbName);
                     db.setConnectionProperties(describedDatabase.getConnectionProperties());
                     db.setResources(describedDatabase.getResources());
-                    db.setLastRotatedAt(OffsetDateTime.now());
+                    db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
                     databaseRegistryDbaasRepository.saveInternalDatabase(db);
                     log.info("Database {} described and saved", dbName);
                 }
@@ -930,7 +930,7 @@ public class DBBackupsService {
 
                 encryption.encryptPassword(db.getDatabase());
                 if (regenerateCredentials) {
-                    db.setLastRotatedAt(OffsetDateTime.now());
+                    db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
                 }
                 databaseRegistryDbaasRepository.saveInternalDatabase(db);
                 log.info("Users {} ensured access to db {}",

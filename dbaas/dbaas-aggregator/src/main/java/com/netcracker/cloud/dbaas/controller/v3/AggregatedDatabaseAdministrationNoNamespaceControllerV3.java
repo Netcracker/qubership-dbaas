@@ -229,7 +229,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
             throw new BadRequestException("Query parameter 'limit' must be between 1 and 1000");
         }
         ChangedDatabasesCursor highWaterMark = databaseRegistryDbaasRepository.latestChange()
-                .map(r -> new ChangedDatabasesCursor(r.getLastRotatedAt(), r.getId().toString()))
+                .map(r -> new ChangedDatabasesCursor(r.getDatabase().getLastRotatedAt(), r.getId().toString()))
                 .orElse(null);
         if (sinceTs == null || sinceTs.isBlank()) {
             // Seed call: hand the operator the current high-water mark without replaying history.

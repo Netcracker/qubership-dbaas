@@ -1,10 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
 import lombok.experimental.Delegate;
@@ -14,27 +12,15 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import java.time.OffsetDateTime;
 import java.util.*;
 
-// lastRotatedAt is a PG-only marker, not part of the entity state mirrored to the H2 cache (the H2 entity
-// has no such column, and DbaasDatabaseRegistryStabilityTest asserts PG and H2 serialize identically). It is
-// excluded from JSON here so the entity's serialized form is unchanged; the changed-databases feed exposes
-// the value via its own DTO (ChangedDatabaseResponse), not the entity.
-@JsonIgnoreProperties("lastRotatedAt")
 @Data
 @Entity(name = "DatabaseRegistry")
 @Table(name = "classifier")
 @ToString(callSuper = true)
+@AllArgsConstructor
 public class DatabaseRegistry extends AbstractDatabaseRegistry {
 
     public DatabaseRegistry() {
         this.id = UUID.randomUUID();
-    }
-
-    // @JsonCreator with a named param keeps `database` a property-based creator (as Lombok's former
-    // @AllArgsConstructor did), so Jackson serializes it in the same position and, on deserialization,
-    // constructs the database before the delegated setters (e.g. setName) run.
-    @JsonCreator
-    public DatabaseRegistry(@JsonProperty("database") Database database) {
-        this.database = database;
     }
 
     @Schema(required = true, description = "It lists of database classifiers",
@@ -43,11 +29,6 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
     @JoinColumn(name = "database_id")
     @Delegate(excludes = {IgnoredDelegates.class, AbstractDatabaseRegistry.class})
     private Database database;
-
-    @Schema(hidden = true, description = "Timestamp of the last credential change (password rotation or restore). " +
-            "Used by the operator to pull rotation events; null until the first rotation.")
-    @Column(name = "last_rotated_at")
-    private OffsetDateTime lastRotatedAt;
 
     public DatabaseRegistry(Database database, Date timeDbCreation, SortedMap<String, Object> classifier, String namespace, String type) {
         super(UUID.randomUUID(), timeDbCreation, classifier, namespace, type);
@@ -94,7 +75,14 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
         return copy;
     }
 
+    // The rotation marker lives on Database (a property of the shared credentials, not of each classifier).
+    // Excluded from delegation so the registry never surfaces — and serializes — it: the H2 mirror's Database
+    // has no such column. Read/write it via getDatabase().
     private interface IgnoredDelegates {
         com.netcracker.cloud.dbaas.entity.pg.Database asH2Entity(com.netcracker.cloud.dbaas.entity.h2.Database db);
+
+        OffsetDateTime getLastRotatedAt();
+
+        void setLastRotatedAt(OffsetDateTime lastRotatedAt);
     }
 }

@@ -42,16 +42,16 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
      * timestamp on every registry of a database). Consumed by the operator rotation poller.
      */
     public List<DatabaseRegistry> findChangedSince(OffsetDateTime sinceTs, UUID sinceId, int limit) {
-        return find("(lastRotatedAt > ?1) or (lastRotatedAt = ?1 and id > ?2) order by lastRotatedAt, id",
+        return find("(database.lastRotatedAt > ?1) or (database.lastRotatedAt = ?1 and id > ?2) order by database.lastRotatedAt, id",
                 sinceTs, sinceId).page(0, limit).list();
     }
 
     /**
-     * The latest changed registry by the (lastRotatedAt, id) keyset, or empty when nothing has rotated yet.
-     * Used to seed the operator's poll cursor without replaying history.
+     * The latest changed registry by the (database.lastRotatedAt, registry id) keyset, or empty when nothing
+     * has rotated yet. Used to seed the operator's poll cursor without replaying history.
      */
     public Optional<DatabaseRegistry> latestChange() {
-        return find("lastRotatedAt is not null order by lastRotatedAt desc, id desc").firstResultOptional();
+        return find("database.lastRotatedAt is not null order by database.lastRotatedAt desc, id desc").firstResultOptional();
     }
 
     public List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters) {

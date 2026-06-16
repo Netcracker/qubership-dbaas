@@ -153,8 +153,8 @@ class DBaaServiceQuarkusTest {
 
         DatabaseRegistry persisted = databaseRegistryDbaasRepository
                 .getDatabaseByClassifierAndType(classifier, DB_TYPE).orElseThrow();
-        assertNotNull(persisted.getLastRotatedAt(),
-                "rotation must stamp last_rotated_at on the database registry");
+        assertNotNull(persisted.getDatabase().getLastRotatedAt(),
+                "rotation must stamp last_rotated_at on the database");
     }
 
     // ---------------------------------------------------------------------------

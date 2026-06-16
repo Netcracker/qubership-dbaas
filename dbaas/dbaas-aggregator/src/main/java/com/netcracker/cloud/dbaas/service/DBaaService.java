@@ -365,7 +365,7 @@ public class DBaaService {
 
     protected void commitPasswordRotation(DatabaseRegistry databaseRegistry) {
         QuarkusTransaction.requiringNew().run(() -> {
-            databaseRegistry.setLastRotatedAt(OffsetDateTime.now());
+            databaseRegistry.getDatabase().setLastRotatedAt(OffsetDateTime.now());
             logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
                     .saveInternalDatabase(databaseRegistry);
         });

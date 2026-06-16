@@ -1407,8 +1407,7 @@ public class DbBackupV2Service {
                 newDatabase.setResources(ensuredUsers.stream().map(EnsuredUser::getResources).filter(Objects::nonNull).flatMap(Collection::stream).toList());
                 newDatabase.setResources(newDatabase.getResources().stream().distinct().collect(Collectors.toList()));
                 encryption.encryptPassword(newDatabase);
-                OffsetDateTime restoredAt = OffsetDateTime.now();
-                newDatabase.getDatabaseRegistry().forEach(registry -> registry.setLastRotatedAt(restoredAt));
+                newDatabase.setLastRotatedAt(OffsetDateTime.now());
                 databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
                 log.info("Based on restoreDatabase={}, database with id={} created", restoreDatabase.getName(), newDatabase.getId());
             });
