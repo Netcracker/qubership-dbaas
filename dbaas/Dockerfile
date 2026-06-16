@@ -1,4 +1,4 @@
-FROM ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.3.1@sha256:2a93c716c505bde8e28bee3f4c375b066718502da8f38a07eab40cd9dd06c17e
+FROM ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.3.2@sha256:61a560ce785cc6a1af32f58c69239e274b6f77db6fda134700ca6d0effc698cb
 LABEL maintainer="qubership"
 
 ARG BASE_PATH=.
