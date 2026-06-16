@@ -1,5 +1,8 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabaseRegistry;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -11,6 +14,11 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import java.time.OffsetDateTime;
 import java.util.*;
 
+// lastRotatedAt is a PG-only marker, not part of the entity state mirrored to the H2 cache (the H2 entity
+// has no such column, and DbaasDatabaseRegistryStabilityTest asserts PG and H2 serialize identically). It is
+// excluded from JSON here so the entity's serialized form is unchanged; the changed-databases feed exposes
+// the value via its own DTO (ChangedDatabaseResponse), not the entity.
+@JsonIgnoreProperties("lastRotatedAt")
 @Data
 @Entity(name = "DatabaseRegistry")
 @Table(name = "classifier")
@@ -21,7 +29,11 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
         this.id = UUID.randomUUID();
     }
 
-    public DatabaseRegistry(Database database) {
+    // @JsonCreator with a named param keeps `database` a property-based creator (as Lombok's former
+    // @AllArgsConstructor did), so Jackson serializes it in the same position and, on deserialization,
+    // constructs the database before the delegated setters (e.g. setName) run.
+    @JsonCreator
+    public DatabaseRegistry(@JsonProperty("database") Database database) {
         this.database = database;
     }
 
@@ -32,7 +44,7 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
     @Delegate(excludes = {IgnoredDelegates.class, AbstractDatabaseRegistry.class})
     private Database database;
 
-    @Schema(description = "Timestamp of the last credential change (password rotation or restore). " +
+    @Schema(hidden = true, description = "Timestamp of the last credential change (password rotation or restore). " +
             "Used by the operator to pull rotation events; null until the first rotation.")
     @Column(name = "last_rotated_at")
     private OffsetDateTime lastRotatedAt;
