@@ -129,20 +129,14 @@ func main() {
 		aggregator = aggregatorclient.NewAggregatorClient(aggregatorURL)
 		setupLog.Infof("dbaas-aggregator client configured url=%v auth=m2m-token", aggregatorURL)
 	} else {
-		securityDir := os.Getenv("DBAAS_SECURITY_CONFIGURATION_LOCATION")
-		if securityDir == "" {
-			securityDir = "/etc/dbaas/security"
-		}
-		username := os.Getenv("DBAAS_AGGREGATOR_USERNAME")
-		if username == "" {
-			username = "dbaas-operator"
-		}
-		password := loadAggregatorCredentials(setupLog, securityDir, username)
+		// Basic Auth: read username/password from the mounted operator credentials
+		// Secret (dbaas-operator-aggregator-credentials at securityDir).
+		username, password := loadAggregatorCredentials(setupLog, securityDir)
 		aggregator = aggregatorclient.NewBasicAuthClient(aggregatorURL, username, password)
 		// Reload credentials on Secret rotation without a pod restart; shares the
 		// manager lifecycle (registered below once the manager is constructed).
 		credentialWatcher = manager.RunnableFunc(func(ctx context.Context) error {
-			return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, username, aggregator)
+			return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregator)
 		})
 		setupLog.Infof("dbaas-aggregator client configured url=%v auth=basic username=%v", aggregatorURL, username)
 	}

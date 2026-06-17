@@ -18,14 +18,22 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
+)
+
+// securityDir is the fixed mount path of the operator's aggregator-credentials
+// Secret (dbaas-operator-aggregator-credentials, keys: username, password). The
+// Helm chart and the dev manifests mount that Secret here when the operator runs
+// in Basic Auth mode (KUBERNETES_M2M_ENABLED=false).
+const securityDir = "/etc/dbaas/security"
+
+const (
+	usernameFile = "username"
+	passwordFile = "password"
 )
 
 // credentialsSetter is the narrow interface required by watchCredentials.
@@ -34,90 +42,48 @@ type credentialsSetter interface {
 	SetCredentials(username, password string)
 }
 
-// parseUsersFile reads {securityDir}/users.json and returns the password for
-// the given username.
-//
-// Returns os.ErrNotExist (via errors.Is) when the file is absent — the caller
-// can use this to distinguish "file not mounted yet" from a real config error.
-// Any other error (malformed JSON, missing user) is returned as-is.
-func parseUsersFile(securityDir, username string) (string, error) {
-	usersFile := filepath.Join(securityDir, "users.json")
-	data, err := os.ReadFile(usersFile)
+// readCredentials reads the username and password files from dir (the mounted
+// Secret). Returns os.ErrNotExist (via errors.Is) when a file is absent, so the
+// caller can distinguish "not mounted yet" from a real error.
+func readCredentials(dir string) (username, password string, err error) {
+	u, err := os.ReadFile(filepath.Join(dir, usernameFile))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	var users map[string]struct {
-		Password string `json:"password"`
+	p, err := os.ReadFile(filepath.Join(dir, passwordFile))
+	if err != nil {
+		return "", "", err
 	}
-	if err := json.Unmarshal(data, &users); err != nil {
-		return "", fmt.Errorf("parse %s: %w", usersFile, err)
-	}
-	cfg, ok := users[username]
-	if !ok {
-		return "", fmt.Errorf("user %q not found in %s", username, usersFile)
-	}
-	return cfg.Password, nil
+	return string(u), string(p), nil
 }
 
-// loadAggregatorCredentials loads the password for username at startup.
-// Calls os.Exit(1) if credentials cannot be resolved.
-//
-// Resolution order:
-//  1. users.json inside securityDir — the same Secret that dbaas-aggregator
-//     itself uses (dbaas-security-configuration-secret). Kubernetes will not
-//     start the pod until the Secret volume is available, so the file is
-//     guaranteed to exist in production.
-//  2. DBAAS_AGGREGATOR_PASSWORD env var — local development fallback when
-//     running outside Kubernetes without a mounted Secret.
-func loadAggregatorCredentials(log logging.Logger, securityDir, username string) string {
-	password, err := parseUsersFile(securityDir, username)
-	if err == nil {
-		log.Infof("loaded aggregator credentials from users.json username=%v", username)
-		return password
-	}
-
-	if !errors.Is(err, os.ErrNotExist) {
-		// File exists but is malformed or the user entry is missing — fatal.
-		log.Errorf("failed to load aggregator credentials from users.json: %v", err)
+// loadAggregatorCredentials loads the Basic Auth username and password from the
+// mounted credentials Secret at startup. Calls os.Exit(1) if they cannot be read —
+// in Basic Auth mode the Secret is required, and Kubernetes will not start the pod
+// until the Secret volume is available, so the files are present in production.
+func loadAggregatorCredentials(log logging.Logger, dir string) (username, password string) {
+	username, password, err := readCredentials(dir)
+	if err != nil {
+		log.Errorf("failed to load aggregator credentials from %s — mount the "+
+			"dbaas-operator-aggregator-credentials Secret (Basic Auth mode): %v", dir, err)
 		os.Exit(1)
 	}
-
-	// File absent — fall back to env var (local development without a Secret mount).
-	password = os.Getenv("DBAAS_AGGREGATOR_PASSWORD")
-	if password != "" {
-		log.Infof("loaded aggregator credentials from env var username=%v", username)
-		return password
-	}
-
-	log.Error("aggregator credentials not found: mount dbaas-security-configuration-secret at " +
-		"DBAAS_SECURITY_CONFIGURATION_LOCATION or set DBAAS_AGGREGATOR_PASSWORD env var")
-	os.Exit(1)
-	return ""
+	log.Infof("loaded aggregator credentials username=%v", username)
+	return username, password
 }
 
-// readCredentialsFromFile parses users.json and returns the password for username.
-// Returns ("", false) on any error — the existing credentials remain in use.
-// Unlike loadAggregatorCredentials this function never calls os.Exit.
-func readCredentialsFromFile(log logging.Logger, securityDir, username string) (string, bool) {
-	password, err := parseUsersFile(securityDir, username)
-	if err != nil {
-		log.Errorf("failed to read credentials from users.json: %v", err)
-		return "", false
-	}
-	return password, true
-}
-
-// watchCredentials watches securityDir for changes and reloads the aggregator
-// credentials whenever users.json is updated.
+// watchCredentials watches dir and reloads the Basic Auth credentials whenever the
+// mounted Secret is updated, so a credential rotation is picked up without a pod
+// restart.
 //
 // Kubernetes updates Secret-backed volume mounts atomically via a "..data" symlink
-// swap, so we watch the directory (not the file directly) and react to Create/Rename
-// events on "..data".  Direct Write events on "users.json" are also handled for
-// local-dev / ConfigMap mounts.
+// swap, so we watch the directory (not the files directly) and react to Create/Rename
+// events on "..data". Direct Write events on the username/password files are also
+// handled for local-dev mounts.
 //
-// The function blocks until ctx is cancelled.  Errors starting the watcher are
-// logged and treated as non-fatal (credential auto-reload is simply disabled).
-func watchCredentials(ctx context.Context, log logging.Logger, securityDir, username string, client credentialsSetter) error {
+// The function blocks until ctx is cancelled. Errors starting the watcher are logged
+// and treated as non-fatal (credential auto-reload is simply disabled).
+func watchCredentials(ctx context.Context, log logging.Logger, dir string, client credentialsSetter) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Errorf("failed to create fsnotify watcher — credential auto-reload disabled: %v", err)
@@ -125,18 +91,20 @@ func watchCredentials(ctx context.Context, log logging.Logger, securityDir, user
 	}
 	defer func() { _ = watcher.Close() }()
 
-	if err := watcher.Add(securityDir); err != nil {
-		log.Errorf("failed to watch security dir — credential auto-reload disabled dir=%v: %v", securityDir, err)
+	if err := watcher.Add(dir); err != nil {
+		log.Errorf("failed to watch security dir — credential auto-reload disabled dir=%v: %v", dir, err)
 		return nil
 	}
-	log.Infof("credential watcher started dir=%v", securityDir)
+	log.Infof("credential watcher started dir=%v", dir)
 
 	reload := func(trigger string) {
-		password, ok := readCredentialsFromFile(log, securityDir, username)
-		if ok {
-			client.SetCredentials(username, password)
-			log.Infof("aggregator credentials reloaded trigger=%v username=%v", trigger, username)
+		username, password, err := readCredentials(dir)
+		if err != nil {
+			log.Errorf("failed to reload aggregator credentials: %v", err)
+			return
 		}
+		client.SetCredentials(username, password)
+		log.Infof("aggregator credentials reloaded trigger=%v username=%v", trigger, username)
 	}
 
 	for {
@@ -150,8 +118,8 @@ func watchCredentials(ctx context.Context, log logging.Logger, securityDir, user
 			}
 			base := filepath.Base(event.Name)
 			// "..data" — Kubernetes atomic symlink replacement on Secret update.
-			// "users.json" — direct file write in local dev / ConfigMap mounts.
-			if base != "..data" && base != "users.json" {
+			// username/password — direct file writes in local dev.
+			if base != "..data" && base != usernameFile && base != passwordFile {
 				continue
 			}
 			if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {

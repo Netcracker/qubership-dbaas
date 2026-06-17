@@ -100,25 +100,19 @@ subjects:
     name: dbaas-operator
     namespace: dbaas-system
 ---
-# Basic Auth credentials for the operator (Basic mode, the default). Mirrors the
-# aggregator's dbaas-security-configuration-secret: a users.json with the dbaas-operator
-# user. The aggregator-mock does not validate the password, so any value works here;
-# the operator only needs to read its own password to send it. In M2M mode the operator
-# ignores this Secret (it authenticates with the projected SA token instead).
+# Basic Auth credentials for the operator (Basic mode, the default): the operator's
+# own credentials Secret with plain username/password keys. The aggregator-mock does
+# not validate the password, so any value works here. In M2M mode the operator ignores
+# this Secret (it authenticates with the projected SA token instead).
 apiVersion: v1
 kind: Secret
 metadata:
-  name: dbaas-security-configuration-secret
+  name: dbaas-operator-aggregator-credentials
   namespace: dbaas-system
 type: Opaque
 stringData:
-  users.json: |
-    {
-      "dbaas-operator": {
-        "password": "dev-password",
-        "roles": ["DB_CLIENT", "CLUSTER_OPERATOR"]
-      }
-    }
+  username: dbaas-operator
+  password: dev-password
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -155,7 +149,7 @@ spec:
                   expirationSeconds: 600
         - name: dbaas-security-volume
           secret:
-            secretName: dbaas-security-configuration-secret
+            secretName: dbaas-operator-aggregator-credentials
       containers:
         - name: manager
           image: dbaas-operator:dev
@@ -167,13 +161,10 @@ spec:
                   fieldPath: metadata.namespace
             # Aggregator auth mode. Defaults to basic (false); kind-up.sh substitutes
             # KUBERNETES_M2M_ENABLED to flip the operator onto the M2M Bearer-token path.
+            # In basic mode the operator reads username/password from the mounted
+            # credentials Secret at /etc/dbaas/security (no extra env needed).
             - name: KUBERNETES_M2M_ENABLED
               value: "${KUBERNETES_M2M_ENABLED}"
-            # Basic Auth (m2m=false): which user to read from the mounted security Secret.
-            - name: DBAAS_AGGREGATOR_USERNAME
-              value: dbaas-operator
-            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
-              value: /etc/dbaas/security
           # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
           # which loads the Kubernetes service-account ca.crt into the trust store before
           # exec'ing its args, so any outbound TLS (e.g. an HTTPS aggregator URL) trusts the

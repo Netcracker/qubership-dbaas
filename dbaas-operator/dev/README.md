@@ -10,7 +10,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
 | `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DatabaseAccessPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC — watches all namespaces cluster-wide |
-| `dbaas-security-configuration-secret` Secret | `dbaas-system` | Basic Auth credentials (`dbaas-operator` user) the operator reads in Basic mode |
+| `dbaas-operator-aggregator-credentials` Secret | `dbaas-system` | Operator's own Basic Auth credentials (`username`/`password`) read in Basic mode |
 | Namespace `test-ns` | — | Working namespace for CRs |
 | `NamespaceBinding/binding` | `test-ns` | Claims `test-ns` for this operator (operatorNamespace=`dbaas-system`) |
 | Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabase |
@@ -41,8 +41,9 @@ KIND_CLUSTER=my-cluster ./dev/kind-up.sh
 
 By default the operator authenticates to the aggregator-mock with **HTTP Basic Auth**
 as the `dbaas-operator` user (matching the production default, `KUBERNETES_M2M_ENABLED=false`).
-The credentials come from the `dbaas-security-configuration-secret` Secret; the mock does
-not validate the value. To exercise the **M2M** path (projected SA Bearer token) instead:
+The credentials come from the operator's own `dbaas-operator-aggregator-credentials` Secret
+(plain `username`/`password` keys); the mock does not validate the value. To exercise the
+**M2M** path (projected SA Bearer token) instead:
 
 ```bash
 KUBERNETES_M2M_ENABLED=true ./dev/kind-up.sh

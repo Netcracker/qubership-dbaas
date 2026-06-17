@@ -387,10 +387,11 @@ those credentials in `dbaas-adapter` must match.
 #### DBAAS_OPERATOR_CREDENTIALS_USERNAME / DBAAS_OPERATOR_CREDENTIALS_PASSWORD
 
 Credentials for the `dbaas-operator` user (roles `DB_CLIENT` and `CLUSTER_OPERATOR`). Used only when the dbaas-operator
-runs in Basic Auth mode (`KUBERNETES_M2M_ENABLED=false`, the default): the operator reads this password from the
-mounted security Secret and authenticates to dbaas-aggregator with it. When `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` is
-unset, the `dbaas-operator` user is omitted from `users.json` entirely, which is the correct setup for M2M-only
-installations (`KUBERNETES_M2M_ENABLED=true`).
+runs in Basic Auth mode (`KUBERNETES_M2M_ENABLED=false`, the default): this is the **aggregator side**, which adds the
+user to `users.json` so the aggregator can validate the operator's Basic Auth. The operator must be configured with the
+**same** username/password via its own chart's `DBAAS_OPERATOR_CREDENTIALS_*` values (it carries them in its own Secret,
+not this one). When `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` is unset here, the `dbaas-operator` user is omitted from
+`users.json` entirely, which is the correct setup for M2M-only installations (`KUBERNETES_M2M_ENABLED=true`).
 
 | Default                                                                                                                                                                          | Recommended                                                                                                                                                                                |
 |----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

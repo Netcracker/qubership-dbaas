@@ -34,3 +34,8 @@ DBAAS_ROTATION_POLL_INTERVAL: "2s"
 # default). Override independently to test the hybrid (operator Basic vs M2M
 # aggregator): make ... KUBERNETES_M2M_ENABLED=true OPERATOR_M2M_ENABLED=false.
 KUBERNETES_M2M_ENABLED: ${OPERATOR_M2M_ENABLED}
+# Basic Auth credentials for the operator's own credentials Secret (Basic Auth mode).
+# Must match the user provisioned on the aggregator side (bootstrap/dbaas-values.yaml
+# DBAAS_OPERATOR_CREDENTIALS_*). Required when the operator runs in Basic Auth mode.
+DBAAS_OPERATOR_CREDENTIALS_USERNAME: dbaas-operator
+DBAAS_OPERATOR_CREDENTIALS_PASSWORD: password
