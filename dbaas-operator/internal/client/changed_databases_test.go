@@ -78,7 +78,7 @@ func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 				Id:            "33333333-3333-3333-3333-333333333333",
 				Namespace:     "ns",
 				Classifier:    map[string]any{"microserviceName": "ms", "scope": "service", "namespace": "ns"},
-				Type:          "postgresql",
+				Type:          dbTypePostgresql,
 				LastRotatedAt: next,
 			}},
 		})
@@ -103,7 +103,7 @@ func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 		t.Fatalf("items = %d, want 1", len(resp.Items))
 	}
 	got := resp.Items[0]
-	if got.Id != "33333333-3333-3333-3333-333333333333" || got.Type != "postgresql" || got.Namespace != "ns" || !got.LastRotatedAt.Equal(next) {
+	if got.Id != "33333333-3333-3333-3333-333333333333" || got.Type != dbTypePostgresql || got.Namespace != "ns" || !got.LastRotatedAt.Equal(next) {
 		t.Errorf("item = %+v", got)
 	}
 }

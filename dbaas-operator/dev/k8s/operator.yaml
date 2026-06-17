@@ -57,9 +57,6 @@ rules:
   - apiGroups: [""]
     resources: [secrets]
     verbs: [get, list, watch, create, update, patch]
-  # OIDC discovery for the rotation webhook's token verifier (see internal/webhook).
-  - nonResourceURLs: [/.well-known/openid-configuration, /openid/v1/jwks]
-    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -103,6 +100,26 @@ subjects:
     name: dbaas-operator
     namespace: dbaas-system
 ---
+# Basic Auth credentials for the operator (Basic mode, the default). Mirrors the
+# aggregator's dbaas-security-configuration-secret: a users.json with the dbaas-operator
+# user. The aggregator-mock does not validate the password, so any value works here;
+# the operator only needs to read its own password to send it. In M2M mode the operator
+# ignores this Secret (it authenticates with the projected SA token instead).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dbaas-security-configuration-secret
+  namespace: dbaas-system
+type: Opaque
+stringData:
+  users.json: |
+    {
+      "dbaas-operator": {
+        "password": "dev-password",
+        "roles": ["DB_CLIENT", "CLUSTER_OPERATOR"]
+      }
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -125,6 +142,8 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      # Both auth sources are mounted; the KUBERNETES_M2M_ENABLED env var below selects
+      # which one the operator actually uses (basic → the Secret, m2m → the token).
       volumes:
         - name: projected-tokens
           projected:
@@ -134,6 +153,9 @@ spec:
                   path: dbaas/token
                   audience: dbaas
                   expirationSeconds: 600
+        - name: dbaas-security-volume
+          secret:
+            secretName: dbaas-security-configuration-secret
       containers:
         - name: manager
           image: dbaas-operator:dev
@@ -143,11 +165,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # Aggregator auth mode. Defaults to basic (false); kind-up.sh substitutes
+            # KUBERNETES_M2M_ENABLED to flip the operator onto the M2M Bearer-token path.
+            - name: KUBERNETES_M2M_ENABLED
+              value: "${KUBERNETES_M2M_ENABLED}"
+            # Basic Auth (m2m=false): which user to read from the mounted security Secret.
+            - name: DBAAS_AGGREGATOR_USERNAME
+              value: dbaas-operator
+            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
+              value: /etc/dbaas/security
           # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
           # which loads the Kubernetes service-account ca.crt into the trust store before
-          # exec'ing its args. The rotation webhook's OIDC verifier makes a TLS call to the
-          # kube-apiserver via the system trust store, so the CA must be loaded — bypassing
-          # the entrypoint fails with x509: certificate signed by unknown authority.
+          # exec'ing its args, so any outbound TLS (e.g. an HTTPS aggregator URL) trusts the
+          # cluster CA — bypassing the entrypoint fails with x509: certificate signed by
+          # unknown authority.
           command:
             - /usr/bin/entrypoint.sh
           args:
@@ -158,6 +189,9 @@ spec:
           volumeMounts:
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
+              readOnly: true
+            - name: dbaas-security-volume
+              mountPath: /etc/dbaas/security
               readOnly: true
           livenessProbe:
             httpGet:

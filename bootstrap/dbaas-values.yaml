@@ -27,6 +27,10 @@ DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD: password
 DBAAS_TENANT_PASSWORD: password
 DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD: password
 DISCR_TOOL_USER_PASSWORD: password
+# Credentials for the dbaas-operator basic-auth user (roles DB_CLIENT, CLUSTER_OPERATOR).
+# Setting the password renders the dbaas-operator user into users.json; the operator
+# reads it from the mounted security Secret when running in Basic Auth mode (M2M=false).
+DBAAS_OPERATOR_CREDENTIALS_PASSWORD: password
 KUBERNETES_M2M_ENABLED: ${KUBERNETES_M2M_ENABLED}
 POSTGRES_DBAAS_USER: postgres
 POSTGRES_DBAAS_PASSWORD: ${POSTGRES_PASSWORD}

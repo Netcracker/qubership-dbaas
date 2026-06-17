@@ -19,7 +19,11 @@ PATRONI_REPLICAS_NUMBER ?= 1
 DBAAS_SERVICE_NAME ?= dbaas-aggregator
 NODE_SELECTOR_DBAAS_KEY ?= region
 REGION_DBAAS ?= database
-KUBERNETES_M2M_ENABLED ?= true
+# Default to the production default (false): the aggregator accepts only HTTP Basic
+# Auth and the operator authenticates as the dbaas-operator basic user. Set to true
+# to exercise the M2M (projected SA token) path instead. Applies to both the
+# aggregator and the operator (both read ${KUBERNETES_M2M_ENABLED}).
+KUBERNETES_M2M_ENABLED ?= false
 # Validation image tag
 TAG ?= latest
 DBAAS_OPERATOR_TAG ?= latest

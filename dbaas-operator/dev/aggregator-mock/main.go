@@ -17,10 +17,11 @@ limitations under the License.
 // aggregator-mock is a minimal HTTP server that emulates the dbaas-aggregator
 // endpoints used by dbaas-operator, for local development and kind-based testing.
 //
-// Authentication: every request must carry a non-empty Bearer token in the
-// Authorization header (any non-empty token is accepted — the mock does not
-// validate the token value, it only checks that one is present).
-// Missing or empty token → 401 Unauthorized.
+// Authentication: every request must be authenticated either with HTTP Basic Auth
+// (Basic mode, the default — operator runs with KUBERNETES_M2M_ENABLED=false) or a
+// non-empty Bearer token (M2M mode, KUBERNETES_M2M_ENABLED=true). The mock validates
+// neither value — it only checks that the operator authenticated somehow, so the same
+// mock serves both modes with no reconfiguration. No credentials → 401 Unauthorized.
 //
 // Error responses are returned in full TmfErrorResponse format (NC.TMFErrorResponse.v1.0),
 // matching what the real dbaas-aggregator returns for each HTTP error code.
@@ -130,7 +131,7 @@ func main() {
 		len(applyRules))
 	log.Printf("  GET  .../operation/.../status → default COMPLETED (%d per-trackingId poll rules loaded)",
 		len(pollRules))
-	log.Printf("  auth: Bearer token required (any non-empty token accepted)")
+	log.Printf("  auth: Basic Auth or Bearer token required (value not validated — both modes accepted)")
 
 	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, pollRules)); err != nil {
 		log.Fatalf("listen: %v", err)
@@ -254,17 +255,20 @@ func handlePermanentBalancingRule(w http.ResponseWriter, delete bool) {
 	_, _ = w.Write([]byte("[]"))
 }
 
-// checkAuth validates the Bearer token from the Authorization header.
-// Any non-empty token is accepted — the mock does not validate the token value.
-// Missing or empty token → 401 Unauthorized.
+// checkAuth accepts a request authenticated with EITHER HTTP Basic Auth (Basic mode)
+// or a non-empty Bearer token (M2M mode). The mock validates neither value — it only
+// requires that the operator authenticated somehow, so it is mode-agnostic. A request
+// with neither → 401 Unauthorized.
 func checkAuth(w http.ResponseWriter, r *http.Request) bool {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if token == "" {
-		log.Printf("  → 401 missing or empty Bearer token")
-		writeTmfError(w, authRuleUnauthorized)
-		return false
+	if user, _, ok := r.BasicAuth(); ok && user != "" {
+		return true
 	}
-	return true
+	if token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); token != "" {
+		return true
+	}
+	log.Printf("  → 401 missing credentials (neither Basic Auth nor Bearer token)")
+	writeTmfError(w, authRuleUnauthorized)
+	return false
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
@@ -434,14 +438,17 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 // logRequest logs the incoming request and returns the body bytes.
 // The caller is responsible for passing the body to any handler that needs it.
 func logRequest(r *http.Request) []byte {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	tokenPreview := ""
-	if len(token) > 8 {
-		tokenPreview = token[:8] + "..."
-	} else {
-		tokenPreview = token
+	auth := "none"
+	if user, _, ok := r.BasicAuth(); ok && user != "" {
+		auth = "basic user=" + user
+	} else if token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); token != "" {
+		preview := token
+		if len(token) > 8 {
+			preview = token[:8] + "..."
+		}
+		auth = "bearer=" + preview
 	}
-	log.Printf("← %s %s  bearer=%q", r.Method, r.URL.Path, tokenPreview)
+	log.Printf("← %s %s  auth=%s", r.Method, r.URL.Path, auth)
 
 	body, _ := io.ReadAll(r.Body)
 

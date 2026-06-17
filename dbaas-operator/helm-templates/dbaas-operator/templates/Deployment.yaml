@@ -55,6 +55,7 @@ spec:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
       serviceAccountName: '{{ .Values.SERVICE_NAME }}'
       volumes:
+        {{- if .Values.KUBERNETES_M2M_ENABLED }}
         - name: projected-tokens
           projected:
             defaultMode: 292
@@ -63,13 +64,26 @@ spec:
                   path: dbaas/token
                   audience: dbaas
                   expirationSeconds: 600
+        {{- else }}
+        # Basic Auth mode: mount the aggregator security Secret (users.json) so the
+        # operator reads its credentials. Same Secret dbaas-aggregator itself uses.
+        - name: dbaas-security-volume
+          secret:
+            secretName: dbaas-security-configuration-secret
+        {{- end }}
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
           volumeMounts:
+            {{- if .Values.KUBERNETES_M2M_ENABLED }}
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
               readOnly: true
+            {{- else }}
+            - name: dbaas-security-volume
+              mountPath: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
+              readOnly: true
+            {{- end }}
           # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
           # which loads the Kubernetes service-account ca.crt into the image trust store
           # before exec'ing its arguments, so any outbound TLS (e.g. an HTTPS aggregator
@@ -99,6 +113,16 @@ spec:
             # unset the operator uses its built-in default (30s).
             - name: DBAAS_ROTATION_POLL_INTERVAL
               value: '{{ .Values.DBAAS_ROTATION_POLL_INTERVAL }}'
+            {{- end }}
+            # Aggregator auth mode (must match the aggregator's KUBERNETES_M2M_ENABLED).
+            - name: KUBERNETES_M2M_ENABLED
+              value: '{{ .Values.KUBERNETES_M2M_ENABLED }}'
+            {{- if not .Values.KUBERNETES_M2M_ENABLED }}
+            # Basic Auth mode: which user to read from the mounted security Secret.
+            - name: DBAAS_AGGREGATOR_USERNAME
+              value: '{{ .Values.DBAAS_AGGREGATOR_USERNAME }}'
+            - name: DBAAS_SECURITY_CONFIGURATION_LOCATION
+              value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
             {{- end }}
           ports:
             - name: web

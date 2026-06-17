@@ -26,3 +26,10 @@ LEADER_ELECT: true
 # propagate within seconds, keeping the rotation integration tests fast and well
 # under their 2-minute wait timeout (production uses the 30s default).
 DBAAS_ROTATION_POLL_INTERVAL: "2s"
+
+# ============== Aggregator authentication ============================
+# Track the same flag the aggregator uses (bootstrap/dbaas-values.yaml), so the
+# operator's auth mode always matches it in integration tests. local.mk defaults
+# it to false → the operator authenticates as the dbaas-operator Basic Auth user
+# (the production default); set KUBERNETES_M2M_ENABLED=true to exercise M2M instead.
+KUBERNETES_M2M_ENABLED: ${KUBERNETES_M2M_ENABLED}

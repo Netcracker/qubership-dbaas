@@ -204,6 +204,37 @@
         true
       ]
     },
+    "KUBERNETES_M2M_ENABLED": {
+      "$id": "#/properties/KUBERNETES_M2M_ENABLED",
+      "type": "boolean",
+      "title": "The KUBERNETES_M2M_ENABLED schema",
+      "description": "Parameter specifies if M2M authentication with Kubernetes service account tokens is enabled",
+      "default": false,
+      "examples": [
+        true,
+        false
+      ]
+    },
+    "DBAAS_AGGREGATOR_USERNAME": {
+      "$id": "#/properties/DBAAS_AGGREGATOR_USERNAME",
+      "type": "string",
+      "title": "The DBAAS_AGGREGATOR_USERNAME schema",
+      "description": "Basic Auth username (used only when KUBERNETES_M2M_ENABLED=false). Must exist in the aggregator's policy.json with the DB_CLIENT and CLUSTER_OPERATOR roles.",
+      "default": "dbaas-operator",
+      "examples": [
+        "dbaas-operator"
+      ]
+    },
+    "DBAAS_SECURITY_CONFIGURATION_LOCATION": {
+      "$id": "#/properties/DBAAS_SECURITY_CONFIGURATION_LOCATION",
+      "type": "string",
+      "title": "The DBAAS_SECURITY_CONFIGURATION_LOCATION schema",
+      "description": "Mount path of the aggregator security Secret holding users.json (used only when KUBERNETES_M2M_ENABLED=false).",
+      "default": "/etc/dbaas/security",
+      "examples": [
+        "/etc/dbaas/security"
+      ]
+    },
     "LOG_LEVEL": {
       "$id": "#/properties/LOG_LEVEL",
       "type": "string",

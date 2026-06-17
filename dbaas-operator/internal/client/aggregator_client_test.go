@@ -28,6 +28,9 @@ import (
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// dbTypePostgresql is the database type used throughout these client tests.
+const dbTypePostgresql = "postgresql"
+
 // staticToken returns a TokenSource function that always returns the given token.
 // Used in tests to avoid touching the global tokensource state.
 func staticToken(token string) func(context.Context) (string, error) {
@@ -38,7 +41,7 @@ func staticToken(token string) func(context.Context) (string, error) {
 func minimalExtDBRequest() *ExternalDatabaseRequest {
 	return &ExternalDatabaseRequest{
 		Classifier:           map[string]any{"namespace": "test"},
-		Type:                 "postgresql",
+		Type:                 dbTypePostgresql,
 		DbName:               "test-db",
 		ConnectionProperties: []map[string]string{{"role": "admin"}},
 	}
@@ -55,7 +58,7 @@ func minimalDeclarativePayload() *DeclarativePayload {
 			Namespace:        "test-ns",
 			MicroserviceName: "test-service",
 		},
-		Spec: map[string]string{"type": "postgresql"},
+		Spec: map[string]string{"type": dbTypePostgresql},
 	}
 }
 
@@ -158,6 +161,63 @@ func TestRegisterExternalDatabase_TokenFetchedPerRequest(t *testing.T) {
 	}
 }
 
+// ── Basic Auth mode (KUBERNETES_M2M_ENABLED=false) ────────────────────────────
+
+// TestBasicAuthClient_SendsBasicAuth verifies that a client built with
+// NewBasicAuthClient authenticates with HTTP Basic Auth (not a Bearer token).
+func TestBasicAuthClient_SendsBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	var gotUser, gotPass string
+	var gotOK bool
+	var gotAuthHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser, gotPass, gotOK = r.BasicAuth()
+		gotAuthHeader = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewBasicAuthClient(srv.URL, "dbaas-operator", "s3cr3t")
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+
+	if !gotOK || gotUser != "dbaas-operator" || gotPass != "s3cr3t" {
+		t.Errorf("BasicAuth: got (%q,%q,ok=%v), want (dbaas-operator,s3cr3t,ok=true)", gotUser, gotPass, gotOK)
+	}
+	if strings.HasPrefix(gotAuthHeader, "Bearer ") {
+		t.Errorf("expected Basic auth, got Bearer header %q", gotAuthHeader)
+	}
+}
+
+// TestBasicAuthClient_SetCredentialsHotSwap verifies that SetCredentials replaces
+// the credentials used for subsequent requests (Secret rotation without restart).
+func TestBasicAuthClient_SetCredentialsHotSwap(t *testing.T) {
+	t.Parallel()
+
+	var passwords []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, pass, _ := r.BasicAuth()
+		passwords = append(passwords, pass)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewBasicAuthClient(srv.URL, "dbaas-operator", "old-pass")
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	c.SetCredentials("dbaas-operator", "new-pass")
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+
+	if len(passwords) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(passwords))
+	}
+	if passwords[0] != "old-pass" {
+		t.Errorf("first request: got %q, want old-pass", passwords[0])
+	}
+	if passwords[1] != "new-pass" {
+		t.Errorf("second request after SetCredentials: got %q, want new-pass", passwords[1])
+	}
+}
+
 func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 	t.Parallel()
 
@@ -171,7 +231,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 
 	req := &ExternalDatabaseRequest{
 		Classifier:                 map[string]any{"namespace": "ns", "microserviceName": "svc"},
-		Type:                       "postgresql",
+		Type:                       dbTypePostgresql,
 		DbName:                     "mydb",
 		ConnectionProperties:       []map[string]string{{"role": "admin", "host": "pg:5432"}},
 		UpdateConnectionProperties: true,
@@ -185,7 +245,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
-	if got.Type != "postgresql" || got.DbName != "mydb" || !got.UpdateConnectionProperties {
+	if got.Type != dbTypePostgresql || got.DbName != "mydb" || !got.UpdateConnectionProperties {
 		t.Errorf("body mismatch: %+v", got)
 	}
 }
@@ -286,7 +346,7 @@ func TestApplyMicroserviceBalancingRules_UsesCorrectURLMethodAndBody(t *testing.
 
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.ApplyMicroserviceBalancingRules(context.Background(), "payments", []OnMicroserviceRuleRequest{{
-		Type:          "postgresql",
+		Type:          dbTypePostgresql,
 		Rules:         []RuleOnMicroservice{{Label: "zone=fast"}},
 		Microservices: []string{"billing-service"},
 	}})
@@ -324,7 +384,7 @@ func TestApplyNamespaceBalancingRule_UsesCorrectURLMethodAndBody(t *testing.T) {
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.ApplyNamespaceBalancingRule(context.Background(), "payments", "pg-fast", &NamespaceBalancingRuleRequest{
 		Order: &order,
-		Type:  "postgresql",
+		Type:  dbTypePostgresql,
 		Rule: NamespaceBalancingRuleBody{
 			Type: "perNamespace",
 			Config: map[string]any{
@@ -438,7 +498,7 @@ func TestApplyPermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) 
 
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.ApplyPermanentBalancingRules(context.Background(), []PermanentBalancingRuleRequest{{
-		DbType:             "postgresql",
+		DbType:             dbTypePostgresql,
 		PhysicalDatabaseID: "postgresql-prod-a",
 		Namespaces:         []string{"payments", "orders"},
 	}})
@@ -474,7 +534,7 @@ func TestDeletePermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T)
 
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.DeletePermanentBalancingRules(context.Background(), []PermanentBalancingRuleDeleteRequest{{
-		DbType:     "postgresql",
+		DbType:     dbTypePostgresql,
 		Namespaces: []string{"payments"},
 	}})
 	if err != nil {
@@ -487,7 +547,7 @@ func TestDeletePermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T)
 	if gotPath != wantPath {
 		t.Errorf("path: got %q, want %q", gotPath, wantPath)
 	}
-	if len(got) != 1 || got[0].DbType != "postgresql" || got[0].Namespaces[0] != "payments" {
+	if len(got) != 1 || got[0].DbType != dbTypePostgresql || got[0].Namespaces[0] != "payments" {
 		t.Fatalf("body mismatch: %+v", got)
 	}
 }

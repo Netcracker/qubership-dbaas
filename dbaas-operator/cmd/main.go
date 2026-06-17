@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -115,8 +116,36 @@ func main() {
 	if aggregatorURL == "" {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
-	aggregator := aggregatorclient.NewAggregatorClient(aggregatorURL)
-	setupLog.Infof("dbaas-aggregator client configured url=%v", aggregatorURL)
+
+	// Authentication mode mirrors the aggregator's KUBERNETES_M2M_ENABLED flag:
+	//   true  → Kubernetes projected service-account token (Bearer / M2M);
+	//   false → HTTP Basic Auth with credentials from the mounted security Secret.
+	// The aggregator rejects a Bearer token outright when M2M is disabled, so the
+	// operator must match the cluster's setting. Defaults to false (Basic Auth).
+	m2mEnabled := strings.EqualFold(os.Getenv("KUBERNETES_M2M_ENABLED"), "true")
+	var aggregator *aggregatorclient.AggregatorClient
+	var credentialWatcher manager.Runnable
+	if m2mEnabled {
+		aggregator = aggregatorclient.NewAggregatorClient(aggregatorURL)
+		setupLog.Infof("dbaas-aggregator client configured url=%v auth=m2m-token", aggregatorURL)
+	} else {
+		securityDir := os.Getenv("DBAAS_SECURITY_CONFIGURATION_LOCATION")
+		if securityDir == "" {
+			securityDir = "/etc/dbaas/security"
+		}
+		username := os.Getenv("DBAAS_AGGREGATOR_USERNAME")
+		if username == "" {
+			username = "dbaas-operator"
+		}
+		password := loadAggregatorCredentials(setupLog, securityDir, username)
+		aggregator = aggregatorclient.NewBasicAuthClient(aggregatorURL, username, password)
+		// Reload credentials on Secret rotation without a pod restart; shares the
+		// manager lifecycle (registered below once the manager is constructed).
+		credentialWatcher = manager.RunnableFunc(func(ctx context.Context) error {
+			return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, username, aggregator)
+		})
+		setupLog.Infof("dbaas-aggregator client configured url=%v auth=basic username=%v", aggregatorURL, username)
+	}
 
 	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
 	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)
@@ -325,6 +354,16 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Infof("Rotation poller registered interval=%v", pollInterval)
+
+	// In Basic Auth mode, reload the aggregator credentials when the mounted
+	// Secret is updated, so a password rotation is picked up without a restart.
+	if credentialWatcher != nil {
+		if err := mgr.Add(credentialWatcher); err != nil {
+			setupLog.Errorf("Failed to register credential watcher: %v", err)
+			os.Exit(1)
+		}
+		setupLog.Info("Credential watcher registered (basic-auth mode)")
+	}
 
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

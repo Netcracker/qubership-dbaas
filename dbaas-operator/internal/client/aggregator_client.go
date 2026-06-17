@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -33,12 +34,26 @@ import (
 const defaultTimeout = 30 * time.Second
 
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
-// It authenticates using a Kubernetes projected service account token with
-// audience "dbaas", fetched fresh on every request via the tokensource library.
+// It authenticates in one of two mutually exclusive modes, selected at
+// construction to mirror the aggregator's KUBERNETES_M2M_ENABLED setting:
+//   - M2M (Bearer): a Kubernetes projected service account token with audience
+//     "dbaas", fetched fresh on every request via the tokensource library;
+//   - Basic Auth: a username/password pair loaded from the mounted security
+//     Secret, hot-swappable at runtime via SetCredentials.
+//
 // It is safe for concurrent use.
 type AggregatorClient struct {
-	rc       *resty.Client
+	rc *resty.Client
+	// getToken is set in M2M mode and nil in Basic Auth mode.
 	getToken func(ctx context.Context) (string, error)
+	// creds holds the Basic Auth pair in Basic Auth mode; nil in M2M mode.
+	creds atomic.Pointer[credentials]
+}
+
+// credentials holds the HTTP Basic Auth pair as an immutable value, swapped
+// atomically on credential reload.
+type credentials struct {
+	username, password string
 }
 
 // NewAggregatorClient creates a new AggregatorClient.
@@ -63,7 +78,26 @@ func NewClientWithTokenFunc(baseURL string, getToken func(ctx context.Context) (
 	return newClient(baseURL, getToken)
 }
 
-// newClient is the internal constructor used in package-level tests.
+// NewBasicAuthClient creates an AggregatorClient that authenticates with HTTP
+// Basic Auth. Used when M2M token auth is disabled (KUBERNETES_M2M_ENABLED=false),
+// in which case the aggregator rejects Bearer tokens and expects Basic credentials.
+// The credentials can be hot-swapped at runtime via SetCredentials, so a mounted
+// Secret update is picked up without a pod restart.
+func NewBasicAuthClient(baseURL, username, password string) *AggregatorClient {
+	c := newClient(baseURL, nil)
+	c.creds.Store(&credentials{username: username, password: password})
+	return c
+}
+
+// SetCredentials atomically replaces the Basic Auth credentials used for all
+// subsequent requests. Safe for concurrent use.
+func (c *AggregatorClient) SetCredentials(username, password string) {
+	c.creds.Store(&credentials{username: username, password: password})
+}
+
+// newClient is the internal constructor used in package-level tests. A non-nil
+// getToken selects M2M (Bearer) mode; nil selects Basic Auth mode, in which case
+// the caller must seed credentials via creds.Store / SetCredentials.
 func newClient(baseURL string, getToken func(ctx context.Context) (string, error)) *AggregatorClient {
 	c := &AggregatorClient{getToken: getToken}
 
@@ -72,11 +106,19 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		SetTimeout(defaultTimeout).
 		SetHeader("Accept", "application/json").
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
-			token, err := c.getToken(r.Context())
-			if err != nil {
-				return fmt.Errorf("get dbaas audience token: %w", err)
+			// M2M mode — fetch a fresh dbaas-audience token per request.
+			if c.getToken != nil {
+				token, err := c.getToken(r.Context())
+				if err != nil {
+					return fmt.Errorf("get dbaas audience token: %w", err)
+				}
+				r.SetAuthToken(token)
+				return nil
 			}
-			r.SetAuthToken(token)
+			// Basic Auth mode — apply the currently loaded credentials.
+			if cr := c.creds.Load(); cr != nil {
+				r.SetBasicAuth(cr.username, cr.password)
+			}
 			return nil
 		})
 
