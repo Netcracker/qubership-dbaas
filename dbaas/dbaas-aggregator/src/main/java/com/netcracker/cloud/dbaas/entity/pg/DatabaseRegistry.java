@@ -9,6 +9,7 @@ import lombok.experimental.Delegate;
 
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 
 @Data
@@ -74,7 +75,14 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
         return copy;
     }
 
+    // The rotation marker lives on Database (a property of the shared credentials, not of each classifier).
+    // Excluded from delegation so the registry never surfaces — and serializes — it: the H2 mirror's Database
+    // has no such column. Read/write it via getDatabase().
     private interface IgnoredDelegates {
         com.netcracker.cloud.dbaas.entity.pg.Database asH2Entity(com.netcracker.cloud.dbaas.entity.h2.Database db);
+
+        OffsetDateTime getLastRotatedAt();
+
+        void setLastRotatedAt(OffsetDateTime lastRotatedAt);
     }
 }

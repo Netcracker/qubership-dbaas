@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -263,6 +264,38 @@ func (c *AggregatorClient) GetDatabaseByClassifier(
 	var result DatabaseResponseSingleCP
 	if err := json.Unmarshal(resp.Body(), &result); err != nil {
 		return nil, fmt.Errorf("decode get-by-classifier response: %w", err)
+	}
+	return &result, nil
+}
+
+// GetChangedSince fetches databases whose credentials changed (password rotation
+// or restore) strictly after the given keyset cursor, ordered by (lastRotatedAt,
+// id). GET /api/v3/dbaas/databases/changed?sinceTs={iso}&sinceId={uuid}&limit={n}
+//
+// Pass cursor=nil on the first call to receive only the current high-water mark
+// (an empty Items list) — use it to seed the cursor without replaying history.
+// limit <= 0 lets the aggregator apply its default page size.
+// Requires the caller identity to hold the CLUSTER_OPERATOR role.
+// Returns *AggregatorError on non-2xx.
+func (c *AggregatorClient) GetChangedSince(ctx context.Context, cursor *ChangeCursor, limit int) (*ChangedDatabasesResponse, error) {
+	req := c.rc.R().SetContext(ctx)
+	if cursor != nil {
+		req.SetQueryParam("sinceTs", cursor.LastRotatedAt.UTC().Format(time.RFC3339Nano))
+		req.SetQueryParam("sinceId", cursor.Id)
+	}
+	if limit > 0 {
+		req.SetQueryParam("limit", strconv.Itoa(limit))
+	}
+	resp, err := req.Get("/api/v3/dbaas/databases/changed")
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, newAggregatorError(resp)
+	}
+	var result ChangedDatabasesResponse
+	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+		return nil, fmt.Errorf("decode changed-databases response: %w", err)
 	}
 	return &result, nil
 }

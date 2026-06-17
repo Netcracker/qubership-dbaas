@@ -19,6 +19,7 @@ package client
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // ─── Declarative API ──────────────────────────────────────────────────────────
@@ -213,6 +214,40 @@ type DatabaseResponseSingleCP struct {
 	Type                 string         `json:"type,omitempty"`
 	Settings             map[string]any `json:"settings,omitempty"`
 	ConnectionProperties map[string]any `json:"connectionProperties,omitempty"`
+}
+
+// ─── changed-databases (rotation pull) ──────────────────────────────────────────
+
+// ChangedDatabaseRef identifies a database whose credentials changed (password
+// rotation or restore), as returned by GET /api/v3/dbaas/databases/changed. It
+// carries only the identity needed to locate the consuming DatabaseSecretClaim
+// CR(s); connection properties are fetched separately via GetDatabaseByClassifier.
+// Id together with LastRotatedAt forms the keyset cursor the poller advances by.
+type ChangedDatabaseRef struct {
+	Id            string         `json:"id"`
+	Namespace     string         `json:"namespace"`
+	Classifier    map[string]any `json:"classifier"`
+	Type          string         `json:"type"`
+	LastRotatedAt time.Time      `json:"lastRotatedAt"`
+}
+
+// ChangeCursor is the keyset cursor (lastRotatedAt, id) for the changed-databases
+// feed. The composite key makes paging deterministic even when many rows share an
+// identical lastRotatedAt (e.g. a restore stamps one timestamp across a database's
+// registries), so the poller always makes forward progress.
+type ChangeCursor struct {
+	LastRotatedAt time.Time `json:"lastRotatedAt"`
+	Id            string    `json:"id"`
+}
+
+// ChangedDatabasesResponse is the response from GetChangedSince. HighWaterMark is
+// the latest (lastRotatedAt, id) currently known across all databases; it seeds
+// the poll cursor on the first (since-less) call and is nil when nothing has
+// rotated yet. On subsequent calls the cursor is advanced from the returned Items,
+// not from HighWaterMark, so a full page does not skip its tail.
+type ChangedDatabasesResponse struct {
+	Items         []ChangedDatabaseRef `json:"items"`
+	HighWaterMark *ChangeCursor        `json:"highWaterMark"`
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

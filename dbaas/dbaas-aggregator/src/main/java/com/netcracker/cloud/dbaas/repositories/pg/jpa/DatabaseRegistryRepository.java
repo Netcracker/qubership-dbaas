@@ -8,6 +8,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
@@ -32,6 +33,25 @@ public class DatabaseRegistryRepository implements PanacheRepositoryBase<Databas
 
     public List<DatabaseRegistry> findAllByNamespaceAndDatabase_BgVersionNotNull(String namespace) {
         return list("namespace = ?1 and database.bgVersion is not null", namespace);
+    }
+
+    /**
+     * Returns registries whose credentials changed (password rotation or restore) strictly after the given
+     * keyset cursor (lastRotatedAt, id), ordered by the same pair so the caller can advance the cursor and
+     * make progress even when many rows share an identical last_rotated_at (e.g. a restore stamps one
+     * timestamp on every registry of a database). Consumed by the operator rotation poller.
+     */
+    public List<DatabaseRegistry> findChangedSince(OffsetDateTime sinceTs, UUID sinceId, int limit) {
+        return find("(database.lastRotatedAt > ?1) or (database.lastRotatedAt = ?1 and id > ?2) order by database.lastRotatedAt, id",
+                sinceTs, sinceId).page(0, limit).list();
+    }
+
+    /**
+     * The latest changed registry by the (database.lastRotatedAt, registry id) keyset, or empty when nothing
+     * has rotated yet. Used to seed the operator's poll cursor without replaying history.
+     */
+    public Optional<DatabaseRegistry> latestChange() {
+        return find("database.lastRotatedAt is not null order by database.lastRotatedAt desc, id desc").firstResultOptional();
     }
 
     public List<DatabaseRegistry> findAllDatabasesByFilter(List<Filter> filters) {

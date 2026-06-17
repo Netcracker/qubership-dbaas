@@ -81,8 +81,6 @@ class DbBackupV2ServiceTest {
     private RestoreExternalDatabaseRepository restoreExternalDatabaseRepository;
     @InjectMock
     private DbaaSHelper dbaaSHelper;
-    @InjectMock
-    private OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     @BeforeEach
     void setUp() {

@@ -16,14 +16,14 @@ limitations under the License.
 
 package v1
 
-// AnnotationRotationTrigger is the annotation key that the rotation webhook
-// receiver writes on a DatabaseSecretClaim CR to signal that the aggregator
-// reported a credentials change for the CR's (classifier, type). The
-// annotation's value is the rotation event's UUID; storing a fresh value on
-// each event guarantees the underlying Kubernetes watch fires (an identical
-// patch would be a no-op) and gives reconciles a correlation ID for logs.
+// AnnotationRotationTrigger is the annotation key that the rotation poller
+// writes on a DatabaseSecretClaim CR to signal that the aggregator reported a
+// credentials change for the CR's (classifier, type). The annotation's value is
+// the change's lastRotatedAt timestamp; storing a fresh value on each change
+// guarantees the underlying Kubernetes watch fires (an identical patch would be
+// a no-op).
 //
-// Producer: the rotation webhook handler in internal/webhook.
+// Producer: the rotation poller in internal/poller.
 // Consumer: a controller-side predicate that fires reconcile on annotation
 // changes, in addition to the standard generation-change predicate.
 const AnnotationRotationTrigger = "dbaas.netcracker.com/rotation-trigger"

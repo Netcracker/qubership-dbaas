@@ -72,12 +72,10 @@ spec:
               readOnly: true
           # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
           # which loads the Kubernetes service-account ca.crt into the image trust store
-          # before exec'ing its arguments. The rotation webhook's OIDC token verifier
-          # makes a TLS call to the kube-apiserver using the system trust store, so the
-          # CA must be loaded — bypassing the entrypoint (command:[/app/dbaas-operator])
-          # makes that call fail with x509: certificate signed by unknown authority.
-          # A Pod's `args` REPLACES the image CMD, so the binary is passed as the first
-          # entrypoint argument here rather than relying on the Dockerfile CMD.
+          # before exec'ing its arguments, so any outbound TLS (e.g. an HTTPS aggregator
+          # URL) trusts the cluster CA. A Pod's `args` REPLACES the image CMD, so the
+          # binary is passed as the first entrypoint argument here rather than relying on
+          # the Dockerfile CMD.
           command:
             - /usr/bin/entrypoint.sh
           args:
@@ -96,12 +94,11 @@ spec:
               value: '{{ lower .Values.LOG_LEVEL }}'
             - name: K8S_EVENTS_ENABLED
               value: '{{ .Values.K8S_EVENTS_ENABLED }}'
-            {{- if .Values.ROTATION_WEBHOOK_ALLOWED_SUBJECTS }}
-            # Override only when the aggregator does not run as the
-            # dbaas-aggregator service account in this namespace. When unset the
-            # operator derives the default allow-list entry on its own.
-            - name: ROTATION_WEBHOOK_ALLOWED_SUBJECTS
-              value: '{{ .Values.ROTATION_WEBHOOK_ALLOWED_SUBJECTS }}'
+            {{- if .Values.DBAAS_ROTATION_POLL_INTERVAL }}
+            # Override the rotation poll period (Go duration, e.g. 15s, 1m). When
+            # unset the operator uses its built-in default (30s).
+            - name: DBAAS_ROTATION_POLL_INTERVAL
+              value: '{{ .Values.DBAAS_ROTATION_POLL_INTERVAL }}'
             {{- end }}
           ports:
             - name: web

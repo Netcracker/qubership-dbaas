@@ -9,7 +9,6 @@ import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import com.netcracker.cloud.dbaas.enums.OperatorEventType;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -29,6 +28,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.InvocationTargetException;
 import java.text.SimpleDateFormat;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -59,8 +59,6 @@ public class DBaaService {
     UserService userService;
     @Inject
     ProcessConnectionPropertiesService connectionPropertiesService;
-    @Inject
-    OperatorEventOutboxWriter operatorEventOutboxWriter;
 
     @PostConstruct
     public void init() {
@@ -357,8 +355,7 @@ public class DBaaService {
                 }
             }
             if (sum > 0) {
-                commitPasswordRotation(databaseRegistry, databaseRegistry.getClassifier(),
-                        databaseRegistry.getType());
+                commitPasswordRotation(databaseRegistry);
             }
             return sum;
         }).mapToLong(Long::valueOf).sum();
@@ -366,14 +363,11 @@ public class DBaaService {
         return response;
     }
 
-    protected void commitPasswordRotation(DatabaseRegistry databaseRegistry,
-                                          SortedMap<String, Object> classifier,
-                                          String type) {
+    protected void commitPasswordRotation(DatabaseRegistry databaseRegistry) {
         QuarkusTransaction.requiringNew().run(() -> {
+            databaseRegistry.getDatabase().setLastRotatedAt(OffsetDateTime.now());
             logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()
                     .saveInternalDatabase(databaseRegistry);
-            operatorEventOutboxWriter.enqueue(
-                    OperatorEventType.ROTATION_OCCURRED, classifier, type);
         });
     }
 
