@@ -141,9 +141,10 @@
     },
     "READONLY_CONTAINER_FILE_SYSTEM_ENABLED": {
       "$id": "#/properties/READONLY_CONTAINER_FILE_SYSTEM_ENABLED",
-      "$ref": "#/definitions/booleanOrString",
+      "type": "boolean",
       "title": "The READONLY_CONTAINER_FILE_SYSTEM_ENABLED schema",
       "description": "Read-only container file system is enabled",
+      "default": false,
       "examples": [
         false
       ]
@@ -219,17 +220,16 @@
       "$id": "#/properties/DBAAS_OPERATOR_CREDENTIALS_USERNAME",
       "type": "string",
       "title": "The DBAAS_OPERATOR_CREDENTIALS_USERNAME schema",
-      "description": "Basic Auth username (used only when KUBERNETES_M2M_ENABLED=false). The chart writes it into the dbaas-operator-aggregator-credentials Secret. Must match the user provisioned on the aggregator (its DBAAS_OPERATOR_CREDENTIALS_USERNAME), which carries the DB_CLIENT and CLUSTER_OPERATOR roles.",
+      "description": "Basic Auth user for dbaas-operator (roles DB_CLIENT, CLUSTER_OPERATOR). Only used when the operator runs in Basic Auth mode (KUBERNETES_M2M_ENABLED=false).",
       "default": "dbaas-operator",
-      "examples": [
-        "dbaas-operator"
-      ]
+      "internal": true
     },
     "DBAAS_OPERATOR_CREDENTIALS_PASSWORD": {
       "$id": "#/properties/DBAAS_OPERATOR_CREDENTIALS_PASSWORD",
       "type": "string",
       "title": "The DBAAS_OPERATOR_CREDENTIALS_PASSWORD schema",
-      "description": "Basic Auth password, written into the dbaas-operator-aggregator-credentials Secret. Required when KUBERNETES_M2M_ENABLED=false; must match the password configured on the aggregator side."
+      "description": "Password for the dbaas-operator Basic Auth user. When unset, the dbaas-operator user is omitted from policy.json (M2M-only deployments). Required when the operator runs in Basic Auth mode.",
+      "internal": true
     },
     "LOG_LEVEL": {
       "$id": "#/properties/LOG_LEVEL",
