@@ -8642,7 +8642,7 @@
     "/api/v3/dbaas/{namespace}/databases/{type}": {
       "delete": {
         "summary": " V3.Delete database by classifier",
-        "description": "Deletes database by id in the specific namespace.",
+        "description": "Deletes database by id in the specific namespace. If the optional \u0027force\u0027 parameter is set to true, errors from the physical adapter during drop are ignored and the database is removed from DBaaS regardless. Warning: using force\u003dtrue may result in the logical database leaking in the physical database.",
         "tags": [
           "Controller Database administration"
         ],
@@ -8663,6 +8663,15 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "If true, errors from the physical adapter during drop are ignored",
+            "name": "force",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": "false"
             }
           }
         ],
@@ -9282,7 +9291,7 @@
   },
   "info": {
     "title": "DBaaS Aggregator API",
-    "version": "6.12.3",
+    "version": "6.13.0",
     "description": "This documentation presents the REST API for the \"Database as a Service\" (DBaaS) component. DBaaS acts as an aggregator for all adapters. It is designed to collect requests for managed databases and route them to the appropriate adapter. DBaaS stores information about all databases used in a cloud project. These databases are isolated by namespace. DBaaS uses a Classifier to identify databases within a cloud namespace. The Classifier includes service-related information such as scope, microservice name, tenant ID, and namespace."
   }
 }

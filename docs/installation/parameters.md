@@ -24,8 +24,8 @@
         + [DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS](#dbaas_backup_restore_retry_delay_seconds)
         + [DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS](#dbaas_backup_restore_retry_attempts)
         + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
-        + [KUBERNETES_JWT_ENABLED](#kubernetes_jwt_enabled)
-        + [KUBERNETES_JWT_AUDIENCE](#kubernetes_jwt_audience)
+        + [KUBERNETES_M2M_ENABLED](#kubernetes_m2m_enabled)
+        + [KUBERNETES_M2M_AUDIENCE](#kubernetes_m2m_audience)
         + [priorityClassName](#priorityClassName)
     * [CREDENTIALS](#credentials)
         + [DBAAS_DB_EDITOR_CREDENTIALS_USERNAME / DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD](#dbaas_db_editor_credentials_username--dbaas_db_editor_credentials_password)
@@ -327,17 +327,17 @@ If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator w
 |---------|----------------------------------------------------------|
 | true    | Set to true if need to enable namespace isolation |
 
-#### KUBERNETES_JWT_ENABLED
+#### KUBERNETES_M2M_ENABLED
 
-If KUBERNETES_JWT_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens M2M.
+If KUBERNETES_M2M_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens for M2M authentication.
 
 | Default | Recommended                                              |
 |---------|----------------------------------------------------------|
-| true    | Set to true if need to enable kubernetes M2M      |
+| false   | Set to true if need to enable kubernetes M2M      |
 
-#### KUBERNETES_JWT_AUDIENCE
+#### KUBERNETES_M2M_AUDIENCE
 
-KUBERNETES_JWT_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected.
+KUBERNETES_M2M_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected.
 
 | Default | Recommended                                                               |
 |---------|---------------------------------------------------------------------------|
