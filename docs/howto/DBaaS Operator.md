@@ -41,7 +41,7 @@
   - [DatabaseSecretClaim](#databasesecretclaim)
     - [Resource Fields](#databasesecretclaim-resource-fields)
     - [How It Works](#how-databasesecretclaim-works)
-    - [Rotation Webhook](#rotation-webhook)
+    - [Rotation Polling](#rotation-polling)
     - [Status Reference](#databasesecretclaim-status-reference)
     - [Usage Examples](#databasesecretclaim-usage-examples)
 - [Configuration Parameters](#configuration-parameters)
@@ -206,7 +206,7 @@ containers:
 
 **Requirement on the dbaas-aggregator side:** the aggregator must be configured to accept tokens with `audience=dbaas` and validate them against the Kubernetes token review API.
 
-> **Inbound authentication** — the projected token above is for the operator's **outbound** calls. The operator also **exposes** one authenticated endpoint, the rotation webhook, where the roles are reversed: dbaas-aggregator presents a projected token with `audience=dbaas-operator` and the operator verifies it via OIDC. See [Rotation Webhook](#rotation-webhook).
+> **No inbound endpoint** — the operator does not expose any authenticated HTTP endpoint; all dbaas-aggregator traffic is **outbound** (see [API Endpoints](#api-endpoints)). Credential rotations are picked up by **polling** the aggregator, not pushed to the operator — see [Rotation Polling](#rotation-polling). The projected token shown above is used only in M2M mode (`KUBERNETES_M2M_ENABLED=true`); in the default Basic Auth mode the operator authenticates with the `dbaas-operator` user instead.
 
 ---
 
@@ -277,7 +277,7 @@ rules:
     verbs: ["get", "update", "patch"]
 
   # DatabaseSecretClaim: the controller reads and watches CRs; patch on the main
-  # resource is required for the rotation webhook to stamp the
+  # resource is required for the rotation poller to stamp the
   # dbaas.netcracker.com/rotation-trigger annotation. Status is written via the
   # /status subresource.
   - apiGroups: ["dbaas.netcracker.com"]
@@ -346,14 +346,6 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-
-  # OIDC discovery for the rotation webhook's token verifier: the operator
-  # fetches the cluster's OIDC configuration and JWKS to validate inbound
-  # aggregator tokens. Hardened clusters do not bind
-  # system:service-account-issuer-discovery to all service accounts, so the
-  # operator requests these non-resource URLs explicitly.
-  - nonResourceURLs: ["/.well-known/openid-configuration", "/openid/v1/jwks"]
-    verbs: ["get"]
 ```
 
 #### Required ClusterRoleBinding
@@ -424,7 +416,7 @@ subjects:
 | `dbaas.netcracker.com` | `internaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, and `status.trackingID` |
 | `dbaas.netcracker.com` | `externaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
-| `dbaas.netcracker.com` | `databasesecretclaims` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required for the rotation webhook to stamp the `dbaas.netcracker.com/rotation-trigger` annotation on matched CRs |
+| `dbaas.netcracker.com` | `databasesecretclaims` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required for the rotation poller to stamp the `dbaas.netcracker.com/rotation-trigger` annotation on matched CRs |
 | `dbaas.netcracker.com` | `databasesecretclaims/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, `status.lastRotatedAt`, and `status.firstNotFoundAt` |
 | `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
 | `dbaas.netcracker.com` | `namespacebindings/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
@@ -438,7 +430,6 @@ subjects:
 | `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 | `""` (core) | `secrets` | `get`, `list`, `watch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). Secret bodies are not cached. |
 | `""` (core) | `secrets` | `get`, `list`, `watch`, `create`, `update`, `patch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). `create`/`update`/`patch`: materialize the Secret managed by a `DatabaseSecretClaim` CR. Secret bodies are not cached. |
-| _non-resource URLs_ | `/.well-known/openid-configuration`, `/openid/v1/jwks` | `get` | OIDC discovery for the rotation webhook's token verifier — fetch the cluster's OIDC config and JWKS to validate inbound aggregator tokens. Needed explicitly on hardened clusters that do not grant `system:service-account-issuer-discovery` to all service accounts |
 
 **Role** (operator namespace only):
 
@@ -1680,7 +1671,7 @@ A reconcile is triggered when any of the following happens:
 - The CR spec changes (`metadata.generation` increments).
 - The covering `NamespaceBinding` is created or updated.
 - Another `DatabaseSecretClaim` in the namespace sharing the same `spec.secretName` is created, deleted, or changed (sibling-conflict recovery).
-- The rotation webhook patches the `dbaas.netcracker.com/rotation-trigger` annotation (credential rotation — see [Rotation Webhook](#rotation-webhook) below).
+- The rotation poller patches the `dbaas.netcracker.com/rotation-trigger` annotation (credential rotation — see [Rotation Polling](#rotation-polling) below).
 - A safety-net re-poll: every successful reconcile re-enqueues itself after 1 hour to recover from any missed rotation event.
 
 ```
@@ -1728,57 +1719,40 @@ Two behaviours are worth calling out:
 - **Content-aware update** — on a rotation-triggered reconcile the operator compares the existing Secret's `connectionProperties.json` (and managed labels) against what it would write. If they already match, it skips the write entirely: no Secret update, no event, `lastRotatedAt` unchanged. This avoids needlessly waking every pod that mounts the Secret (the kubelet reloads mounted Secrets on change). Only a genuine content change is written and reported as `SecretRotated`.
 - **Sibling-conflict tiebreak** — if two CRs in the namespace target the same `secretName`, the older one (by `creationTimestamp`, falling back to UID lexical order on a tie) wins and proceeds; the younger one moves to `SecretConflict`. The loser recovers automatically — without a spec change — once the winner is deleted or rebinds, because the controller watches sibling `DatabaseSecretClaim`s by `secretName`.
 
-##### Rotation Webhook
+##### Rotation Polling
 
-When a credential is rotated on the aggregator side, the operator is notified through an inbound HTTP webhook rather than by polling. This is the only operator-**exposed** endpoint (all other operator → aggregator traffic is outbound, see [API Endpoints](#api-endpoints)).
+When a credential is rotated on the aggregator side, the operator picks it up by **polling** — it is not pushed. The operator exposes no inbound endpoint; all dbaas-aggregator traffic is outbound (see [API Endpoints](#api-endpoints)). A leader-only background loop (the **rotation poller**) periodically reads the aggregator's changed-databases feed and stamps the rotation-trigger annotation on the affected `DatabaseSecretClaim` CRs, which wakes the reconciler.
 
 | Aspect | Value |
 |--------|-------|
-| Path | `POST /api/rotation/v1/notify` |
-| Listener | The operator's HTTP server on `:8080` — the **same** listener that serves Prometheus `/metrics`, via controller-runtime's `ExtraHandlers`. No extra container port. |
-| Service | `dbaas-operator` (ClusterIP) exposes port `8080`; callers use `http://dbaas-operator.<operator-namespace>.svc:8080/api/rotation/v1/notify`. |
-| Inbound authentication | The caller's Kubernetes service-account token is verified via OIDC against the cluster's issuer; the token's audience must be `dbaas-operator`. Tokens with a wrong audience or signature are rejected with `401`. |
-| Inbound authorization | Authentication only proves the token is valid and minted for this operator — not *who* the caller is. The handler additionally checks the authenticated subject (`system:serviceaccount:<namespace>:<serviceAccount>`) against an allow-list and rejects any caller outside it with `403`. The allow-list is configured via `ROTATION_WEBHOOK_ALLOWED_SUBJECTS` (comma-separated); when unset it defaults to `system:serviceaccount:<operator-namespace>:dbaas-aggregator`. The check is **fail-closed** — an empty allow-list denies every caller. |
-| Methods | `POST` only (`405` otherwise); malformed payload → `400`. |
-
-Request body:
-
-```json
-{
-  "eventId": "<uuid>",
-  "occurredAt": "<RFC3339 timestamp>",
-  "classifier": { "microserviceName": "my-service", "scope": "service", "namespace": "my-namespace" },
-  "type": "postgresql",
-  "userRole": "admin",
-  "eventType": "ROTATION_OCCURRED"
-}
-```
+| Feed | `GET /api/v3/dbaas/databases/changed?sinceTs=&sinceId=` — cluster-scoped, requires the `CLUSTER_OPERATOR` role. Returns the databases whose credentials changed after the cursor, plus the feed's high-water mark. |
+| Cadence | Every `DBAAS_ROTATION_POLL_INTERVAL` (Go duration; default `30s`). |
+| Leader-gated | Yes — the poller runs only on the elected leader, alongside the reconcilers. |
+| Cursor | In-memory keyset cursor `(lastRotatedAt, id)`, seeded from the feed's high-water mark at startup (before the first poll) so rotations around leader acquisition are not skipped. Not persisted — correctness is backstopped by the startup reconcile and the 1-hour safety-net requeue. |
+| Authentication | The operator's normal **outbound** credentials (Basic Auth or M2M token — see [Configuration Parameters](#configuration-parameters)); there is no separate inbound auth surface. |
 
 Flow:
 
 ```
-[aggregator outbox dispatcher]
-        │  POST /api/rotation/v1/notify  (Bearer SA token, audience=dbaas-operator)
+[rotation poller — leader only, every DBAAS_ROTATION_POLL_INTERVAL]
+        │  GET /api/v3/dbaas/databases/changed?sinceTs=&sinceId=   (outbound; Basic or M2M)
         ▼
-[any operator replica]
-   authenticate (OIDC, audience=dbaas-operator) ─ 401 on failure
+   for each changed database in the returned page:
+     resolve DatabaseSecretClaim CRs by (classifier, type) via the cache field index,
+     scoped to classifier.namespace
         │
-   authorize caller subject against allow-list ─ 403 if not allowed
+     patch dbaas.netcracker.com/rotation-trigger on each match
         │
-   resolve DatabaseSecretClaim CRs by (classifier, type) via cache field index,
-   scoped to classifier.namespace
-        │
-   patch dbaas.netcracker.com/rotation-trigger = <eventId> on each match
-        │  200 OK { "matched": N, "patched": M }
+   advance the in-memory cursor to the page's last (lastRotatedAt, id)
         ▼
-[Kubernetes watch] ─ annotation change ─▶ leader's reconciler runs ─▶ content-aware Secret update
+[Kubernetes watch] ─ annotation change ─▶ reconciler runs ─▶ content-aware Secret update
 ```
 
-The webhook **does not** reconcile directly. It runs on every replica (it is not leader-gated) and only patches an annotation; the patch propagates through the Kubernetes watch so that the leader's reconciler performs the actual Secret update. This keeps the receiver thin and the reconcile path leader-bound, and makes the webhook safe to call against any replica.
+The poller **does not** reconcile directly — it only patches an annotation; the change propagates through the Kubernetes watch so the reconciler performs the actual Secret update. Because the poller and the reconcilers are both leader-gated, the trigger and the reconcile run on the same instance.
 
 ###### Why the lookup ignores `userRole`
 
-The cache index the webhook queries is keyed by `(classifier, type)` **only** — it deliberately omits `userRole`, even though a rotation event names the specific role whose password changed. This is a consequence of where role resolution happens.
+The cache index the poller queries is keyed by `(classifier, type)` **only** — it deliberately omits `userRole`. The changed-databases feed signals that a *database's* credentials changed, without naming which role rotated; and even if it did, the operator could not reliably map that role to specific CRs. This is a consequence of where role resolution happens.
 
 **The aggregator resolves the effective role at request time, not the operator.** When the operator calls get-by-classifier, it sends the CR's `spec.userRole` verbatim (which may be empty) together with `originService` (the `app.kubernetes.io/name` label). The aggregator then computes the *effective* role from inputs that live entirely on its side and can change without the `DatabaseSecretClaim` CR ever being touched:
 
@@ -1795,11 +1769,11 @@ The cache index the webhook queries is keyed by `(classifier, type)` **only** �
 1. The same `spec.userRole` on two CRs can resolve to two different effective roles, and an empty `spec.userRole` can resolve to *anything* the policy dictates. There is no static, CR-local function from `spec.userRole` to the aggregator's effective role.
 2. A `DatabaseAccessPolicy` edit changes the effective role of existing `DatabaseSecretClaim` CRs **without** changing those CRs — so any operator-side mapping would have to be invalidated and recomputed every time a policy changes, duplicating the aggregator's resolution and racing its cache.
 
-Because a rotation event carries the *resolved* role, matching it to the affected CRs would require the operator to replicate all of the above. Rather than do that, **the webhook wakes every `DatabaseSecretClaim` that shares the event's `(classifier, type)`, regardless of role.** Each woken CR then re-fetches its own credentials through get-by-classifier — where the aggregator performs the authoritative role resolution — and the [content-aware update](#how-databasesecretclaim-works) writes nothing when the returned credentials are unchanged. So CRs bound to a role other than the one that rotated simply perform a cheap no-op; only the CR(s) whose effective role actually changed get a Secret write and a `SecretRotated` event.
+Matching a specific rotated role to the affected CRs would require the operator to replicate all of the above. Rather than do that, **the poller wakes every `DatabaseSecretClaim` that shares the changed database's `(classifier, type)`, regardless of role.** Each woken CR then re-fetches its own credentials through get-by-classifier — where the aggregator performs the authoritative role resolution — and the [content-aware update](#how-databasesecretclaim-works) writes nothing when the returned credentials are unchanged. So CRs bound to a role other than the one that rotated simply perform a cheap no-op; only the CR(s) whose effective role actually changed get a Secret write and a `SecretRotated` event.
 
 The over-fetch is bounded and cheap: a classifier is typically referenced by 1–3 `DatabaseSecretClaim` CRs (one per role), each costing one get-by-classifier round-trip and no Secret churn on a no-op. Trading a couple of redundant reads for not reimplementing — and not having to keep coherent — the aggregator's role-resolution rules is the right balance.
 
-> If the operator is unreachable when an event fires, the aggregator retries; a dropped event is eventually caught by the 1-hour safety-net re-poll.
+> Anything a poll misses — e.g. a rotation that commits with an out-of-order timestamp below the advanced cursor — is caught by the startup full reconcile (on start / leader failover) and the 1-hour per-CR safety-net requeue.
 
 #### DatabaseSecretClaim Status Reference
 
