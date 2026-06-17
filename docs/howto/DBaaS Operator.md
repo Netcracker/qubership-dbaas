@@ -1612,6 +1612,8 @@ spec:
 kubectl get microservicebalancingrule microservice-balancing-rules -n payments -o yaml
 kubectl get namespacebalancingrule namespace-balancing-rules -n payments -o yaml
 kubectl get permanentbalancingrule permanent-balancing-rules -n dbaas-system -o yaml
+```
+
 ### DatabaseSecretClaim
 
 `DatabaseSecretClaim` requests credentials for a database already managed by dbaas-aggregator and materializes them into a named Kubernetes `Secret` in the same namespace. The operator does **not** provision the database — it looks the database up by classifier and writes the returned `connectionProperties` into the target Secret, keeping it in sync as credentials rotate.
