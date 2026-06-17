@@ -162,7 +162,7 @@ jobs:
 
       - name: Deploy DBaaS
         working-directory: bootstrap
-        run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
+        run: make install CONFIG_FILE=local.mk KUBERNETES_M2M_ENABLED=true OPERATOR_M2M_ENABLED=false PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 
       - name: Wait for postgres-backup-daemon
         run: |
