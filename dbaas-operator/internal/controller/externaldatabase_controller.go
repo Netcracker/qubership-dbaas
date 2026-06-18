@@ -22,14 +22,12 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -204,58 +202,21 @@ func (r *ExternalDatabaseReconciler) buildRequest(
 	}
 
 	return &aggregatorclient.ExternalDatabaseRequest{
-		// Default classifier.namespace to metadata.namespace when omitted — the
-		// aggregator requires it (isValidClassifierV3), and the controller already
-		// validates that a non-empty value equals metadata.namespace.
-		Classifier:                 classifierToFlatMap(dbaasv1.EffectiveClassifier(edb.Spec.Classifier, edb.Namespace)),
+		// Serialize the classifier with dbaasv1.ClassifierFlatMap — the same helper
+		// the InternalDatabase and DatabaseSecretClaim paths use. It keeps customKeys
+		// as a nested "customKeys" object, which is the canonical dbaas-aggregator
+		// classifier shape: the aggregator stores the classifier verbatim and reads
+		// classifier.customKeys.* as a nested map, so an externally registered
+		// database is found by the same classifier dbaas-client consumers use.
+		// EffectiveClassifier defaults classifier.namespace to metadata.namespace
+		// when omitted — the aggregator requires it (isValidClassifierV3) and the
+		// controller already validates that a non-empty value equals metadata.namespace.
+		Classifier:                 dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(edb.Spec.Classifier, edb.Namespace)),
 		Type:                       edb.Spec.Type,
 		DbName:                     edb.Spec.DbName,
 		ConnectionProperties:       connProps,
 		UpdateConnectionProperties: true,
 	}, nil
-}
-
-// classifierToFlatMap converts a typed Classifier into the map expected by
-// dbaas-aggregator's ExternalDatabaseRequestV3.classifier (declared on the
-// Java side as SortedMap<String, Object>). Scalar fields are emitted as
-// top-level keys. customKeys entries are flattened into the same top-level
-// map and preserve their native JSON types — strings stay as Go strings,
-// numbers as float64, booleans as bool, nested objects/arrays as
-// map[string]any / []any. The aggregator stores the classifier as JSONB and
-// supports deep value comparison, so nested values are first-class.
-//
-// Explicit scalar fields take precedence over customKeys entries with the
-// same name — this prevents user-supplied customKeys from silently
-// overwriting the structured identity fields.
-func classifierToFlatMap(c dbaasv1.Classifier) map[string]any {
-	m := make(map[string]any, 4+len(c.CustomKeys))
-	for k, v := range c.CustomKeys {
-		m[k] = decodeJSONValue(v)
-	}
-	m["microserviceName"] = c.MicroserviceName
-	m["scope"] = c.Scope
-	if c.Namespace != "" {
-		m["namespace"] = c.Namespace
-	}
-	if c.TenantId != "" {
-		m["tenantId"] = c.TenantId
-	}
-	return m
-}
-
-// decodeJSONValue unmarshals a single customKeys entry into a Go value that
-// will JSON-encode back to the original shape. On the unlikely failure case
-// (apiextensionsv1.JSON.Raw should always be valid JSON per kube-apiserver
-// validation), the raw bytes are returned as a string so no data is lost.
-func decodeJSONValue(v apiextensionsv1.JSON) any {
-	if len(v.Raw) == 0 {
-		return nil
-	}
-	var decoded any
-	if err := json.Unmarshal(v.Raw, &decoded); err != nil {
-		return string(v.Raw)
-	}
-	return decoded
 }
 
 func resolveAggregatorNamespace(edb *dbaasv1.ExternalDatabase) string {
