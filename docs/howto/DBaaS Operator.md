@@ -68,34 +68,33 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 ## High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Kubernetes Cluster                    │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │               dbaas-system namespace              │  │
-│  │                                                  │  │
-│  │  ┌──────────────────────────────────────────┐   │  │
-│  │  │           dbaas-operator Pod             │   │  │
-│  │  │                                          │   │  │
-│  │  │  NamespaceBinding controller             │   │  │
-│  │  │  ExternalDatabase controller             │   │  │
-│  │  │  DatabaseAccessPolicy controller                     │   │  │
-│  │  │  InternalDatabase controller          │   │  │
-│  │  └──────────────────────────────────────────┘   │  │
-│  └──────────────────────────────────────────────────┘  │
-│                          │                              │
-│         watches (cluster-wide)                          │
-│                          │                              │
-│  ┌───────────────────────┼──────────────────────────┐  │
-│  │     app-namespace     │                          │  │
-│  │                       ▼                          │  │
-│  │  NamespaceBinding    ── ownership check          │  │
-│  │  ExternalDatabase    ── reconcile ─────────────── ┼──┼──▶ dbaas-aggregator
-│  │  DatabaseAccessPolicy            ── reconcile ─────────────── ┼──┤
-│  │  InternalDatabase ── reconcile ─────────────── ┼──┤
-│  │  Secret (credentials)                            │  │
-│  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ dbaas-operator Pod  —  runs cluster-wide; pod in the dbaas-system namespace │
+│                                                                             │
+│ Controllers (one reconciler per kind):                                      │
+│     NamespaceBinding        DatabaseSecretClaim                             │
+│     ExternalDatabase        MicroserviceBalancingRule                       │
+│     InternalDatabase        NamespaceBalancingRule                          │
+│     DatabaseAccessPolicy    PermanentBalancingRule                          │
+│                                                                             │
+│ Rotation poller (leader-only): polls the changed-databases feed and stamps  │
+│ the rotation-trigger annotation on matching DatabaseSecretClaim CRs.        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+        │  all traffic is OUTBOUND (Basic Auth by default, or M2M Bearer token)
+        ▼
+  dbaas-aggregator
+
+Ownership: a workload CR is reconciled only when its namespace has a
+NamespaceBinding owned by this operator (spec.operatorNamespace == CLOUD_NAMESPACE);
+CRs in unbound or foreign namespaces are skipped.
+
+Workload CRs by namespace:
+  app namespaces      ─ NamespaceBinding, ExternalDatabase, InternalDatabase,
+                        DatabaseAccessPolicy, DatabaseSecretClaim,
+                        MicroserviceBalancingRule, NamespaceBalancingRule,
+                        Secret (credentials read + materialized by DatabaseSecretClaim)
+  operator namespace  ─ PermanentBalancingRule (cluster-wide singleton)
 ```
 
 **Key design decisions:**
