@@ -4,13 +4,11 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.entity.pg.DbState;
-import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
+import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -27,12 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-/**
- * Verifies that a successful rotation in a partial-batch is committed to the DB even when a
- * later database in the same batch causes PasswordChangeFailedException (which rolls back the
- * outer transaction).  The REQUIRES_NEW sub-transaction in PasswordRotationCommitService must
- * survive that outer rollback.
- */
+
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
 class DBaaServiceQuarkusTest {
@@ -60,7 +53,12 @@ class DBaaServiceQuarkusTest {
                 .forEach(databaseRegistryDbaasRepository::delete);
     }
 
-
+    /**
+     * Verifies that a successful rotation in a partial-batch is committed to the DB even when a
+     * later database in the same batch causes PasswordChangeFailedException (which rolls back the
+     * outer transaction).  The REQUIRES_NEW sub-transaction in PasswordRotationCommitService must
+     * survive that outer rollback.
+     */
     @Test
     void partialBatchFailure_successfulRotationCommittedDespiteOuterRollback() {
         // --- arrange databases -------------------------------------------------
@@ -73,8 +71,18 @@ class DBaaServiceQuarkusTest {
         SortedMap<String, Object> classifier1 = buildClassifier(NAMESPACE, msName1);
         SortedMap<String, Object> classifier2 = buildClassifier(NAMESPACE, msName2);
 
-        DatabaseRegistry registry1 = buildRegistry(classifier1, ADAPTER_ID_1, oldUsername1, "db-name-1");
-        DatabaseRegistry registry2 = buildRegistry(classifier2, ADAPTER_ID_2, oldUsername2, "db-name-2");
+        DatabaseRegistry registry1 = new DatabaseBuilder()
+                .type(DB_TYPE).adapterId(ADAPTER_ID_1).physicalDatabaseId(PHYS_DB_ID)
+                .classifier(classifier1).name("db-name-1")
+                .connectionProperties(List.of(new HashMap<>(Map.of("username", oldUsername1, "role", Role.ADMIN.toString()))))
+                .registry(b -> b.namespace(NAMESPACE).classifier("microserviceName", msName1))
+                .build().getDatabaseRegistry().get(0);
+        DatabaseRegistry registry2 = new DatabaseBuilder()
+                .type(DB_TYPE).adapterId(ADAPTER_ID_2).physicalDatabaseId(PHYS_DB_ID)
+                .classifier(classifier2).name("db-name-2")
+                .connectionProperties(List.of(new HashMap<>(Map.of("username", oldUsername2, "role", Role.ADMIN.toString()))))
+                .registry(b -> b.namespace(NAMESPACE).classifier("microserviceName", msName2))
+                .build().getDatabaseRegistry().get(0);
 
         databaseRegistryDbaasRepository.saveAll(List.of(registry1, registry2));
 
@@ -133,11 +141,15 @@ class DBaaServiceQuarkusTest {
     @Test
     void multiRoleDatabase_marksRotatedOncePerDatabase() {
         SortedMap<String, Object> classifier = buildClassifier(NAMESPACE, "ms-multi-role");
-        DatabaseRegistry registry = buildRegistry(classifier, ADAPTER_ID_1, "user-admin", "db-multi");
-        registry.getConnectionProperties().add(new HashMap<>() {{
-            put("username", "user-rw");
-            put("role", "rw");
-        }});
+        DatabaseRegistry registry = new DatabaseBuilder()
+                .type(DB_TYPE).adapterId(ADAPTER_ID_1).physicalDatabaseId(PHYS_DB_ID)
+                .classifier(classifier).name("db-multi")
+                .connectionProperties(new ArrayList<>(List.of(
+                        new HashMap<>(Map.of("username", "user-admin", "role", Role.ADMIN.toString())),
+                        new HashMap<>(Map.of("username", "user-rw", "role", "rw"))
+                )))
+                .registry(b -> b.namespace(NAMESPACE).classifier("microserviceName", "ms-multi-role"))
+                .build().getDatabaseRegistry().get(0);
         databaseRegistryDbaasRepository.saveInternalDatabase(registry);
 
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
@@ -167,40 +179,6 @@ class DBaaServiceQuarkusTest {
         c.put("microserviceName", microserviceName);
         c.put("scope", "service");
         return c;
-    }
-
-    private DatabaseRegistry buildRegistry(SortedMap<String, Object> classifier,
-                                           String adapterId,
-                                           String username,
-                                           String dbName) {
-        Map<String, Object> cp = new HashMap<>();
-        cp.put("username", username);
-        cp.put("role", Role.ADMIN.toString());
-
-        DbState state = new DbState();
-        state.setState(AbstractDbState.DatabaseStateStatus.CREATED);
-        state.setDatabaseState(AbstractDbState.DatabaseStateStatus.CREATED);
-
-        Database database = new Database();
-        database.setId(UUID.randomUUID());
-        database.setAdapterId(adapterId);
-        database.setPhysicalDatabaseId(PHYS_DB_ID);
-        database.setName(dbName);
-        database.setExternallyManageable(false);
-        database.setConnectionProperties(new ArrayList<>(List.of(cp)));
-        database.setDbState(state);
-        database.setClassifier(new TreeMap<>(classifier));
-        database.setSettings(new HashMap<>());
-        database.setDatabaseRegistry(new ArrayList<>());
-
-        DatabaseRegistry registry = new DatabaseRegistry();
-        registry.setId(UUID.randomUUID());
-        registry.setNamespace((String) classifier.get("namespace"));
-        registry.setClassifier(classifier);
-        registry.setType(DB_TYPE);
-        registry.setDatabase(database);
-        database.getDatabaseRegistry().add(registry);
-        return registry;
     }
 
     private EnsuredUser buildEnsuredUser(Map<String, Object> connectionProperties) {

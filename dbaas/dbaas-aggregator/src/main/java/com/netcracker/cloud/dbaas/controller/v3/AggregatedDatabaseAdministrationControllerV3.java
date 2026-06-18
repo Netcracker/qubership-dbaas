@@ -420,23 +420,23 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
     }
 
     private void checkOriginService(UserRolesServices rolesServices) {
+        if (rolesServices.getOriginService() == null || rolesServices.getOriginService().isEmpty()) {
+            log.error("Request body={} must contain originService", rolesServices);
+            throw new InvalidOriginServiceException();
+        }
         if (securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)) {
             return;
         }
         if (securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal principal) {
             rolesServices.setOriginService(JwtUtils.getServiceAccountName(principal));
         }
-        if (rolesServices.getOriginService() == null || rolesServices.getOriginService().isEmpty()) {
-            log.error("Request body={} must contain originService", rolesServices);
-            throw new InvalidOriginServiceException();
-        }
     }
 
     private void checkTenantId(Map<String, Object> classifier) {
-        if (!(securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal)) {
+        if (securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)) {
             return;
         }
-        if (securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)) {
+        if (!(securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal)) {
             return;
         }
         if (!Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT)) {
