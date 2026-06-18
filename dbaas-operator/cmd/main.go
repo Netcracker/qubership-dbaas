@@ -220,36 +220,12 @@ func main() {
 	}
 
 	// ── NamespaceBinding controller (always enabled) ───────────────────────────
-	edbChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} },
-		func(l *dbaasv1.ExternalDatabaseList) int { return len(l.Items) },
-	)
-	dpChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} },
-		func(l *dbaasv1.DatabaseAccessPolicyList) int { return len(l.Items) },
-	)
-	ddChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} },
-		func(l *dbaasv1.InternalDatabaseList) int { return len(l.Items) },
-	)
-	microserviceRuleChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} },
-		func(l *dbaasv1.MicroserviceBalancingRuleList) int { return len(l.Items) },
-	)
-	namespaceRuleChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} },
-		func(l *dbaasv1.NamespaceBalancingRuleList) int { return len(l.Items) },
-	)
-	dsChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} },
-		func(l *dbaasv1.DatabaseSecretClaimList) int { return len(l.Items) },
-	)
+	edbChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
+	dpChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} })
+	ddChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} })
+	microserviceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} })
+	namespaceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} })
+	dsChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} })
 	// PermanentBalancingRule is intentionally excluded: it is an operator-namespace
 	// resource decoupled from NamespaceBinding, so it never blocks a (tenant)
 	// NamespaceBinding deletion.

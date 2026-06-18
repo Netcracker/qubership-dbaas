@@ -29,6 +29,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -81,6 +82,38 @@ func (t *bindingTriggerTracker) clearBindingTrigger(key string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.stamps, key)
+}
+
+// enqueueForBindingList lists objects of list type L in namespace and returns one
+// reconcile request per object — the shared body behind every controller's
+// NamespaceBinding watch mapper. When stamp is non-nil it is invoked with each
+// object before the request is appended (used to mark the resulting reconcile as
+// binding-triggered). On a list error it logs and returns nil, so a transient
+// failure simply drops this fan-out — the per-CR safety-net reconcile heals it.
+func enqueueForBindingList[L client.ObjectList](
+	ctx context.Context, c client.Client, list L, namespace string, stamp func(client.Object),
+) []ctrl.Request {
+	if err := c.List(ctx, list, client.InNamespace(namespace)); err != nil {
+		log.ErrorC(ctx, "enqueueForBinding: list %T in %s: %v", list, namespace, err)
+		return nil
+	}
+	objs, err := apimeta.ExtractList(list)
+	if err != nil {
+		log.ErrorC(ctx, "enqueueForBinding: extract %T items: %v", list, err)
+		return nil
+	}
+	reqs := make([]ctrl.Request, 0, len(objs))
+	for _, ro := range objs {
+		o, ok := ro.(client.Object)
+		if !ok {
+			continue
+		}
+		if stamp != nil {
+			stamp(o)
+		}
+		reqs = append(reqs, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(o)})
+	}
+	return reqs
 }
 
 // requestIDFromContext extracts the X-Request-Id string from ctx.

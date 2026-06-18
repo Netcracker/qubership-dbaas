@@ -172,15 +172,6 @@ func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts
 // enqueueForBinding maps an NamespaceBinding event to reconcile requests for
 // all DbPolicies that live in the same namespace.
 func (r *DatabaseAccessPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.DatabaseAccessPolicyList{}
-	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: list DbPolicies in %s: %v", obj.GetNamespace(), err)
-		return nil
-	}
-	reqs := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		r.stampBindingTrigger(list.Items[i].Namespace + "/" + list.Items[i].Name)
-		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-	}
-	return reqs
+	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseAccessPolicyList{}, obj.GetNamespace(),
+		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
 }

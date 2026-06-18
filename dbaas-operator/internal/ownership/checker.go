@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,19 +36,16 @@ type BlockingResourceChecker interface {
 type KindChecker[L client.ObjectList] struct {
 	cl      client.Client
 	newList func() L
-	items   func(L) int
 }
 
 // NewKindChecker creates a KindChecker for the given list type.
 //
-//   - newList  returns a fresh, empty list object (e.g. func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
-//   - items    returns the number of items in a populated list (e.g. func(l *dbaasv1.ExternalDatabaseList) int { return len(l.Items) })
-func NewKindChecker[L client.ObjectList](
-	cl client.Client,
-	newList func() L,
-	items func(L) int,
-) *KindChecker[L] {
-	return &KindChecker[L]{cl: cl, newList: newList, items: items}
+//   - newList returns a fresh, empty list object (e.g. func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
+//
+// The item count is obtained generically via meta.LenList, so no per-type
+// counting closure is required.
+func NewKindChecker[L client.ObjectList](cl client.Client, newList func() L) *KindChecker[L] {
+	return &KindChecker[L]{cl: cl, newList: newList}
 }
 
 // HasBlockingResources returns true when at least one object of this kind
@@ -58,7 +56,7 @@ func (c *KindChecker[L]) HasBlockingResources(ctx context.Context, namespace str
 	if err := c.cl.List(ctx, list, client.InNamespace(namespace), client.Limit(1)); err != nil {
 		return false, fmt.Errorf("list %T in namespace %q: %w", list, namespace, err)
 	}
-	found := c.items(list) > 0
+	found := apimeta.LenList(list) > 0
 	log.InfoC(ctx, "Checked blocking resources kind=%T namespace=%s found=%v", list, namespace, found)
 	return found, nil
 }

@@ -635,16 +635,7 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 }
 
 func (r *DatabaseSecretClaimReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.DatabaseSecretClaimList{}
-	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: list DatabaseSecretClaims in %s: %v", obj.GetNamespace(), err)
-		return nil
-	}
-	reqs := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-	}
-	return reqs
+	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseSecretClaimList{}, obj.GetNamespace(), nil)
 }
 
 // enqueueSiblingsBySecretName re-enqueues every DatabaseSecretClaim in the same

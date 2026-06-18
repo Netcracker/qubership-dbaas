@@ -724,31 +724,15 @@ func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.PermanentB
 }
 
 func (r *BalancingRuleReconciler) enqueueMicroserviceRulesForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.MicroserviceBalancingRuleList{}
-	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: list MicroserviceBalancingRules in %s: %v", obj.GetNamespace(), err)
-		return nil
-	}
-	reqs := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		r.stampBindingTrigger(microserviceRuleTriggerKey(list.Items[i].Namespace, list.Items[i].Name))
-		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-	}
-	return reqs
+	return enqueueForBindingList(ctx, r.Client, &dbaasv1.MicroserviceBalancingRuleList{}, obj.GetNamespace(),
+		func(o client.Object) {
+			r.stampBindingTrigger(microserviceRuleTriggerKey(o.GetNamespace(), o.GetName()))
+		})
 }
 
 func (r *BalancingRuleReconciler) enqueueNamespaceRulesForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.NamespaceBalancingRuleList{}
-	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: list NamespaceBalancingRules in %s: %v", obj.GetNamespace(), err)
-		return nil
-	}
-	reqs := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		r.stampBindingTrigger(namespaceRuleTriggerKey(list.Items[i].Namespace, list.Items[i].Name))
-		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-	}
-	return reqs
+	return enqueueForBindingList(ctx, r.Client, &dbaasv1.NamespaceBalancingRuleList{}, obj.GetNamespace(),
+		func(o client.Object) { r.stampBindingTrigger(namespaceRuleTriggerKey(o.GetNamespace(), o.GetName())) })
 }
 
 func (r *BalancingRuleReconciler) triggerForKey(key string) string {

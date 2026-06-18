@@ -87,11 +87,17 @@ func (f *aggregatorSyncFixture) reset() {
 }
 
 func (f *aggregatorSyncFixture) close() {
-	if f.server != nil {
-		f.server.Close()
+	closeServerAndDrain(f.server, f.recorder)
+}
+
+// closeServerAndDrain shuts down a test aggregator server and drains any buffered
+// recorder events. Shared by the per-controller test fixtures' close().
+func closeServerAndDrain(srv *httptest.Server, rec *record.FakeRecorder) {
+	if srv != nil {
+		srv.Close()
 	}
-	if f.recorder != nil {
-		drainRecordedEvents(f.recorder.Events)
+	if rec != nil {
+		drainRecordedEvents(rec.Events)
 	}
 }
 

@@ -568,12 +568,7 @@ func namespaceRuleWithFinalizer() *dbaasv1.NamespaceBalancingRule {
 }
 
 func (f *balancingRuleReconcileFixture) close() {
-	if f.server != nil {
-		f.server.Close()
-	}
-	if f.recorder != nil {
-		drainRecordedEvents(f.recorder.Events)
-	}
+	closeServerAndDrain(f.server, f.recorder)
 }
 
 func reconcileMicroserviceAndFetch(
