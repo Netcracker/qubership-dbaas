@@ -610,21 +610,24 @@ spec:
 
 #### How NamespaceBinding Works
 
-The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource (`ExternalDatabase`, `DatabaseAccessPolicy`, `InternalDatabase`), it checks whether the resource's namespace is owned by this operator instance.
+The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, and the three balancing-rule CRs (`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`) — it checks whether the resource's namespace is owned by this operator instance.
 
-Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing `spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable.
+Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing `spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable. The resolver returns one of four states (the same states tabulated below):
 
 ```
-ExternalDatabase / DatabaseAccessPolicy / InternalDatabase reconcile triggered
+Any of the 7 workload CRs above triggers a reconcile
          │
          ▼
-  Look up NamespaceBinding "binding" in the same namespace
+  Resolve ownership of the CR's namespace
+  (look up NamespaceBinding "binding"; compare spec.operatorNamespace with CLOUD_NAMESPACE)
          │
-         ├── Not found (Unbound) ──▶ Skip, requeue after 5 minutes
+         ├── Unknown — no cache entry yet (startup / transient) ──────▶ Skip, requeue after 30s
          │
-         ├── Found, operatorNamespace ≠ CLOUD_NAMESPACE (Foreign) ──▶ Skip, no requeue
+         ├── Unbound — live GET confirms no NamespaceBinding here ─────▶ Skip, requeue after 5m (safety net)
          │
-         └── Found, operatorNamespace = CLOUD_NAMESPACE (Mine) ──▶ Proceed with reconcile
+         ├── Foreign — operatorNamespace ≠ CLOUD_NAMESPACE ───────────▶ Skip, no requeue
+         │
+         └── Mine    — operatorNamespace = CLOUD_NAMESPACE ───────────▶ Proceed with reconcile
 ```
 
 When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, and the three balancing-rule CRs (`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`) are reconciled immediately without requiring a spec change.
