@@ -23,14 +23,14 @@ import (
 // ClassifierTypeIndex is the field-index key used by the operator's caching
 // client to look up DatabaseSecretClaim CRs by the canonical (spec.classifier,
 // spec.type) pair. Both the controller's SetupWithManager and the rotation
-// webhook receiver register and query this index — keeping the key name in
+// poller register and query this index — keeping the key name in
 // the API package guarantees they stay in sync.
 //
 // The index intentionally excludes spec.userRole. The aggregator resolves
 // userRole through DatabaseAccessPolicy (defaultRole, additionalRole) and the global
 // permission registry, so the operator cannot reliably map its local
 // spec.userRole to the aggregator's effective role without replicating that
-// resolution. The webhook handler fans out to every DatabaseSecretClaim matching
+// resolution. The rotation poller fans out to every DatabaseSecretClaim matching
 // the classifier+type, and the content-aware compare in Reconcile guards
 // against unnecessary Secret writes — the cost is bounded since typical
 // deployments have 1-3 CRs per classifier.

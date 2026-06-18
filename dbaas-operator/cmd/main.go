@@ -80,7 +80,7 @@ func main() {
 	var backoffBaseDelay time.Duration
 	var backoffMaxDelay time.Duration
 	flag.StringVar(&httpAddr, "http-bind-address", ":8080",
-		"Address the operator's HTTP server binds to. Hosts the Prometheus /metrics endpoint and any registered webhook receivers.")
+		"Address the operator's HTTP server binds to. Hosts the Prometheus /metrics endpoint.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -95,10 +95,10 @@ func main() {
 	ctrl.SetLogger(newLogrLogger("dbaas-operator"))
 
 	// httpServerOpts configures the operator's general-purpose HTTP server. It
-	// hosts the Prometheus /metrics endpoint and any handlers registered via
-	// ExtraHandlers (e.g. the rotation webhook receiver). The option type is
-	// named metricsserver.Options for historical reasons inside controller-
-	// runtime — conceptually it is the manager's HTTP listener.
+	// hosts the Prometheus /metrics endpoint (the operator exposes no inbound
+	// endpoint of its own). The option type is named metricsserver.Options for
+	// historical reasons inside controller-runtime — conceptually it is the
+	// manager's HTTP listener.
 	httpServerOpts := httpserver.Options{
 		BindAddress: httpAddr,
 	}

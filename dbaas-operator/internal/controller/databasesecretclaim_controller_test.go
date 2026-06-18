@@ -229,7 +229,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			fixture.body = successBody()
 
 			// baseSpec() omits spec.classifier.namespace. The aggregator requires
-			// it, and the rotation index/webhook must agree on it — the controller
+			// it, and the rotation index and poller must agree on it — the controller
 			// defaults it to metadata.namespace (EffectiveClassifier).
 			cr := &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
@@ -255,7 +255,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(classifier).To(HaveKeyWithValue("namespace", ns))
 
 			// The CR must be discoverable by the namespace-filled index key — the
-			// shape a rotation webhook payload always carries.
+			// shape the changed-databases feed always carries.
 			indexKey := dbaasv1.ClassifierIndexKey(
 				dbaasv1.EffectiveClassifier(cr.Spec.Classifier, ns), cr.Spec.Type)
 			Eventually(func() ([]string, error) {
@@ -1344,7 +1344,7 @@ var _ = Describe("DatabaseSecretClaim Controller — classifier+type field index
 
 		It("returns all CRs sharing classifier+type, excludes non-matching ones", func() {
 			// Mirror the index: the namespace is defaulted from the CR's metadata
-			// before the key is computed (the rotation webhook always carries it).
+			// before the key is computed (the rotation feed always carries it).
 			indexKey := dbaasv1.ClassifierIndexKey(
 				dbaasv1.EffectiveClassifier(crA.Spec.Classifier, crA.Namespace), crA.Spec.Type)
 

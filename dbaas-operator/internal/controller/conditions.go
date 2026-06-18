@@ -54,11 +54,11 @@ const secretNamesIndex = "spec.credentialSecretNames"
 const databaseNotFoundTimeout = 10 * time.Minute
 
 // secretRotationSafetyNetInterval is the requeue delay applied after a
-// successful DatabaseSecretClaim reconcile. The rotation webhook is the primary,
-// near-instant trigger for credential updates; this slow periodic re-poll is a
-// safety net that recovers from missed webhook events (operator restart,
+// successful DatabaseSecretClaim reconcile. The rotation poller is the primary
+// trigger for credential updates; this slow periodic re-poll is a
+// safety net that recovers from missed rotation events (operator restart,
 // network partition that outlasts the aggregator's retry budget, or a
-// catastrophic loss of the event entirely). Each cycle re-fetches the
+// rotation that slips past the poller's cursor entirely). Each cycle re-fetches the
 // credentials and the content-aware compare suppresses the write when nothing
 // changed, so an idle CR costs one aggregator round-trip per interval and no
 // Secret churn. One hour keeps the aggregator load negligible (≈ #CRs per hour)

@@ -605,8 +605,8 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 		func(obj client.Object) []string {
 			ds := obj.(*dbaasv1.DatabaseSecretClaim)
 			// Default the classifier namespace to metadata.namespace so the index
-			// key matches the always-namespaced classifier carried in a rotation
-			// webhook payload (see EffectiveClassifier).
+			// key matches the always-namespaced classifier carried in the rotation
+			// poller's changed-databases feed (see EffectiveClassifier).
 			c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
 			return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
 		},
