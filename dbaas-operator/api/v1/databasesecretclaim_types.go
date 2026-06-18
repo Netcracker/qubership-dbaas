@@ -74,7 +74,7 @@ type DatabaseSecretClaimStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=databasesecretclaims,singular=databasesecretclaim,shortName=dbdsc
+// +kubebuilder:resource:scope=Namespaced,path=databasesecretclaims,singular=databasesecretclaim,shortName=dbdsc,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"

@@ -102,7 +102,7 @@ type DatabaseAccessPolicyStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=databaseaccesspolicies,singular=databaseaccesspolicy,shortName=dbdap
+// +kubebuilder:resource:scope=Namespaced,path=databaseaccesspolicies,singular=databaseaccesspolicy,shortName=dbdap,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.microserviceName"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"

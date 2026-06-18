@@ -124,7 +124,7 @@ type InternalDatabaseStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=internaldatabases,singular=internaldatabase,shortName=dbidb
+// +kubebuilder:resource:scope=Namespaced,path=internaldatabases,singular=internaldatabase,shortName=dbidb,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.classifier.microserviceName"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"

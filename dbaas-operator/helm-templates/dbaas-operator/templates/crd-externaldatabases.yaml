@@ -9,6 +9,8 @@ metadata:
 spec:
   group: dbaas.netcracker.com
   names:
+    categories:
+    - dbaas
     kind: ExternalDatabase
     listKind: ExternalDatabaseList
     plural: externaldatabases

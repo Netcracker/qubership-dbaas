@@ -105,9 +105,8 @@ type MicroserviceBalancingRuleStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=microservicebalancingrules,singular=microservicebalancingrule,shortName=dbmbr
+// +kubebuilder:resource:scope=Namespaced,path=microservicebalancingrules,singular=microservicebalancingrule,shortName=dbmbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
-// +kubebuilder:printcolumn:name="Rules",type="string",JSONPath=".spec.rules[*].type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // MicroserviceBalancingRule is the Schema for the microservicebalancingrules API.
@@ -206,9 +205,8 @@ type NamespaceBalancingRuleStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=namespacebalancingrules,singular=namespacebalancingrule,shortName=dbnbr
+// +kubebuilder:resource:scope=Namespaced,path=namespacebalancingrules,singular=namespacebalancingrule,shortName=dbnbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
-// +kubebuilder:printcolumn:name="Rules",type="string",JSONPath=".spec.rules[*].type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // NamespaceBalancingRule is the Schema for the namespacebalancingrules API.
@@ -300,9 +298,8 @@ type PermanentBalancingRuleStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,path=permanentbalancingrules,singular=permanentbalancingrule,shortName=dbpbr
+// +kubebuilder:resource:scope=Namespaced,path=permanentbalancingrules,singular=permanentbalancingrule,shortName=dbpbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
-// +kubebuilder:printcolumn:name="Rules",type="string",JSONPath=".spec.rules[*].dbType"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // PermanentBalancingRule is the Schema for the permanentbalancingrules API.

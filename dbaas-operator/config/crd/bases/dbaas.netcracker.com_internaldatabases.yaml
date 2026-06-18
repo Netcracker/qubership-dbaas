@@ -8,6 +8,8 @@ metadata:
 spec:
   group: dbaas.netcracker.com
   names:
+    categories:
+    - dbaas
     kind: InternalDatabase
     listKind: InternalDatabaseList
     plural: internaldatabases

@@ -9,6 +9,8 @@ metadata:
 spec:
   group: dbaas.netcracker.com
   names:
+    categories:
+    - dbaas
     kind: MicroserviceBalancingRule
     listKind: MicroserviceBalancingRuleList
     plural: microservicebalancingrules
@@ -20,9 +22,6 @@ spec:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
-      type: string
-    - jsonPath: .spec.rules[*].type
-      name: Rules
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
