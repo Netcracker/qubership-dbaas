@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
@@ -41,6 +42,46 @@ const (
 	apiVersionV1 = "core.netcracker.com/v1"
 	xRequestID   = "X-Request-Id"
 )
+
+// bindingTriggerTracker is a concurrency-safe set of "the next reconcile for this
+// key was most likely caused by a NamespaceBinding change" stamps, keyed by
+// namespace/name. Embed it by value into a reconciler to get stamp/consume/clear
+// via method promotion; the zero value is ready to use. It is best-effort: a
+// missed stamp only mis-classifies the reconcile trigger metric, never affects
+// correctness.
+type bindingTriggerTracker struct {
+	mu     sync.Mutex
+	stamps map[string]struct{}
+}
+
+// stampBindingTrigger records that the next reconcile for key was most likely
+// caused by a NamespaceBinding change.
+func (t *bindingTriggerTracker) stampBindingTrigger(key string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.stamps == nil {
+		t.stamps = make(map[string]struct{})
+	}
+	t.stamps[key] = struct{}{}
+}
+
+// consumeBindingTrigger reports whether key had a pending stamp, removing it.
+func (t *bindingTriggerTracker) consumeBindingTrigger(key string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, ok := t.stamps[key]; !ok {
+		return false
+	}
+	delete(t.stamps, key)
+	return true
+}
+
+// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
+func (t *bindingTriggerTracker) clearBindingTrigger(key string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.stamps, key)
+}
 
 // requestIDFromContext extracts the X-Request-Id string from ctx.
 // Raising a panic if it can't fetch it

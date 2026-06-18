@@ -35,7 +35,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -67,8 +66,7 @@ type BalancingRuleReconciler struct {
 	Ownership   *ownership.OwnershipResolver
 	MyNamespace string
 
-	bindingTriggerMu     sync.Mutex
-	bindingTriggerStamps map[string]struct{}
+	bindingTriggerTracker
 }
 
 func generationOrLifecycleChangedPredicate() predicate.Funcs {
@@ -758,31 +756,6 @@ func (r *BalancingRuleReconciler) triggerForKey(key string) string {
 		return triggerNamespaceBindingChange
 	}
 	return triggerSpecChange
-}
-
-func (r *BalancingRuleReconciler) stampBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if r.bindingTriggerStamps == nil {
-		r.bindingTriggerStamps = make(map[string]struct{})
-	}
-	r.bindingTriggerStamps[key] = struct{}{}
-}
-
-func (r *BalancingRuleReconciler) consumeBindingTrigger(key string) bool {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if _, ok := r.bindingTriggerStamps[key]; !ok {
-		return false
-	}
-	delete(r.bindingTriggerStamps, key)
-	return true
-}
-
-func (r *BalancingRuleReconciler) clearBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	delete(r.bindingTriggerStamps, key)
 }
 
 func microserviceRuleTriggerKey(namespace, name string) string {

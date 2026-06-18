@@ -66,8 +66,7 @@ type ExternalDatabaseReconciler struct {
 	secretTriggerStamps     map[string]struct{}
 	secretPropagationStamps map[string]time.Time
 
-	bindingTriggerMu     sync.Mutex
-	bindingTriggerStamps map[string]struct{}
+	bindingTriggerTracker
 }
 
 func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -368,40 +367,6 @@ func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj 
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
-}
-
-// stampBindingTrigger records that the next reconcile for key was most likely
-// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// or ownership skips can swap or drop labels between queued reconciles, so the
-// metric is informational and should not be used as exact causal tracing.
-func (r *ExternalDatabaseReconciler) stampBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if r.bindingTriggerStamps == nil {
-		r.bindingTriggerStamps = make(map[string]struct{})
-	}
-	r.bindingTriggerStamps[key] = struct{}{}
-}
-
-// consumeBindingTrigger classifies the next reconcile for key as most likely
-// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// or ownership skips can swap or drop labels between queued reconciles, so the
-// metric is informational and should not be used as exact causal tracing.
-func (r *ExternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if _, ok := r.bindingTriggerStamps[key]; !ok {
-		return false
-	}
-	delete(r.bindingTriggerStamps, key)
-	return true
-}
-
-// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
-func (r *ExternalDatabaseReconciler) clearBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	delete(r.bindingTriggerStamps, key)
 }
 
 // stampSecretTrigger records that the next reconcile for key was most likely

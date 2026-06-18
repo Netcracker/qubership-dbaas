@@ -1023,3 +1023,71 @@ func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
 		t.Errorf("UserMessage(): got %q, want raw TMF body", aggErr.UserMessage())
 	}
 }
+
+// ── empty-body handling (decodeInto allowEmpty) ───────────────────────────────
+
+// A 200 with an empty body on the changed-databases feed must be a decode error,
+// NOT a zero ChangedDatabasesResponse. A zero value (HighWaterMark=nil) would read
+// as "no rotation history" and seed the poller cursor at epoch, triggering a full
+// rotation replay instead of a safe retry on the next tick.
+func TestGetChangedSince_EmptyBodyReturnsError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // 200 with no body
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	got, err := c.GetChangedSince(context.Background(), nil, 0)
+	if err == nil {
+		t.Fatalf("expected an error for an empty 200 body, got nil (result=%+v)", got)
+	}
+	if got != nil {
+		t.Errorf("result must be nil on error, got %+v", got)
+	}
+}
+
+// A 200 with an empty body on get-by-classifier must be a decode error, not an
+// empty DatabaseResponseSingleCP.
+func TestGetDatabaseByClassifier_EmptyBodyReturnsError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // 200 with no body
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	got, err := c.GetDatabaseByClassifier(context.Background(), "test-ns", dbTypePostgresql,
+		&GetByClassifierRequest{Classifier: map[string]any{"namespace": "test-ns"}})
+	if err == nil {
+		t.Fatalf("expected an error for an empty 200 body, got nil (result=%+v)", got)
+	}
+	if got != nil {
+		t.Errorf("result must be nil on error, got %+v", got)
+	}
+}
+
+// Conversely, the declarative apply/operation-status endpoints DO tolerate an
+// empty body (a success status with no payload yields the zero value, no error).
+func TestGetOperationStatus_EmptyBodyIsZeroValue(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // 200 with no body
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	got, err := c.GetOperationStatus(context.Background(), "tracking-123")
+	if err != nil {
+		t.Fatalf("empty declarative body must not error, got %v", err)
+	}
+	if got == nil {
+		t.Fatalf("expected a zero-value response, got nil")
+	}
+	if got.Status != "" || got.TrackingID != "" || len(got.Conditions) != 0 {
+		t.Errorf("expected zero-value DeclarativeResponse, got %+v", got)
+	}
+}

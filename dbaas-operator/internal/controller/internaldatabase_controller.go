@@ -69,8 +69,7 @@ type InternalDatabaseReconciler struct {
 	// operation reaches a terminal state (COMPLETED, FAILED, TERMINATED).
 	asyncStartTimes map[string]time.Time
 
-	bindingTriggerMu     sync.Mutex
-	bindingTriggerStamps map[string]struct{}
+	bindingTriggerTracker
 }
 
 func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -144,7 +143,7 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 	dd.Status.Phase = dbaasv1.PhaseProcessing
 
 	if msg := validateInternalDatabaseSpec(dd); msg != "" {
-		return r.invalidSpec(ctx, dd, msg)
+		return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 	}
 
 	// ── Call aggregator ───────────────────────────────────────────────────────
@@ -202,10 +201,6 @@ func (r *InternalDatabaseReconciler) reconcilePoll(ctx context.Context, dd *dbaa
 	}
 
 	return r.handlePollResponse(ctx, dd, trackingID, requestID, resp)
-}
-
-func (r *InternalDatabaseReconciler) invalidSpec(ctx context.Context, dd *dbaasv1.InternalDatabase, msg string) (ctrl.Result, error) {
-	return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
@@ -525,38 +520,4 @@ func (r *InternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj 
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
-}
-
-// stampBindingTrigger records that the next reconcile for key was most likely
-// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// or ownership skips can swap or drop labels between queued reconciles, so the
-// metric is informational and should not be used as exact causal tracing.
-func (r *InternalDatabaseReconciler) stampBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if r.bindingTriggerStamps == nil {
-		r.bindingTriggerStamps = make(map[string]struct{})
-	}
-	r.bindingTriggerStamps[key] = struct{}{}
-}
-
-// consumeBindingTrigger classifies the next reconcile for key as most likely
-// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// or ownership skips can swap or drop labels between queued reconciles, so the
-// metric is informational and should not be used as exact causal tracing.
-func (r *InternalDatabaseReconciler) consumeBindingTrigger(key string) bool {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if _, ok := r.bindingTriggerStamps[key]; !ok {
-		return false
-	}
-	delete(r.bindingTriggerStamps, key)
-	return true
-}
-
-// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
-func (r *InternalDatabaseReconciler) clearBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	delete(r.bindingTriggerStamps, key)
 }

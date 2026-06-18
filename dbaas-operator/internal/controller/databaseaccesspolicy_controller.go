@@ -21,7 +21,6 @@ package controller
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -53,8 +52,7 @@ type DatabaseAccessPolicyReconciler struct {
 	Recorder   record.EventRecorder
 	Ownership  *ownership.OwnershipResolver
 
-	bindingTriggerMu     sync.Mutex
-	bindingTriggerStamps map[string]struct{}
+	bindingTriggerTracker
 }
 
 func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -103,7 +101,7 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// are enforced by CRD admission. Only the cross-field constraint below cannot be expressed in schema.
 
 	if len(dp.Spec.Services) == 0 && len(dp.Spec.Policy) == 0 {
-		return r.invalidSpec(ctx, dp, "spec: at least one of 'services' or 'policy' must be set")
+		return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, "spec: at least one of 'services' or 'policy' must be set")
 	}
 
 	// ── Call aggregator ───────────────────────────────────────────────────────
@@ -124,10 +122,6 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		"policy applied to dbaas-aggregator (microserviceName=%s, requestId=%s)",
 		dp.Spec.MicroserviceName, requestID)
 	return ctrl.Result{}, nil
-}
-
-func (r *DatabaseAccessPolicyReconciler) invalidSpec(ctx context.Context, dp *dbaasv1.DatabaseAccessPolicy, msg string) (ctrl.Result, error) {
-	return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, msg)
 }
 
 // dbPolicyAggregatorSpec is the wire-format spec sent to dbaas-aggregator.
@@ -189,38 +183,4 @@ func (r *DatabaseAccessPolicyReconciler) enqueueForBinding(ctx context.Context, 
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
-}
-
-// stampBindingTrigger records that the next reconcile for key was most likely
-// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// or ownership skips can swap or drop labels between queued reconciles, so the
-// metric is informational and should not be used as exact causal tracing.
-func (r *DatabaseAccessPolicyReconciler) stampBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if r.bindingTriggerStamps == nil {
-		r.bindingTriggerStamps = make(map[string]struct{})
-	}
-	r.bindingTriggerStamps[key] = struct{}{}
-}
-
-// consumeBindingTrigger classifies the next reconcile for key as most likely
-// caused by a NamespaceBinding change. This is best-effort: overlapping triggers
-// or ownership skips can swap or drop labels between queued reconciles, so the
-// metric is informational and should not be used as exact causal tracing.
-func (r *DatabaseAccessPolicyReconciler) consumeBindingTrigger(key string) bool {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	if _, ok := r.bindingTriggerStamps[key]; !ok {
-		return false
-	}
-	delete(r.bindingTriggerStamps, key)
-	return true
-}
-
-// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
-func (r *DatabaseAccessPolicyReconciler) clearBindingTrigger(key string) {
-	r.bindingTriggerMu.Lock()
-	defer r.bindingTriggerMu.Unlock()
-	delete(r.bindingTriggerStamps, key)
 }
