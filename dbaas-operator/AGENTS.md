@@ -1,320 +1,624 @@
-# dbaas-operator - AI Agent Guide
+# Qubership Platform — Engineering Standards & Agent Guide (dbaas-operator)
 
-## Project Structure
+> Mandatory conventions for this operator (and Go microservices on the Qubership platform).
+> AI agents (Claude Code, Cursor, Copilot, etc.) **must** follow these rules when generating,
+> editing, or reviewing code.
+>
+> **`AGENTS.md` and `CLAUDE.md` are kept identical** — edit one and mirror it to the other.
 
-**Single-group layout (default):**
+---
+
+## Language & Runtime
+
+- **Go 1.26+** — all services are written in Go.
+- Module path convention: `github.com/netcracker/qubership-<product>/<component>`
+- Use Go modules (`go.mod` / `go.sum`). Never use `dep`, `glide`, or `vendor/`.
+
+---
+
+## Logging
+
+This **overrides** the generic controller-runtime logging (`log.FromContext` / `logr` / zap) shown
+in upstream kubebuilder guides — use the platform logger everywhere in production code.
+
+### Required library
+
 ```
-cmd/main.go                    Manager entry (registers controllers/webhooks)
-api/<version>/*_types.go       CRD schemas (+kubebuilder markers)
-api/<version>/zz_generated.*   Auto-generated (DO NOT EDIT)
-internal/controller/*          Reconciliation logic
-internal/webhook/*             Validation/defaulting (if present)
-config/crd/bases/*             Generated CRDs (DO NOT EDIT)
-config/rbac/role.yaml          Generated RBAC (DO NOT EDIT)
-config/samples/*               Example CRs (edit these)
-Makefile                       Build/test/deploy commands
-PROJECT                        Kubebuilder metadata Auto-generated (DO NOT EDIT)
-```
-
-**Multi-group layout** (for projects with multiple API groups):
-```
-api/<group>/<version>/*_types.go       CRD schemas by group
-internal/controller/<group>/*          Controllers by group
-internal/webhook/<group>/<version>/*   Webhooks by group and version (if present)
-```
-
-Multi-group layout organizes APIs by group name (e.g., `batch`, `apps`). Check the `PROJECT` file for `multigroup: true`.
-
-**To convert to multi-group layout:**
-1. Run: `kubebuilder edit --multigroup=true`
-2. Move APIs: `mkdir -p api/<group> && mv api/<version> api/<group>/`
-3. Move controllers: `mkdir -p internal/controller/<group> && mv internal/controller/*.go internal/controller/<group>/`
-4. Move webhooks (if present): `mkdir -p internal/webhook/<group> && mv internal/webhook/<version> internal/webhook/<group>/`
-5. Update import paths in all files
-6. Fix `path` in `PROJECT` file for each resource
-7. Update test suite CRD paths (add one more `..` to relative paths)
-
-## Critical Rules
-
-### Never Edit These (Auto-Generated)
-- `config/crd/bases/*.yaml` - from `make manifests`
-- `config/rbac/role.yaml` - from `make manifests`
-- `config/webhook/manifests.yaml` - from `make manifests`
-- `**/zz_generated.*.go` - from `make generate`
-- `PROJECT` - from `kubebuilder [OPTIONS]`
-
-### Never Remove Scaffold Markers
-Do NOT delete `// +kubebuilder:scaffold:*` comments. CLI injects code at these markers.
-
-### Keep Project Structure
-Do not move files around. The CLI expects files in specific locations.
-
-### Always Use CLI Commands
-Always use `kubebuilder create api` and `kubebuilder create webhook` to scaffold. Do NOT create files manually.
-
-### E2E Tests Require an Isolated Kind Cluster
-The e2e tests are designed to validate the solution in an isolated environment (similar to GitHub Actions CI).
-Ensure you run them against a dedicated [Kind](https://kind.sigs.k8s.io/) cluster (not your “real” dev/prod cluster).
-
-## After Making Changes
-
-**After editing `*_types.go` or markers:**
-```
-make manifests  # Regenerate CRDs/RBAC from markers
-make generate   # Regenerate DeepCopy methods
+github.com/netcracker/qubership-core-lib-go/v3/logging
 ```
 
-**After editing `*.go` files:**
-```
-make lint-fix   # Auto-fix code style
-make test       # Run unit tests
-```
+**Do NOT use** `log`, `fmt.Println`, `go.uber.org/zap` directly, `logrus`, `klog`, `slog`, or
+controller-runtime's `log.FromContext`/`logr` for application logging. The platform logger wraps
+zap internally and integrates with context propagation (request IDs, trace context).
 
-## CLI Commands Cheat Sheet
+### Usage
 
-### Create API (your own types)
-```bash
-kubebuilder create api --group <group> --version <version> --kind <Kind>
-```
+```go
+import "github.com/netcracker/qubership-core-lib-go/v3/logging"
 
-### Deploy Image Plugin (scaffold to deploy/manage ANY container image)
+// Package-level logger — one per package, named after the component.
+var log = logging.GetLogger("my-component")
 
-Generate a controller that deploys and manages a container image (nginx, redis, memcached, your app, etc.):
+// Leveled methods: Infof, Debugf, Errorf, Warnf.
+log.Infof("starting reconciliation name=%s", name)
+log.Errorf("failed to create Pod: %v", err)
 
-```bash
-# Example: deploying memcached
-kubebuilder create api --group example.com --version v1alpha1 --kind Memcached \
-  --image=memcached:alpine \
-  --plugins=deploy-image.go.kubebuilder.io/v1-alpha
+// Context-aware logging (carries X-Request-Id automatically):
+log.InfoC(ctx, "registered database type=%s dbName=%s", dbType, dbName)
+log.ErrorC(ctx, "aggregator call failed: %v", err)
 ```
 
-Scaffolds good-practice code: reconciliation logic, status conditions, finalizers, RBAC. Use as a reference implementation.
+### Logging style (Kubernetes conventions)
 
+- Start messages with a capital letter.
+- Do **not** end messages with a period.
+- Use active voice: `"Created Deployment"`, not `"deployment was created"`.
+- Use past tense for completed actions: `"Failed to create Pod"`, not `"Cannot create Pod"`.
+- Always specify the object type: `"Deleted Pod"`, not `"Deleted"`.
+- Attach structured key=value pairs inline: `log.Infof("backoff configured base=%v max=%v", base, max)`.
 
-### Create Webhooks
-```bash
-# Validation + defaulting
-kubebuilder create webhook --group <group> --version <version> --kind <Kind> \
-  --defaulting --programmatic-validation
+### Bridging logr (controller-runtime)
 
-# Conversion webhook (for multi-version APIs)
-kubebuilder create webhook --group <group> --version v1 --kind <Kind> \
-  --conversion --spoke v2
+When controller-runtime requires a `logr.Logger`, bridge it via a `logrAdapter` that
+delegates to `logging.GetLogger`. See `cmd/logr_adapter.go` for the reference
+implementation. **Do NOT** use `sigs.k8s.io/controller-runtime/pkg/log/zap` in production;
+it is acceptable only in test suites.
+
+```go
+ctrl.SetLogger(newLogrLogger("my-operator"))
 ```
 
-### Controller for Core Kubernetes Types
-```bash
-# Watch Pods
-kubebuilder create api --group core --version v1 --kind Pod \
-  --controller=true --resource=false
+---
 
-# Watch Deployments
-kubebuilder create api --group apps --version v1 --kind Deployment \
-  --controller=true --resource=false
+## Context Propagation & Request IDs
+
+### Required library
+
+```
+github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager
+github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid
 ```
 
-### Controller for External Types (e.g., from other operators)
+### Initialization (in `main()`)
 
-Watch resources from external APIs (cert-manager, Argo CD, Istio, etc.):
-
-```bash
-# Example: watching cert-manager Certificate resources
-kubebuilder create api \
-  --group cert-manager --version v1 --kind Certificate \
-  --controller=true --resource=false \
-  --external-api-path=github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1 \
-  --external-api-domain=io \
-  --external-api-module=github.com/cert-manager/cert-manager
+```go
+ctxmanager.Register([]ctxmanager.ContextProvider{
+    xrequestid.XRequestIdProvider{},
+})
 ```
 
-**Note:** Use `--external-api-module=<module>@<version>` only if you need a specific version. Otherwise, omit `@<version>` to use what's in go.mod.
+### Per-reconcile / per-request
 
-### Webhook for External Types
+Every reconcile loop or incoming request handler must generate a unique request ID and
+attach it to the context:
 
-```bash
-# Example: validating external resources
-kubebuilder create webhook \
-  --group cert-manager --version v1 --kind Issuer \
-  --defaulting \
-  --external-api-path=github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1 \
-  --external-api-domain=io \
-  --external-api-module=github.com/cert-manager/cert-manager
+```go
+requestID := uuid.New().String()
+ctx = ctxmanager.InitContext(ctx, map[string]any{
+    "X-Request-Id": requestID,
+})
 ```
 
-## Testing & Development
+This enables end-to-end tracing across operator → aggregator → adapter logs.
 
-```bash
-make test              # Run unit tests (uses envtest: real K8s API + etcd)
-make run               # Run locally (uses current kubeconfig context)
+---
+
+## Error Handling
+
+### Required library
+
+```
+github.com/netcracker/qubership-core-lib-go-error-handling/v3
 ```
 
-Tests use **Ginkgo + Gomega** (BDD style). Check `suite_test.go` for setup.
+Specifically, use the TMF error response format for parsing upstream errors:
 
-## Deployment Workflow
-
-```bash
-# 1. Regenerate manifests
-make manifests generate
-
-# 2. Build & deploy
-export IMG=<registry>/<project>:tag
-make docker-build docker-push IMG=$IMG  # Or: kind load docker-image $IMG --name <cluster>
-make deploy IMG=$IMG
-
-# 3. Test
-kubectl apply -k config/samples/
-
-# 4. Debug
-kubectl logs -n <project>-system deployment/<project>-controller-manager -c manager -f
+```go
+import "github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 ```
 
-### API Design
+### Error classification pattern
 
-**Key markers for** `api/<version>/*_types.go`:
+All errors from external services must be classified into:
+
+| Category | HTTP codes | Operator behaviour | Phase |
+|---|---|---|---|
+| **Spec rejection** (permanent) | 400, 403, 409, 410, 422 | No retry, wait for spec change | `InvalidConfiguration` |
+| **Auth error** (transient) | 401 | Retry with backoff | `BackingOff` |
+| **Server / network** (transient) | 5xx, timeouts | Retry with backoff | `BackingOff` |
+
+Use typed error structs with helper methods (`IsAuthError()`, `IsSpecRejection()`) rather
+than checking status codes inline in controller code. See `internal/client/types.go` for
+the `AggregatorError` reference.
+
+---
+
+## HTTP Client
+
+### Required library
+
+```
+github.com/go-resty/resty/v2
+```
+
+**Do NOT use** raw `net/http` for outgoing REST calls. Resty provides retries,
+interceptors, and structured request building.
+
+### Authentication — dual mode
+
+The operator authenticates to dbaas-aggregator in one of two modes, selected by
+`KUBERNETES_M2M_ENABLED` and **must match the aggregator's own setting** (a mismatch is
+rejected outright):
+
+- `false` (**default**) — **HTTP Basic Auth**. Credentials are read from the mounted
+  `dbaas-operator-aggregator-credentials` Secret (`/etc/dbaas/security/{username,password}`)
+  and hot-reloaded on Secret change, so a rotation needs no pod restart.
+- `true` — **Kubernetes projected service-account token** (Bearer / M2M) via the platform
+  token source:
+
+  ```go
+  import "github.com/netcracker/qubership-core-lib-go/v3/security/tokensource"
+  token, err := tokensource.GetAudienceToken(ctx, tokensource.AudienceDBaaS)
+  ```
+
+Attach the credential via a Resty `OnBeforeRequest` hook (Basic or Bearer), never per call.
+The operator exposes **no inbound endpoint**; aggregator-side credential rotations are picked
+up by **polling** the changed-databases feed (`DBAAS_ROTATION_POLL_INTERVAL`).
+
+---
+
+## Memory Limits
+
+### Required import (side-effect)
+
+```go
+import _ "github.com/netcracker/qubership-core-lib-go/v3/memlimit"
+```
+
+This blank import auto-configures `GOMEMLIMIT` based on the container's cgroup limits.
+**Always include it** in `cmd/main.go`. Do NOT set `GOMEMLIMIT` manually.
+
+---
+
+## Docker
+
+### Base image (runtime stage)
+
+```dockerfile
+FROM ghcr.io/netcracker/qubership-core-base:<version>
+```
+
+**Do NOT use** `gcr.io/distroless`, `alpine`, `ubuntu`, `scratch`, or Docker Hub base
+images. The platform base image includes security patches, CA certificates, and a
+non-root user (UID 10001).
+
+### Build pattern (multi-stage)
+
+```dockerfile
+FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -a -o myservice ./cmd/
+
+FROM ghcr.io/netcracker/qubership-core-base:2.2.13
+WORKDIR /app
+COPY --chown=10001:0 --chmod=555 --from=builder /app/myservice /app/myservice
+USER 10001:10001
+CMD ["/app/myservice"]
+```
+
+### Rules
+
+- Always use multi-stage builds. The builder stage uses `golang:1.26`.
+- Cross-compilation via `TARGETOS`/`TARGETARCH` — never use QEMU emulation.
+- `CGO_ENABLED=0` — always. No CGO dependencies.
+- Run as non-root: `USER 10001:10001`.
+- Set `--chown=10001:0 --chmod=555` on the binary.
+
+---
+
+## Kubernetes Operator Framework
+
+### Required framework
+
+- **Kubebuilder** for scaffolding.
+- **controller-runtime** (`sigs.k8s.io/controller-runtime`) for the operator runtime.
+- **Ginkgo v2 + Gomega** for tests.
+- **envtest** for integration tests (real API server + etcd, no cluster needed).
+
+### API design (`api/v1/*_types.go`)
+
+All CRs are served at `dbaas.netcracker.com/v1` (single group, no alpha versions).
+
+- Use `metav1.Condition` for status conditions — never custom string fields.
+- Embed a shared `OperatorStatus` struct for common fields (`Phase`, `ObservedGeneration`, `Conditions`).
+- Define a `Phase` enum with these standard values:
+  `Unknown → Processing → Succeeded | BackingOff | InvalidConfiguration`
+- Use `+kubebuilder:validation:XValidation` (CEL) for immutability rules on spec fields.
+- Use `+listType=map` / `+listMapKey=type` on Condition slices for strategic merge.
+- Implement `SetObservedGeneration(int64)` on every CR root type.
 
 ```go
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced
-// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
-
-// On fields:
-// +kubebuilder:validation:Required
-// +kubebuilder:validation:Minimum=1
-// +kubebuilder:validation:MaxLength=100
-// +kubebuilder:validation:Pattern="^[a-z]+$"
-// +kubebuilder:default="value"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 ```
 
-- **Use** `metav1.Condition` for status (not custom string fields)
-- **Use predefined types**: `metav1.Time` instead of `string` for dates
-- **Follow K8s API conventions**: Standard field names (`spec`, `status`, `metadata`)
+### Controller design (`internal/controller/*_controller.go`)
 
-### Controller Design
-
-**RBAC markers in** `internal/controller/*_controller.go`:
+- **Idempotent reconciliation**: must be safe to run multiple times.
+- **Snapshot → defer patch** pattern: deep-copy the object at entry, defer a status patch
+  on exit so the status always reflects the actual outcome, even on error.
 
 ```go
-// +kubebuilder:rbac:groups=mygroup.example.com,resources=mykinds,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=mygroup.example.com,resources=mykinds/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=mygroup.example.com,resources=mykinds/finalizers,verbs=update
-// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+original := obj.DeepCopy()
+defer func() {
+    patchStatusOnExit(ctx, r.Status(), obj, original, &retErr, ...)
+}()
 ```
 
-**Implementation rules:**
-- **Idempotent reconciliation**: Safe to run multiple times
-- **Re-fetch before updates**: `r.Get(ctx, req.NamespacedName, obj)` before `r.Update` to avoid conflicts
-- **Structured logging**: `log := log.FromContext(ctx); log.Info("msg", "key", val)`
-- **Owner references**: Enable automatic garbage collection (`SetControllerReference`)
-- **Watch secondary resources**: Use `.Owns()` or `.Watches()`, not just `RequeueAfter`
-- **Finalizers**: Clean up external resources (buckets, VMs, DNS entries)
-
-### Logging
-
-**Follow Kubernetes logging message style guidelines:**
-
-- Start from a capital letter
-- Do not end the message with a period
-- Active voice: subject present (`"Deployment could not create Pod"`) or omitted (`"Could not create Pod"`)
-- Past tense: `"Could not delete Pod"` not `"Cannot delete Pod"`
-- Specify object type: `"Deleted Pod"` not `"Deleted"`
-- Balanced key-value pairs
+- **GenerationChangedPredicate**: filter events to spec changes only.
+- Use `client.IgnoreNotFound(err)` for the initial GET.
+- Use `workqueue.NewTypedItemExponentialFailureRateLimiter` for backoff (configurable via flags).
+- **RBAC markers** live on the controller; regenerate with `make manifests`:
 
 ```go
-log.Info("Starting reconciliation")
-log.Info("Created Deployment", "name", deploy.Name)
-log.Error(err, "Failed to create Pod", "name", name)
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases/status,verbs=get;update;patch
 ```
 
-**Reference:** https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/logging.md#message-style-guidelines
+### Condition management
 
-### Webhooks
-- **Create all types together**: `--defaulting --programmatic-validation --conversion`
-- **When`--force`is used**: Backup custom logic first, then restore after scaffolding
-- **For multi-version APIs**: Use hub-and-spoke pattern (`--conversion --spoke v2`)
-  - Hub version: Usually oldest stable version (v1)
-  - Spoke versions: Newer versions that convert to/from hub (v2, v3)
-  - Example: `--group crew --version v1 --kind Captain --conversion --spoke v2` (v1 is hub, v2 is spoke)
+- Two standard condition types: `Ready` and `Stalled`.
+- `Ready=True` — resource successfully processed.
+- `Ready=False` — error; reason indicates the category.
+- `Stalled=True` — permanent error, no retry until spec changes.
+- `Stalled=False` — transient error, controller retries automatically.
+- Use `setCondition()` helper that preserves `LastTransitionTime` when status is unchanged.
 
-### Learning from Examples
+### Kubernetes Events
 
-The **deploy-image plugin** scaffolds a complete controller following good practices. Use it as a reference implementation:
+- Emit events via `record.EventRecorder` for every significant outcome.
+- Event reasons: CamelCase constants, past tense for successes (`DatabaseRegistered`),
+  present participle for ongoing problems (`Unauthorized`).
+- Define all event reason constants in one file (`events.go`) — shared between Events and
+  Condition reasons.
+- Support disabling events via `K8S_EVENTS_ENABLED=false` with a `noopRecorder`.
 
-```bash
-kubebuilder create api --group example --version v1alpha1 --kind MyApp \
-  --image=<your-image> --plugins=deploy-image.go.kubebuilder.io/v1-alpha
+---
+
+## Testing
+
+### Test framework
+
+```
+github.com/onsi/ginkgo/v2
+github.com/onsi/gomega
 ```
 
-Generated code includes: status conditions (`metav1.Condition`), finalizers, owner references, events, idempotent reconciliation.
+**Do NOT use** `testing.T` assertions or `testify` for controller tests. All controller/envtest
+tests use Ginkgo BDD style. (Plain `testing.T` table tests are fine for small pure-Go units such
+as `cmd/` and `internal/client/`.)
 
-## Distribution Options
+### Controller integration tests
 
-### Option 1: YAML Bundle (Kustomize)
+- Use `envtest.Environment` — real API server + etcd, no mocked K8s. CRDs load from
+  `config/crd/bases` (see `internal/controller/suite_test.go`).
+- Mock external services (aggregator) with `httptest.NewServer`.
+- Use `record.NewFakeRecorder` to capture and assert Kubernetes events.
+- Create helper functions for common patterns:
+  - `reconcileAndFetchObject[T]()` — reconcile then re-fetch.
+  - `findCondition()` — locate a condition by type.
+  - `expectRecordedEvent()` / `expectRecordedEventContaining()` — assert events.
+  - `mineOwnershipResolver()` / `foreignOwnershipResolver()` — pre-seed ownership cache.
+
+### Running tests
 
 ```bash
-# Generate dist/install.yaml from Kustomize manifests
-make build-installer IMG=<registry>/<project>:tag
+make test-unit       # Unit tests only, no envtest, fast
+make test            # Unit + controller integration tests (downloads envtest binaries)
+make test-e2e        # Full e2e in a Kind cluster (isolated)
 ```
 
-**Key points:**
-- The `dist/install.yaml` is generated from Kustomize manifests (CRDs, RBAC, Deployment)
-- Commit this file to your repository for easy distribution
-- Users only need `kubectl` to install (no additional tools required)
+E2E tests must run against a **dedicated, isolated Kind cluster** (like CI), never a real
+dev/prod cluster. For a local kind + aggregator-mock environment see `dev/README.md`.
 
-**Example:** Users install with a single command:
+---
+
+## Linting
+
+### Linter: golangci-lint v2
+
+Configuration lives in `.golangci.yml` at the repo root. Enabled linters include:
+`errcheck`, `govet`, `staticcheck`, `revive`, `gocyclo`, `misspell`, `unused`,
+`ginkgolinter`, `logcheck`, `modernize`, `prealloc`, among others.
+
+### Commands
+
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/<org>/<repo>/<tag>/dist/install.yaml
+make lint            # Check only
+make lint-fix        # Auto-fix
 ```
 
-### Option 2: Helm Chart
+### Key rules enforced
+
+- `logcheck` — validates Kubernetes logging conventions.
+- `ginkgolinter` — enforces Ginkgo best practices.
+- `revive` with `import-shadowing` — catches shadowed imports.
+- `gofmt` + `goimports` — enforced formatting.
+
+---
+
+## Helm Charts
+
+Production install is via the **Qubership Helm chart** under `helm-templates/dbaas-operator/`
+(see Distribution below).
+
+- Helm templates live in `helm-templates/<component>/`.
+- Provide resource profiles: `dev.yaml`, `dev-ha.yaml`, `prod-nonha.yaml`, `prod.yaml`.
+- Always include a `values.schema.json` for value validation.
+- CRDs are rendered as Helm templates (not raw `config/crd/bases` output), each gated on
+  `{{- if .Values.DBAAS_OPERATOR_ENABLED }}`.
+
+---
+
+## Code Generation (auto-generated files)
+
+### NEVER edit these files manually
+
+| File | Regenerated by |
+|---|---|
+| `config/crd/bases/*.yaml` | `make manifests` |
+| `config/rbac/role.yaml` | `make manifests` |
+| `**/zz_generated.*.go` | `make generate` |
+| `PROJECT` | `kubebuilder` CLI |
+
+### Never remove scaffold markers
+
+Do NOT delete `// +kubebuilder:scaffold:*` comments — the CLI injects code at these markers.
+
+### After editing `*_types.go` or RBAC markers
 
 ```bash
-kubebuilder edit --plugins=helm/v2-alpha                      # Generates dist/chart/ (default)
-kubebuilder edit --plugins=helm/v2-alpha --output-dir=charts  # Generates charts/chart/
+make manifests    # Regenerate CRDs + RBAC
+make generate     # Regenerate DeepCopy
 ```
 
-**For development:**
+### After editing any `*.go` file
+
 ```bash
-make helm-deploy IMG=<registry>/<project>:<tag>          # Deploy manager via Helm
-make helm-deploy IMG=$IMG HELM_EXTRA_ARGS="--set ..."    # Deploy with custom values
-make helm-status                                         # Show release status
-make helm-uninstall                                      # Remove release
-make helm-history                                        # View release history
-make helm-rollback                                       # Rollback to previous version
+make lint-fix     # Auto-fix style
+make test         # Run all tests
 ```
 
-**For end users/production:**
-```bash
-helm install my-release ./<output-dir>/chart/ --namespace <ns> --create-namespace
+---
+
+## Project Layout
+
+```
+cmd/main.go                           Entry point, manager setup, flag parsing
+cmd/logr_adapter.go                   logr → platform logger bridge
+cmd/credentials.go                    Basic Auth credential loader + Secret watcher
+api/v1/*_types.go                     CRD schemas (all CRs are v1)
+api/v1/zz_generated.*.go              Auto-generated (DO NOT EDIT)
+internal/controller/*_controller.go   Reconciliation logic
+internal/controller/helpers.go        Shared condition/status/ownership utilities
+internal/controller/events.go         Event reason constants
+internal/controller/conditions.go     Condition type constants + timing intervals
+internal/client/                      HTTP client for dbaas-aggregator
+internal/poller/                      Rotation poller (changed-databases feed)
+internal/ownership/                   Namespace ownership resolution
+config/                               Kustomize manifests (CRDs, RBAC, samples) — dev/test + envtest
+helm-templates/                       Helm chart templates (production install)
+dev/                                  Local development utilities (Kind, aggregator-mock)
 ```
 
-**Important:** If you add webhooks or modify manifests after initial chart generation:
-1. Backup any customizations in `<output-dir>/chart/values.yaml` and `<output-dir>/chart/manager/manager.yaml`
-2. Re-run: `kubebuilder edit --plugins=helm/v2-alpha --force` (use same `--output-dir` if customized)
-3. Manually restore your custom values from the backup
+### Custom Resources (all `dbaas.netcracker.com/v1`)
 
-### Publish Container Image
+`ExternalDatabase`, `InternalDatabase`, `DatabaseSecretClaim`, `DatabaseAccessPolicy`,
+`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`, `NamespaceBinding`.
+
+---
+
+## Common Patterns to Follow
+
+### Reconcile function skeleton
+
+```go
+func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
+    // 1. Generate request ID
+    requestID := uuid.New().String()
+    ctx = ctxmanager.InitContext(ctx, map[string]any{"X-Request-Id": requestID})
+
+    // 2. Fetch the CR
+    obj := &myapi.MyResource{}
+    if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
+        return ctrl.Result{}, client.IgnoreNotFound(err)
+    }
+
+    // 3. Check namespace ownership
+    owned, result, err := checkOwnership(ctx, r.Ownership, obj.Namespace, obj.Name, "MyResource")
+    if err != nil { return ctrl.Result{}, err }
+    if !owned  { return result, nil }
+
+    // 4. Snapshot + defer status patch
+    original := obj.DeepCopy()
+    defer func() {
+        patchStatusOnExit(ctx, r.Status(), obj, original, &retErr, ..., "MyResource")
+    }()
+
+    // 5. Mark Processing
+    obj.Status.Phase = myapi.PhaseProcessing
+
+    // 6. Validate spec (permanent errors → no requeue)
+    // 7. Build request
+    // 8. Call external service
+    // 9. Mark Succeeded + emit event
+    return ctrl.Result{}, nil
+}
+```
+
+### SetupWithManager skeleton
+
+```go
+func (r *MyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+    return ctrl.NewControllerManagedBy(mgr).
+        For(&myapi.MyResource{},
+            builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+        Watches(&dbaasv1.NamespaceBinding{},
+            handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+        WithOptions(opts).
+        Named("myresource").
+        Complete(r)
+}
+```
+
+---
+
+## Kubebuilder CLI & Scaffolding
+
+> This project is **single-group** (`dbaas`), all CRs are **v1**, and it currently defines
+> **no webhooks** (the former rotation webhook was replaced by polling). Always scaffold via the
+> CLI — never hand-create API/webhook files — and never edit auto-generated files (see above).
+
+### Add or extend an API (own type)
 
 ```bash
-export IMG=<registry>/<project>:<version>
+kubebuilder create api --group dbaas --version v1 --kind <Kind>
+```
+
+After scaffolding, update `PROJECT`, run `make manifests generate`, and add the CRD's helm
+template under `helm-templates/dbaas-operator/templates/` (gated on `DBAAS_OPERATOR_ENABLED`).
+
+### Controllers for core / external types
+
+```bash
+# Core type (watch only, no CRD)
+kubebuilder create api --group apps --version v1 --kind Deployment --controller=true --resource=false
+
+# External type (e.g. another operator's CRD)
+kubebuilder create api --group cert-manager --version v1 --kind Certificate \
+  --controller=true --resource=false \
+  --external-api-path=github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1 \
+  --external-api-domain=io --external-api-module=github.com/cert-manager/cert-manager
+```
+
+### Webhooks (none currently)
+
+The project has no validating/defaulting/conversion webhooks. If one is ever required,
+scaffold it (do not hand-create), then add the corresponding RBAC/manifests:
+
+```bash
+kubebuilder create webhook --group dbaas --version v1 --kind <Kind> --defaulting --programmatic-validation
+```
+
+### Multi-group conversion (not used today)
+
+Single-group now. To convert: `kubebuilder edit --multigroup=true`, move `api/` and
+`internal/controller/` under `<group>/`, then fix each resource's `path` in `PROJECT` and add
+one more `..` to the CRD paths in `internal/controller/suite_test.go`.
+
+### Reference implementation
+
+The kubebuilder **deploy-image plugin** scaffolds a complete controller (status conditions,
+finalizers, owner refs, events, idempotent reconcile) — useful as a reference only:
+
+```bash
+kubebuilder create api --group example --version v1 --kind MyApp \
+  --image=<image> --plugins=deploy-image.go.kubebuilder.io/v1-alpha
+```
+
+---
+
+## Distribution
+
+Production install is the **Qubership Helm chart** under `helm-templates/dbaas-operator/`
+(`values.yaml` + `values.schema.json`), deployed by the platform tooling and gated on
+`DBAAS_OPERATOR_ENABLED`. The Kustomize `config/` surface is for local dev/test and envtest
+only. The upstream kubebuilder `make build-installer` / `dist/chart` distribution flow is
+**not used** by this project.
+
+Publish the image:
+
+```bash
+export IMG=<registry>/dbaas-operator:<version>
 make docker-build docker-push IMG=$IMG
 ```
 
+---
+
+## Environment Variables
+
+Variables read by the operator binary:
+
+| Variable | Purpose | Required |
+|---|---|---|
+| `CLOUD_NAMESPACE` | Operator's own namespace (ownership checks) | Yes |
+| `DBAAS_AGGREGATOR_URL` | Aggregator base URL (default: `http://dbaas-aggregator:8080`) | No |
+| `KUBERNETES_M2M_ENABLED` | Auth mode; **must match the aggregator**. `false` (default) → HTTP Basic Auth (creds from the mounted `dbaas-operator-aggregator-credentials` Secret); `true` → M2M Bearer token. | No |
+| `DBAAS_ROTATION_POLL_INTERVAL` | Poll period for the changed-databases feed used to propagate credential rotations (Go duration; empty → built-in default `30s`). | No |
+| `K8S_EVENTS_ENABLED` | Enable/disable Kubernetes event recording (`true`/`false`). | No |
+
+Notes:
+- **Basic Auth credentials are not environment variables** — the operator reads `username`/`password`
+  from the mounted Secret at `/etc/dbaas/security`. The chart populates that Secret from its
+  `DBAAS_OPERATOR_CREDENTIALS_USERNAME` / `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` values, which must
+  match the user provisioned on the aggregator side.
+- **Leader election** is enabled via the `--leader-elect` flag (helm value `LEADER_ELECT`), not an env var.
+- **Log level** is consumed by the platform logger (helm value `LOG_LEVEL`).
+
+---
+
+## What NOT to Do
+
+- **Do NOT** use `fmt.Println`, `log.Printf`, controller-runtime `log.FromContext`/`logr`, or any
+  logger other than `logging.GetLogger`.
+- **Do NOT** use Docker Hub base images or `scratch`.
+- **Do NOT** use `testify`; controller tests use Ginkgo + Gomega.
+- **Do NOT** edit auto-generated files (CRDs, RBAC, DeepCopy, PROJECT).
+- **Do NOT** remove `// +kubebuilder:scaffold:*` comments.
+- **Do NOT** create API or webhook files manually — use `kubebuilder create api/webhook`.
+- **Do NOT** read aggregator credentials from environment variables — they come from the mounted Secret.
+- **Do NOT** configure OpenTelemetry or zap directly — use the platform libraries.
+- **Do NOT** use `GOMEMLIMIT` manually — use the `memlimit` blank import.
+- **Do NOT** use custom string fields for status conditions — use `metav1.Condition`.
+- **Do NOT** inline HTTP status code checks in controllers — use typed error structs.
+
+---
+
+## License Header
+
+Every `.go` file must start with:
+
+```go
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+...
+*/
+```
+
+Use `dev/boilerplate.go.txt` as the source for `controller-gen`.
+
+---
+
 ## References
 
-### Essential Reading
-- **Kubebuilder Book**: https://book.kubebuilder.io (comprehensive guide)
-- **controller-runtime FAQ**: https://github.com/kubernetes-sigs/controller-runtime/blob/main/FAQ.md (common patterns and questions)
-- **Good Practices**: https://book.kubebuilder.io/reference/good-practices.html (why reconciliation is idempotent, status conditions, etc.)
-- **Logging Conventions**: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/logging.md#message-style-guidelines (message style, verbosity levels)
-
-### API Design & Implementation
-- **API Conventions**: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md
-- **Operator Pattern**: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
+- **Kubebuilder Book**: https://book.kubebuilder.io
+- **controller-runtime FAQ**: https://github.com/kubernetes-sigs/controller-runtime/blob/main/FAQ.md
+- **Good Practices**: https://book.kubebuilder.io/reference/good-practices.html
 - **Markers Reference**: https://book.kubebuilder.io/reference/markers.html
-
-### Tools & Libraries
-- **controller-runtime**: https://github.com/kubernetes-sigs/controller-runtime
-- **controller-tools**: https://github.com/kubernetes-sigs/controller-tools
-- **Kubebuilder Repo**: https://github.com/kubernetes-sigs/kubebuilder
+- **K8s API Conventions**: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md
+- **Logging Conventions**: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/logging.md#message-style-guidelines
