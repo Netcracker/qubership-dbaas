@@ -7,6 +7,13 @@
 - [API Endpoints](#api-endpoints)
   - [ExternalDatabase Registration Endpoint](#externaldatabase-registration-endpoint)
   - [DatabaseAccessPolicy Apply Endpoint](#databaseaccesspolicy-apply-endpoint)
+  - [InternalDatabase Apply Endpoint](#internaldatabase-apply-endpoint)
+  - [InternalDatabase Operation Status Endpoint](#internaldatabase-operation-status-endpoint)
+  - [DatabaseSecretClaim Connection Lookup Endpoint](#databasesecretclaim-connection-lookup-endpoint)
+  - [MicroserviceBalancingRule Endpoint](#microservicebalancingrule-endpoint)
+  - [NamespaceBalancingRule Endpoints](#namespacebalancingrule-endpoints)
+  - [PermanentBalancingRule Endpoints](#permanentbalancingrule-endpoints)
+  - [Rotation Poller Changed-Databases Feed](#rotation-poller-changed-databases-feed)
 - [Authentication: Basic Auth or M2M Token](#authentication-basic-auth-or-m2m-token)
 - [RBAC and Required Permissions](#rbac-and-required-permissions)
   - [Default Installation](#default-installation)
@@ -116,12 +123,17 @@ The operator calls the following dbaas-aggregator endpoints:
 | Method | URL | Used by | Purpose |
 |--------|-----|---------|---------|
 | `PUT` | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable` | `ExternalDatabase` reconciler | Register or update an externally managed database |
-| `POST` | `/api/declarations/v1/apply` | `DatabaseAccessPolicy` and `InternalDatabase` reconcilers | Apply a declarative database role policy or database declaration |
+| `POST` | `/api/declarations/v1/apply` | `DatabaseAccessPolicy` and `InternalDatabase` reconcilers | Apply a declarative database role policy (`subKind=DbPolicy`) or database declaration (`subKind=DatabaseDeclaration`) |
 | `GET` | `/api/declarations/v1/operation/{trackingId}/status` | `InternalDatabase` reconciler | Poll the status of an asynchronous provisioning operation |
+| `POST` | `/api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}` | `DatabaseSecretClaim` reconciler (and rotation-poller fan-out) | Fetch the connection properties of a registered database |
 | `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices` | `MicroserviceBalancingRule` reconciler | Apply the microservice balancing rule set for a business namespace |
 | `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` | `NamespaceBalancingRule` reconciler | Create or update one named namespace balancing rule |
+| `DELETE` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` | `NamespaceBalancingRule` reconciler | Remove one named namespace balancing rule on item removal or CR deletion |
 | `PUT` | `/api/v3/dbaas/balancing/rules/permanent` | `PermanentBalancingRule` reconciler | Apply permanent balancing rules for target namespaces |
 | `DELETE` | `/api/v3/dbaas/balancing/rules/permanent` | `PermanentBalancingRule` reconciler | Remove previously applied permanent balancing rules during update or deletion |
+| `GET` | `/api/v3/dbaas/databases/changed` | Rotation poller (leader-only) | Pull databases whose credentials changed (rotation/restore) since a keyset cursor |
+
+All calls are **outbound**; the operator exposes no inbound endpoint. Most are synchronous; the declarative `apply` endpoint may return `202 Accepted` with a `trackingId` for asynchronous provisioning (polled via the operation-status endpoint). Each endpoint is detailed below.
 
 ### ExternalDatabase Registration Endpoint
 
@@ -159,6 +171,129 @@ The operator posts a declarative payload with `subKind: DbPolicy`. The `microser
 | `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
 | Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+### InternalDatabase Apply Endpoint
+
+**`POST /api/declarations/v1/apply`**
+
+The same declarative endpoint as above, but the `InternalDatabase` reconciler posts `kind: DBaaS`, `subKind: DatabaseDeclaration`. The CR `spec` (classifier, `type`, `settings`, `versioningConfig`, `initialInstantiation`) is forwarded as the payload `spec`; `microserviceName` is carried in the payload `metadata`. Unlike `DbPolicy`, provisioning a database may be **synchronous or asynchronous**: a `202 Accepted` carries a `trackingId` that the operator then polls (see the next endpoint).
+
+**Possible responses and operator behavior:**
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `200 OK` | Provisioned synchronously | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned` |
+| `202 Accepted` | Async operation accepted; response carries `trackingId` | `WaitingForDependency` — reason `ProvisioningStarted`; the controller persists `status.trackingID` and polls the operation-status endpoint |
+| `400` / `403` / `409` / `410` / `422` | Invalid or permanently rejected declaration | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
+| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
+| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+See [InternalDatabase Status Reference](#internaldatabase-status-reference) for the full phase model.
+
+### InternalDatabase Operation Status Endpoint
+
+**`GET /api/declarations/v1/operation/{trackingId}/status`**
+
+After a `202 Accepted` from the apply endpoint, the controller polls this endpoint with the returned `{trackingId}` (persisted in `status.trackingID`) every `pollRequeueAfter` until the operation reaches a terminal state. The response body carries a `status` (`TaskState`) field — `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` / `FAILED` / `TERMINATED` — so outcomes are driven by that value as well as by the HTTP code.
+
+**Possible responses and operator behavior:**
+
+| Response | Situation | Operator outcome |
+|----------|-----------|-----------------|
+| `status=COMPLETED` | Provisioning finished | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned`; `trackingID` cleared |
+| `status=IN_PROGRESS` / `NOT_STARTED` | Still running | `WaitingForDependency` — requeued after the poll interval, reason `ProvisioningStarted` |
+| `status=FAILED` | Provisioning failed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected`; `trackingID` cleared |
+| `status=TERMINATED` | Cancelled mid-flight (aggregator restart or admin terminate) | `BackingOff` — `trackingID` cleared and the operation is **resubmitted** on the next reconcile, reason `OperationTerminated` |
+| HTTP `401` | Missing or invalid credentials | `BackingOff` — `trackingID` kept, retried, reason `Unauthorized` |
+| HTTP `404` | `trackingId` expired or unknown | `BackingOff` — `trackingID` cleared, operation **resubmitted** next reconcile, reason `AggregatorError` |
+| HTTP `5xx` / Network error | Aggregator error / unreachable | `BackingOff` — `trackingID` kept, retried, reason `AggregatorError` |
+
+### DatabaseSecretClaim Connection Lookup Endpoint
+
+**`POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}`**
+
+The `{namespace}` segment is taken from `spec.classifier.namespace` (defaulting to `metadata.namespace`); `{type}` is `spec.type`. The reconciler posts the CR `classifier`, the `app.kubernetes.io/name` label as `originService`, and `spec.userRole`. The aggregator resolves the **effective role** and returns the database's `connectionProperties`, which the operator materialises into the target Secret. The same call is re-issued when the rotation poller signals a change.
+
+**Possible responses and operator behavior:**
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `200 OK` (with `connectionProperties`) | Credentials retrieved | `Succeeded` — `Ready=True`; reason `SecretCreated` (first write) / `SecretRotated` (content changed) / `SecretUpToDate` (no change) |
+| `200 OK` (empty `connectionProperties` for the role) | Role not yet provisioned | `BackingOff` — retried, reason `EmptyConnectionProperties` |
+| `404` + `CORE-DBAAS-4006` | Database not yet registered | `BackingOff` — retried, reason `DatabaseNotFound` (switches to `DatabaseNotFoundTimeout` after a prolonged wait) |
+| `400` / `403` / `409` / `410` / `422` | Invalid classifier or permanent rejection | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
+| `5xx` / `404` (no TMF body) / Network error | Aggregator error / unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+A pre-flight failure where the target Secret is owned by a different resource yields reason `SecretConflict` without contacting the aggregator. See [DatabaseSecretClaim → How It Works](#how-databasesecretclaim-works) for the content-aware Secret update and [Rotation Polling](#rotation-polling) for how rotations trigger a re-fetch.
+
+### MicroserviceBalancingRule Endpoint
+
+**`PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices`**
+
+The `{namespace}` segment is the CR's `metadata.namespace`. The reconciler sends the full desired rule set (`type`, `rules[].label`, `microservices`). On item removal it first applies an empty rule set for the dropped `type + microservices` entries (cleanup), then re-applies the desired list.
+
+**Possible responses and operator behavior:**
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `200 OK` / `201 Created` | Rules applied | `Succeeded` — `Ready=True`, reason `BalancingRuleApplied` |
+| `400` / `403` / `409` / `410` / `422` | Invalid or rejected rule set | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
+| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
+| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+### NamespaceBalancingRule Endpoints
+
+**`PUT` / `DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}`**
+
+The `{namespace}` segment is the CR's `metadata.namespace`. Each entry in `spec.rules` is applied by name with a `PUT`. Entries removed from the spec — and all entries on CR deletion — are removed with the corresponding `DELETE`. `status.appliedRules` records what the operator last applied so it knows what to delete.
+
+**Possible responses and operator behavior:**
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `200 OK` / `201 Created` (`PUT`) | Rule applied | `Succeeded` — `Ready=True`, reason `BalancingRuleApplied` |
+| `200` / `204` / `404` (`DELETE`) | Rule removed (or already absent) | Cleanup succeeds; reconcile continues |
+| `400` / `403` / `409` / `410` / `422` | Invalid or rejected rule | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
+| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
+| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+### PermanentBalancingRule Endpoints
+
+**`PUT` / `DELETE /api/v3/dbaas/balancing/rules/permanent`**
+
+Cluster-scoped (no `{namespace}` segment). The reconciler verifies that every target namespace is owned (via `NamespaceBinding`) before sending the full desired list (`dbType`, `physicalDatabaseId`, `namespaces`) with a `PUT`. Removed entries — and all entries on CR deletion — are removed with the `DELETE` variant.
+
+**Possible responses and operator behavior:**
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `200 OK` / `201 Created` (`PUT`) | Rules applied | `Succeeded` — `Ready=True`, reason `BalancingRuleApplied` |
+| `200` / `204` (`DELETE`) | Rules removed | Cleanup succeeds; reconcile continues |
+| `400` / `403` / `409` / `410` / `422` | Invalid or rejected rule set | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
+| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
+| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+> If a target namespace is not yet owned, the controller does **not** call the aggregator: it sets `WaitingForDependency` with reason `WaitingForNamespaceBinding` and requeues. See [Balancing Rule Lifecycle and Cleanup](#balancing-rule-lifecycle-and-cleanup).
+
+### Rotation Poller Changed-Databases Feed
+
+**`GET /api/v3/dbaas/databases/changed?sinceTs={iso}&sinceId={uuid}&limit={n}`**
+
+A leader-only background loop (the **rotation poller**) pulls this **cluster-scoped** feed every `DBAAS_ROTATION_POLL_INTERVAL` (default `30s`); it requires the `CLUSTER_OPERATOR` role. The first (since-less) call returns only the feed's high-water mark to seed the keyset cursor `(lastRotatedAt, id)`; subsequent calls return databases whose credentials changed strictly after the cursor. For each returned database the poller stamps the `dbaas.netcracker.com/rotation-trigger` annotation on the matching `DatabaseSecretClaim` CR(s), which then re-fetch via the connection-lookup endpoint. This feed drives **no CR phase directly** — it is infrastructure, so failures are logged and retried on the next tick.
+
+**Possible responses and poller behavior:**
+
+| HTTP Code | Situation | Poller outcome |
+|-----------|-----------|-----------------|
+| `200 OK` | Changes (or the high-water mark) returned | Affected `DatabaseSecretClaim` CRs are woken; the cursor advances by the last returned item |
+| `401` / `5xx` / Network error | Auth/aggregator error | Logged; the cursor is **not** advanced and the poll is retried on the next tick |
+
+See [DatabaseSecretClaim → Rotation Polling](#rotation-polling) for the full cursor and role-resolution discussion.
 
 ---
 
