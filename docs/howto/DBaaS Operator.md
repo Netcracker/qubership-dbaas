@@ -7,7 +7,7 @@
 - [API Endpoints](#api-endpoints)
   - [ExternalDatabase Registration Endpoint](#externaldatabase-registration-endpoint)
   - [DatabaseAccessPolicy Apply Endpoint](#databaseaccesspolicy-apply-endpoint)
-- [Authentication: Projected Service Account Token](#authentication-projected-service-account-token)
+- [Authentication: Basic Auth or M2M Token](#authentication-basic-auth-or-m2m-token)
 - [RBAC and Required Permissions](#rbac-and-required-permissions)
   - [Default Installation](#default-installation)
   - [Restricted Environment](#restricted-environment)
@@ -105,7 +105,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 - Workload CRs in namespaces without a matching `NamespaceBinding` are silently skipped.
 - Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time.
 - The operator watches referenced Secrets and automatically reconciles affected `ExternalDatabase` CRs when their credentials rotate — no manual spec change required.
-- Authentication to dbaas-aggregator uses a projected service account token (rotated automatically by Kubernetes).
+- Authentication to dbaas-aggregator is dual-mode (`KUBERNETES_M2M_ENABLED`): HTTP Basic Auth by default, or a projected service-account token (M2M) when enabled — see [Authentication](#authentication-basic-auth-or-m2m-token).
 - Resource-identity fields on all workload CRs are immutable after creation (enforced by CRD CEL rules) — to retarget a CR at a different database, microservice, or operator instance, delete and recreate it. See the per-resource sections for the exact set of immutable fields.
 
 ---
@@ -163,29 +163,29 @@ The operator posts a declarative payload with `subKind: DbPolicy`. The `microser
 
 ---
 
-## Authentication: Projected Service Account Token
+## Authentication: Basic Auth or M2M Token
 
-The operator authenticates to dbaas-aggregator using a **Kubernetes projected service account token** with `audience=dbaas`.
+The operator authenticates to dbaas-aggregator in one of two mutually exclusive modes, selected by the `KUBERNETES_M2M_ENABLED` environment variable. **The operator's setting must match the aggregator's `KUBERNETES_M2M_ENABLED`** — when the aggregator has M2M disabled it rejects Bearer tokens outright (`401`), so an operator configured for M2M against a non-M2M aggregator fails every call.
 
-```
-Per-request authentication flow:
+| `KUBERNETES_M2M_ENABLED` | Mode | Credential sent |
+|---|---|---|
+| `false` (**default**) | HTTP **Basic Auth** | `Authorization: Basic <base64(username:password)>` |
+| `true` | **M2M** Bearer token | `Authorization: Bearer <projected SA token, audience=dbaas>` |
 
-  Reconcile loop
-       │
-       ▼
-  Read /var/run/secrets/tokens/dbaas/token   ← Kubernetes rotates this automatically
-       │
-       ▼
-  Authorization: Bearer <token>  →  dbaas-aggregator
-```
+### Basic Auth (default)
 
-**How it works:**
+- The Helm chart creates a `dbaas-operator-aggregator-credentials` Secret from the `DBAAS_OPERATOR_CREDENTIALS_USERNAME` / `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` values and mounts it at `/etc/dbaas/security` (keys `username`, `password`).
+- At startup the operator loads these credentials; if the files are absent it logs a fatal error and exits — the credentials are **required** in Basic Auth mode.
+- A filesystem watcher reloads the credentials in memory whenever the mounted Secret changes, so a password rotation is applied **without a pod restart** (the value is swapped atomically; there is no other caching).
+- **Aggregator side:** the same user must exist in the aggregator's `users.json` (rendered from `policy.json`) with the `DB_CLIENT` and `CLUSTER_OPERATOR` roles. Provision it with the **identical** username/password via the aggregator chart's own `DBAAS_OPERATOR_CREDENTIALS_*` values.
 
-- The token is mounted into the operator pod via a `projected` volume with `audience: dbaas` and `expirationSeconds: 600`.
-- Kubernetes rotates the token automatically before it expires (roughly every 10 minutes for a 600-second lifetime).
-- The token is read from disk on **every** outbound HTTP request — there is no client-side caching. Token rotation is therefore fully transparent with no pod restart required.
+### M2M token (`KUBERNETES_M2M_ENABLED=true`)
 
-**Volume configuration (from Deployment):**
+- A projected service-account token (`audience=dbaas`, `expirationSeconds=600`) is mounted at `/var/run/secrets/tokens/dbaas/token`.
+- Kubernetes rotates the token automatically before it expires; the operator reads it from disk on **every** outbound request (no client-side caching), so rotation is fully transparent with no pod restart.
+- **Aggregator side:** the aggregator must accept tokens with `audience=dbaas` and validate them against the Kubernetes token review API, and the operator's service account must map to the `CLUSTER_OPERATOR` (and `DB_CLIENT`) roles in the aggregator's service-account-roles configuration.
+
+Volume configuration (M2M mode, from the Deployment):
 
 ```yaml
 volumes:
@@ -204,9 +204,7 @@ containers:
         readOnly: true
 ```
 
-**Requirement on the dbaas-aggregator side:** the aggregator must be configured to accept tokens with `audience=dbaas` and validate them against the Kubernetes token review API.
-
-> **No inbound endpoint** — the operator does not expose any authenticated HTTP endpoint; all dbaas-aggregator traffic is **outbound** (see [API Endpoints](#api-endpoints)). Credential rotations are picked up by **polling** the aggregator, not pushed to the operator — see [Rotation Polling](#rotation-polling). The projected token shown above is used only in M2M mode (`KUBERNETES_M2M_ENABLED=true`); in the default Basic Auth mode the operator authenticates with the `dbaas-operator` user instead.
+> **No inbound endpoint** — the operator does not expose any authenticated HTTP endpoint; all dbaas-aggregator traffic is **outbound** (see [API Endpoints](#api-endpoints)). Credential rotations are picked up by **polling** the aggregator, not pushed to the operator — see [Rotation Polling](#rotation-polling).
 
 ---
 
@@ -299,8 +297,8 @@ rules:
     verbs: ["update"]
 
   # Balancing rules: the controllers read and watch the singleton CRs.
-  # Microservice and permanent rules use finalizers for aggregator-side cleanup.
-  # Namespace rules do not use a finalizer until the aggregator exposes a delete API.
+  # All three balancing-rule kinds use a finalizer for aggregator-side cleanup, so each
+  # needs patch on the resource and update on its /finalizers subresource.
   - apiGroups: ["dbaas.netcracker.com"]
     resources: ["microservicebalancingrules"]
     verbs: ["get", "list", "watch", "patch"]
@@ -315,7 +313,11 @@ rules:
 
   - apiGroups: ["dbaas.netcracker.com"]
     resources: ["namespacebalancingrules"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "patch"]
+
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["namespacebalancingrules/finalizers"]
+    verbs: ["update"]
 
   - apiGroups: ["dbaas.netcracker.com"]
     resources: ["namespacebalancingrules/status"]
@@ -423,7 +425,8 @@ subjects:
 | `dbaas.netcracker.com` | `microservicebalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton microservice balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
 | `dbaas.netcracker.com` | `microservicebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `microservicebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
-| `dbaas.netcracker.com` | `namespacebalancingrules` | `get`, `list`, `watch` | Watch and read singleton namespace balancing rule CRs |
+| `dbaas.netcracker.com` | `namespacebalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton namespace balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
+| `dbaas.netcracker.com` | `namespacebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `namespacebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 | `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton permanent balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
 | `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
@@ -490,7 +493,7 @@ ExternalDatabase / DatabaseAccessPolicy / InternalDatabase reconcile triggered
          └── Found, operatorNamespace = CLOUD_NAMESPACE (Mine) ──▶ Proceed with reconcile
 ```
 
-When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase`, `DatabaseAccessPolicy`, and `InternalDatabase` objects are reconciled immediately without requiring a spec change.
+When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, and the three balancing-rule CRs (`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`) are reconciled immediately without requiring a spec change.
 
 | Cache state | Meaning | Operator action |
 |-------------|---------|-----------------|
@@ -511,7 +514,7 @@ This finalizer prevents the `NamespaceBinding` from being deleted while workload
 
 | Situation | Result |
 |-----------|--------|
-| Namespace still contains `ExternalDatabase`, `DatabaseAccessPolicy`, or `InternalDatabase` resources | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
+| Namespace still contains any operator-managed workload — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, or a balancing-rule CR | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
 | No blocking workload resources remain | Finalizer is removed; Kubernetes completes the deletion |
 
 #### NamespaceBinding Usage Examples
@@ -539,7 +542,7 @@ kubectl get namespacebinding binding -n my-namespace -o jsonpath='{.metadata.fin
 # ["platform.dbaas.netcracker.com/binding-protection"]
 ```
 
-If the finalizer is present, the operator owns the namespace and will reconcile workload resources (`ExternalDatabase`, `DatabaseAccessPolicy`) within it.
+If the finalizer is present, the operator owns the namespace and will reconcile all `dbaas.netcracker.com` workload resources within it.
 
 This is intentional. `NamespaceBinding` is a declaration of ownership, not a job or pipeline — its semantics are binary: either the operator has claimed the namespace or it has not. A `status` field would add complexity without real benefit, and stale status values would be misleading in edge cases (e.g., operator restart). The finalizer is sufficient and follows the established Kubernetes practice for simple ownership resources.
 
@@ -895,9 +898,9 @@ kubectl get dbedb my-postgres-external -n my-namespace -o jsonpath='{.status.las
 
 `DatabaseAccessPolicy` declares the database role assignments for microservices in a namespace. The operator forwards this declaration to dbaas-aggregator, which applies the role grants when provisioning or connecting databases for those microservices.
 
-Short name: `dbdp`
+Short name: `dbdap`
 
-`kubectl get dbdp` columns: `PHASE`, `MICROSERVICENAME`, `AGE`
+`kubectl get dbdap` columns: `PHASE`, `MICROSERVICENAME`, `AGE`
 
 #### DatabaseAccessPolicy Resource Fields
 
@@ -984,7 +987,7 @@ CR created / spec changed
 
 #### DatabaseAccessPolicy Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbdp`.
+**`status.phase`** — human-readable summary for `kubectl get dbdap`.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1073,21 +1076,21 @@ spec:
 **Check status:**
 
 ```bash
-kubectl get dbdp -n my-namespace
+kubectl get dbdap -n my-namespace
 # NAME        PHASE       MICROSERVICENAME   AGE
 # my-policy   Succeeded   my-service         1m
 
-kubectl describe dbdp my-policy -n my-namespace
+kubectl describe dbdap my-policy -n my-namespace
 ```
 
 **Troubleshoot a stuck resource:**
 
 ```bash
 # Check conditions
-kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+kubectl get dbdap my-policy -n my-namespace -o jsonpath='{.status.conditions}' | jq .
 
 # Use lastRequestId to correlate with aggregator logs
-kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
+kubectl get dbdap my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---
@@ -1098,9 +1101,9 @@ kubectl get dbdp my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}'
 
 Provisioning is **asynchronous**: the aggregator returns `202 Accepted` with a `trackingId`, and the operator polls the operation status until it reaches a terminal state.
 
-Short name: `dbdd`
+Short name: `dbidb`
 
-`kubectl get dbdd` columns: `PHASE`, `MICROSERVICENAME`, `TYPE`, `AGE`
+`kubectl get dbidb` columns: `PHASE`, `MICROSERVICENAME`, `TYPE`, `AGE`
 
 #### InternalDatabase Resource Fields
 
@@ -1225,7 +1228,7 @@ CR created / spec changed
 
 #### InternalDatabase Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbdd`.
+**`status.phase`** — human-readable summary for `kubectl get dbidb`.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1242,7 +1245,7 @@ CR created / spec changed
 - Cleared when polling completes (`COMPLETED`, `FAILED`) or the operation must be re-submitted (`TERMINATED`, `404 Not Found`).
 - While `trackingID` is non-empty, every reconcile goes through the POLL branch (no resubmission).
 
-**`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingID` was set. If a newer `generation` is observed during a reconcile, the stale `trackingID` is discarded and the operation is re-submitted with the new spec.
+**`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingID` was set. If a newer `generation` is observed during a reconcile, the stale `trackingID` is discarded and the operation is re-submitted with the new spec. It is reset to `0` together with `trackingID` whenever the operation reaches a terminal state (`COMPLETED`/`FAILED`) or the tracking is cleared (`TERMINATED`/`404`); `0` therefore means "no pending async operation".
 
 **`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as `ExternalDatabase`.
 
@@ -1345,7 +1348,7 @@ spec:
 **Check status:**
 
 ```bash
-kubectl get dbdd -n my-namespace
+kubectl get dbidb -n my-namespace
 # NAME              PHASE                  MICROSERVICENAME   TYPE         AGE
 # my-app-db         Succeeded              payments           postgresql   2m
 # my-app-db-clone   WaitingForDependency   payments           postgresql   10s
@@ -1355,20 +1358,20 @@ kubectl get dbdd -n my-namespace
 
 ```bash
 # The trackingID field is populated while async provisioning is in progress
-kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
+kubectl get dbidb my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
 
 # Full status (phase, conditions, trackingID, lastRequestId)
-kubectl get dbdd my-app-db -n my-namespace -o yaml
+kubectl get dbidb my-app-db -n my-namespace -o yaml
 ```
 
 **Troubleshoot a stuck resource:**
 
 ```bash
 # Check conditions for the human-readable error message
-kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.conditions}' | jq .
+kubectl get dbidb my-app-db -n my-namespace -o jsonpath='{.status.conditions}' | jq .
 
 # Use lastRequestId to correlate with aggregator logs
-kubectl get dbdd my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
+kubectl get dbidb my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}'
 ```
 
 ---
