@@ -446,7 +446,11 @@ var _ = Describe("BalancingRule Controller", func() {
 			Expect(fixture.calls[1].method).To(Equal(http.MethodPut))
 		})
 
-		It("waits for dependency when a target namespace is not owned yet", func() {
+		It("applies regardless of target namespace ownership (decoupled from NamespaceBinding)", func() {
+			// "payments" has no NamespaceBinding owned by this operator. Permanent
+			// rules are operator-namespace-only admin resources decoupled from
+			// NamespaceBinding, so the rule still applies — the aggregator is the
+			// authority on target namespaces.
 			rule := &dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       dbaasv1.PermanentBalancingRuleName,
@@ -464,15 +468,10 @@ var _ = Describe("BalancingRule Controller", func() {
 			stored, result, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).NotTo(BeZero())
-			Expect(fixture.calls).To(BeEmpty())
-			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
-			ready := findCondition(stored.Status.Conditions, conditionTypeReady)
-			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonWaitingForNamespaceBinding))
-			stalled := findCondition(stored.Status.Conditions, conditionTypeStalled)
-			Expect(stalled).NotTo(BeNil())
-			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(fixture.calls).NotTo(BeEmpty())
+			Expect(fixture.calls[len(fixture.calls)-1].method).To(Equal(http.MethodPut))
 		})
 
 		It("deletes applied targets and removes the finalizer when deleted", func() {

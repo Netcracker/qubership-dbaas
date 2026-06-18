@@ -68,7 +68,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 | `InternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Declares a logical database that dbaas-aggregator should provision and manage |
 | `MicroserviceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-microservice physical database placement rules in a business namespace |
 | `NamespaceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-namespace physical database placement rules in a business namespace |
-| `PermanentBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares permanent placement rules from the operator namespace, targeting owned business namespaces |
+| `PermanentBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares permanent placement rules. **Operator-namespace-only** (informer scoped to `CLOUD_NAMESPACE`); decoupled from `NamespaceBinding` — targets any business namespaces |
 
 ---
 
@@ -101,7 +101,8 @@ Workload CRs by namespace:
                         DatabaseAccessPolicy, DatabaseSecretClaim,
                         MicroserviceBalancingRule, NamespaceBalancingRule,
                         Secret (credentials read + materialized by DatabaseSecretClaim)
-  operator namespace  ─ PermanentBalancingRule (cluster-wide singleton)
+  operator namespace  ─ PermanentBalancingRule (singleton; informer scoped here,
+                        so it is honored ONLY in the operator namespace)
 ```
 
 **Key design decisions:**
@@ -265,7 +266,7 @@ The `{namespace}` segment is the CR's `metadata.namespace`. Each entry in `spec.
 
 **`PUT` / `DELETE /api/v3/dbaas/balancing/rules/permanent`**
 
-Cluster-scoped (no `{namespace}` segment). The reconciler verifies that every target namespace is owned (via `NamespaceBinding`) before sending the full desired list (`dbType`, `physicalDatabaseId`, `namespaces`) with a `PUT`. Removed entries — and all entries on CR deletion — are removed with the `DELETE` variant.
+Cluster-scoped aggregator endpoint (no `{namespace}` segment). The CR itself is **operator-namespace-only** and **decoupled from `NamespaceBinding`**: the reconciler sends the full desired list (`dbType`, `physicalDatabaseId`, `namespaces`) with a `PUT` directly — it does **not** require the target namespaces to be owned (the aggregator is the authority on targets). Removed entries — and all entries on CR deletion — are removed with the `DELETE` variant.
 
 **Possible responses and operator behavior:**
 
@@ -278,7 +279,7 @@ Cluster-scoped (no `{namespace}` segment). The reconciler verifies that every ta
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
 | Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
-> If a target namespace is not yet owned, the controller does **not** call the aggregator: it sets `WaitingForDependency` with reason `WaitingForNamespaceBinding` and requeues. See [Balancing Rule Lifecycle and Cleanup](#balancing-rule-lifecycle-and-cleanup).
+> A `PermanentBalancingRule` created outside the operator namespace is **silently ignored** — the operator's informer is scoped to `CLOUD_NAMESPACE`, so it never reconciles such a CR. Deploy it only in the operator namespace. See [Balancing Rule Lifecycle and Cleanup](#balancing-rule-lifecycle-and-cleanup).
 
 ### Rotation Poller Changed-Databases Feed
 
@@ -366,9 +367,9 @@ When `restrictedEnvironment: true`, only the `ServiceAccount`, `Role`, and `Role
 
 #### Why cluster-scoped RBAC is needed
 
-The operator runs cluster-wide and watches resources in all namespaces. Namespace-scoped `Role`/`RoleBinding` cannot grant access to resources across multiple namespaces, so a `ClusterRole` is required for dbaas CRs and Secrets.
+The operator runs cluster-wide and watches resources in all namespaces. Namespace-scoped `Role`/`RoleBinding` cannot grant access to resources across multiple namespaces, so a `ClusterRole` is required for most dbaas CRs and Secrets.
 
-Leader election leases and Kubernetes Events, however, are always created in the operator's own namespace — a namespace-scoped `Role` is sufficient and more secure.
+Three things are scoped to the operator's own namespace and so use a namespace-scoped `Role` (sufficient and more secure): leader-election leases, Kubernetes Events, and **`permanentbalancingrules`** — the latter because it is an operator-namespace-only resource whose informer is scoped to `CLOUD_NAMESPACE`, so the operator never watches it cluster-wide.
 
 #### Required ClusterRole
 
@@ -457,17 +458,9 @@ rules:
     resources: ["namespacebalancingrules/status"]
     verbs: ["get", "update", "patch"]
 
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["permanentbalancingrules"]
-    verbs: ["get", "list", "watch", "patch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["permanentbalancingrules/finalizers"]
-    verbs: ["update"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["permanentbalancingrules/status"]
-    verbs: ["get", "update", "patch"]
+  # NOTE: permanentbalancingrules are NOT here. They are an operator-namespace-only
+  # resource (the informer is scoped to the operator namespace), so their RBAC is
+  # namespaced and lives in the Role below — no cluster-wide access.
 
   # Read Secrets to resolve credentials referenced by ExternalDatabase CRs.
   # get is required to read Secret data during reconcile.
@@ -520,6 +513,21 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+
+  # permanentbalancingrules are an operator-namespace-only resource: the operator's
+  # informer is scoped to the operator namespace, so it watches/reconciles them here
+  # only — namespaced RBAC, no ClusterRole.
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["permanentbalancingrules"]
+    verbs: ["get", "list", "watch", "patch"]
+
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["permanentbalancingrules/finalizers"]
+    verbs: ["update"]
+
+  - apiGroups: ["dbaas.netcracker.com"]
+    resources: ["permanentbalancingrules/status"]
+    verbs: ["get", "update", "patch"]
 ```
 
 #### Required RoleBinding
@@ -562,9 +570,6 @@ subjects:
 | `dbaas.netcracker.com` | `namespacebalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton namespace balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
 | `dbaas.netcracker.com` | `namespacebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `namespacebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
-| `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton permanent balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
-| `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 | `""` (core) | `secrets` | `get`, `list`, `watch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). Secret bodies are not cached. |
 | `""` (core) | `secrets` | `get`, `list`, `watch`, `create`, `update`, `patch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). `create`/`update`/`patch`: materialize the Secret managed by a `DatabaseSecretClaim` CR. Secret bodies are not cached. |
 
@@ -574,6 +579,9 @@ subjects:
 |-----------|----------|-------|-----------------|
 | `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Leader election lock (required when `LEADER_ELECT=true`) |
 | `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events on reconcile outcomes (required when `K8S_EVENTS_ENABLED=true`) |
+| `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read the singleton permanent balancing rule CR **in the operator namespace only** (informer scoped there); `patch` adds/removes the cleanup finalizer |
+| `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
+| `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 
 > **Note:** If you set `K8S_EVENTS_ENABLED=false` (the default), you may omit the `events` rule from the `Role`. If you set `LEADER_ELECT=false`, you may omit the `leases` rule, but this is only safe when running a single replica.
 
@@ -610,7 +618,7 @@ spec:
 
 #### How NamespaceBinding Works
 
-The operator runs cluster-wide and watches all namespaces. Before reconciling any workload resource — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, and the three balancing-rule CRs (`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`) — it checks whether the resource's namespace is owned by this operator instance.
+The operator runs cluster-wide and watches all namespaces. Before reconciling a workload resource — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, or `NamespaceBalancingRule` — it checks whether the resource's namespace is owned by this operator instance. (`PermanentBalancingRule` is **exempt**: it is operator-namespace-only and decoupled from `NamespaceBinding` — see its [endpoint section](#permanentbalancingrule-endpoints).)
 
 Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing `spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable. The resolver returns one of four states (the same states tabulated below):
 
@@ -630,7 +638,7 @@ Any of the 7 workload CRs above triggers a reconcile
          └── Mine    — operatorNamespace = CLOUD_NAMESPACE ───────────▶ Proceed with reconcile
 ```
 
-When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all workload CRs in that namespace — so existing `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, and the three balancing-rule CRs (`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`) are reconciled immediately without requiring a spec change.
+When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all binding-gated workload CRs in that namespace — so existing `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, and `NamespaceBalancingRule` are reconciled immediately without requiring a spec change. (`PermanentBalancingRule` has no binding watch — it is decoupled.)
 
 | Cache state | Meaning | Operator action |
 |-------------|---------|-----------------|
@@ -1515,13 +1523,13 @@ kubectl get dbidb my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}
 
 ### Balancing Rule CRDs
 
-The operator exposes three balancing rule CRDs. Each CR stores a **list** of rule entries, and each kind is intentionally a singleton within its allowed scope. The operator validates the Kubernetes resource, checks namespace ownership, and reconciles the desired rule list into dbaas-aggregator. dbaas-aggregator remains the runtime source of truth when a logical database is created and a physical database must be selected.
+The operator exposes three balancing rule CRDs. Each CR stores a **list** of rule entries, and each kind is intentionally a singleton within its allowed scope. The operator validates the Kubernetes resource and reconciles the desired rule list into dbaas-aggregator. The two business-namespace CRDs are gated on `NamespaceBinding` ownership; `PermanentBalancingRule` is not (see below). dbaas-aggregator remains the runtime source of truth when a logical database is created and a physical database must be selected.
 
 | Kind | Fixed `metadata.name` | Where the CR lives | What it controls |
 |------|------------------------|--------------------|------------------|
-| `MicroserviceBalancingRule` | `microservice-balancing-rules` | Business namespace | Per-microservice placement rules for that namespace |
-| `NamespaceBalancingRule` | `namespace-balancing-rules` | Business namespace | Per-namespace placement rules for that namespace |
-| `PermanentBalancingRule` | `permanent-balancing-rules` | Operator namespace (`CLOUD_NAMESPACE`) | Permanent placement rules that target owned business namespaces |
+| `MicroserviceBalancingRule` | `microservice-balancing-rules` | Business namespace (ownership-gated) | Per-microservice placement rules for that namespace |
+| `NamespaceBalancingRule` | `namespace-balancing-rules` | Business namespace (ownership-gated) | Per-namespace placement rules for that namespace |
+| `PermanentBalancingRule` | `permanent-balancing-rules` | **Operator namespace only** (`CLOUD_NAMESPACE`); informer scoped there, decoupled from `NamespaceBinding` | Permanent placement rules targeting any business namespaces |
 
 Any other `metadata.name` is rejected by the controller as `InvalidConfiguration` / `InvalidSpec`. For the two business-namespace CRDs, use one CR per business namespace and edit `spec.rules` to add, update, or remove entries. For permanent rules, use one CR in the operator namespace.
 
@@ -1603,11 +1611,11 @@ spec:
 | Field | Required | Description |
 |-------|:--------:|-------------|
 | `metadata.name` | Yes | Must be `permanent-balancing-rules`. |
-| `metadata.namespace` | Yes | Must be the operator namespace (`CLOUD_NAMESPACE`), not a business namespace. |
+| `metadata.namespace` | Yes | Must be the operator namespace (`CLOUD_NAMESPACE`), not a business namespace. The controller rejects any other namespace as `InvalidConfiguration`/`InvalidSpec`, and the informer only watches the operator namespace, so a CR created elsewhere is never reconciled. |
 | `spec.rules` | Yes | Non-empty list of permanent balancing entries. |
 | `spec.rules[].dbType` | Yes | Database type. |
 | `spec.rules[].physicalDatabaseId` | Yes | Target physical database identifier. |
-| `spec.rules[].namespaces` | Yes | Non-empty list of target business namespaces. Every target namespace must be owned by this operator. |
+| `spec.rules[].namespaces` | Yes | Non-empty list of target business namespaces. Target namespaces do **not** need to be owned by this operator — `PermanentBalancingRule` is decoupled from `NamespaceBinding`; the aggregator is the authority on targets. |
 
 Within one CR, the same `dbType + namespace` pair cannot appear more than once.
 
@@ -1620,8 +1628,8 @@ Common flow:
 1. Read the singleton CR.
 2. Check ownership:
    - Microservice and namespace rules require a `NamespaceBinding` in the CR namespace.
-   - Permanent rules require the CR to be in the operator namespace, and every target namespace must be owned by this operator.
-3. Validate the fixed name and `spec.rules`.
+   - Permanent rules skip the ownership check entirely: their informer is scoped to the operator namespace (so only operator-namespace CRs are ever reconciled), and they place no ownership requirement on their target namespaces.
+3. Validate the fixed name and `spec.rules` (for permanent rules, also that `metadata.namespace` is the operator namespace).
 4. Apply the desired rule data to dbaas-aggregator.
 5. Update `status.phase`, `status.conditions`, `status.lastRequestId`, and `status.appliedRules`.
 6. Emit Kubernetes Events when enabled.
@@ -1642,7 +1650,7 @@ Aggregator calls by kind:
 |------|------------------|------------------------------------|----------------|
 | `MicroserviceBalancingRule` | Adds a finalizer, applies the full desired list, stores applied `type + microservices`. | Sends cleanup for removed applied `type + microservices` by applying an empty rule set for those entries, then applies the new desired list. | Finalizer cleans up all applied microservice entries before Kubernetes removes the CR. |
 | `NamespaceBalancingRule` | Adds a finalizer, applies each desired namespace rule by name, and stores applied entries. | Calls `DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` for removed applied rule names, then applies the new desired list. | Finalizer deletes all applied namespace rules before Kubernetes removes the CR. |
-| `PermanentBalancingRule` | Adds a finalizer, verifies target namespace ownership, applies the full desired list, stores applied `dbType + namespaces`. | Sends cleanup through `DELETE /api/v3/dbaas/balancing/rules/permanent` for removed applied entries, then applies the new desired list. | Finalizer deletes all applied permanent entries before Kubernetes removes the CR. |
+| `PermanentBalancingRule` | Adds a finalizer, applies the full desired list (no target-ownership check), stores applied `dbType + namespaces`. | Sends cleanup through `DELETE /api/v3/dbaas/balancing/rules/permanent` for removed applied entries, then applies the new desired list. | Finalizer deletes all applied permanent entries before Kubernetes removes the CR. |
 
 For blue-green cleanup, keep the old operator running until any finalizers on microservice, namespace, and permanent rule CRs have completed.
 
@@ -1654,7 +1662,6 @@ For blue-green cleanup, keep the old operator running until any finalizers on mi
 |-------|---------|
 | `Unknown` | CR just created, not yet processed. |
 | `Processing` | Controller is actively reconciling. |
-| `WaitingForDependency` | Permanent rule targets a namespace that is not owned yet; the controller requeues and waits for `NamespaceBinding`. |
 | `Succeeded` | Rules were applied successfully. |
 | `BackingOff` | Transient aggregator/auth/network error; controller retries with exponential backoff. |
 | `InvalidConfiguration` | Permanent spec or cleanup limitation; requires user action before success. |
@@ -1669,7 +1676,6 @@ For blue-green cleanup, keep the old operator running until any finalizers on mi
 |--------|---------|
 | `BalancingRuleApplied` | Desired balancing rules were successfully applied to dbaas-aggregator. |
 | `InvalidSpec` | Controller-side validation failed before calling aggregator. |
-| `WaitingForNamespaceBinding` | The rule is waiting for an owned `NamespaceBinding`. |
 | `AggregatorRejected` | Aggregator returned a permanent rejection such as `400`, `403`, `409`, `410`, or `422`. |
 | `Unauthorized` | Aggregator returned `401`; usually token/auth configuration. |
 | `AggregatorError` | Aggregator returned `5xx` or the request failed due to network/I/O. |
@@ -1729,7 +1735,7 @@ spec:
       order: 20
 ```
 
-**Permanent balancing singleton in the operator namespace:**
+**Permanent balancing singleton in the operator namespace** (no `NamespaceBinding` needed — neither for its own namespace nor for the target namespaces; it must live in the operator namespace, here `dbaas-system`):
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1

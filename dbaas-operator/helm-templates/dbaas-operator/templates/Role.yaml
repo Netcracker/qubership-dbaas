@@ -14,6 +14,19 @@ rules:
   - apiGroups: [ coordination.k8s.io ]
     resources: [ leases ]
     verbs: [ get, list, watch, create, update, patch, delete ]
+  # permanentbalancingrules are an operator-namespace-only resource: the operator's
+  # informer is scoped to this namespace, so it watches/reconciles them here only —
+  # namespaced RBAC, no ClusterRole. patch is for the finalizer; /status and
+  # /finalizers are the subresource checks.
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ permanentbalancingrules ]
+    verbs: [ get, list, watch, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ permanentbalancingrules/status ]
+    verbs: [ get, update, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ permanentbalancingrules/finalizers ]
+    verbs: [ update ]
   {{- if .Values.K8S_EVENTS_ENABLED }}
   # Event recording — events are written to the operator's own namespace
   - apiGroups: [ "" ]

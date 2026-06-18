@@ -23,23 +23,22 @@ rules:
       - databaseaccesspolicies/status
       - externaldatabases/status
     verbs: [get, update, patch]
+  # permanentbalancingrules are operator-namespace-only (informer scoped to the
+  # operator namespace) — their RBAC is namespaced, in the Role below, not here.
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - microservicebalancingrules
       - namespacebalancingrules
-      - permanentbalancingrules
     verbs: [get, list, watch, patch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - microservicebalancingrules/status
       - namespacebalancingrules/status
-      - permanentbalancingrules/status
     verbs: [get, update, patch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - microservicebalancingrules/finalizers
       - namespacebalancingrules/finalizers
-      - permanentbalancingrules/finalizers
     verbs: [update]
   # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
   # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
@@ -85,6 +84,16 @@ rules:
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]
+  # permanentbalancingrules: operator-namespace-only, informer scoped here.
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [permanentbalancingrules]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [permanentbalancingrules/status]
+    verbs: [get, update, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [permanentbalancingrules/finalizers]
+    verbs: [update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

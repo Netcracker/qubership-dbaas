@@ -172,10 +172,9 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 			&dbaasv1.NamespaceBalancingRule{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
-		Watches(
-			&dbaasv1.PermanentBalancingRule{},
-			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
-		).
+		// PermanentBalancingRule is intentionally NOT watched here: it is
+		// operator-namespace-only and decoupled from NamespaceBinding, so it never
+		// blocks a (tenant) NamespaceBinding's deletion and needs no re-enqueue.
 		Watches(
 			&dbaasv1.DatabaseSecretClaim{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),

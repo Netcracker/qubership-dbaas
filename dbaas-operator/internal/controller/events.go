@@ -93,10 +93,6 @@ const (
 	// (ExternalDatabase, InternalDatabase, or DatabaseAccessPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
 
-	// EventReasonWaitingForNamespaceBinding is used while a resource waits for
-	// its namespace ownership dependency to become available.
-	EventReasonWaitingForNamespaceBinding = "WaitingForNamespaceBinding"
-
 	// EventReasonSecretCreated is emitted when a DatabaseSecretClaim successfully
 	// creates the target Kubernetes Secret with connection properties for the
 	// first time. Subsequent content changes (e.g. rotation) use SecretRotated.

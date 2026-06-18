@@ -37,6 +37,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -156,10 +157,26 @@ func main() {
 		leaderElectionConfig.WrapTransport = silentEventsTransport
 	}
 
+	// Scope the PermanentBalancingRule informer to the operator's own namespace.
+	// It is an operator-namespace-only resource (decoupled from NamespaceBinding),
+	// so a cluster-wide watch is neither needed nor wanted: namespace-scoping lets
+	// the operator run with only a namespaced Role for it (no ClusterRole) and
+	// means CRs created in other namespaces are simply never reconciled. All other
+	// CRs remain cluster-wide. Guarded on a non-empty CLOUD_NAMESPACE.
+	cacheOpts := cache.Options{}
+	if cloudNamespace != "" {
+		cacheOpts.ByObject = map[client.Object]cache.ByObject{
+			&dbaasv1.PermanentBalancingRule{}: {
+				Namespaces: map[string]cache.Config{cloudNamespace: {}},
+			},
+		}
+	}
+
 	mgr, err := ctrl.NewManager(baseConfig, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                httpServerOpts,
 		HealthProbeBindAddress: probeAddr,
+		Cache:                  cacheOpts,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
 		LeaderElectionConfig:   leaderElectionConfig,
@@ -228,12 +245,14 @@ func main() {
 		func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} },
 		func(l *dbaasv1.NamespaceBalancingRuleList) int { return len(l.Items) },
 	)
-	permanentRuleChecker := ownership.NewPermanentBalancingRuleChecker(mgr.GetClient(), cloudNamespace)
 	dsChecker := ownership.NewKindChecker(
 		mgr.GetClient(),
 		func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} },
 		func(l *dbaasv1.DatabaseSecretClaimList) int { return len(l.Items) },
 	)
+	// PermanentBalancingRule is intentionally excluded: it is an operator-namespace
+	// resource decoupled from NamespaceBinding, so it never blocks a (tenant)
+	// NamespaceBinding deletion.
 	blockingChecker := ownership.NewCompositeChecker(
 		edbChecker,
 		dpChecker,
@@ -241,7 +260,6 @@ func main() {
 		dsChecker,
 		microserviceRuleChecker,
 		namespaceRuleChecker,
-		permanentRuleChecker,
 	)
 	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),

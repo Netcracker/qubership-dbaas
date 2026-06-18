@@ -34,7 +34,6 @@ rules:
   - internaldatabases/status
   - microservicebalancingrules/status
   - namespacebalancingrules/status
-  - permanentbalancingrules/status
   verbs:
   - get
   - patch
@@ -46,7 +45,6 @@ rules:
   - microservicebalancingrules
   - namespacebalancingrules
   - namespacebindings
-  - permanentbalancingrules
   verbs:
   - get
   - list
@@ -58,6 +56,35 @@ rules:
   - microservicebalancingrules/finalizers
   - namespacebalancingrules/finalizers
   - namespacebindings/finalizers
+  verbs:
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: manager-role
+  namespace: system
+rules:
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - permanentbalancingrules
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
   - permanentbalancingrules/finalizers
   verbs:
+  - update
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - permanentbalancingrules/status
+  verbs:
+  - get
+  - patch
   - update

@@ -22,22 +22,24 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules,verbs=get;list;watch;patch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/finalizers,verbs=update
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/status,verbs=get;update;patch
+// permanentbalancingrules is operator-namespace-only (informer scoped to CLOUD_NAMESPACE).
+// The namespace= field makes controller-gen emit a namespaced Role (kustomize substitutes the
+// namespace) bound by the RoleBinding in config/rbac/role_binding.yaml — matching the
+// production helm Role, not a ClusterRole.
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules,verbs=get;list;watch;patch,namespace=system
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/finalizers,verbs=update,namespace=system
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/status,verbs=get;update;patch,namespace=system
 
 import (
 	"context"
 	"fmt"
 	"reflect"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -284,24 +286,15 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 
 	rule := &dbaasv1.PermanentBalancingRule{}
 	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {
-		if apierrors.IsNotFound(err) {
-			r.clearBindingTrigger(permanentRuleTriggerKey(req.Namespace, req.Name))
-		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	key := permanentRuleTriggerKey(rule.Namespace, rule.Name)
-	trigger := r.triggerForKey(key)
-
-	owned, result, err := checkOwnership(ctx, r.Ownership, rule.Namespace, rule.Name, "PermanentBalancingRule")
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if !owned {
-		r.clearBindingTrigger(key)
-		return result, nil
-	}
-	recordReconcileTrigger(controllerBR, trigger)
+	// PermanentBalancingRule is an operator-namespace-only resource and is
+	// intentionally decoupled from NamespaceBinding. The manager's informer is
+	// scoped to CLOUD_NAMESPACE, so only CRs in the operator namespace reach this
+	// reconcile; validatePermanentRule re-checks metadata.namespace defensively.
+	// Neither the CR's own namespace nor its target namespaces require a binding.
+	recordReconcileTrigger(controllerBR, "")
 
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcilePermanentDelete(ctx, rule, requestID)
@@ -328,27 +321,13 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	if msg := r.validatePermanentRule(rule); msg != "" {
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
 	}
-	if result, msg, ok, err := r.checkPermanentRuleTargetOwnership(ctx, rule); err != nil {
-		return ctrl.Result{}, err
-	} else if !ok {
-		if msg != "" {
-			return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
-		}
-		rule.Status.Phase = dbaasv1.PhaseWaitingForDependency
-		setCondition(&rule.Status.Conditions, rule.Generation,
-			conditionTypeReady, metav1.ConditionFalse, EventReasonWaitingForNamespaceBinding,
-			"waiting for all target namespaces to be owned by this dbaas-operator instance")
-		setCondition(&rule.Status.Conditions, rule.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, EventReasonWaitingForNamespaceBinding, stalledMsgTransient)
-		return result, nil
-	}
 
 	if err := r.cleanupSupersededPermanentRules(ctx, rule); err != nil {
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
 
 	aggStart := time.Now()
-	err = r.Aggregator.ApplyPermanentBalancingRules(ctx, permanentRequestsFromSpec(rule.Spec.Rules))
+	err := r.Aggregator.ApplyPermanentBalancingRules(ctx, permanentRequestsFromSpec(rule.Spec.Rules))
 	recordAggregatorCall(controllerBR, operationApplyPermanentRule, aggStart, err)
 	if err != nil {
 		log.ErrorC(ctx, "failed to apply PermanentBalancingRule to dbaas-aggregator: %v", err)
@@ -388,11 +367,12 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 		return err
 	}
 
+	// PermanentBalancingRule is operator-namespace-only and decoupled from
+	// NamespaceBinding, so it has no binding watch. Its informer is scoped to
+	// CLOUD_NAMESPACE by the manager's cache options.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.PermanentBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueuePermanentRulesForBinding)).
 		WithOptions(opts).
 		Named("permanentbalancingrule").
 		Complete(reconcile.Func(r.ReconcilePermanent))
@@ -745,36 +725,6 @@ func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.PermanentB
 	return ""
 }
 
-func (r *BalancingRuleReconciler) checkPermanentRuleTargetOwnership(
-	ctx context.Context,
-	rule *dbaasv1.PermanentBalancingRule,
-) (ctrl.Result, string, bool, error) {
-	for i, item := range rule.Spec.Rules {
-		for _, namespace := range item.Namespaces {
-			mine, err := r.Ownership.IsMyNamespace(ctx, namespace)
-			if err != nil {
-				return ctrl.Result{}, "", false, err
-			}
-			if mine {
-				continue
-			}
-			switch r.Ownership.GetState(namespace) {
-			case ownership.Unknown:
-				log.InfoC(ctx, "permanent rule %s/%s target namespace %s has no NamespaceBinding yet, will retry in %s",
-					rule.Namespace, rule.Name, namespace, ownershipPollInterval)
-				return ctrl.Result{RequeueAfter: ownershipPollInterval}, "", false, nil
-			case ownership.Unbound:
-				log.InfoC(ctx, "permanent rule %s/%s target namespace %s is unbound, will retry in %s",
-					rule.Namespace, rule.Name, namespace, ownershipUnboundRetryInterval)
-				return ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, "", false, nil
-			default:
-				return ctrl.Result{}, fmt.Sprintf("spec.rules[%d].namespaces contains namespace %q owned by another dbaas-operator instance", i, namespace), false, nil
-			}
-		}
-	}
-	return ctrl.Result{}, "", true, nil
-}
-
 func (r *BalancingRuleReconciler) enqueueMicroserviceRulesForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	list := &dbaasv1.MicroserviceBalancingRuleList{}
 	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
@@ -798,23 +748,6 @@ func (r *BalancingRuleReconciler) enqueueNamespaceRulesForBinding(ctx context.Co
 	reqs := make([]reconcile.Request, 0, len(list.Items))
 	for i := range list.Items {
 		r.stampBindingTrigger(namespaceRuleTriggerKey(list.Items[i].Namespace, list.Items[i].Name))
-		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-	}
-	return reqs
-}
-
-func (r *BalancingRuleReconciler) enqueuePermanentRulesForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.PermanentBalancingRuleList{}
-	if err := r.List(ctx, list); err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: list PermanentBalancingRules: %v", err)
-		return nil
-	}
-	reqs := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		if list.Items[i].Namespace != obj.GetNamespace() && !permanentRuleTargetsNamespace(&list.Items[i], obj.GetNamespace()) {
-			continue
-		}
-		r.stampBindingTrigger(permanentRuleTriggerKey(list.Items[i].Namespace, list.Items[i].Name))
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
@@ -858,10 +791,6 @@ func microserviceRuleTriggerKey(namespace, name string) string {
 
 func namespaceRuleTriggerKey(namespace, name string) string {
 	return "namespace/" + namespace + "/" + name
-}
-
-func permanentRuleTriggerKey(namespace, name string) string {
-	return "permanent/" + namespace + "/" + name
 }
 
 func differenceStrings(previous, current []string) []string {
@@ -991,13 +920,4 @@ func desiredPermanentByDbType(rules []dbaasv1.PermanentBalancingRuleItem) map[st
 		desired[key] = append(desired[key], rule.Namespaces...)
 	}
 	return desired
-}
-
-func permanentRuleTargetsNamespace(rule *dbaasv1.PermanentBalancingRule, namespace string) bool {
-	for _, item := range rule.Spec.Rules {
-		if slices.Contains(item.Namespaces, namespace) {
-			return true
-		}
-	}
-	return false
 }
