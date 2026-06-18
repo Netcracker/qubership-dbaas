@@ -89,8 +89,11 @@ kubectl apply -f "${REPO_ROOT}/dev/k8s/mock-aggregator.yaml"
 envsubst '${KUBERNETES_M2M_ENABLED}' < "${REPO_ROOT}/dev/k8s/operator.yaml" | kubectl apply -f -
 
 # ── 6. Test resources ─────────────────────────────────────────────────────────
-info "Applying test resources (namespace test-ns, secret)..."
+info "Applying test resources (namespace test-ns, NamespaceBinding, secret)..."
 kubectl apply -f "${REPO_ROOT}/dev/test-resources/namespace.yaml"
+# NamespaceBinding must exist before the operator will reconcile CRs in test-ns
+# (the namespace must be claimed for this operator). Applied after the namespace.
+kubectl apply -f "${REPO_ROOT}/dev/test-resources/namespacebinding.yaml"
 kubectl apply -f "${REPO_ROOT}/dev/test-resources/secret.yaml"
 
 # ── 7. Wait for rollouts ──────────────────────────────────────────────────────

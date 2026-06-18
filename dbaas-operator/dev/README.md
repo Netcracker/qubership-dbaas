@@ -15,6 +15,9 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | `NamespaceBinding/binding` | `test-ns` | Claims `test-ns` for this operator (operatorNamespace=`dbaas-system`) |
 | Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabase |
 
+`kind-up.sh` deploys all of the above. The test CRs (ExternalDatabase / DatabaseAccessPolicy /
+InternalDatabase) are applied separately — see [Test scenarios](#test-scenarios).
+
 ## Prerequisites
 
 | Tool | Version |
@@ -58,7 +61,7 @@ The script runs these steps in order:
 3. `docker build` — builds `dbaas-operator:dev` and `aggregator-mock:dev` images
 4. `kind load docker-image` — loads images into the cluster (no registry required)
 5. `kubectl apply` — deploys aggregator-mock and the operator into `dbaas-system`
-6. `kubectl apply` — creates namespace `test-ns` and secret `pg-credentials`
+6. `kubectl apply` — creates namespace `test-ns`, its `NamespaceBinding`, and secret `pg-credentials`
 7. Waits for `rollout status` on both deployments
 
 ## Test scenarios
@@ -264,8 +267,8 @@ dev/
 │   ├── main.go                 # HTTP stub for dbaas-aggregator
 │   └── Dockerfile
 ├── k8s/
-│   ├── mock-aggregator.yaml    # Namespace + Secret + ConfigMap + Deployment + Service for aggregator-mock
-│   └── operator.yaml           # ServiceAccount + RBAC + Deployment for the operator
+│   ├── mock-aggregator.yaml    # Namespace + ConfigMap + Deployment + Service for aggregator-mock
+│   └── operator.yaml           # ServiceAccount + RBAC + credentials Secret + Deployment for the operator
 └── test-resources/
     ├── namespace.yaml               # namespace test-ns
     ├── namespacebinding.yaml        # NamespaceBinding/binding — claims test-ns (operatorNamespace=dbaas-system)
