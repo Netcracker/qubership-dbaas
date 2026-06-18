@@ -8,7 +8,7 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | Resource | Namespace | Description |
 |---|---|---|
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
-| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DatabaseAccessPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`) |
+| `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DatabaseAccessPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`), `changed.json` (rotation feed), `get-by-classifier.json` (DatabaseSecretClaim connection properties by `originService`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator with RBAC — watches all namespaces cluster-wide |
 | `dbaas-operator-aggregator-credentials` Secret | `dbaas-system` | Operator's own Basic Auth credentials (`username`/`password`) read in Basic mode |
 | Namespace `test-ns` | — | Working namespace for CRs |
@@ -82,6 +82,7 @@ kubectl get namespacebinding -n test-ns       # binding   dbaas-system
 kubectl get externaldatabase -n test-ns
 kubectl get databaseaccesspolicy -n test-ns
 kubectl get internaldatabase -n test-ns
+kubectl get databasesecretclaim -n test-ns
 ```
 
 ### ExternalDatabase
@@ -191,6 +192,62 @@ correctly:
 
 ```bash
 kubectl logs -n dbaas-system deployment/dbaas-aggregator | grep -A 10 "idb-svc-custom-keys"
+```
+
+### DatabaseSecretClaim (and rotation)
+
+`DatabaseSecretClaim` exercises two mock endpoints:
+
+- `POST /api/v3/dbaas/{ns}/databases/get-by-classifier/{type}` — returns the connection
+  properties for the requested database. The mock keys the response by `originService`
+  (the CR's `app.kubernetes.io/name` label) from `get-by-classifier.json`; an unmatched
+  service gets a synthetic default property set.
+- `GET /api/v3/dbaas/databases/changed` — the rotation feed (`changed.json`). The
+  since-less **seed** call reports no history (`highWaterMark=null`), so the operator's
+  rotation poller seeds at epoch and then **replays** the configured changed entries once,
+  simulating rotations that happen after the operator starts. Each entry wakes every
+  `DatabaseSecretClaim` whose `(classifier, type)` matches, which re-fetches via
+  get-by-classifier. Once the poller's cursor passes the newest entry the feed returns
+  nothing and the poller converges.
+
+Expected output (`kubectl get databasesecretclaim -n test-ns`):
+
+```
+NAME          PHASE       READY
+dsc-success   Succeeded   SecretUpToDate
+```
+
+| CR file | `app.kubernetes.io/name` | Flow | Expected Phase | `Ready.reason` |
+|---|---|---|---|---|
+| `dsc-success.yaml` | `secret-svc` | get-by-classifier 200 → Secret created; rotation fan-out → re-fetch (no-op) | `Succeeded` | `SecretCreated`, then `SecretUpToDate` after the rotation fan-out |
+
+The materialized Secret `dsc-success-secret` holds `connectionProperties.json` (the
+get-by-classifier response) and `metadata.json` (classifier, type, userRole, id, name).
+
+**Watch the rotation pipeline:**
+
+```bash
+# Poller seed + fan-out (leader-only)
+kubectl logs -n dbaas-system deployment/dbaas-operator | grep -i "rotation poller"
+#   ... Rotation poller seeded cursor at epoch (no rotations recorded yet)
+#   ... Rotation poller processed changes count=1 cursor=(2026-06-18 10:00:00 +0000 UTC,1111...)
+
+# The fan-out stamps the rotation-trigger annotation on the matched CR
+kubectl get databasesecretclaim dsc-success -n test-ns \
+  -o jsonpath='{.metadata.annotations.dbaas\.netcracker\.com/rotation-trigger}'
+
+# Mock side — changed feed + get-by-classifier calls
+kubectl logs -n dbaas-system deployment/dbaas-aggregator | grep -iE "changed feed|get-by-classifier"
+```
+
+**Force a real `SecretRotated`:** edit the password under `secret-svc` in
+`get-by-classifier.json` (the `aggregator-mock-rules` ConfigMap) and restart the mock —
+the next safety-net re-poll (or a fresh rotation entry in `changed.json`) re-fetches the
+changed credentials and writes the Secret, emitting `SecretRotated`:
+
+```bash
+kubectl edit configmap aggregator-mock-rules -n dbaas-system   # change the password
+kubectl rollout restart deployment/dbaas-aggregator -n dbaas-system
 ```
 
 ### Changing rules without rebuilding
@@ -303,5 +360,8 @@ dev/
     ├── idb-poll-failed.yaml                  # IDB — 202 → poll FAILED → InvalidConfiguration
     ├── idb-poll-terminated.yaml              # IDB — 202 → poll TERMINATED → BackingOff (resubmits automatically)
     ├── idb-invalid-lazy-clone.yaml           # IDB — pre-flight: lazy=true + clone → InvalidConfiguration
-    └── idb-invalid-no-source.yaml           # IDB — pre-flight: clone without sourceClassifier → InvalidConfiguration
+    ├── idb-invalid-no-source.yaml           # IDB — pre-flight: clone without sourceClassifier → InvalidConfiguration
+    │
+    │   # DatabaseSecretClaim test CR
+    └── dsc-success.yaml                      # DSC — get-by-classifier 200 → Secret created; rotation fan-out → re-fetch (no-op)
 ```
