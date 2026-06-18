@@ -564,8 +564,8 @@ func isOlderClaimant(a, b *dbaasv1.DatabaseSecretClaim) bool {
 
 // specOrRotationTriggerPredicate fires a reconcile on (a) a spec change
 // (generation bump) or (b) a change to the rotation-trigger annotation that
-// the rotation webhook patches when dbaas-aggregator reports a credentials
-// rotation. Plain GenerationChangedPredicate is not enough here: the webhook
+// the rotation poller patches when dbaas-aggregator reports a credentials
+// rotation. Plain GenerationChangedPredicate is not enough here: the poller
 // only mutates an annotation, which does not bump generation, so a rotation
 // would otherwise be filtered out and never reconciled.
 //
