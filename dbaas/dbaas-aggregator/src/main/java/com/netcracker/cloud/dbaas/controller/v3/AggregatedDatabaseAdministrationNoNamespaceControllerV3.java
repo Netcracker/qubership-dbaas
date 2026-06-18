@@ -225,6 +225,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
                                         @QueryParam("sinceId") String sinceId,
                                         @Parameter(description = "Maximum number of databases to return (1..1000).")
                                         @QueryParam("limit") @DefaultValue("500") int limit) {
+        log.debug("Received request to get changed databases: sinceTs={}, sinceId={}, limit={}", sinceTs, sinceId, limit);
         if (limit < 1 || limit > 1000) {
             throw new BadRequestException("Query parameter 'limit' must be between 1 and 1000");
         }
