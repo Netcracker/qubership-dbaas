@@ -1,86 +1,30 @@
 # dbaas-operator
 
-`dbaas-operator` integrates Kubernetes with DBaaS by reconciling custom resources that describe database registrations and forwarding them to dbaas-aggregator. Its primary use in the current release is registering externally managed databases so workloads can discover and consume their connection details through the broader DBaaS platform.
+`dbaas-operator` integrates Kubernetes with DBaaS by reconciling a family of custom resources that describe databases, credentials, access policies, and physical-database balancing rules, and driving them through dbaas-aggregator. It lets workloads declare and consume databases the Kubernetes-native way, and keeps `DatabaseSecretClaim` secrets in sync as credentials rotate.
 
-## Description
+> **Full reference:** see **[docs/howto/DBaaS Operator.md](../docs/howto/DBaaS%20Operator.md)** for the complete design, status/condition reference, RBAC, authentication, and credential-rotation details. For a local kind environment see **[dev/README.md](dev/README.md)**.
 
-`dbaas-operator` is a Kubernetes operator that reconciles one public custom resource kind in the first release:
+## Custom Resources
+
+All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` / the Helm chart:
 
 | Kind | Purpose |
 |---|---|
-| `ExternalDatabase` | Registers a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
+| `ExternalDatabase` | Register a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
+| `InternalDatabase` | Provision a new logical database via dbaas-aggregator (asynchronous; polled to completion). |
+| `DatabaseSecretClaim` | Materialize a database's credentials into a Kubernetes `Secret` in the workload namespace, kept in sync as credentials rotate. |
+| `DatabaseAccessPolicy` | Declare per-microservice role grants and apply them to dbaas-aggregator. |
+| `MicroserviceBalancingRule` / `NamespaceBalancingRule` / `PermanentBalancingRule` | Configure physical-database balancing rules in dbaas-aggregator. |
+| `NamespaceBinding` | Claim a namespace for this operator instance (ownership) — gates which CRs the operator reconciles. |
 
----
+## Authentication
 
-Alpha resources (`InternalDatabase`, `DatabaseAccessPolicy`) remain under active development in the repository, but are not installed by `make install` / `make deploy`.
+The operator authenticates to dbaas-aggregator in one of two modes, selected by `KUBERNETES_M2M_ENABLED` and **must match the aggregator's setting**:
 
-## ExternalDatabase
+- `false` (default) — HTTP Basic Auth, using credentials from the chart-created `dbaas-operator-aggregator-credentials` Secret;
+- `true` — a Kubernetes projected service-account token (Bearer / M2M).
 
-### Minimal example (no Secret)
-
-```yaml
-apiVersion: dbaas.netcracker.com/v1alpha1
-kind: ExternalDatabase
-metadata:
-  name: my-postgres
-  namespace: my-ns
-spec:
-  type: postgresql
-  dbName: mydb
-  classifier:
-    namespace: my-ns
-    microserviceName: my-service
-    scope: service
-  connectionProperties:
-    - role: admin
-      extraProperties:
-        host: pg.example.com
-        port: "5432"
-        url: "jdbc:postgresql://pg.example.com:5432/mydb"
-```
-
-### With credentials from a Kubernetes Secret
-
-Use `credentialsSecretRef` to read credentials from a Secret at reconcile time.
-The Secret must exist in the same namespace as the CR.
-
-```yaml
-spec:
-  connectionProperties:
-    - role: admin
-      credentialsSecretRef:
-        name: pg-credentials       # Secret name
-        keys:
-          - key: db-user           # Secret.data key
-            name: username         # aggregator request flat-map key
-          - key: db-pass
-            name: password
-      extraProperties:
-        host: pg.example.com
-        port: "5432"
-```
-
-**Merge priority** (later sources win on key collision):
-1. `extraProperties` — lowest priority
-2. `role` — overrides `extraProperties["role"]`
-3. `credentialsSecretRef.keys` — highest priority; Secret values override matching `extraProperties` keys
-
-**Constraints enforced by the CRD:**
-- `keys` is required when `credentialsSecretRef` is specified; at least one mapping must be present (`MinItems=1`).
-- `keys[*].name` values must be unique within the list (CEL validation).
-
-**Transient vs permanent errors:**
-- Secret not found, key missing, or key value is empty → `BackingOff` (retried automatically; no operator restart needed after fixing the Secret).
-- Aggregator rejects the request (400/403/409/410/422) → `InvalidConfiguration` (permanent until spec is fixed).
-
-### Status phases
-
-| Phase | Meaning |
-|---|---|
-| `Processing` | Controller is actively reconciling |
-| `Succeeded` | Aggregator accepted the registration |
-| `BackingOff` | Transient error; controller will retry with exponential back-off |
-| `InvalidConfiguration` | Permanent failure; spec must be corrected |
+Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](../docs/howto/DBaaS%20Operator.md#configuration-parameters) for the full list.
 
 ## Getting Started
 
@@ -118,7 +62,7 @@ make install
 make deploy IMG=<some-registry>/dbaas-operator:tag
 ```
 
-For internal development with alpha APIs enabled:
+For the internal development overlay (`config-dev` kustomize surface):
 
 ```sh
 make install-dev
