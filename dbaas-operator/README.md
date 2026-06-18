@@ -28,114 +28,41 @@ Credential rotations are propagated by **polling** dbaas-aggregator's changed-da
 
 ## Getting Started
 
-### Local development (kind)
-
-To spin up a full local environment (kind + aggregator-mock + operator) see
-**[dev/README.md](dev/README.md)**.
-
 ### Prerequisites
-- go version v1.26+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+- Go 1.26+
+- Docker
+- kubectl + access to a Kubernetes cluster. The CRDs use CEL validation
+  (`x-kubernetes-validations`), so Kubernetes v1.25+ is required (v1.29+ recommended).
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+### Deployment
 
-```sh
-make docker-build docker-push IMG=<some-registry>/dbaas-operator:tag
-```
+**Production** — the operator ships as part of the Qubership Helm chart under
+[`helm-templates/dbaas-operator/`](helm-templates/dbaas-operator) (`values.yaml` +
+`values.schema.json`), deployed by the platform tooling and gated on
+`DBAAS_OPERATOR_ENABLED`; CRDs are rendered as chart templates. This is the
+supported install path.
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
-
-**Install the public CRD into the cluster:**
-
-```sh
-make install
-```
-
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+**Local / dev-test** — the Kustomize surface under `config/` is for local dev,
+tests, and envtest only (not a production distribution). Build and push the image,
+then install the CRDs and deploy via kustomize:
 
 ```sh
-make deploy IMG=<some-registry>/dbaas-operator:tag
+make docker-build docker-push IMG=<registry>/dbaas-operator:tag
+make install                                    # CRDs only
+make deploy IMG=<registry>/dbaas-operator:tag   # kustomize config/default
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+For a full local environment (kind + aggregator-mock + operator) and ready-made
+test resources, see **[dev/README.md](dev/README.md)**.
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+### Uninstall (dev/test)
 
 ```sh
-kubectl apply -k config/samples/
+make undeploy     # remove the kustomize-deployed controller
+make uninstall    # remove the CRDs
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
-
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
-
-```sh
-kubectl delete -k config/samples/
-```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
-
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/dbaas-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/dbaas-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
+Run `make help` to list all targets.
 
 ## License
 
