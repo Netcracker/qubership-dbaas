@@ -5,21 +5,21 @@ These resources are scoped to the local `dbaas-system` namespace.
 Apply the namespace binding first:
 
 ```bash
-kubectl apply -f config-dev/samples/local/dbaas-system-namespacebinding.yaml
+kubectl apply -f config/samples/local/dbaas-system-namespacebinding.yaml
 ```
 
 Then apply the singleton namespace/permanent rule samples:
 
 ```bash
-kubectl apply -f config-dev/samples/local/namespacebalancingrule.yaml
-kubectl apply -f config-dev/samples/local/permanentbalancingrule.yaml
+kubectl apply -f config/samples/local/namespacebalancingrule.yaml
+kubectl apply -f config/samples/local/permanentbalancingrule.yaml
 ```
 
 The microservice rule sample requires physical databases whose labels match the
 configured entries, for example `zone=fast` and `tier=standard`:
 
 ```bash
-kubectl apply -f config-dev/samples/local/microservicebalancingrule.yaml
+kubectl apply -f config/samples/local/microservicebalancingrule.yaml
 ```
 
 Check status:
@@ -32,5 +32,5 @@ kubectl describe namespacebalancingrule namespace-balancing-rules -n dbaas-syste
 Additional singleton update and duplicate-validation scenarios are in:
 
 ```text
-config-dev/samples/local/balancing-rule-scenarios/
+config/samples/local/balancing-rule-scenarios/
 ```

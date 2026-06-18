@@ -381,8 +381,7 @@ internal/controller/events.go         Event reason constants
 internal/controller/conditions.go     Condition type constants + timing intervals
 internal/client/                      HTTP client for external APIs
 internal/ownership/                   Namespace ownership resolution
-config/                               Kustomize manifests (stable APIs only)
-config-dev/                           Kustomize manifests (stable + alpha APIs)
+config/                               Kustomize manifests (CRDs, RBAC, samples)
 helm-templates/                       Helm chart templates
 dev/                                  Local development utilities (Kind, mocks)
 ```

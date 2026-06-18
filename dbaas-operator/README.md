@@ -62,13 +62,6 @@ make install
 make deploy IMG=<some-registry>/dbaas-operator:tag
 ```
 
-For the internal development overlay (`config-dev` kustomize surface):
-
-```sh
-make install-dev
-make deploy-dev IMG=<some-registry>/dbaas-operator:tag
-```
-
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
 privileges or be logged in as admin.
 

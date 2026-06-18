@@ -1,5 +1,0 @@
-# This patch sets the manager's HTTP server bind address. The same listener
-# hosts the Prometheus /metrics endpoint and any registered webhook receivers.
-- op: add
-  path: /spec/template/spec/containers/0/args/0
-  value: --http-bind-address=:8080
