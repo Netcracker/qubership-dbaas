@@ -328,11 +328,11 @@ as `cmd/` and `internal/client/`.)
 ```bash
 make test-unit       # Unit tests only, no envtest, fast
 make test            # Unit + controller integration tests (downloads envtest binaries)
-make test-e2e        # Full e2e in a Kind cluster (isolated)
 ```
 
-E2E tests must run against a **dedicated, isolated Kind cluster** (like CI), never a real
-dev/prod cluster. For a local kind + aggregator-mock environment see `dev/README.md`.
+There is no `make test-e2e` target. End-to-end testing is done manually against a local
+kind + aggregator-mock environment — see `dev/README.md`. It must run against a
+**dedicated, isolated Kind cluster**, never a real dev/prod cluster.
 
 ---
 
@@ -610,7 +610,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 */
 ```
 
-Use `dev/boilerplate.go.txt` as the source for `controller-gen`.
+Use `hack/boilerplate.go.txt` as the source for `controller-gen` (the kubebuilder-conventional location; `kubebuilder create api/webhook` reads it from there too).
 
 ---
 
