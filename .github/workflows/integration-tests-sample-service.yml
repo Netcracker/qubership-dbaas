@@ -157,7 +157,7 @@ jobs:
         working-directory: test-apps/test-apps-integration-tests
         run: >
           mvn --batch-mode
-          -Dmaven.test.failure.ignore=false
+          -Dmaven.test.failure.ignore=true
           -DskipIT=false
           -Dtest=GoTestAppServiceIT
           -Dclouds.cloud.name=kind
@@ -200,25 +200,17 @@ jobs:
           path: fluentbit-logs/**
           if-no-files-found: warn
 
-      - name: Collect DBaaS logs
-        id: collect_logs
-        if: always()
-        run: |
-          chmod +x .github/scripts/get-dbaas-logs.sh
-          .github/scripts/get-dbaas-logs.sh
-
-      - name: Upload DBaaS logs
-        if: always() && steps.collect_logs.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: go-test-app-service-dbaas-logs
-          path: logs/**
-          if-no-files-found: warn
-
       - name: Dump diagnostics on failure
-        if: failure()
+        if: always() && steps.tests.outcome != 'skipped'
         run: |
           set +e
+          shopt -s nullglob
+          reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "::warning::No Surefire XML reports found"
+          elif ! grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
+            exit 0
+          fi
           echo "::group::All pods"
           kubectl get pods -A -o wide
           echo "::endgroup::"
@@ -243,7 +235,15 @@ jobs:
           echo "::endgroup::"
 
       - name: Fail job if go test app service tests failed
-        if: always() && steps.tests.outcome == 'failure'
+        if: always() && steps.tests.outcome != 'skipped'
         run: |
-          echo "::error::Go test app service integration test failed"
-          exit 1
+          shopt -s nullglob
+          reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "::error::No Surefire XML reports were generated for go test app service integration tests"
+            exit 1
+          fi
+          if grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
+            echo "::error::Go test app service integration test failed"
+            exit 1
+          fi

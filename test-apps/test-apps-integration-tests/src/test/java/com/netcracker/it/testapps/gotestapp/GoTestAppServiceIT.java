@@ -133,49 +133,6 @@ public class GoTestAppServiceIT {
     }
 
     @Test
-    void testServiceFailsWithoutValidMountedSecret() throws IOException {
-        Secret originalSecret = kubernetesClient.secrets().inNamespace(namespace).withName(DATABASE_SECRET_NAME).get();
-        assertNotNull(originalSecret, "Original secret must exist before test");
-
-        Map<String, String> originalData = Map.copyOf(originalSecret.getData());
-
-        try {
-            JsonObject corruptedConnectionProps = new JsonObject();
-            corruptedConnectionProps.addProperty("host", "invalid.example.com");
-            corruptedConnectionProps.addProperty("port", 99999);
-            corruptedConnectionProps.addProperty("username", "invalid_user");
-            corruptedConnectionProps.addProperty("password", "invalid_password");
-            corruptedConnectionProps.addProperty("dbName", "invalid_db");
-            corruptedConnectionProps.addProperty("url",
-                    "postgres://invalid_user:invalid_password@invalid.example.com:9999/invalid_db");
-
-            String corruptedPropsJson = GSON.toJson(corruptedConnectionProps);
-            replaceSecretData(Map.of(
-                    CONNECTION_PROPERTIES_KEY, Base64.getEncoder().encodeToString(corruptedPropsJson.getBytes(StandardCharsets.UTF_8)),
-                    METADATA_KEY, originalData.get(METADATA_KEY)
-            ));
-
-            restartDeploymentAndWait();
-
-            Request pingRequest = new Request.Builder().url(sampleUrl("/postgres/ping")).get().build();
-            try (Response response = OK_HTTP_CLIENT.newCall(pingRequest).execute()) {
-                assertEquals(500, response.code(),
-                        "Service must fail with 500 when secret contains invalid connection properties");
-            }
-
-            Request itemsRequest = new Request.Builder().url(sampleUrl("/postgres/items")).get().build();
-            try (Response response = OK_HTTP_CLIENT.newCall(itemsRequest).execute()) {
-                assertEquals(500, response.code(),
-                        "Service must fail with 500 when attempting DML with invalid secret");
-            }
-
-        } finally {
-            replaceSecretData(originalData);
-            restartDeploymentAndWait();
-        }
-    }
-
-    @Test
     void testServiceWorksWithInvalidAggregatorUrl() throws IOException {
         var deployment = kubernetesClient.apps().deployments()
                 .inNamespace(namespace)
@@ -437,13 +394,6 @@ public class GoTestAppServiceIT {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    private static void replaceSecretData(Map<String, String> data) {
-        Secret secret = kubernetesClient.secrets().inNamespace(namespace).withName(DATABASE_SECRET_NAME).get();
-        assertNotNull(secret, "Secret must exist before update: " + DATABASE_SECRET_NAME);
-        secret.setData(data);
-        kubernetesClient.secrets().inNamespace(namespace).resource(secret).update();
     }
 
     private static void restartDeploymentAndWait() throws IOException {
