@@ -107,6 +107,11 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		SetBaseURL(baseURL).
 		SetTimeout(defaultTimeout).
 		SetHeader("Accept", "application/json").
+		// Suppress resty's per-request "Using Basic Auth in HTTP mode is not
+		// secure, use HTTPS" warning. Operator→aggregator traffic is in-cluster
+		// and Basic Auth over HTTP is the intended default (KUBERNETES_M2M_ENABLED=false),
+		// so the warning is pure noise logged on every call (incl. the rotation poll loop).
+		SetDisableWarn(true).
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
 			// M2M mode — fetch a fresh dbaas-audience token per request.
 			if c.getToken != nil {
