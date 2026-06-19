@@ -127,6 +127,140 @@ public class GoTestAppServiceIT {
         assertTrue(containsItemName(items, itemName), "inserted item must be returned by GET /postgres/items");
     }
 
+    @Test
+    void testServiceFailsWithoutValidMountedSecret() throws IOException {
+        Secret originalSecret = kubernetesClient.secrets().inNamespace(namespace).withName(DATABASE_SECRET_NAME).get();
+        assertNotNull(originalSecret, "Original secret must exist before test");
+
+        String originalConnectionProps = originalSecret.getData().get(CONNECTION_PROPERTIES_KEY);
+        String originalMetadata = originalSecret.getData().get(METADATA_KEY);
+
+        try {
+            JsonObject corruptedConnectionProps = new JsonObject();
+            corruptedConnectionProps.addProperty("host", "invalid.example.com");
+            corruptedConnectionProps.addProperty("port", 99999);
+            corruptedConnectionProps.addProperty("username", "invalid_user");
+            corruptedConnectionProps.addProperty("password", "invalid_password");
+            corruptedConnectionProps.addProperty("dbName", "invalid_db");
+
+            String corruptedPropsJson = GSON.toJson(corruptedConnectionProps);
+            Secret corruptedSecret = new Secret();
+            corruptedSecret.setMetadata(originalSecret.getMetadata());
+            corruptedSecret.setData(Map.of(
+                    CONNECTION_PROPERTIES_KEY, Base64.getEncoder().encodeToString(corruptedPropsJson.getBytes(StandardCharsets.UTF_8)),
+                    METADATA_KEY, originalMetadata
+            ));
+
+            kubernetesClient.secrets().inNamespace(namespace).resource(corruptedSecret).update();
+
+            kubernetesClient.apps().deployments()
+                    .inNamespace(namespace)
+                    .withName(SAMPLE_SERVICE_NAME)
+                    .rolling()
+                    .restart();
+
+            waitForPodRestart();
+
+            Request pingRequest = new Request.Builder().url(sampleUrl("/postgres/ping")).get().build();
+            try (Response response = OK_HTTP_CLIENT.newCall(pingRequest).execute()) {
+                assertEquals(500, response.code(),
+                        "Service must fail with 500 when secret contains invalid connection properties");
+            }
+
+            Request itemsRequest = new Request.Builder().url(sampleUrl("/postgres/items")).get().build();
+            try (Response response = OK_HTTP_CLIENT.newCall(itemsRequest).execute()) {
+                assertEquals(500, response.code(),
+                        "Service must fail with 500 when attempting DML with invalid secret");
+            }
+
+        } finally {
+            Secret restoredSecret = new Secret();
+            restoredSecret.setMetadata(originalSecret.getMetadata());
+            restoredSecret.setData(Map.of(
+                    CONNECTION_PROPERTIES_KEY, originalConnectionProps,
+                    METADATA_KEY, originalMetadata
+            ));
+            kubernetesClient.secrets().inNamespace(namespace).resource(restoredSecret).update();
+
+            kubernetesClient.apps().deployments()
+                    .inNamespace(namespace)
+                    .withName(SAMPLE_SERVICE_NAME)
+                    .rolling()
+                    .restart();
+
+            waitForPodRestart();
+            waitForServiceHealth();
+        }
+    }
+
+    @Test
+    void testServiceWorksWithInvalidAggregatorUrl() throws IOException {
+        var deployment = kubernetesClient.apps().deployments()
+                .inNamespace(namespace)
+                .withName(SAMPLE_SERVICE_NAME)
+                .get();
+        assertNotNull(deployment, "Deployment must exist before test");
+
+        var originalEnv = deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv();
+        String originalAggregatorUrl = originalEnv.stream()
+                .filter(env -> "DBAAS_AGENT".equals(env.getName()))
+                .findFirst()
+                .map(env -> env.getValue())
+                .orElse(null);
+
+        try {
+            deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
+                    .filter(env -> "DBAAS_AGENT".equals(env.getName()))
+                    .findFirst()
+                    .ifPresent(env -> env.setValue("http://invalid-aggregator.example.com:9999"));
+
+            kubernetesClient.apps().deployments()
+                    .inNamespace(namespace)
+                    .resource(deployment)
+                    .update();
+
+            waitForPodRestart();
+            waitForServiceHealth();
+
+            String itemName = "invalid-aggregator-test-" + UUID.randomUUID();
+
+            executeEventually(new Request.Builder().url(sampleUrl("/postgres/items")).delete().build(), 200);
+
+            String createdBody = execute(new Request.Builder()
+                    .url(sampleUrl("/postgres/items"))
+                    .post(RequestBody.create("{\"name\":\"" + itemName + "\"}", JSON))
+                    .build(), 201);
+            assertTrue(createdBody.contains(itemName),
+                    "Service must successfully create item even with invalid aggregator URL");
+
+            String listBody = execute(new Request.Builder().url(sampleUrl("/postgres/items")).get().build(), 200);
+            JsonObject response = GSON.fromJson(listBody, JsonObject.class);
+            JsonArray items = response.getAsJsonArray("items");
+            assertNotNull(items, "items response field must be present");
+            assertTrue(containsItemName(items, itemName),
+                    "Service must successfully retrieve items even with invalid aggregator URL - proves it reads from mounted secret");
+
+        } finally {
+            var restoredDeployment = kubernetesClient.apps().deployments()
+                    .inNamespace(namespace)
+                    .withName(SAMPLE_SERVICE_NAME)
+                    .get();
+
+            restoredDeployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
+                    .filter(env -> "DBAAS_AGENT".equals(env.getName()))
+                    .findFirst()
+                    .ifPresent(env -> env.setValue(originalAggregatorUrl));
+
+            kubernetesClient.apps().deployments()
+                    .inNamespace(namespace)
+                    .resource(restoredDeployment)
+                    .update();
+
+            waitForPodRestart();
+            waitForServiceHealth();
+        }
+    }
+
     private static void startPortForward() throws IOException {
         int localPort = findFreePort();
         portForwardProcess = new ProcessBuilder(
@@ -314,5 +448,48 @@ public class GoTestAppServiceIT {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static void waitForPodRestart() {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        String initialPodName = kubernetesClient.pods()
+                .inNamespace(namespace)
+                .withLabel("app.kubernetes.io/name", SAMPLE_SERVICE_NAME)
+                .list()
+                .getItems()
+                .stream()
+                .findFirst()
+                .map(pod -> pod.getMetadata().getName())
+                .orElse(null);
+
+        while (System.nanoTime() < deadline) {
+            var pods = kubernetesClient.pods()
+                    .inNamespace(namespace)
+                    .withLabel("app.kubernetes.io/name", SAMPLE_SERVICE_NAME)
+                    .list()
+                    .getItems();
+
+            if (pods.isEmpty()) {
+                sleep(Duration.ofSeconds(2));
+                continue;
+            }
+
+            var currentPod = pods.get(0);
+            String currentPodName = currentPod.getMetadata().getName();
+
+            if (!currentPodName.equals(initialPodName)) {
+                var readyCondition = currentPod.getStatus().getConditions().stream()
+                        .filter(condition -> "Ready".equals(condition.getType()))
+                        .findFirst();
+
+                if (readyCondition.isPresent() && "True".equals(readyCondition.get().getStatus())) {
+                    return;
+                }
+            }
+
+            sleep(Duration.ofSeconds(2));
+        }
+
+        throw new AssertionError("Pod did not restart and become ready within timeout");
     }
 }
