@@ -221,6 +221,45 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
+
+		It("flattens spec.classifier.extraKeys onto the top level of the aggregator request and the metadata.json descriptor", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+			spec := baseSpec()
+			spec.Classifier.ExtraKeys = map[string]apiextensionsv1.JSON{
+				"region": {Raw: []byte(`"eu"`)},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+
+			// The get-by-classifier request carries extraKeys at the top level.
+			var sent struct {
+				Classifier map[string]any `json:"classifier"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.Classifier).To(HaveKeyWithValue("region", "eu"))
+			Expect(sent.Classifier).NotTo(HaveKey("extraKeys"))
+
+			// The mounted-Secret descriptor matches it exactly, so dbaas-client's
+			// canonical key lines up with what the aggregator stored.
+			secret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			var meta map[string]any
+			Expect(json.Unmarshal(secret.Data["metadata.json"], &meta)).To(Succeed())
+			metaClassifier, ok := meta["classifier"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(metaClassifier).To(HaveKeyWithValue("region", "eu"))
+			Expect(metaClassifier).NotTo(HaveKey("extraKeys"))
+		})
 	})
 
 	Context("classifier.namespace omitted from spec", func() {

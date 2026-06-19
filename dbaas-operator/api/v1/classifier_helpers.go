@@ -17,7 +17,11 @@ limitations under the License.
 package v1
 
 import (
+	"bytes"
 	"encoding/json"
+	"sort"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 // ClassifierTypeIndex is the field-index key used by the operator's caching
@@ -64,7 +68,7 @@ func EffectiveClassifier(c Classifier, fallbackNamespace string) Classifier {
 // CR — critical for ClassifierIndexKey to produce the same string on both
 // sides of a rotation event.
 func ClassifierFlatMap(c Classifier) map[string]any {
-	m := make(map[string]any, 4+len(c.CustomKeys))
+	m := make(map[string]any, 4+len(c.CustomKeys)+len(c.ExtraKeys))
 	m["microserviceName"] = c.MicroserviceName
 	m["scope"] = c.Scope
 	if c.Namespace != "" {
@@ -76,18 +80,69 @@ func ClassifierFlatMap(c Classifier) map[string]any {
 	if len(c.CustomKeys) > 0 {
 		customKeys := make(map[string]any, len(c.CustomKeys))
 		for k, v := range c.CustomKeys {
-			var val any
-			if err := json.Unmarshal(v.Raw, &val); err != nil {
-				// raw bytes are always valid JSON from the API server, but
-				// fall back to string representation if something goes wrong.
-				customKeys[k] = string(v.Raw)
-				continue
-			}
-			customKeys[k] = val
+			customKeys[k] = decodeClassifierValue(v)
 		}
 		m["customKeys"] = customKeys
 	}
+	// extraKeys are flattened onto the top level (legacy open-classifier
+	// compatibility). Reserved keys are skipped defensively — CRD CEL
+	// validation already rejects them at admission, and the typed fields above
+	// always win so a stray reserved extraKey can never corrupt identity.
+	for k, v := range c.ExtraKeys {
+		if _, reserved := reservedClassifierKeys[k]; reserved {
+			continue
+		}
+		m[k] = decodeClassifierValue(v)
+	}
 	return m
+}
+
+// reservedClassifierKeys are the top-level keys owned by the typed Classifier
+// fields. extraKeys may not shadow them (enforced by CRD CEL validation; the
+// check in ClassifierFlatMap is a defensive backstop for objects that bypass
+// admission).
+var reservedClassifierKeys = map[string]struct{}{
+	"microserviceName": {},
+	"scope":            {},
+	"namespace":        {},
+	"tenantId":         {},
+	"customKeys":       {},
+}
+
+// ReservedExtraKeys returns, sorted, any extraKeys entries whose names collide
+// with the typed classifier fields. ClassifierFlatMap already ignores such
+// entries (the typed field wins), but a collision is always a spec mistake —
+// controllers call this during pre-flight validation to reject the CR with a
+// clear InvalidConfiguration instead of silently dropping the key. Returns nil
+// when extraKeys is empty or contains no reserved names.
+func ReservedExtraKeys(c Classifier) []string {
+	var bad []string
+	for k := range c.ExtraKeys {
+		if _, reserved := reservedClassifierKeys[k]; reserved {
+			bad = append(bad, k)
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// decodeClassifierValue deserializes a raw JSON classifier value into its
+// natural Go form (string/number/bool/map/slice). Numbers are decoded as
+// json.Number (via UseNumber) rather than float64 so large integers
+// (> 2^53, e.g. a snowflake-style id used as an identity key) keep their exact
+// literal when the flat map is re-marshaled for the aggregator request, the
+// mounted-Secret descriptor, and the index key — a float64 round-trip would
+// silently alter the value and the database identity. Object keys are still
+// canonicalized (sorted) by the eventual json.Marshal of the map. Raw bytes from
+// the API server are always valid JSON, so the string fallback is only defensive.
+func decodeClassifierValue(v apiextensionsv1.JSON) any {
+	dec := json.NewDecoder(bytes.NewReader(v.Raw))
+	dec.UseNumber()
+	var val any
+	if err := dec.Decode(&val); err != nil {
+		return string(v.Raw)
+	}
+	return val
 }
 
 // ClassifierIndexKey canonicalizes (classifier, type) into a deterministic

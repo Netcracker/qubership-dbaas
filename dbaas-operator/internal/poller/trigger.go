@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -83,17 +84,55 @@ func PatchClaimsForRotation(ctx context.Context, c client.Client, namespace stri
 	return matched, patched, nil
 }
 
-// classifierFromMap round-trips the aggregator's flat-map classifier through the
-// typed dbaasv1.Classifier so unknown fields are dropped before computing the
-// index key, guaranteeing the same canonical key the controller indexed CRs under.
+// classifierFromMap reconstructs the typed dbaasv1.Classifier from the
+// aggregator's flat-map classifier so that ClassifierFlatMap round-trips it back
+// to the same wire shape — and therefore the same index key — the controller
+// stored each DatabaseSecretClaim under.
+//
+// It decodes ONLY the known wire fields explicitly: the identity scalars and the
+// nested "customKeys" envelope. Every *other* top-level key is an arbitrary
+// identity field (spec.classifier.extraKeys, flattened onto the wire) and is
+// routed into ExtraKeys. This is deliberately not a json.Unmarshal into the
+// struct: a flattened extraKey literally named "extraKeys" would otherwise be
+// decoded against the ExtraKeys map field and a scalar/array value would fail,
+// aborting the whole rotation event. Routing every unknown key into ExtraKeys
+// also guarantees the reverse round-trip reproduces the controller's index key —
+// dropping an extra field would hash to a different key and silently miss the CR.
 func classifierFromMap(m map[string]any) (dbaasv1.Classifier, error) {
-	raw, err := json.Marshal(m)
-	if err != nil {
-		return dbaasv1.Classifier{}, fmt.Errorf("marshal classifier: %w", err)
-	}
 	var c dbaasv1.Classifier
-	if err := json.Unmarshal(raw, &c); err != nil {
-		return dbaasv1.Classifier{}, fmt.Errorf("unmarshal classifier: %w", err)
+	for k, v := range m {
+		switch k {
+		case "microserviceName":
+			c.MicroserviceName, _ = v.(string)
+		case "scope":
+			c.Scope, _ = v.(string)
+		case "namespace":
+			c.Namespace, _ = v.(string)
+		case "tenantId":
+			c.TenantId, _ = v.(string)
+		case "customKeys":
+			obj, ok := v.(map[string]any)
+			if !ok {
+				return dbaasv1.Classifier{}, fmt.Errorf("classifier.customKeys is %T, want a JSON object", v)
+			}
+			c.CustomKeys = make(map[string]apiextensionsv1.JSON, len(obj))
+			for ck, cv := range obj {
+				vb, err := json.Marshal(cv)
+				if err != nil {
+					return dbaasv1.Classifier{}, fmt.Errorf("marshal customKey %q: %w", ck, err)
+				}
+				c.CustomKeys[ck] = apiextensionsv1.JSON{Raw: vb}
+			}
+		default:
+			vb, err := json.Marshal(v)
+			if err != nil {
+				return dbaasv1.Classifier{}, fmt.Errorf("marshal extraKey %q: %w", k, err)
+			}
+			if c.ExtraKeys == nil {
+				c.ExtraKeys = make(map[string]apiextensionsv1.JSON)
+			}
+			c.ExtraKeys[k] = apiextensionsv1.JSON{Raw: vb}
+		}
 	}
 	return c, nil
 }

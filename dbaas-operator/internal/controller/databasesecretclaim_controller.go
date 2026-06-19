@@ -166,6 +166,15 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 		return res, true, err
 	}
 
+	// extraKeys must not shadow the typed classifier fields — a collision is a
+	// spec mistake (the typed field would win and the extraKey be dropped).
+	if reserved := dbaasv1.ReservedExtraKeys(s.Spec.Classifier); len(reserved) > 0 {
+		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
+			r.Recorder, s,
+			fmt.Sprintf("spec.classifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields", reserved))
+		return res, true, err
+	}
+
 	if s.Labels["app.kubernetes.io/name"] == "" {
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
