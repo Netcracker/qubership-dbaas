@@ -11,7 +11,7 @@ mkdir -p "$OUT_DIR"
 DEPLOY_NS_PAIRS=(
   "dbaas-aggregator:dbaas"
   "dbaas-operator:dbaas"
-  "test-apps/go-test-app-service:dbaas"
+  "go-test-app-service:dbaas"
   "dbaas-postgres-adapter:postgres"
   "postgres-backup-daemon:postgres"
 )

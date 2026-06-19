@@ -132,8 +132,7 @@ public class GoTestAppServiceIT {
         Secret originalSecret = kubernetesClient.secrets().inNamespace(namespace).withName(DATABASE_SECRET_NAME).get();
         assertNotNull(originalSecret, "Original secret must exist before test");
 
-        String originalConnectionProps = originalSecret.getData().get(CONNECTION_PROPERTIES_KEY);
-        String originalMetadata = originalSecret.getData().get(METADATA_KEY);
+        Map<String, String> originalData = Map.copyOf(originalSecret.getData());
 
         try {
             JsonObject corruptedConnectionProps = new JsonObject();
@@ -144,22 +143,12 @@ public class GoTestAppServiceIT {
             corruptedConnectionProps.addProperty("dbName", "invalid_db");
 
             String corruptedPropsJson = GSON.toJson(corruptedConnectionProps);
-            Secret corruptedSecret = new Secret();
-            corruptedSecret.setMetadata(originalSecret.getMetadata());
-            corruptedSecret.setData(Map.of(
+            replaceSecretData(Map.of(
                     CONNECTION_PROPERTIES_KEY, Base64.getEncoder().encodeToString(corruptedPropsJson.getBytes(StandardCharsets.UTF_8)),
-                    METADATA_KEY, originalMetadata
+                    METADATA_KEY, originalData.get(METADATA_KEY)
             ));
 
-            kubernetesClient.secrets().inNamespace(namespace).resource(corruptedSecret).update();
-
-            kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .withName(SAMPLE_SERVICE_NAME)
-                    .rolling()
-                    .restart();
-
-            waitForPodRestart();
+            restartDeploymentAndWait();
 
             Request pingRequest = new Request.Builder().url(sampleUrl("/postgres/ping")).get().build();
             try (Response response = OK_HTTP_CLIENT.newCall(pingRequest).execute()) {
@@ -174,22 +163,8 @@ public class GoTestAppServiceIT {
             }
 
         } finally {
-            Secret restoredSecret = new Secret();
-            restoredSecret.setMetadata(originalSecret.getMetadata());
-            restoredSecret.setData(Map.of(
-                    CONNECTION_PROPERTIES_KEY, originalConnectionProps,
-                    METADATA_KEY, originalMetadata
-            ));
-            kubernetesClient.secrets().inNamespace(namespace).resource(restoredSecret).update();
-
-            kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .withName(SAMPLE_SERVICE_NAME)
-                    .rolling()
-                    .restart();
-
-            waitForPodRestart();
-            waitForServiceHealth();
+            replaceSecretData(originalData);
+            restartDeploymentAndWait();
         }
     }
 
@@ -207,6 +182,7 @@ public class GoTestAppServiceIT {
                 .findFirst()
                 .map(env -> env.getValue())
                 .orElse(null);
+        assertNotNull(originalAggregatorUrl, "DBAAS_AGENT env var must exist before test");
 
         try {
             deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
@@ -214,12 +190,12 @@ public class GoTestAppServiceIT {
                     .findFirst()
                     .ifPresent(env -> env.setValue("http://invalid-aggregator.example.com:9999"));
 
-            kubernetesClient.apps().deployments()
+            var updatedDeployment = kubernetesClient.apps().deployments()
                     .inNamespace(namespace)
                     .resource(deployment)
                     .update();
 
-            waitForPodRestart();
+            waitForDeploymentReady(updatedDeployment.getMetadata().getGeneration());
             waitForServiceHealth();
 
             String itemName = "invalid-aggregator-test-" + UUID.randomUUID();
@@ -251,12 +227,12 @@ public class GoTestAppServiceIT {
                     .findFirst()
                     .ifPresent(env -> env.setValue(originalAggregatorUrl));
 
-            kubernetesClient.apps().deployments()
+            var restoredUpdatedDeployment = kubernetesClient.apps().deployments()
                     .inNamespace(namespace)
                     .resource(restoredDeployment)
                     .update();
 
-            waitForPodRestart();
+            waitForDeploymentReady(restoredUpdatedDeployment.getMetadata().getGeneration());
             waitForServiceHealth();
         }
     }
@@ -450,46 +426,57 @@ public class GoTestAppServiceIT {
         }
     }
 
-    private static void waitForPodRestart() {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
-        String initialPodName = kubernetesClient.pods()
+    private static void replaceSecretData(Map<String, String> data) {
+        Secret secret = kubernetesClient.secrets().inNamespace(namespace).withName(DATABASE_SECRET_NAME).get();
+        assertNotNull(secret, "Secret must exist before update: " + DATABASE_SECRET_NAME);
+        secret.setData(data);
+        kubernetesClient.secrets().inNamespace(namespace).resource(secret).update();
+    }
+
+    private static void restartDeploymentAndWait() {
+        kubernetesClient.apps().deployments()
                 .inNamespace(namespace)
-                .withLabel("app.kubernetes.io/name", SAMPLE_SERVICE_NAME)
-                .list()
-                .getItems()
-                .stream()
-                .findFirst()
-                .map(pod -> pod.getMetadata().getName())
-                .orElse(null);
+                .withName(SAMPLE_SERVICE_NAME)
+                .rolling()
+                .restart();
+        var deployment = kubernetesClient.apps().deployments()
+                .inNamespace(namespace)
+                .withName(SAMPLE_SERVICE_NAME)
+                .get();
+        assertNotNull(deployment, "Deployment must exist after restart request");
+        waitForDeploymentReady(deployment.getMetadata().getGeneration());
+        waitForServiceHealth();
+    }
 
+    private static void waitForDeploymentReady(Long targetGeneration) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120);
         while (System.nanoTime() < deadline) {
-            var pods = kubernetesClient.pods()
+            var deployment = kubernetesClient.apps().deployments()
                     .inNamespace(namespace)
-                    .withLabel("app.kubernetes.io/name", SAMPLE_SERVICE_NAME)
-                    .list()
-                    .getItems();
-
-            if (pods.isEmpty()) {
+                    .withName(SAMPLE_SERVICE_NAME)
+                    .get();
+            if (deployment == null || deployment.getStatus() == null || deployment.getSpec() == null) {
                 sleep(Duration.ofSeconds(2));
                 continue;
             }
 
-            var currentPod = pods.get(0);
-            String currentPodName = currentPod.getMetadata().getName();
+            int desiredReplicas = deployment.getSpec().getReplicas() == null ? 1 : deployment.getSpec().getReplicas();
+            Long observedGeneration = deployment.getStatus().getObservedGeneration();
+            Integer readyReplicas = deployment.getStatus().getReadyReplicas();
+            Integer updatedReplicas = deployment.getStatus().getUpdatedReplicas();
 
-            if (!currentPodName.equals(initialPodName)) {
-                var readyCondition = currentPod.getStatus().getConditions().stream()
-                        .filter(condition -> "Ready".equals(condition.getType()))
-                        .findFirst();
-
-                if (readyCondition.isPresent() && "True".equals(readyCondition.get().getStatus())) {
-                    return;
-                }
+            if (observedGeneration != null
+                    && observedGeneration >= targetGeneration
+                    && readyReplicas != null
+                    && readyReplicas >= desiredReplicas
+                    && updatedReplicas != null
+                    && updatedReplicas >= desiredReplicas) {
+                return;
             }
 
             sleep(Duration.ofSeconds(2));
         }
 
-        throw new AssertionError("Pod did not restart and become ready within timeout");
+        throw new AssertionError("Deployment did not roll out and become ready within timeout");
     }
 }
