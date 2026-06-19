@@ -200,6 +200,21 @@ jobs:
           path: fluentbit-logs/**
           if-no-files-found: warn
 
+      - name: Collect DBaaS logs
+        id: collect_logs
+        if: always()
+        run: |
+          chmod +x .github/scripts/get-dbaas-logs.sh
+          .github/scripts/get-dbaas-logs.sh
+
+      - name: Upload DBaaS logs
+        if: always() && steps.collect_logs.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: go-test-app-service-dbaas-logs
+          path: logs/**
+          if-no-files-found: warn
+
       - name: Dump diagnostics on failure
         if: failure()
         run: |

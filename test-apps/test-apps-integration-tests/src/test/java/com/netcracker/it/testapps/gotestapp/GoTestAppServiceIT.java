@@ -92,6 +92,13 @@ public class GoTestAppServiceIT {
 
     @AfterAll
     static void closeResources() {
+        stopPortForward();
+        if (kubernetesClient != null) {
+            kubernetesClient.close();
+        }
+    }
+
+    private static void stopPortForward() {
         if (portForwardProcess != null) {
             portForwardProcess.destroy();
             try {
@@ -102,9 +109,7 @@ public class GoTestAppServiceIT {
                 Thread.currentThread().interrupt();
                 portForwardProcess.destroyForcibly();
             }
-        }
-        if (kubernetesClient != null) {
-            kubernetesClient.close();
+            portForwardProcess = null;
         }
     }
 
@@ -141,6 +146,8 @@ public class GoTestAppServiceIT {
             corruptedConnectionProps.addProperty("username", "invalid_user");
             corruptedConnectionProps.addProperty("password", "invalid_password");
             corruptedConnectionProps.addProperty("dbName", "invalid_db");
+            corruptedConnectionProps.addProperty("url",
+                    "postgres://invalid_user:invalid_password@invalid.example.com:9999/invalid_db");
 
             String corruptedPropsJson = GSON.toJson(corruptedConnectionProps);
             replaceSecretData(Map.of(
@@ -196,7 +203,7 @@ public class GoTestAppServiceIT {
                     .update();
 
             waitForDeploymentReady(updatedDeployment.getMetadata().getGeneration());
-            waitForServiceHealth();
+            restartPortForward();
 
             String itemName = "invalid-aggregator-test-" + UUID.randomUUID();
 
@@ -233,20 +240,26 @@ public class GoTestAppServiceIT {
                     .update();
 
             waitForDeploymentReady(restoredUpdatedDeployment.getMetadata().getGeneration());
-            waitForServiceHealth();
+            restartPortForward();
         }
     }
 
     private static void startPortForward() throws IOException {
         int localPort = findFreePort();
+        String podName = waitForReadyPodName();
         portForwardProcess = new ProcessBuilder(
-                "kubectl", "-n", namespace, "port-forward", "svc/" + SAMPLE_SERVICE_NAME, localPort + ":" + HTTP_PORT
+                "kubectl", "-n", namespace, "port-forward", "pod/" + podName, localPort + ":" + HTTP_PORT
         )
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start();
         sampleServiceUrl = new URL("http://127.0.0.1:" + localPort);
         waitForServiceHealth();
+    }
+
+    private static void restartPortForward() throws IOException {
+        stopPortForward();
+        startPortForward();
     }
 
     private static int findFreePort() throws IOException {
@@ -433,7 +446,7 @@ public class GoTestAppServiceIT {
         kubernetesClient.secrets().inNamespace(namespace).resource(secret).update();
     }
 
-    private static void restartDeploymentAndWait() {
+    private static void restartDeploymentAndWait() throws IOException {
         kubernetesClient.apps().deployments()
                 .inNamespace(namespace)
                 .withName(SAMPLE_SERVICE_NAME)
@@ -445,7 +458,7 @@ public class GoTestAppServiceIT {
                 .get();
         assertNotNull(deployment, "Deployment must exist after restart request");
         waitForDeploymentReady(deployment.getMetadata().getGeneration());
-        waitForServiceHealth();
+        restartPortForward();
     }
 
     private static void waitForDeploymentReady(Long targetGeneration) {
@@ -478,5 +491,33 @@ public class GoTestAppServiceIT {
         }
 
         throw new AssertionError("Deployment did not roll out and become ready within timeout");
+    }
+
+    private static String waitForReadyPodName() {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        while (System.nanoTime() < deadline) {
+            var pod = kubernetesClient.pods()
+                    .inNamespace(namespace)
+                    .withLabel("app.kubernetes.io/name", SAMPLE_SERVICE_NAME)
+                    .list()
+                    .getItems()
+                    .stream()
+                    .filter(GoTestAppServiceIT::isReadyPod)
+                    .max((left, right) -> left.getMetadata().getCreationTimestamp()
+                            .compareTo(right.getMetadata().getCreationTimestamp()));
+            if (pod.isPresent()) {
+                return pod.get().getMetadata().getName();
+            }
+            sleep(Duration.ofSeconds(2));
+        }
+        throw new AssertionError("No ready pod found for " + SAMPLE_SERVICE_NAME);
+    }
+
+    private static boolean isReadyPod(io.fabric8.kubernetes.api.model.Pod pod) {
+        if (pod.getStatus() == null || pod.getStatus().getConditions() == null) {
+            return false;
+        }
+        return pod.getStatus().getConditions().stream()
+                .anyMatch(condition -> "Ready".equals(condition.getType()) && "True".equals(condition.getStatus()));
     }
 }

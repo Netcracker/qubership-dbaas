@@ -72,6 +72,36 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${maven-compiler-plugin.version}</version>
             </plugin>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>test-reports</id>
+                        <phase>test</phase>
+                        <configuration>
+                            <target>
+                                <junitreport todir="target/surefire-reports">
+                                    <fileset dir="target/surefire-reports">
+                                        <include name="**/*.xml"/>
+                                    </fileset>
+                                    <report format="noframes" todir="target/surefire-reports"/>
+                                </junitreport>
+                            </target>
+                            <skip>${skipIT}</skip>
+                        </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>ant</groupId>
+                        <artifactId>ant-junit</artifactId>
+                        <version>1.6.5</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
         </plugins>
     </build>
 </project>
