@@ -1,0 +1,11 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: NamespaceBinding
+metadata:
+  name: binding
+  namespace: __TEST_NAMESPACE__
+  labels:
+    app.kubernetes.io/name: go-test-app-service
+    app.kubernetes.io/part-of: dbaas
+    app.kubernetes.io/managed-by: test-resource
+spec:
+  operatorNamespace: __TEST_NAMESPACE__

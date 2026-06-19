@@ -1,0 +1,26 @@
+SAMPLE_SERVICE_ENABLED: true
+SERVICE_NAME: go-test-app-service
+APPLICATION_NAME: dbaas
+MANAGED_BY: Helm
+NAMESPACE: dbaas
+REPLICAS: 1
+IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-go-test-app-service
+TAG: latest
+IMAGE_PULL_POLICY: IfNotPresent
+
+LOG_LEVEL: info
+DBAAS_AGENT: http://dbaas-aggregator.dbaas:8080
+BASECLIENT_RETRY_MAX_ATTEMPTS: 0
+BASECLIENT_RETRY_DELAY_MS: 10
+
+DB_TYPE: postgresql
+INTERNAL_DATABASE_NAME: go-test-app-service-postgres
+DATABASE_SECRET_CLAIM_NAME: go-test-app-service-postgres-claim
+DATABASE_SECRET_NAME: go-test-app-service-postgres
+DATABASE_SECRET_USER_ROLE: ""
+
+
+CPU_REQUEST: 10m
+MEMORY_REQUEST: 64Mi
+CPU_LIMIT: 500m
+MEMORY_LIMIT: 128Mi
