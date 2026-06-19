@@ -64,6 +64,24 @@ type Classifier struct {
 	// through as-is.
 	// +optional
 	CustomKeys map[string]apiextensionsv1.JSON `json:"customKeys,omitempty"`
+
+	// extraKeys are arbitrary additional classifier identity fields flattened
+	// onto the TOP level of the wire classifier, alongside microserviceName/
+	// scope/namespace/tenantId (unlike customKeys, which is nested under
+	// "customKeys"). They exist for compatibility with the legacy open
+	// classifier model, where services could place arbitrary identity fields
+	// at the classifier's top level. Values may be any JSON type (string,
+	// number, boolean, nested object, array). The reserved keys
+	// microserviceName, scope, namespace, tenantId and customKeys are not
+	// allowed: the controller rejects such a spec with InvalidConfiguration, and
+	// ClassifierFlatMap also skips them defensively so the typed fields always
+	// win. (A CEL rule cannot guard this map because its values are unstructured
+	// JSON, so the check lives in the controller.)
+	// Because these fields are part of the database identity, every consumer's
+	// dbaas-client must produce the same keys/values, otherwise the database
+	// (and its mounted Secret) will not be found.
+	// +optional
+	ExtraKeys map[string]apiextensionsv1.JSON `json:"extraKeys,omitempty"`
 }
 
 // Phase represents the processing phase of a dbaas operator resource.

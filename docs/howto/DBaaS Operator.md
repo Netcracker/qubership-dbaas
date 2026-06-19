@@ -725,9 +725,10 @@ spec:
     scope: service                 # required, minLength: 1; "service" or "tenant"
     namespace: my-namespace        # optional; if set, must equal metadata.namespace
     # tenantId: my-tenant          # required when scope=tenant
-    # customKeys:                  # optional, adapter-specific identifiers
+    # customKeys:                  # optional, adapter-specific identifiers (nested under "customKeys" on the wire)
     #   logicalDBName: mydb        # string
     #   shardCount: 5              # number — preserved as JSON number on the wire
+    # extraKeys:                   # optional, arbitrary identity fields flattened to the classifier top level
     #   region:                    # nested object — preserved as JSON object
     #     name: us-east
     #     az: a
@@ -754,28 +755,35 @@ spec:
 | `scope` | Yes | `service` or `tenant`. `minLength: 1`. |
 | `tenantId` | When `scope=tenant` | Tenant identifier for multi-tenant deployments. |
 | `namespace` | No | If set, must equal `metadata.namespace` (controller-side check); if absent, `metadata.namespace` is used in the aggregator URL. |
-| `customKeys` | No | Adapter-specific identifiers (e.g. `logicalDBName`). Values can be any valid JSON type (string, number, boolean, nested object, array); not validated by the aggregator. See the mapping rules below. |
+| `customKeys` | No | Adapter-specific identifiers (e.g. `logicalDBName`), emitted as a **nested** `customKeys` object on the wire (`classifier.customKeys.*`). Values can be any valid JSON type (string, number, boolean, nested object, array); not validated by the aggregator. See the mapping rules below. |
+| `extraKeys` | No | Arbitrary additional identity fields **flattened onto the classifier top level** (legacy open-classifier compatibility — see the mapping rules below). The reserved keys `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are not allowed — the controller rejects the spec with `InvalidConfiguration`. |
 
-##### `customKeys` → aggregator wire mapping
+##### Classifier → aggregator wire mapping
 
-The aggregator declares `ExternalDatabaseRequestV3.classifier` as
-`SortedMap<String, Object>` and stores it as JSONB, so the wire format supports
-any JSON value — including nested objects and arrays. The controller's
-`classifierToFlatMap` builds the wire payload from `spec.classifier` like this:
+The aggregator declares the classifier as `SortedMap<String, Object>` and stores
+it as JSONB, so the wire format supports any JSON value — including nested
+objects and arrays. The controller's `ClassifierFlatMap` builds the wire payload
+from `spec.classifier` like this:
 
 1. **Structured fields first.** `microserviceName` and `scope` are always
    emitted at the top level of the classifier map. `namespace` and `tenantId`
    are emitted at the top level when set (empty strings are skipped).
-2. **`customKeys` are flattened to the same top level.** Every entry in
-   `customKeys` becomes a top-level key in the wire classifier — there is no
-   nested `customKeys` envelope on the wire.
-3. **Native JSON types are preserved.** A string stays a JSON string, a number
-   stays a number, a boolean stays a boolean, a nested object/array is sent
-   as-is. The controller does not stringify non-string values.
-4. **Structured fields win on key collision.** If a user puts
-   `customKeys.microserviceName` (or `scope` / `namespace` / `tenantId`) into
-   the spec, the explicit structured field always wins. This prevents
-   accidentally overriding the identity fields from `customKeys`.
+2. **`customKeys` stay nested.** They are emitted as a single nested `customKeys`
+   object — the canonical dbaas-client shape (`classifier.customKeys.*`). They
+   are **not** flattened to the top level.
+3. **`extraKeys` are flattened to the top level.** Every entry in `extraKeys`
+   becomes a top-level key alongside the identity scalars, reproducing the legacy
+   open-classifier model (dbaas-client `withProperty` / `withProperties`).
+4. **Native JSON types are preserved** for both `customKeys` and `extraKeys`: a
+   string stays a JSON string, a number stays a number, a boolean stays a
+   boolean, a nested object/array is sent as-is. The controller does not
+   stringify non-string values.
+5. **Reserved keys are rejected.** If `extraKeys` contains `microserviceName`,
+   `scope`, `namespace`, `tenantId` or `customKeys`, the controller rejects the
+   CR with `InvalidConfiguration` (a CEL rule cannot guard this map because its
+   values are unstructured JSON, so the check lives in the controller).
+   `ClassifierFlatMap` additionally skips any reserved key defensively, so the
+   typed fields always win and a stray reserved key can never corrupt identity.
 
 Example. For the spec snippet:
 
@@ -788,6 +796,7 @@ spec:
     customKeys:
       logicalDBName: configs
       shardCount: 5
+    extraKeys:
       region:
         name: us-east
         az: a
@@ -800,16 +809,18 @@ the controller sends the following `classifier` to dbaas-aggregator:
   "microserviceName": "my-service",
   "scope": "service",
   "namespace": "my-namespace",
-  "logicalDBName": "configs",
-  "shardCount": 5,
+  "customKeys": { "logicalDBName": "configs", "shardCount": 5 },
   "region": { "name": "us-east", "az": "a" }
 }
 ```
 
-> The aggregator sorts classifier keys alphabetically for identity comparison.
-> Two classifiers with the same set of keys and JSON-equal values resolve to
-> the same database; differing values in any nested object yield different
-> identities (JSONB deep-compare).
+> **Identity & symmetry.** The aggregator sorts classifier keys alphabetically
+> and compares the whole JSONB for identity: two classifiers with the same keys
+> and JSON-equal values resolve to the same database (differing values in any
+> nested object yield different identities — JSONB deep-compare). Because
+> `customKeys` and `extraKeys` are part of that identity, every consumer's
+> dbaas-client must build the **same** keys/values — otherwise the database (and
+> any mounted Secret) will not be found.
 
 **Top-level spec fields:**
 
@@ -1264,8 +1275,10 @@ spec:
     scope: service                 # required; "service" or "tenant"
     # namespace: my-namespace      # optional; if set, must equal metadata.namespace
     # tenantId: my-tenant          # only meaningful when scope=tenant
-    # customKeys:                  # optional adapter-specific identifiers (arbitrary JSON)
+    # customKeys:                  # optional adapter-specific identifiers, nested under "customKeys" on the wire
     #   logicalDBName: payments
+    # extraKeys:                   # optional arbitrary identity fields, flattened to the classifier top level
+    #   region: eu
   type: postgresql
   # lazy: false                    # if true, defer provisioning until first access
   # namePrefix: "myapp"            # prefix applied to the physical DB name
@@ -1288,7 +1301,8 @@ spec:
 | `scope` | Yes | `service` or `tenant` |
 | `namespace` | No | If set, must equal `metadata.namespace` — controller-side validation; mismatch causes `InvalidConfiguration`/`InvalidSpec`. If absent, the aggregator uses `metadata.namespace` from the request |
 | `tenantId` | No | Only meaningful when `scope=tenant`. When absent, the aggregator applies the declaration for every tenant already registered in the namespace |
-| `customKeys` | No | Adapter-specific identifiers. Values can be any JSON type (string, number, boolean, nested object). Not validated by the aggregator — passed through as-is |
+| `customKeys` | No | Adapter-specific identifiers, emitted as a **nested** `customKeys` object on the wire (`classifier.customKeys.*`). Values can be any JSON type (string, number, boolean, nested object). Not validated by the aggregator — passed through as-is |
+| `extraKeys` | No | Arbitrary additional identity fields **flattened onto the classifier top level** (legacy open-classifier compatibility). The reserved keys `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are not allowed — the controller rejects the spec with `InvalidConfiguration`. Both the operator and every consuming dbaas-client must produce the same keys/values for identity to match |
 
 **Top-level spec fields:**
 
@@ -1786,8 +1800,10 @@ spec:
     scope: service                 # required; "service" or "tenant"
     namespace: my-namespace        # the aggregator always stores this; keep it set
     # tenantId: my-tenant          # only meaningful when scope=tenant
-    # customKeys:                  # optional adapter-specific identifiers (arbitrary JSON)
+    # customKeys:                  # optional adapter-specific identifiers, nested under "customKeys" on the wire
     #   logicalDBName: payments
+    # extraKeys:                   # optional arbitrary identity fields, flattened to the classifier top level
+    #   region: eu
   type: postgresql                 # required
   # userRole: admin                # optional; permission level of the returned credentials
   secretName: my-app-db-secret     # required; name of the Secret to create/update

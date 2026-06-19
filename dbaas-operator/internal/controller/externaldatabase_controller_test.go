@@ -176,6 +176,38 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			Expect(ck).To(HaveKeyWithValue("logicalDBName", "configs"))
 			Expect(ck).To(HaveKeyWithValue("shardCount", float64(5)))
 		})
+
+		It("flattens extraKeys onto the classifier top level (legacy open-classifier shape)", func() {
+			// extraKeys reproduce the legacy model where services placed arbitrary
+			// identity fields directly at the classifier top level (dbaas-client
+			// withProperty/withProperties). They sit alongside the scalars, NOT
+			// nested — both sides must produce the same set for identity to match.
+			spec := baseSpec()
+			spec.Classifier.ExtraKeys = map[string]apiextensionsv1.JSON{
+				"region": {Raw: []byte(`"eu"`)},
+				"legacy": {Raw: []byte(`{"nested":true}`)},
+			}
+			fixture.statusCode = http.StatusOK
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+
+			var sent struct {
+				Classifier map[string]any `json:"classifier"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+
+			// extraKeys land on the top level, preserving JSON types, and never
+			// appear as a nested "extraKeys" object.
+			Expect(sent.Classifier).To(HaveKeyWithValue("region", "eu"))
+			Expect(sent.Classifier).To(HaveKeyWithValue("legacy", map[string]any{"nested": true}))
+			Expect(sent.Classifier).NotTo(HaveKey("extraKeys"))
+		})
 	})
 
 	// ── classifier.namespace validation ──────────────────────────────────────
@@ -256,6 +288,35 @@ var _ = Describe("ExternalDatabase Controller", func() {
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
 			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("classifier.extraKeys contains a reserved key", func() {
+		It("sets Phase=InvalidConfiguration, never calls aggregator", func() {
+			spec := baseSpec()
+			spec.Classifier.ExtraKeys = map[string]apiextensionsv1.JSON{
+				"scope":  {Raw: []byte(`"tenant"`)}, // reserved — owned by the typed field
+				"region": {Raw: []byte(`"eu"`)},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
+
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
+			Expect(ready.Message).To(ContainSubstring("extraKeys"))
+			Expect(ready.Message).To(ContainSubstring("scope"))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
 		})
 	})
 

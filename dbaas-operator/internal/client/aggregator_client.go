@@ -18,6 +18,7 @@ limitations under the License.
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -106,6 +107,11 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		SetBaseURL(baseURL).
 		SetTimeout(defaultTimeout).
 		SetHeader("Accept", "application/json").
+		// Suppress resty's per-request "Using Basic Auth in HTTP mode is not
+		// secure, use HTTPS" warning. Operator→aggregator traffic is in-cluster
+		// and Basic Auth over HTTP is the intended default (KUBERNETES_M2M_ENABLED=false),
+		// so the warning is pure noise logged on every call (incl. the rotation poll loop).
+		SetDisableWarn(true).
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
 			// M2M mode — fetch a fresh dbaas-audience token per request.
 			if c.getToken != nil {
@@ -161,7 +167,13 @@ func (c *AggregatorClient) doRequest(
 // must NOT treat an empty 200 as a valid zero value. For the feed in particular a
 // zero value reads as "no rotation history" and would seed the poller cursor at
 // epoch, triggering a full replay instead of a retry. label names the endpoint.
-func decodeInto[T any](body []byte, label string, allowEmpty bool) (*T, error) {
+//
+// When useNumber is true JSON numbers decode as json.Number rather than float64.
+// The changed-databases feed needs this so large integers in a classifier
+// identity field keep their exact value, matching the precision-preserving
+// ClassifierFlatMap on the controller side (otherwise the poller's index key
+// would diverge for such databases and the rotation would be silently missed).
+func decodeInto[T any](body []byte, label string, allowEmpty, useNumber bool) (*T, error) {
 	var result T
 	if len(body) == 0 {
 		if allowEmpty {
@@ -169,7 +181,11 @@ func decodeInto[T any](body []byte, label string, allowEmpty bool) (*T, error) {
 		}
 		return nil, fmt.Errorf("decode %s response: empty body", label)
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if useNumber {
+		dec.UseNumber()
+	}
+	if err := dec.Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode %s response: %w", label, err)
 	}
 	return &result, nil
@@ -193,7 +209,7 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 	if err != nil {
 		return nil, err
 	}
-	return decodeInto[DeclarativeResponse](resp.Body(), "apply", true)
+	return decodeInto[DeclarativeResponse](resp.Body(), "apply", true, false)
 }
 
 // GetOperationStatus polls the status of an asynchronous operation.
@@ -209,7 +225,7 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 	if err != nil {
 		return nil, err
 	}
-	return decodeInto[DeclarativeResponse](resp.Body(), "operation status", true)
+	return decodeInto[DeclarativeResponse](resp.Body(), "operation status", true, false)
 }
 
 // RegisterExternalDatabase sends a PUT request to register an externally managed
@@ -282,7 +298,7 @@ func (c *AggregatorClient) GetDatabaseByClassifier(
 	if err != nil {
 		return nil, err
 	}
-	return decodeInto[DatabaseResponseSingleCP](resp.Body(), "get-by-classifier", false)
+	return decodeInto[DatabaseResponseSingleCP](resp.Body(), "get-by-classifier", false, false)
 }
 
 // GetChangedSince fetches databases whose credentials changed (password rotation
@@ -309,7 +325,9 @@ func (c *AggregatorClient) GetChangedSince(ctx context.Context, cursor *ChangeCu
 	if err != nil {
 		return nil, err
 	}
-	return decodeInto[ChangedDatabasesResponse](resp.Body(), "changed-databases", false)
+	// useNumber=true: keep large integers in a classifier identity field exact so
+	// the poller's index key matches the precision-preserving controller side.
+	return decodeInto[ChangedDatabasesResponse](resp.Body(), "changed-databases", false, true)
 }
 
 func newAggregatorError(resp *resty.Response) *AggregatorError {

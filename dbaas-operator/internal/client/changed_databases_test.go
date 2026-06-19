@@ -18,6 +18,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -105,6 +106,42 @@ func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 	got := resp.Items[0]
 	if got.Id != "33333333-3333-3333-3333-333333333333" || got.Type != dbTypePostgresql || got.Namespace != "ns" || !got.LastRotatedAt.Equal(next) {
 		t.Errorf("item = %+v", got)
+	}
+}
+
+// The changed feed must decode classifier numbers as json.Number (UseNumber) so a
+// large integer (> 2^53) in an identity field keeps its exact value — a float64
+// round-trip would truncate it and the poller's index key would no longer match
+// the precision-preserving controller side.
+func TestGetChangedSince_PreservesLargeIntClassifier(t *testing.T) {
+	const big = "9007199254740993" // 2^53 + 1, not representable exactly as float64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, w, http.StatusOK, ChangedDatabasesResponse{
+			Items: []ChangedDatabaseRef{{
+				Id:        "1",
+				Namespace: "ns",
+				Classifier: map[string]any{
+					"microserviceName": "ms", "scope": "service", "namespace": "ns",
+					"accountId": int64(9007199254740993),
+				},
+				Type:          dbTypePostgresql,
+				LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC),
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClientWithTokenFunc(srv.URL, staticToken("tok"))
+	resp, err := c.GetChangedSince(context.Background(), nil, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(resp.Items))
+	}
+	got := resp.Items[0].Classifier["accountId"]
+	if got != json.Number(big) {
+		t.Fatalf("accountId = %#v (%T), want json.Number(%q) — feed must decode with UseNumber", got, got, big)
 	}
 }
 

@@ -317,6 +317,14 @@ func validateInternalDatabaseSpec(dd *dbaasv1.InternalDatabase) string {
 			ns, dd.Namespace)
 	}
 
+	// extraKeys must not shadow the typed classifier fields — a collision is a
+	// spec mistake (the typed field would win and the extraKey be dropped).
+	if reserved := dbaasv1.ReservedExtraKeys(dd.Spec.Classifier); len(reserved) > 0 {
+		return fmt.Sprintf(
+			"spec.classifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields",
+			reserved)
+	}
+
 	if dd.Spec.Lazy &&
 		dd.Spec.InitialInstantiation != nil &&
 		dd.Spec.InitialInstantiation.Approach == "clone" {
@@ -333,6 +341,14 @@ func validateInternalDatabaseSpec(dd *dbaasv1.InternalDatabase) string {
 			dd.Spec.InitialInstantiation.SourceClassifier.MicroserviceName !=
 				dd.Spec.Classifier.MicroserviceName {
 			return "spec: initialInstantiation.sourceClassifier.microserviceName must match classifier.microserviceName"
+		}
+
+		if sc := dd.Spec.InitialInstantiation.SourceClassifier; sc != nil {
+			if reserved := dbaasv1.ReservedExtraKeys(*sc); len(reserved) > 0 {
+				return fmt.Sprintf(
+					"spec.initialInstantiation.sourceClassifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields",
+					reserved)
+			}
 		}
 	}
 

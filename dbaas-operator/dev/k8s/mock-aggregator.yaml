@@ -114,6 +114,18 @@ data:
           "scope": "service",
           "namespace": "test-ns"
         }
+      },
+      {
+        "id": "22222222-2222-2222-2222-222222222222",
+        "namespace": "test-ns",
+        "type": "postgresql",
+        "lastRotatedAt": "2026-06-18T10:05:00Z",
+        "classifier": {
+          "microserviceName": "extra-svc",
+          "scope": "service",
+          "namespace": "test-ns",
+          "region": "eu"
+        }
       }
     ]
   # Connection properties returned by POST .../databases/get-by-classifier/{type},
@@ -130,6 +142,15 @@ data:
         "username": "secret_user",
         "password": "rotate-me-v1",
         "url": "jdbc:postgresql://pg.example.com:5432/secret_db",
+        "role": "admin"
+      },
+      "extra-svc": {
+        "host": "pg.example.com",
+        "port": 5432,
+        "name": "extra_db",
+        "username": "extra_user",
+        "password": "rotate-me-v1",
+        "url": "jdbc:postgresql://pg.example.com:5432/extra_db",
         "role": "admin"
       }
     }
