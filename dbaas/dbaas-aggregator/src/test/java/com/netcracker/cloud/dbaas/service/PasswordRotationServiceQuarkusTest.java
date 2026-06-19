@@ -13,6 +13,7 @@ import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +22,7 @@ import org.mockito.Mockito;
 
 import java.util.*;
 
+import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -28,16 +30,13 @@ import static org.mockito.Mockito.*;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
-class DBaaServiceQuarkusTest {
+class PasswordRotationServiceQuarkusTest {
 
-    private static final String NAMESPACE = "rotation-tx-test-ns";
-    private static final String DB_TYPE = "mongodb";
     private static final String ADAPTER_ID_1 = "adapter-1";
     private static final String ADAPTER_ID_2 = "adapter-2";
-    private static final String PHYS_DB_ID = "phys-db-id";
 
     @Inject
-    DBaaService dBaaService;
+    PasswordRotationService passwordRotationService;
 
     @Inject
     DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
@@ -49,40 +48,31 @@ class DBaaServiceQuarkusTest {
     void cleanUp() {
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType()
                 .stream()
-                .filter(dbr -> NAMESPACE.equals(dbr.getNamespace()))
+                .filter(dbr -> TEST_NS.equals(dbr.getNamespace()))
                 .forEach(databaseRegistryDbaasRepository::delete);
     }
 
     /**
-     * Verifies that a successful rotation in a partial-batch is committed to the DB even when a
-     * later database in the same batch causes PasswordChangeFailedException (which rolls back the
-     * outer transaction).  The REQUIRES_NEW sub-transaction in PasswordRotationCommitService must
-     * survive that outer rollback.
+     * Verifies that when a batch of database-password rotations is processed and adapter-2 throws,
+     * the already-committed rotation for database-1 survives.
      */
     @Test
-    void partialBatchFailure_successfulRotationCommittedDespiteOuterRollback() {
+    void partialBatchFailure_successfulRotationPersistedIndependently() {
         // --- arrange databases -------------------------------------------------
         String oldUsername1 = "old-user-1";
         String oldUsername2 = "old-user-2";
         String newUsername1 = "new-user-1";
-        String msName1 = "ms-rotation-1";
-        String msName2 = "ms-rotation-2";
-
-        SortedMap<String, Object> classifier1 = buildClassifier(NAMESPACE, msName1);
-        SortedMap<String, Object> classifier2 = buildClassifier(NAMESPACE, msName2);
 
         DatabaseRegistry registry1 = new DatabaseBuilder()
-                .type(DB_TYPE).adapterId(ADAPTER_ID_1).physicalDatabaseId(PHYS_DB_ID)
-                .classifier(classifier1).name("db-name-1")
+                .adapterId(ADAPTER_ID_1)
                 .connectionProperties(List.of(new HashMap<>(Map.of("username", oldUsername1, "role", Role.ADMIN.toString()))))
-                .registry(b -> b.namespace(NAMESPACE).classifier("microserviceName", msName1))
-                .build().getDatabaseRegistry().get(0);
+                .registry()
+                .build().getDatabaseRegistry().getFirst();
         DatabaseRegistry registry2 = new DatabaseBuilder()
-                .type(DB_TYPE).adapterId(ADAPTER_ID_2).physicalDatabaseId(PHYS_DB_ID)
-                .classifier(classifier2).name("db-name-2")
+                .adapterId(ADAPTER_ID_2)
                 .connectionProperties(List.of(new HashMap<>(Map.of("username", oldUsername2, "role", Role.ADMIN.toString()))))
-                .registry(b -> b.namespace(NAMESPACE).classifier("microserviceName", msName2))
-                .build().getDatabaseRegistry().get(0);
+                .registry()
+                .build().getDatabaseRegistry().getFirst();
 
         databaseRegistryDbaasRepository.saveAll(List.of(registry1, registry2));
 
@@ -109,12 +99,12 @@ class DBaaServiceQuarkusTest {
 
         // --- act ---------------------------------------------------------------
         PasswordChangeRequestV3 request = new PasswordChangeRequestV3();
-        request.setType(DB_TYPE);
+        request.setType(PG_TYPE);
         // null classifier → namespace-wide batch
 
         PasswordChangeFailedException thrown = assertThrows(
                 PasswordChangeFailedException.class,
-                () -> dBaaService.changeUserPassword(request, NAMESPACE)
+                () -> passwordRotationService.changeUserPassword(request, TEST_NS)
         );
 
         // --- assert response ---------------------------------------------------
@@ -124,14 +114,16 @@ class DBaaServiceQuarkusTest {
 
         // --- assert transaction isolation: db1 persisted, db2 unchanged --------
         Optional<DatabaseRegistry> persistedReg1 =
-                databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier1, DB_TYPE);
+                databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(registry1.getClassifier(), PG_TYPE);
         assertTrue(persistedReg1.isPresent());
         Map<String, Object> cp1 = getConnectionProperties(persistedReg1.get(), Role.ADMIN.toString());
         assertEquals(newUsername1, cp1.get("username"),
-                "db1 must have the new username committed by REQUIRES_NEW transaction");
+                "db1 must have the new username committed by its independent transaction");
+        assertNotNull(persistedReg1.get().getDatabase().getLastRotatedAt(),
+                "db1 must have lastRotatedAt stamped by its independent commitRotation transaction");
 
         Optional<DatabaseRegistry> persistedReg2 =
-                databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier2, DB_TYPE);
+                databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(registry2.getClassifier(), PG_TYPE);
         assertTrue(persistedReg2.isPresent());
         Map<String, Object> cp2 = getConnectionProperties(persistedReg2.get(), Role.ADMIN.toString());
         assertEquals(oldUsername2, cp2.get("username"),
@@ -140,20 +132,17 @@ class DBaaServiceQuarkusTest {
 
     @Test
     void multiRoleDatabase_marksRotatedOncePerDatabase() {
-        SortedMap<String, Object> classifier = buildClassifier(NAMESPACE, "ms-multi-role");
         DatabaseRegistry registry = new DatabaseBuilder()
-                .type(DB_TYPE).adapterId(ADAPTER_ID_1).physicalDatabaseId(PHYS_DB_ID)
-                .classifier(classifier).name("db-multi")
                 .connectionProperties(new ArrayList<>(List.of(
                         new HashMap<>(Map.of("username", "user-admin", "role", Role.ADMIN.toString())),
                         new HashMap<>(Map.of("username", "user-rw", "role", "rw"))
                 )))
-                .registry(b -> b.namespace(NAMESPACE).classifier("microserviceName", "ms-multi-role"))
-                .build().getDatabaseRegistry().get(0);
+                .registry()
+                .build().getDatabaseRegistry().getFirst();
         databaseRegistryDbaasRepository.saveInternalDatabase(registry);
 
         DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
-        Mockito.when(adapter.identifier()).thenReturn(ADAPTER_ID_1);
+        Mockito.when(adapter.identifier()).thenReturn(POSTGRES_ADAPTER_ID);
         Mockito.when(adapter.isUsersSupported()).thenReturn(true);
         doReturn(buildEnsuredUser(Map.of("username", "user-admin", "role", Role.ADMIN.toString())))
                 .when(adapter).ensureUser(eq("user-admin"), any(), any(), eq(Role.ADMIN.toString()));
@@ -161,25 +150,14 @@ class DBaaServiceQuarkusTest {
                 .when(adapter).ensureUser(eq("user-rw"), any(), any(), eq("rw"));
         Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(List.of(adapter));
 
-        dBaaService.performChangePassword(List.of(registry), null);
+        passwordRotationService.performChangePassword(List.of(registry), null);
 
         DatabaseRegistry persisted = databaseRegistryDbaasRepository
-                .getDatabaseByClassifierAndType(classifier, DB_TYPE).orElseThrow();
+                .getDatabaseByClassifierAndType(registry.getClassifier(), PG_TYPE).orElseThrow();
         assertNotNull(persisted.getDatabase().getLastRotatedAt(),
                 "rotation must stamp last_rotated_at on the database");
     }
 
-    // ---------------------------------------------------------------------------
-    // helpers
-    // ---------------------------------------------------------------------------
-
-    private SortedMap<String, Object> buildClassifier(String namespace, String microserviceName) {
-        SortedMap<String, Object> c = new TreeMap<>();
-        c.put("namespace", namespace);
-        c.put("microserviceName", microserviceName);
-        c.put("scope", "service");
-        return c;
-    }
 
     private EnsuredUser buildEnsuredUser(Map<String, Object> connectionProperties) {
         EnsuredUser user = new EnsuredUser();

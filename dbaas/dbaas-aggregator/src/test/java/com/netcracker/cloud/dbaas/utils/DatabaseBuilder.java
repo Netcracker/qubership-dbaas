@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.utils;
 
 import com.netcracker.cloud.dbaas.DatabaseType;
+import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
@@ -16,14 +17,18 @@ import static com.netcracker.cloud.dbaas.Constants.*;
 public class DatabaseBuilder {
     public static final String POSTGRES_ADAPTER_ID = UUID.randomUUID().toString();
     public static final String POSTGRES_PHY_DB_ID = "postgres-adapter";
+    public static final String PG_TYPE = DatabaseType.POSTGRESQL.toString();
     public static final String TEST_MS = "test-ms";
     public static final String TEST_NS = "test-ns";
+    public static final String ADMIN_USER_NAME = "username";
+    public static final String ADMIN_USER_PASSWORD = "password";
 
     private final Database database;
     private final List<DatabaseRegistry> registries = new ArrayList<>();
 
     private final SortedMap<String, Object> classifier;
-    private String type = DatabaseType.POSTGRESQL.toString();
+
+    private String type = PG_TYPE;
 
     public DatabaseBuilder() {
         database = new Database();
@@ -38,14 +43,16 @@ public class DatabaseBuilder {
                 MICROSERVICE_NAME, TEST_MS,
                 "random", UUID.randomUUID().toString()));
         database.setClassifier(classifier);
-        DbResource dbResource = new DbResource();
         database.setNamespace(TEST_NS);
-        dbResource.setId(UUID.randomUUID());
-        database.setResources(new ArrayList<>(List.of(dbResource)));
-        database.setConnectionProperties(new ArrayList<>(List.of(Map.of(
-                "username", "username",
-                "password", "password"
-        ))));
+        List<DbResource> dbResources = List.of(
+                new DbResource("user", ADMIN_USER_NAME),
+                new DbResource("database", database.getName()));
+        database.setResources(new ArrayList<>(dbResources));
+        database.setConnectionProperties(new ArrayList<>(List.of(new HashMap<>(Map.of(
+                ROLE, Role.ADMIN.toString(),
+                "username", ADMIN_USER_NAME,
+                "password", ADMIN_USER_PASSWORD
+        )))));
         database.setDbState(new DbState(AbstractDbState.DatabaseStateStatus.CREATED));
     }
 
