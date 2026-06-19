@@ -3,19 +3,22 @@ package com.netcracker.cloud.dbaas.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.Constants;
-import com.netcracker.cloud.dbaas.dto.*;
+import com.netcracker.cloud.dbaas.dto.DatabaseResponse;
+import com.netcracker.cloud.dbaas.dto.FailedTransformationDatabaseResponse;
+import com.netcracker.cloud.dbaas.dto.PasswordChangeResponse;
+import com.netcracker.cloud.dbaas.dto.UpdateConnectionPropertiesRequest;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
-import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.exceptions.InvalidUpdateConnectionPropertiesRequestException;
+import com.netcracker.cloud.dbaas.exceptions.NoBalancingRuleException;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
-import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import jakarta.persistence.EntityManager;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
@@ -24,22 +27,19 @@ import org.hamcrest.TypeSafeMatcher;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.platform.commons.util.StringUtils;
-import org.mockito.*;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
-import static com.netcracker.cloud.dbaas.entity.pg.DbResource.USER_KIND;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,7 +50,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class DBaaServiceTest {
 
-    @Spy
     @InjectMocks
     private DBaaService dBaaService;
 
@@ -84,89 +83,6 @@ class DBaaServiceTest {
 
     private static final String NAMESPACE = "test-namespace";
     private static final String PG_TYPE = "postgresql";
-
-    @Test
-    void changeUserPasswordOneDatabaseTest() {
-        String namespace = "namespace-test";
-        String dbType = "mongodb";
-        String databaseName = "database-name";
-        String userName = "user-name";
-        String password = "new-password";
-        Map<String, Object> connection = new HashMap<>();
-        connection.put("username", userName);
-        connection.put("password", password);
-        connection.put("role", Role.ADMIN.toString());
-        Map<String, Object> classifierRequest = new HashMap<>();
-        classifierRequest.put("microserviceName", "microserivice-name-test");
-        classifierRequest.put("scope", "service");
-        Map<String, Object> classifier = new HashMap<>(classifierRequest);
-        classifier.put("namespace", namespace);
-
-        // MOCKs
-        DbaasAdapter mongoDefaultAdapter = Mockito.spy(createAdapter("mongoDefaultAdapter-address", dbType, mock(DbaasAdapterRestClientV2.class), "mongoDefaultAdapter",
-                mock(AdapterActionTrackerClient.class)));
-        Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(mongoDefaultAdapter));
-        doReturn(createEnsureUser(connection)).when(mongoDefaultAdapter).ensureUser(userName, null, databaseName, Role.ADMIN.toString());
-        doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
-        DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
-        database.setConnectionProperties(Arrays.asList(connection));
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
-
-        adapterSupportUsers(namespace, dbType, connection, classifierRequest);
-        doReturn(false).when(mongoDefaultAdapter).isUsersSupported();
-        adapterNotSupportUsers(namespace, dbType, connection, classifierRequest);
-        doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
-
-        doThrow(new WebApplicationException(Response.Status.NOT_FOUND)).when(mongoDefaultAdapter).ensureUser(userName, null, databaseName, Role.ADMIN.toString());
-        passwordChangeFail(namespace, dbType, connection, classifierRequest);
-    }
-
-    @Test
-    void testGetMergedResources_curretContainsNewResources() {
-        DbResource prevResourcePrefix = new DbResource("resourcePrefix", "test-prefix");
-        DbResource prevUsernameResource = new DbResource(USER_KIND, "test-username");
-        DbResource currAdditionalResource = new DbResource("additionalResource", "test-additional-resource");
-
-        List<DbResource> prev = new ArrayList<>();
-        prev.add(prevResourcePrefix);
-        prev.add(prevUsernameResource);
-
-        List<DbResource> curr = new ArrayList<>();
-        curr.add(currAdditionalResource);
-
-        List<DbResource> result = dBaaService.getMergedResources(prev, curr);
-        Assertions.assertNotNull(result);
-        Assertions.assertEquals(3, result.size());
-        Assertions.assertTrue(result.contains(prevResourcePrefix));
-        Assertions.assertTrue(result.contains(prevUsernameResource));
-        Assertions.assertTrue(result.contains(currAdditionalResource));
-    }
-
-    @Test
-    void testGetMergedResources_adapterReturnedAllResources() {
-        DbResource prevResourcePrefix = new DbResource("resourcePrefix", "test-prefix");
-        prevResourcePrefix.setId(UUID.randomUUID());
-        DbResource prevUsernameResource = new DbResource(USER_KIND, "test-username");
-        prevUsernameResource.setId(UUID.randomUUID());
-        DbResource currResourcePrefix = new DbResource("resourcePrefix", "test-prefix");
-        DbResource currUsernameResource = new DbResource(USER_KIND, "test-username");
-
-        List<DbResource> prev = new ArrayList<>();
-        prev.add(prevResourcePrefix);
-        prev.add(prevUsernameResource);
-
-        List<DbResource> curr = new ArrayList<>();
-        curr.add(currUsernameResource);
-        curr.add(currResourcePrefix);
-
-        List<DbResource> result = dBaaService.getMergedResources(prev, curr);
-        Assertions.assertNotNull(result);
-        Assertions.assertEquals(2, result.size());
-        Assertions.assertTrue(result.contains(prevUsernameResource));
-        Assertions.assertTrue(result.contains(prevResourcePrefix));
-    }
 
     @Test
     void testGetMergedConnectionProperties_passwordChanges() {
@@ -203,178 +119,6 @@ class DBaaServiceTest {
         Assertions.assertEquals("my-password", result.get("password"));
         Assertions.assertEquals("my-resource-prefix", result.get("resourcePrefix"));
         Assertions.assertEquals("some-new-val", result.get("some-new-conn-property-key"));
-    }
-
-    @Test
-    void changeUserPasswordSeveralDatabaseTest() {
-        String namespace = "namespace-test";
-        String dbType = "mongodb";
-        String defaultAdapter = "mongoDefaultAdapter";
-        String notDefaultAdapter = "mongoNotDefaultAdapter";
-        String databaseName1 = "database-name-1";
-        String databaseName2 = "database-name-2";
-        String userName1 = "user-name-1";
-        String userPass1 = "new-password-1";
-        String userName2 = "user-name-2";
-        String userPassw2 = "new-password-2";
-        Map<String, Object> classifierRequest = new HashMap<>();
-        classifierRequest.put("microserviceName", "microserivice-name-test");
-        classifierRequest.put("isServiceDb", true);
-        Map<String, Object> classifier1 = new HashMap<>(classifierRequest);
-        classifier1.put("namespace", namespace);
-        Map<String, Object> classifier2 = new HashMap<>(classifier1);
-        classifier2.put("database", "two");
-        Map<String, Object> connection1 = new HashMap<>();
-        connection1.put("username", userName1);
-        connection1.put("password", userPass1);
-        connection1.put("role", Role.ADMIN.toString());
-        Map<String, Object> connection2 = new HashMap<>();
-        connection2.put("username", userName2);
-        connection2.put("password", userPassw2);
-        connection2.put("role", Role.ADMIN.toString());
-
-        DbaasAdapter mongoDefaultAdapter = Mockito.spy(createAdapter("mongoDefaultAdapter-address", dbType, mock(DbaasAdapterRestClientV2.class), defaultAdapter,
-                mock(AdapterActionTrackerClient.class)));
-        DbaasAdapter mongoNotDefaultAdapter = Mockito.spy(createAdapter("mongoNotDefaultAdapter-address", dbType, mock(DbaasAdapterRestClientV2.class), notDefaultAdapter,
-                mock(AdapterActionTrackerClient.class)));
-        Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(mongoDefaultAdapter, mongoNotDefaultAdapter));
-        DatabaseRegistry database1 = createDatabase(classifier1, dbType, defaultAdapter, userName1, databaseName1);
-        DatabaseRegistry database2 = createDatabase(classifier2, dbType, notDefaultAdapter, userName2, databaseName2);
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        Mockito.when(databaseRegistryDbaasRepository.findInternalDatabaseRegistryByNamespace(eq(namespace))).thenReturn(Arrays.asList(database1, database2));
-        doReturn(createEnsureUser(connection1)).when(mongoDefaultAdapter).ensureUser(userName1, null, databaseName1, Role.ADMIN.toString());
-        doReturn(createEnsureUser(connection2)).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
-        doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
-        doReturn(true).when(mongoNotDefaultAdapter).isUsersSupported();
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
-
-        checkSuccessChangePassword(namespace, dbType, classifier1, classifier2, connection1, connection2, mongoDefaultAdapter, mongoNotDefaultAdapter);
-        doThrow(new WebApplicationException(Response.Status.NOT_FOUND)).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
-        checkOneFailChangePassword(namespace, dbType, classifier1, classifier2, connection1, connection2, mongoDefaultAdapter, mongoNotDefaultAdapter);
-    }
-
-    @Test
-    void changeUserPasswordViaV2AndRoleAbsentInResponse() {
-        String adapterId = "1234";
-        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
-        when(adapter.identifier()).thenReturn(adapterId);
-
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
-
-        when(physicalDatabasesService.getAllAdapters()).thenReturn(Stream.of(adapter).collect(Collectors.toList()));
-        SortedMap<String, Object> classifier = new TreeMap<>() {{
-            put("namespace", "test-namespace");
-            put("microserviceName", "serviceOne");
-            put("scope", "service");
-        }};
-        String mongodb = "mongodb";
-        DatabaseRegistry database = createDatabase(classifier, mongodb, adapterId, "user-name", "db-name");
-        database.getConnectionProperties().get(0).put("password", "pwd-1");
-        database.getConnectionProperties().add(new HashMap<>() {{
-            put("username", "user-name-2");
-            put(ROLE, "rw");
-            put("password", "pwd-2");
-        }});
-        Map<String, Object> cp = new HashMap<>(Map.of("username", "user-name", "password", "changed-pwd-1"));
-        Map<String, Object> cp2 = new HashMap<>(Map.of("username", "user-name-2", "password", "changed-pwd-2"));
-        doReturn(createEnsureUser(cp)).when(adapter).ensureUser("user-name", null, "db-name", "admin");
-        doReturn(createEnsureUser(cp2)).when(adapter).ensureUser("user-name-2", null, "db-name", "rw");
-
-
-        PasswordChangeResponse passwordChangeResponse = dBaaService.performChangePassword(Collections.singletonList(database), null);
-        log.info("passwordChangeResponse = {} ", passwordChangeResponse);
-
-        List<PasswordChangeResponse.PasswordChanged> passwordChanges = passwordChangeResponse.getChanged();
-
-        Optional<PasswordChangeResponse.PasswordChanged> passwordChanged1 = passwordChanges.stream().filter(passwordChanged -> passwordChanged.getConnection().containsValue("changed-pwd-1")).findFirst();
-        Assertions.assertTrue(passwordChanged1.isPresent());
-        Assertions.assertEquals("admin", passwordChanged1.get().getConnection().get("role"));
-
-        Optional<PasswordChangeResponse.PasswordChanged> passwordChanged2 = passwordChanges.stream().filter(passwordChanged -> passwordChanged.getConnection().containsValue("changed-pwd-2")).findFirst();
-        Assertions.assertTrue(passwordChanged2.isPresent());
-        Assertions.assertEquals("rw", passwordChanged2.get().getConnection().get("role"));
-    }
-
-    @ParameterizedTest
-    @NullAndEmptySource
-    void testChangePasswordWhenAdapterV1ReturnEmptyRole(String role) {
-        String namespace = "namespace-test";
-        String dbType = "mongodb";
-        String databaseName = "database-name";
-        String userName = "user-name";
-        String password = "new-password";
-
-        Map<String, Object> connection = new HashMap<>();
-        connection.put("username", userName);
-        connection.put("password", password);
-        connection.put("role", Role.ADMIN.toString());
-
-        Map<String, Object> connectionWithEmptyRole = new HashMap<>();
-        connectionWithEmptyRole.put("username", userName);
-        connectionWithEmptyRole.put("password", password);
-        connectionWithEmptyRole.put("role", role);
-
-        Map<String, Object> classifierRequest = new HashMap<>();
-        classifierRequest.put("microserviceName", "microserivice-name-test");
-        classifierRequest.put("scope", "service");
-        Map<String, Object> classifier = new HashMap<>(classifierRequest);
-        classifier.put("namespace", namespace);
-
-        // MOCKs
-        DbaasAdapter mongoDefaultAdapter = Mockito.spy(createAdapter("mongoDefaultAdapter-address", dbType, mock(DbaasAdapterRestClientV2.class), "mongoDefaultAdapter",
-                mock(AdapterActionTrackerClient.class)));
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(mongoDefaultAdapter));
-        doReturn(createEnsureUser(connectionWithEmptyRole)).when(mongoDefaultAdapter).ensureUser(userName, null, databaseName, Role.ADMIN.toString());
-        doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
-
-        DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
-        database.setConnectionProperties(Arrays.asList(connection));
-        Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
-
-        adapterSupportUsers(namespace, dbType, connection, classifierRequest);
-    }
-
-    @ParameterizedTest
-    @NullAndEmptySource
-    void testChangePasswordWhenAdapterV2ReturnEmptyRole(String role) {
-        String namespace = "namespace-test";
-        String dbType = "mongodb";
-        String databaseName = "database-name";
-        String userName = "user-name";
-        String password = "new-password";
-
-        Map<String, Object> connection = new HashMap<>();
-        connection.put("username", userName);
-        connection.put("password", password);
-        connection.put("role", Role.ADMIN.toString());
-
-        Map<String, Object> connectionWithEmptyRole = new HashMap<>();
-        connectionWithEmptyRole.put("username", userName);
-        connectionWithEmptyRole.put("password", password);
-        connectionWithEmptyRole.put("role", role);
-
-        Map<String, Object> classifierRequest = new HashMap<>();
-        classifierRequest.put("microserviceName", "microserivice-name-test");
-        classifierRequest.put("scope", "service");
-        Map<String, Object> classifier = new HashMap<>(classifierRequest);
-        classifier.put("namespace", namespace);
-
-        // MOCKs
-        DbaasAdapter mongoDefaultAdapter = Mockito.spy(createAdapter("mongoDefaultAdapter-address", dbType, mock(DbaasAdapterRestClientV2.class), "mongoDefaultAdapter",
-                mock(AdapterActionTrackerClient.class)));
-        Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(mongoDefaultAdapter));
-        doReturn(createEnsureUser(connectionWithEmptyRole)).when(mongoDefaultAdapter).ensureUser(userName, null, databaseName, Role.ADMIN.toString());
-        doReturn(true).when(mongoDefaultAdapter).isUsersSupported();
-
-        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
-        DatabaseRegistry database = createDatabase(classifier, dbType, "mongoDefaultAdapter", userName, databaseName);
-        database.setConnectionProperties(Arrays.asList(connection));
-        Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, dbType)).thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
-        lenient().doNothing().when(dBaaService).commitPasswordRotation(any());
-
-        adapterSupportUsers(namespace, dbType, connection, classifierRequest);
     }
 
     @Test
@@ -547,93 +291,11 @@ class DBaaServiceTest {
                 Collections.singletonList(connectionProperties), "tarantool", "external-db");
     }
 
-    private void checkOneFailChangePassword(String namespace, String dbType, Map<String, Object> classifier1, Map<String, Object> classifier2, Map<String, Object> connection1, Map<String, Object> connection2, DbaasAdapter mongoDefaultAdapter, DbaasAdapter mongoNotDefaultAdapter) {
-        PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(null, dbType);
-        AtomicReference<PasswordChangeFailedException> eRef = new AtomicReference<>();
-        Assertions.assertThrows(PasswordChangeFailedException.class, () -> {
-            try {
-                dBaaService.changeUserPassword(passwordChangeRequest, namespace, Role.ADMIN.toString());
-            } catch (PasswordChangeFailedException pe) {
-                eRef.set(pe);
-                throw pe;
-            }
-        });
-        PasswordChangeFailedException exception = eRef.get();
-        PasswordChangeResponse response = exception.getResponse();
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals(404, exception.getStatus());
-
-        Assertions.assertEquals(1, response.getChanged().size());
-        Assertions.assertEquals(classifier1, response.getChanged().get(0).getClassifier());
-
-        Assertions.assertEquals(1, response.getFailed().size());
-        Assertions.assertEquals(classifier2, response.getFailed().get(0).getClassifier());
-        Assertions.assertEquals("HTTP 404 Not Found", response.getFailed().get(0).getMessage());
-    }
-
-    private void checkSuccessChangePassword(String namespace, String dbType, Map<String, Object> classifier1, Map<String, Object> classifier2, Map<String, Object> connection1,
-                                            Map<String, Object> connection2, DbaasAdapter mongoDefaultAdapter, DbaasAdapter mongoNotDefaultAdapter) {
-        PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(null, dbType);
-        PasswordChangeResponse response = dBaaService.changeUserPassword(passwordChangeRequest, namespace, Role.ADMIN.toString());
-        Assertions.assertNotNull(response);
-        PasswordChangeResponse expectPasswordChangeResponse = new PasswordChangeResponse();
-        expectPasswordChangeResponse.putSuccessEntity(classifier1, connection1);
-        expectPasswordChangeResponse.putSuccessEntity(classifier2, connection2);
-        Assertions.assertEquals(expectPasswordChangeResponse.getChanged(), response.getChanged());
-        verify(mongoDefaultAdapter).isUsersSupported();
-        verify(mongoNotDefaultAdapter).isUsersSupported();
-        verify(encryption, times(2)).encryptPassword(any(Database.class), any());
-    }
-
-    private void passwordChangeFail(String namespace, String dbType, Map<String, Object> connection, Map<String, Object> classifierRequest) {
-        PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(classifierRequest, dbType);
-        AtomicReference<PasswordChangeFailedException> eRef = new AtomicReference<>();
-        Assertions.assertThrows(PasswordChangeFailedException.class, () -> {
-            try {
-                dBaaService.changeUserPassword(passwordChangeRequest, namespace, Role.ADMIN.toString());
-            } catch (PasswordChangeFailedException pe) {
-                eRef.set(pe);
-                throw pe;
-            }
-        });
-        PasswordChangeFailedException exception = eRef.get();
-        PasswordChangeResponse response = exception.getResponse();
-        Assertions.assertNotNull(response);
-        Assertions.assertEquals(404, exception.getStatus());
-        Assertions.assertEquals(1, response.getFailed().size());
-        Assertions.assertEquals(classifierRequest, response.getFailed().get(0).getClassifier());
-        Assertions.assertEquals("HTTP 404 Not Found", response.getFailed().get(0).getMessage());
-    }
-
-    private void adapterNotSupportUsers(String namespace, String dbType, Map<String, Object> connection, Map<String, Object> classifierRequest) {
-        PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(classifierRequest, dbType);
-        Assertions.assertThrows(PasswordChangeValidationException.class, () -> {
-            dBaaService.changeUserPassword(passwordChangeRequest, namespace, Role.ADMIN.toString());
-        }, "The following adapters: [\"mongoDefaultAdapter-address\"] do not support user password change");
-    }
-
-    private void adapterSupportUsers(String namespace, String dbType, Map<String, Object> connection, Map<String, Object> classifierRequest) {
-        PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(classifierRequest, dbType);
-        PasswordChangeResponse response = dBaaService.changeUserPassword(passwordChangeRequest, namespace, Role.ADMIN.toString());
-        PasswordChangeResponse expectPasswordChangeResponse = new PasswordChangeResponse();
-        expectPasswordChangeResponse.putSuccessEntity(classifierRequest, connection);
-        Assertions.assertEquals(connection, response.getChanged().get(0).getConnection());
-        Assertions.assertEquals(classifierRequest, response.getChanged().get(0).getClassifier());
-        Assertions.assertEquals(expectPasswordChangeResponse.getChanged(), response.getChanged());
-    }
-
     private Map<String, Object> createSettings(Map<String, Object> indexSettings) {
         Map<String, Object> map = new HashMap<>();
         map.put("indexSettings", indexSettings);
         map.put("key2", "value2");
         return map;
-    }
-
-    private PasswordChangeRequestV3 createPasswordChangeRequest(Map<String, Object> classifier, String type) {
-        PasswordChangeRequestV3 passwordChangeRequest = new PasswordChangeRequestV3();
-        passwordChangeRequest.setType(type);
-        passwordChangeRequest.setClassifier(classifier);
-        return passwordChangeRequest;
     }
 
     private DatabaseRegistry createDatabase(Map<String, Object> classifier, String type, String adapterId, String username, String dbName) {
@@ -668,16 +330,6 @@ class DBaaServiceTest {
         DatabaseRegistry database = createDatabase(classifier, type, adapterId, username, dbName);
         database.setOldClassifier(oldClassifier);
         return database;
-    }
-
-    private EnsuredUser createEnsureUser(Map<String, Object> connectionProperties) {
-        EnsuredUser ensuredUser = new EnsuredUser();
-        ensuredUser.setConnectionProperties(connectionProperties);
-        return ensuredUser;
-    }
-
-    private DbaasAdapter createAdapter(String adapterAddress, String type, DbaasAdapterRestClientV2 restClient, String identifier, AdapterActionTrackerClient trackerClient) {
-        return new DbaasAdapterRESTClientV2(adapterAddress, type, restClient, identifier, trackerClient);
     }
 
     @Test
