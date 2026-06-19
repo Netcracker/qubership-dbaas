@@ -220,6 +220,7 @@ dsc-success   Succeeded   SecretUpToDate
 | CR file | `app.kubernetes.io/name` | Flow | Expected Phase | `Ready.reason` |
 |---|---|---|---|---|
 | `dsc-success.yaml` | `secret-svc` | get-by-classifier 200 → Secret created; rotation fan-out → re-fetch (no-op) | `Succeeded` | `SecretCreated`, then `SecretUpToDate` after the rotation fan-out |
+| `dsc-extra-keys.yaml` | `extra-svc` | same flow with `spec.classifier.extraKeys` (arbitrary top-level fields, flattened on the wire); the `changed.json` entry's FLAT classifier carries `region` and the poller must reverse-map it to match the CR | `Succeeded` | `SecretCreated`, then `SecretUpToDate` after the rotation fan-out |
 
 The materialized Secret `dsc-success-secret` holds `connectionProperties.json` (the
 get-by-classifier response) and `metadata.json` (classifier, type, userRole, id, name).
@@ -249,6 +250,33 @@ changed credentials and writes the Secret, emitting `SecretRotated`:
 kubectl edit configmap aggregator-mock-rules -n dbaas-system   # change the password
 kubectl rollout restart deployment/dbaas-aggregator -n dbaas-system
 ```
+
+#### extraKeys end-to-end (`dev/e2e-extra-keys.sh`)
+
+`spec.classifier.extraKeys` lets a CR carry arbitrary identity fields that the
+operator **flattens onto the top level** of the wire classifier (unlike
+`customKeys`, which stays nested). The CR-side envelope and the aggregator's flat
+form therefore differ — `dev/e2e-extra-keys.sh` checks they line up at every
+boundary against a live cluster:
+
+```bash
+./dev/kind-up.sh            # if not already up
+./dev/e2e-extra-keys.sh
+```
+
+It applies `dsc-extra-keys.yaml` and asserts:
+
+1. the CR reaches `Succeeded` (get-by-classifier matched, Secret created);
+2. the Secret's `metadata.json` `.classifier` carries `region` **flat** on the top
+   level with no `extraKeys` envelope;
+3. the rotation poller stamps the rotation-trigger annotation — proving it
+   reverse-mapped the flat `changed.json` classifier back through `ExtraKeys` and
+   matched the CR by index key (without that round-trip the extra field would be
+   dropped and the rotation silently lost).
+
+The `extra-svc` entries in `changed.json` and `get-by-classifier.json` are already
+wired into the mock ConfigMap, so a fresh `kind-up.sh` is all the setup it needs.
+Pass `KEEP=1` to leave the CR and Secret in place after the run.
 
 ### Changing rules without rebuilding
 

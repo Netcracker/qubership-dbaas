@@ -137,6 +137,14 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q", ns, edb.Namespace))
 	}
 
+	// extraKeys must not shadow the typed classifier fields — a collision is a
+	// spec mistake (the typed field would win and the extraKey be dropped).
+	if reserved := dbaasv1.ReservedExtraKeys(edb.Spec.Classifier); len(reserved) > 0 {
+		return invalidSpec(ctx, &edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+			r.Recorder, edb,
+			fmt.Sprintf("spec.classifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields", reserved))
+	}
+
 	// Validate that all keys[].name values are unique within each connectionProperties entry.
 	// Duplicate names would silently overwrite each other in the aggregator request.
 	for i, cp := range edb.Spec.ConnectionProperties {
