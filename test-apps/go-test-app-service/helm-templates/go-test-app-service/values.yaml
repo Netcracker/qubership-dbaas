@@ -8,6 +8,9 @@ IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-go-test-app-service
 TAG: latest
 IMAGE_PULL_POLICY: IfNotPresent
 
+NODE_SELECTOR_DBAAS_KEY: region
+REGION_DBAAS: database
+
 LOG_LEVEL: info
 DBAAS_AGENT: http://dbaas-aggregator.dbaas:8080
 BASECLIENT_RETRY_MAX_ATTEMPTS: 0

@@ -425,15 +425,23 @@ public class GoTestAppServiceIT {
 
             int desiredReplicas = deployment.getSpec().getReplicas() == null ? 1 : deployment.getSpec().getReplicas();
             Long observedGeneration = deployment.getStatus().getObservedGeneration();
+            Integer replicas = deployment.getStatus().getReplicas();
             Integer readyReplicas = deployment.getStatus().getReadyReplicas();
             Integer updatedReplicas = deployment.getStatus().getUpdatedReplicas();
+            Integer availableReplicas = deployment.getStatus().getAvailableReplicas();
+            Integer unavailableReplicas = deployment.getStatus().getUnavailableReplicas();
 
             if (observedGeneration != null
                     && observedGeneration >= targetGeneration
+                    && replicas != null
+                    && replicas == desiredReplicas
                     && readyReplicas != null
-                    && readyReplicas >= desiredReplicas
+                    && readyReplicas == desiredReplicas
                     && updatedReplicas != null
-                    && updatedReplicas >= desiredReplicas) {
+                    && updatedReplicas == desiredReplicas
+                    && availableReplicas != null
+                    && availableReplicas == desiredReplicas
+                    && (unavailableReplicas == null || unavailableReplicas == 0)) {
                 return;
             }
 

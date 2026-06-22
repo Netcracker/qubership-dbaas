@@ -22,6 +22,8 @@ spec:
         app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     spec:
+      nodeSelector:
+        {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS }}'
       securityContext:
         fsGroup: 10001
       volumes:
