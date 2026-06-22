@@ -336,3 +336,94 @@ curl --location --request GET http://localhost:8080/api/v3/dbaas/debug/internal/
 ```
 
 </details>
+
+## Database exists in DBaaS registry but is missing in the actual database instance
+
+### Symptom
+
+An application fails to start because it cannot connect to its database, even though DBaaS returns connection properties without error. The database is present in the DBaaS registry but does not actually exist in the physical database instance.
+
+### Cause
+
+This is known as a **lost database**. It happens when the physical database was deleted (manually, by a failed cleanup, or by a storage failure) while the logical database record remained in the DBaaS registry. DBaaS trusts its own registry, so it returns the stale connection properties, and the application fails when it tries to use them.
+
+### How to confirm
+
+**Step 1.** Check the lost databases report:
+
+```bash
+curl -X GET \
+  http://{dbaas_host}/api/v3/dbaas/debug/internal/lost \
+  -H 'Authorization: Basic <credentials>'
+```
+
+If the affected database appears in the response, the registry is inconsistent and needs to be fixed.
+
+**Step 2.** Optionally, retrieve the exact registry record to get the classifier and physical database ID:
+
+```bash
+curl -X GET \
+  "http://{dbaas_host}/api/v3/dbaas/debug/internal/databases?filter=namespace=={namespace};microservice=={microserviceName}" \
+  -H 'Authorization: Basic <credentials>' \
+  -H 'Accept: application/json'
+```
+
+### Fix options
+
+Choose the option that fits the situation:
+
+#### Option A — Recreate the database (recommended when data can be empty)
+
+Use this when the application can start with a fresh, empty database (e.g., the database will be re-populated on first start or via migration).
+
+```bash
+curl -X POST \
+  http://{dbaas_host}/api/v3/dbaas/{namespace}/databases/recreate \
+  -H 'Authorization: Basic <credentials>' \
+  -H 'Content-Type: application/json' \
+  -d '[
+    {
+      "type": "{db_type}",
+      "classifier": {
+        "microserviceName": "{microserviceName}",
+        "namespace": "{namespace}",
+        "scope": "service"
+      },
+      "physicalDatabaseId": "{physicalDatabaseId}"
+    }
+  ]'
+```
+
+DBaaS creates a new empty physical database, updates the registry record, and returns new connection properties. The previous stale record is archived. After this call, restart the affected application — it will receive the new connection properties on its next DBaaS call.
+
+> **Note:** This operation is prohibited while a blue-green deployment is in progress.
+
+> **Note:** Each call to this API creates a new database, even if the database was already recreated before. If the response contains entries in `unsuccessfully`, fix only those entries in the next request.
+
+#### Option B — Delete from registry and let the application re-create it
+
+Use this when the application always creates its database on startup (i.e., the database creation is idempotent from the application's perspective).
+
+Delete the stale registry entry:
+
+```bash
+curl -X DELETE \
+  "http://{dbaas_host}/api/v3/dbaas/{namespace}/databases/{db_type}?force=true" \
+  -H 'Authorization: Basic <credentials>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "classifier": {
+      "microserviceName": "{microserviceName}",
+      "namespace": "{namespace}",
+      "scope": "service"
+    }
+  }'
+```
+
+The `force=true` parameter makes DBaaS remove the registry entry even if the adapter returns an error (which it will, since the physical database is already gone). After deletion, restarting the application causes it to request a new database from DBaaS, which will provision one normally.
+
+> **Warning:** This endpoint is disabled in PROD mode (`406 Not Acceptable`). In that case, use Option A.
+
+#### Option C — Restore from backup
+
+Use this when the database contained important data that must be recovered. Refer to [Backup and Restore](../howto/Backup%20and%20Restore%20V2.md) for the restore procedure. After a successful restore, the physical database will exist again and the registry inconsistency will be resolved automatically.
