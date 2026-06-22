@@ -1,0 +1,19 @@
+{{- if .Values.SAMPLE_SERVICE_ENABLED }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}

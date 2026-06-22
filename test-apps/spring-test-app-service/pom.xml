@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Standalone Spring Boot service used by DBaaS integration tests to validate
+      mounted-secret resolution in the Spring DBaaS PostgreSQL client path. It is the
+      Spring counterpart of test-apps/go-test-app-service and satisfies the same
+      black-box HTTP contract.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <!-- Must match the Spring Boot line the dbaas client (microservice-restclient 7.x) is
+             built against: Spring Boot 4.0. A 3.x parent mixes spring-boot-restclient:4.x with
+             spring-boot-autoconfigure:3.x and the two RestClientAutoConfiguration beans clash. -->
+        <version>4.0.6</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.netcracker.cloud</groupId>
+    <artifactId>spring-test-app-service</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+    <name>spring-test-app-service</name>
+    <description>Sample Spring Boot service validating DBaaS mounted-secret PostgreSQL client flows</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Pin the dbaas client to the snapshot that carries the mounted-secret feature. -->
+        <dbaas-client.version>9.1.3-mounted-secret-SNAPSHOT</dbaas-client.version>
+        <!-- Match the Flyway line the dbaas-client-postgres-flyway module is built against. -->
+        <flyway.version>12.6.2</flyway.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- DBaaS Spring PostgreSQL client: provides the servicePostgresDatasource bean,
+             resolved from the mounted secret at /etc/secrets/dbaas-secrets before REST. -->
+        <dependency>
+            <groupId>com.netcracker.cloud</groupId>
+            <artifactId>dbaas-client-postgres-starter</artifactId>
+            <version>${dbaas-client.version}</version>
+            <!--
+              The starter declares JPA/Hibernate and actuator at compile scope (intended as
+              its own test deps). This service uses only JdbcTemplate, so exclude them: they
+              add no value here and would let Spring Boot auto-configure JPA, building an
+              EntityManagerFactory that eagerly touches the datasource at startup — which would
+              break booting without a reachable aggregator (the whole point of mounted secrets).
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.data</groupId>
+                    <artifactId>spring-data-jpa</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.hibernate.orm</groupId>
+                    <artifactId>hibernate-core</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.hibernate.orm</groupId>
+                    <artifactId>hibernate-processor</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-actuator</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- Runs Flyway migrations against the dbaas-resolved datasource (post-connect). -->
+        <dependency>
+            <groupId>com.netcracker.cloud</groupId>
+            <artifactId>dbaas-client-postgres-flyway</artifactId>
+            <version>${dbaas-client.version}</version>
+        </dependency>
+        <!-- Provides the `dbaasRestClient` MicroserviceRestClient the dbaas client requires.
+             We enable the basic-auth RestTemplate flavor (dbaas.restclient.resttemplate.basic-auth=true),
+             a plain RestTemplate with no platform gateway/M2M dependency. It is only used on a
+             mounted-secret miss (REST fallback); the happy path never calls it. -->
+        <dependency>
+            <groupId>com.netcracker.cloud</groupId>
+            <artifactId>dbaas-client-resttemplate</artifactId>
+            <version>${dbaas-client.version}</version>
+        </dependency>
+
+        <!-- Flyway runtime (the dbaas flyway module declares flyway-core as provided/test). -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>${flyway.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>${flyway.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Spring Boot 4 split the web-mvc slice-test support (@WebMvcTest) into its own module. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>spring-test-app-service</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- DBaaS client snapshots are published to GitHub Packages. CI provides credentials
+         via settings.xml; the repository declaration lets Maven discover the artifacts. -->
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/Netcracker/qubership-core-java-libs</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+    </repositories>
+</project>

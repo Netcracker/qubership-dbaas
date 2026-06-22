@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: spring-test-app-service
+
+# DBaaS classifier identity (service scope). The dbaas client builds the classifier from
+# these, then resolves the database from the mounted secret before any REST call.
+cloud:
+  microservice:
+    name: ${MICROSERVICE_NAME:spring-test-app-service}
+    namespace: ${MICROSERVICE_NAMESPACE:default}
+
+# REST fallback target + client. Only used on a mounted-secret miss; the integration test
+# deliberately sets the address to a bogus host to prove the mounted secret is the source of
+# truth. We use the basic-auth RestTemplate flavor (a plain RestTemplate, no platform gateway),
+# with dummy credentials that are never sent on the mounted happy path.
+api:
+  dbaas:
+    address: ${API_DBAAS_ADDRESS:http://dbaas-aggregator:8080}
+dbaas:
+  api:
+    address: ${API_DBAAS_ADDRESS:http://dbaas-aggregator:8080}
+    username: ${DBAAS_API_USERNAME:dbaas}
+    password: ${DBAAS_API_PASSWORD:dbaas}
+  restclient:
+    resttemplate:
+      basic-auth: true
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.netcracker.cloud.dbaas: ${LOG_LEVEL:INFO}

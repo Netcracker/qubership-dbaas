@@ -1,4 +1,4 @@
-name: Go Test App Service Integration Tests
+name: Sample Services Integration Tests
 
 on:
   workflow_call:
@@ -7,16 +7,22 @@ on:
     - cron: "0 2 * * *"  # Daily at 02:00 UTC
 
 jobs:
-  sample-service-integration-tests:
+  sample-services-integration-tests:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
 
     env:
-      SAMPLE_SERVICE_NAME: go-test-app-service
-      SAMPLE_IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-go-test-app-service
+      # Both sample images are built in-job and loaded straight into kind (no registry, no
+      # dependency on a separate publish workflow, and the exact PR code is what gets tested).
+      GO_SERVICE_NAME: go-test-app-service
+      GO_IMAGE_REPOSITORY: go-test-app-service
+      GO_IMAGE_TAG: it
+      SPRING_SERVICE_NAME: spring-test-app-service
+      SPRING_IMAGE_REPOSITORY: spring-test-app-service
+      SPRING_IMAGE_TAG: it
       TEST_NAMESPACE: dbaas
-
 
     steps:
       - name: Checkout repository
@@ -53,6 +59,11 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
+          # Lets Maven pull the dbaas-client snapshot from GitHub Packages when building the
+          # Spring sample image (read:packages on Netcracker/qubership-core-java-libs).
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
 
       - name: Deploy Fluent Bit
         run: |
@@ -74,7 +85,7 @@ jobs:
               registrationPassword: password
           EOF_PATRONI
 
-      - name: Resolve image tags
+      - name: Resolve DBaaS image tag
         run: |
           SAFE_REF="${GITHUB_REF_NAME//\//-}"
           if [ "$SAFE_REF" = "main" ]; then
@@ -83,9 +94,22 @@ jobs:
             IMAGE_TAG="${SAFE_REF}-snapshot"
           fi
           echo "Using DBaaS image tag: $IMAGE_TAG"
-          echo "Using go test app service image: ${SAMPLE_IMAGE_REPOSITORY}:$IMAGE_TAG"
           echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Build go test app image and load into kind
+        run: |
+          docker build -t "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" test-apps/go-test-app-service
+          kind load docker-image "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" --name kind
+
+      - name: Build spring test app image and load into kind
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn --batch-mode --no-transfer-progress -f test-apps/spring-test-app-service/pom.xml package -DskipTests
+          docker build -t "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" test-apps/spring-test-app-service
+          kind load docker-image "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" --name kind
 
       - name: Deploy DBaaS Aggregator, Operator, and PostgreSQL
         working-directory: bootstrap
@@ -124,9 +148,11 @@ jobs:
           kubectl -n postgres get svc
           exit 1
 
-      - name: Apply go test app service namespace binding
+      # NamespaceBinding is per-namespace (one object named "binding"), shared by both sample
+      # services, so it lives in a common location and is applied once.
+      - name: Apply sample service namespace binding
         run: |
-          sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/go-test-app-service/dev/namespacebinding.yaml | kubectl apply -f -
+          sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/namespacebinding.yaml | kubectl apply -f -
           for i in {1..60}; do
             finalizers="$(kubectl -n "$TEST_NAMESPACE" get namespacebinding binding -o jsonpath='{.metadata.finalizers}' || true)"
             if [[ "$finalizers" == *"platform.dbaas.netcracker.com/binding-protection"* ]]; then
@@ -139,27 +165,44 @@ jobs:
 
       - name: Deploy go test app service
         run: |
-          helm upgrade --install "$SAMPLE_SERVICE_NAME" \
+          helm upgrade --install "$GO_SERVICE_NAME" \
             test-apps/go-test-app-service/helm-templates/go-test-app-service \
             -f test-apps/go-test-app-service/helm-templates/go-test-app-service/resource-profiles/dev.yaml \
             --namespace "$TEST_NAMESPACE" \
             --set NAMESPACE="$TEST_NAMESPACE" \
-            --set IMAGE_REPOSITORY="$SAMPLE_IMAGE_REPOSITORY" \
-            --set TAG="$TAG" \
+            --set IMAGE_REPOSITORY="$GO_IMAGE_REPOSITORY" \
+            --set TAG="$GO_IMAGE_TAG" \
+            --set IMAGE_PULL_POLICY="Never" \
             --set DBAAS_AGENT="http://dbaas-aggregator.$TEST_NAMESPACE:8080"
 
-      - name: Wait for go test app service
+      - name: Deploy spring test app service
         run: |
-          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SAMPLE_SERVICE_NAME" --timeout=300s
+          # Point the service's aggregator URL at an unreachable host on purpose: the
+          # InternalDatabase/DatabaseSecretClaim are provisioned by the operator (which uses the
+          # real aggregator), but the service itself must resolve its database from the mounted
+          # secret. If any DML succeeds, REST was not the source — it could not have been.
+          helm upgrade --install "$SPRING_SERVICE_NAME" \
+            test-apps/spring-test-app-service/helm-templates/spring-test-app-service \
+            -f test-apps/spring-test-app-service/helm-templates/spring-test-app-service/resource-profiles/dev.yaml \
+            --namespace "$TEST_NAMESPACE" \
+            --set NAMESPACE="$TEST_NAMESPACE" \
+            --set IMAGE_REPOSITORY="$SPRING_IMAGE_REPOSITORY" \
+            --set TAG="$SPRING_IMAGE_TAG" \
+            --set IMAGE_PULL_POLICY="Never" \
+            --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
 
-      - name: Run go test app service Java IT
+      - name: Wait for sample services
+        run: |
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
+
+      - name: Run sample service Java integration tests
         id: tests
         working-directory: test-apps/test-apps-integration-tests
         run: >
           mvn --batch-mode
           -Dmaven.test.failure.ignore=true
           -DskipIT=false
-          -Dtest=GoTestAppServiceIT
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
           test
@@ -170,7 +213,7 @@ jobs:
         if: always() && steps.tests.outcome != 'skipped'
         uses: actions/upload-artifact@v7
         with:
-          name: go-test-app-service-surefire-reports
+          name: sample-services-surefire-reports
           path: test-apps/test-apps-integration-tests/target/surefire-reports/**
           if-no-files-found: warn
 
@@ -185,7 +228,7 @@ jobs:
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: go-test-app-service-pod-logs
+          name: sample-services-pod-logs
           path: fluentbit-logs/**
           if-no-files-found: warn
 
@@ -203,7 +246,7 @@ jobs:
           echo "::group::All pods"
           kubectl get pods -A -o wide
           echo "::endgroup::"
-          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "go-test-app-service:$TEST_NAMESPACE"; do
+          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "$GO_SERVICE_NAME:$TEST_NAMESPACE" "$SPRING_SERVICE_NAME:$TEST_NAMESPACE"; do
             d="${pair%%:*}"; ns="${pair##*:}"
             echo "::group::describe deploy/$d ($ns)"
             kubectl -n "$ns" describe deploy/"$d"
@@ -218,21 +261,23 @@ jobs:
           echo "::group::Mounted-secret CRs"
           kubectl -n "$TEST_NAMESPACE" describe internaldatabase go-test-app-service-postgres
           kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim go-test-app-service-postgres-claim
+          kubectl -n "$TEST_NAMESPACE" describe internaldatabase spring-test-app-service-postgres
+          kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim spring-test-app-service-postgres-claim
           echo "::endgroup::"
           echo "::group::Recent dbaas events"
           kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -100
           echo "::endgroup::"
 
-      - name: Fail job if go test app service tests failed
+      - name: Fail job if sample service tests failed
         if: always() && steps.tests.outcome != 'skipped'
         run: |
           shopt -s nullglob
           reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
           if [ "${#reports[@]}" -eq 0 ]; then
-            echo "::error::No Surefire XML reports were generated for go test app service integration tests"
+            echo "::error::No Surefire XML reports were generated for sample service integration tests"
             exit 1
           fi
           if grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
-            echo "::error::Go test app service integration test failed"
+            echo "::error::Sample service integration test failed"
             exit 1
           fi

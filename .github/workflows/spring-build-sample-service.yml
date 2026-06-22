@@ -1,0 +1,58 @@
+name: Spring Test App Service Build
+
+run-name: >
+  Build Spring Test App Service -
+  ${{ github.event_name == 'push' && format('push [{0}]', github.event.head_commit.message) || '' }}
+  ${{ github.event_name == 'pull_request' && format('PR ({0}) [{1}]', github.head_ref, github.event.pull_request.title) || '' }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'test-apps/spring-test-app-service/**'
+      - '.github/workflows/spring-build-sample-service.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'test-apps/spring-test-app-service/**'
+      - '.github/workflows/spring-build-sample-service.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build spring test app service
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+          # Configures ~/.m2/settings.xml with a `github` server so Maven can pull the
+          # dbaas-client snapshot from GitHub Packages. A repo/org token with read:packages
+          # for Netcracker/qubership-core-java-libs is required.
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+
+      - name: Build and test
+        working-directory: test-apps/spring-test-app-service
+        run: mvn --batch-mode --no-transfer-progress package
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: spring-test-app-service-jar
+          path: test-apps/spring-test-app-service/target/spring-test-app-service.jar
+          if-no-files-found: error
