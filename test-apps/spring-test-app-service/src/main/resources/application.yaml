@@ -27,6 +27,15 @@ dbaas:
   restclient:
     resttemplate:
       basic-auth: true
+  # Flyway runs as a dbaas post-connect processor. A dbaas-provisioned database already has a
+  # non-empty `public` schema, so Flyway must baseline it before applying migrations; baseline at
+  # version 0 so V1 still runs. Keys use bracket notation so Spring preserves their camel case
+  # (the dbaas flyway module passes them straight to Flyway as flyway.<key>).
+  postgres:
+    datasource:
+      flyway:
+        "[baselineOnMigrate]": "true"
+        "[baselineVersion]": "0"
 
 logging:
   level:
