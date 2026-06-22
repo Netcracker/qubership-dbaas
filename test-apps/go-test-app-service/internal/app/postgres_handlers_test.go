@@ -123,6 +123,8 @@ func TestHandleCreatePostgresItem_RejectsInvalidInput(t *testing.T) {
 		{name: "missing name", body: `{}`},
 		{name: "blank name", body: `{"name":"   "}`},
 		{name: "name too long", body: `{"name":"` + strings.Repeat("a", 201) + `"}`},
+		{name: "trailing JSON", body: `{"name":"valid"}{"name":"other"}`},
+		{name: "trailing garbage", body: `{"name":"valid"} garbage`},
 	}
 
 	for _, tc := range tests {

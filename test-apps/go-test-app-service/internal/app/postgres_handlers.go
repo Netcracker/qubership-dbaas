@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -133,9 +134,14 @@ func (a *App) handleListPostgresItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleCreatePostgresItem(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	var request createPostgresItemRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&request); err != nil {
+	if err := decoder.Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, errors.New("request body must contain a single JSON object"))
 		return
 	}
 

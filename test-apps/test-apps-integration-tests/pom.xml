@@ -12,6 +12,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <skipIT>true</skipIT>
         <junit.version>6.0.3</junit.version>
         <fabric8.version>7.4.0</fabric8.version>

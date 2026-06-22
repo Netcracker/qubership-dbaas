@@ -1,0 +1,11 @@
+{
+    "components" : [
+      {
+        "name": "qubership-dbaas-go-test-app-service",
+        "file": "test-apps/go-test-app-service/Dockerfile",
+        "context": "test-apps/go-test-app-service",
+        "download-artifact": false
+      }
+    ],
+    "platforms" : "linux/amd64,linux/arm64"
+}

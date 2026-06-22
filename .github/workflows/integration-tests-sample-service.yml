@@ -166,17 +166,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Dump go test app service logs on IT failure
-        if: failure() && steps.tests.outcome == 'failure'
-        run: |
-          set +e
-          echo "::group::go-test-app-service logs"
-          kubectl -n "$TEST_NAMESPACE" logs deploy/"$SAMPLE_SERVICE_NAME" --all-containers=true --tail=500
-          echo "::endgroup::"
-          echo "::group::go-test-app-service previous logs"
-          kubectl -n "$TEST_NAMESPACE" logs deploy/"$SAMPLE_SERVICE_NAME" --all-containers=true --previous --tail=500
-          echo "::endgroup::"
-
       - name: Upload Surefire reports
         if: always() && steps.tests.outcome != 'skipped'
         uses: actions/upload-artifact@v7
