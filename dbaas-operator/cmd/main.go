@@ -36,6 +36,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -93,7 +94,13 @@ func main() {
 		"Maximum delay cap for exponential backoff on reconcile errors.")
 	flag.Parse()
 
-	ctrl.SetLogger(newLogrLogger("dbaas-operator"))
+	// Route both controller-runtime (logr) and client-go (klog) through the platform
+	// logger. Without klog.SetLogger, client-go internals (leader election, transport)
+	// log to stderr in klog's default glog format (I0622.../E0622...), which does not
+	// match the Qubership log format the rest of the operator uses.
+	logrLogger := newLogrLogger("dbaas-operator")
+	ctrl.SetLogger(logrLogger)
+	klog.SetLogger(logrLogger)
 
 	// httpServerOpts configures the operator's general-purpose HTTP server. It
 	// hosts the Prometheus /metrics endpoint (the operator exposes no inbound
