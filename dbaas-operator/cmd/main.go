@@ -221,6 +221,7 @@ func main() {
 
 	// ── Ownership resolver ────────────────────────────────────────────────────
 	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
+	controller.RegisterResourceMetrics(mgr.GetClient(), ownershipResolver, cloudNamespace)
 	if err := mgr.Add(&ownershipWarmupRunnable{resolver: ownershipResolver}); err != nil {
 		setupLog.Errorf("Failed to register ownership warmup runnable: %v", err)
 		os.Exit(1)

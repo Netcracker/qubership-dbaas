@@ -34,11 +34,18 @@ const (
 	controllerDD  = "internaldatabase"
 	controllerDP  = "databaseaccesspolicy"
 	controllerBR  = "balancingrule"
+	controllerDS  = "databasesecretclaim"
+	controllerMBR = "microservicebalancingrule"
+	controllerNBR = "namespacebalancingrule"
+	controllerPBR = "permanentbalancingrule"
 
 	triggerSpecChange             = "spec_change"
 	triggerSecretChange           = "secret_change"
 	triggerNamespaceBindingChange = "namespace_binding_change"
 	triggerPolling                = "polling"
+	triggerRotation               = "rotation_trigger"
+	triggerSiblingSecretClaim     = "sibling_secret_claim_change"
+	triggerSafetyNet              = "safety_net"
 
 	resultSuccess       = "success"
 	resultAuthError     = "auth_error"
@@ -58,6 +65,7 @@ const (
 	operationRegisterEDB = "register_external_database"
 	operationApplyConfig = "apply_config"
 	operationPollStatus  = "poll_status"
+	operationGetDatabase = "get_database_by_classifier"
 
 	operationApplyMicroserviceRule   = "apply_microservice_balancing_rule"
 	operationCleanupMicroserviceRule = "cleanup_microservice_balancing_rule"

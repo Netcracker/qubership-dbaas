@@ -355,7 +355,7 @@
                    {
                        "id":  8,
                        "type":  "row",
-                       "title":  "Dashboard-Only Resource Health Substitutes",
+                       "title":  "Historical Failure Activity",
                        "collapsed":  false,
                        "gridPos":  {
                                        "h":  1,
@@ -368,7 +368,7 @@
                        "id":  9,
                        "type":  "timeseries",
                        "title":  "Recent Failed Operations by Owner",
-                       "description":  "Dashboard-only substitute for resource phase health. Shows recent failed operations by owner bucket instead of exact current CR phase counts.",
+                       "description":  "Historical failed operations by owner bucket. Use the CR Health Overview row for exact current CR state.",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  12,
@@ -415,7 +415,7 @@
                        "id":  10,
                        "type":  "timeseries",
                        "title":  "Sustained Failure Signals",
-                       "description":  "Dashboard-only substitute for stuck resources. Shows failure signals that continue over the recent window; it is event-based, not an exact stuck CR count.",
+                       "description":  "Failure signals that continue over the recent window. This is event-based history; use CR phase and condition panels for exact current stuck CRs.",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  12,
@@ -668,6 +668,345 @@
                                        {
                                            "expr":  "sum by (operation, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",controller=\"balancingrule\"}[1m]))",
                                            "legendFormat":  "{{operation}} / {{result}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  19,
+                       "type":  "row",
+                       "title":  "CR Health Overview",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  69
+                                   }
+                   },
+                   {
+                       "id":  20,
+                       "type":  "timeseries",
+                       "title":  "CRs by Current Phase",
+                       "description":  "Current phase for dbaas operator CRs. This is a current-state gauge, not a reconcile counter.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  70
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, phase) (dbaas_resource_phase{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{kind}} / {{phase}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  21,
+                       "type":  "timeseries",
+                       "title":  "Unready CRs by Reason",
+                       "description":  "Current Ready=False/Unknown conditions by kind and reason. Reasons are intended to route ownership quickly.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  70
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, reason) (dbaas_resource_condition{namespace=\"#namespace#\",condition=\"Ready\",status!=\"True\"})",
+                                           "legendFormat":  "{{kind}} / {{reason}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  22,
+                       "type":  "timeseries",
+                       "title":  "CRs Waiting for Observed Generation",
+                       "description":  "Shows CRs whose metadata.generation is ahead of status.observedGeneration. This is convergence lag, not elapsed time.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  78
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, resource_namespace, name) (dbaas_resource_observed_generation_lag{namespace=\"#namespace#\"} > 0)",
+                                           "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  23,
+                       "type":  "timeseries",
+                       "title":  "CR Metrics Collector Health",
+                       "description":  "A value of 0 means the custom CR-state collector failed to list that kind during scrape.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  78
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "min by (kind) (dbaas_resource_collector_success{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{kind}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  24,
+                       "type":  "row",
+                       "title":  "DatabaseSecretClaim Health",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  86
+                                   }
+                   },
+                   {
+                       "id":  25,
+                       "type":  "timeseries",
+                       "title":  "SecretClaim DatabaseNotFound Age",
+                       "description":  "Age of the current DatabaseNotFound streak per DatabaseSecretClaim. Persistent values point to missing DB provisioning or classifier mismatch.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  87
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "max by (resource_namespace, name) (dbaas_secret_claim_not_found_age_seconds{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{resource_namespace}}/{{name}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  26,
+                       "type":  "timeseries",
+                       "title":  "SecretClaim Time Since Last Rotation",
+                       "description":  "Seconds since each DatabaseSecretClaim last applied rotated connection properties.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  87
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_last_rotation_timestamp_seconds{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{resource_namespace}}/{{name}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  27,
+                       "type":  "row",
+                       "title":  "Placement and Namespace Ownership",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  95
+                                   }
+                   },
+                   {
+                       "id":  28,
+                       "type":  "timeseries",
+                       "title":  "Balancing Rule Desired vs Applied Targets",
+                       "description":  "Compares placement intent from spec with the last applied state recorded in status. These counts do not prove referenced physical databases exist or independently read back aggregator state.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  96
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, resource_namespace, name, target_type) (dbaas_balancing_rule_desired_targets{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "desired {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                           "expr":  "sum by (kind, resource_namespace, name, target_type) (dbaas_balancing_rule_applied_targets{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "applied {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  29,
+                       "type":  "timeseries",
+                       "title":  "NamespaceBinding States",
+                       "description":  "Current namespace ownership state from this operator instance's point of view. deleting_with_finalizer means deletion is in progress and the protection finalizer remains; it does not by itself prove blocking resources still exist.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  96
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (state) (dbaas_namespace_binding_state{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{state}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  30,
+                       "type":  "timeseries",
+                       "title":  "Resources Deleting With Finalizers",
+                       "description":  "Current dbaas resources that have deletionTimestamp set. deleting_with_finalizer means cleanup/finalizer removal is still pending.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  104
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, resource_namespace, name, state) (dbaas_resource_deletion_state{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}} / {{state}}"
                                        }
                                    ]
                    }
