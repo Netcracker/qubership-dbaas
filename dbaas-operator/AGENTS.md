@@ -3,8 +3,6 @@
 > Mandatory conventions for this operator (and Go microservices on the Qubership platform).
 > AI agents (Claude Code, Cursor, Copilot, etc.) **must** follow these rules when generating,
 > editing, or reviewing code.
->
-> **`AGENTS.md` and `CLAUDE.md` are kept identical** — edit one and mirror it to the other.
 
 ---
 
