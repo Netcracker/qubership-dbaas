@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.microprofile.config.ConfigProvider;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -29,19 +30,19 @@ public class JdbcUtils {
     private static final String SSL_URL_PARAMS = "?ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=" + CA_CERTIFICATE_URL;
 
     public static String resolveConnectionURL() {
-        String host = getEnvOrProperty("POSTGRES_HOST", DEFAULT_HOST);
-        String port = getEnvOrProperty("POSTGRES_PORT", DEFAULT_PORT);
-        String database = getEnvOrProperty("POSTGRES_DATABASE", DEFAULT_DATABASE_NAME);
-        boolean ssl = Boolean.parseBoolean(getEnvOrProperty("INTERNAL_TLS_ENABLED", Boolean.toString(DEFAULT_SSL_ENABLED)));
+        String host = ConfigProvider.getConfig().getOptionalValue("POSTGRES_HOST", String.class).orElse(DEFAULT_HOST);
+        String port = ConfigProvider.getConfig().getOptionalValue("POSTGRES_PORT", String.class).orElse(DEFAULT_PORT);
+        String database = ConfigProvider.getConfig().getOptionalValue("POSTGRES_DATABASE", String.class).orElse(DEFAULT_DATABASE_NAME);
+        boolean ssl = Boolean.parseBoolean(ConfigProvider.getConfig().getOptionalValue("INTERNAL_TLS_ENABLED", String.class).orElse(Boolean.toString(DEFAULT_SSL_ENABLED)));
         return buildConnectionURL(host, port, database, ssl);
     }
 
     public static String resolveUsername() {
-        return getEnvOrProperty("POSTGRES_USER", DEFAULT_USERNAME);
+        return ConfigProvider.getConfig().getOptionalValue("POSTGRES_USER", String.class).orElse(DEFAULT_USERNAME);
     }
 
     public static String resolvePassword() {
-        return getEnvOrProperty("POSTGRES_PASSWORD", DEFAULT_PASSWORD);
+        return ConfigProvider.getConfig().getOptionalValue("POSTGRES_PASSWORD", String.class).orElse(DEFAULT_PASSWORD);
     }
 
     public static String buildConnectionURL(String host, String port, String database, boolean ssl) {

@@ -120,6 +120,10 @@
         </dependency>
         <dependency>
             <groupId>com.netcracker.cloud.quarkus</groupId>
+            <artifactId>pod-secrets-config-source</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.netcracker.cloud.quarkus</groupId>
             <artifactId>context-propagation</artifactId>
         </dependency>
         <dependency>
