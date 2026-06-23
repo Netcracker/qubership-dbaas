@@ -34,8 +34,8 @@ import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.service.DeletionService.MARKED_FOR_DROP;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -182,7 +182,7 @@ class BlueGreenServiceTest {
         when(bgTrackRepository.findByNamespaceAndOperation(any(), eq(WARMUP_OPERATION))).thenReturn(bgTrackOptional);
 
         ProcessInstanceImpl warmupResult = blueGreenService.warmup(bgState);
-        Assertions.assertEquals(warmupResult, processInstance);
+        assertEquals(warmupResult, processInstance);
 
         Mockito.verify(processService).retryProcess(processInstance);
     }
@@ -330,7 +330,7 @@ class BlueGreenServiceTest {
         BgStateRequest.BGState bgState = new BgStateRequest.BGState();
         bgState.setOriginNamespace(bgRequestedNamespaceActive);
         bgState.setPeerNamespace(bgRequestedNamespaceCandidate);
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.warmup(bgState));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.warmup(bgState));
     }
 
     private DatabaseDeclarativeConfig createDatabaseDeclarativeConfig(String microserviceName, String namespace) {
@@ -351,7 +351,7 @@ class BlueGreenServiceTest {
         DatabaseDeclarativeConfig databaseDeclarativeConfig = new DatabaseDeclarativeConfig();
         databaseDeclarativeConfig.setLazy(true);
         Response response = blueGreenService.createOrUpdateDatabaseWarmup(databaseDeclarativeConfig, null);
-        Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
         Assertions.assertFalse(response.hasEntity());
     }
 
@@ -362,7 +362,7 @@ class BlueGreenServiceTest {
         databaseDeclarativeConfig.setType("postgresql");
         databaseDeclarativeConfig.setLazy(false);
         Mockito.when(aggregatedDatabaseAdministrationService.createDatabaseFromRequest(any(), any(), any(), any(), ArgumentMatchers.isNull())).thenThrow(new RuntimeException("Ex"));
-        Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.createOrUpdateDatabaseWarmup(databaseDeclarativeConfig, null));
+        assertThrows(RuntimeException.class, () -> blueGreenService.createOrUpdateDatabaseWarmup(databaseDeclarativeConfig, null));
 
         verify(aggregatedDatabaseAdministrationService, times(5)).createDatabaseFromRequest(any(), any(), any(), any(), ArgumentMatchers.isNull());
     }
@@ -375,7 +375,7 @@ class BlueGreenServiceTest {
         databaseDeclarativeConfig.setClassifier(createClassifier("test", NAMESPACE));
         Mockito.when(aggregatedDatabaseAdministrationService.createDatabaseFromRequest(any(), any(), any(), any(), any())).thenReturn(Response.status(201).build());
         Response response = blueGreenService.createOrUpdateDatabaseWarmup(databaseDeclarativeConfig, null);
-        Assertions.assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
+        assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
         Assertions.assertFalse(response.hasEntity());
     }
 
@@ -439,14 +439,14 @@ class BlueGreenServiceTest {
         DatabaseRegistry dbr = createDatabaseRegistry(createClassifier(null, NS_2), "postgresql", "123", "username", "dbName");
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(NS_2)).thenReturn(List.of(dbr));
 
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
     }
 
     @Test
     void initBgDomainWithEmptyNamespaceName() {
         BgStateRequest bgStateRequest = getBgStateRequest(createBgStateNamespace(ACTIVE_STATE, ""), createBgStateNamespace(IDLE_STATE, ""), "");
 
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
     }
 
     @Test
@@ -491,12 +491,12 @@ class BlueGreenServiceTest {
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace2));
 
 
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
 
         bgNamespace2.setState(IDLE_STATE);
         bgNamespace1.setVersion("1");
         bgNamespace2.setVersion("1");
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
     }
 
     @NotNull
@@ -539,7 +539,7 @@ class BlueGreenServiceTest {
         bgState.setControllerNamespace(NS_C);
         bgStateRequest.setBGState(bgState);
 
-        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
 
         Assertions.assertTrue(exception.getMessage().contains("States of bgRequest must be active and idle, but were active and differentState"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
@@ -555,7 +555,7 @@ class BlueGreenServiceTest {
         bgDomain.setNamespaces(List.of(bgNamespace));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace));
 
-        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
         Assertions.assertTrue(exception.getMessage().contains("One of requested namespaces already used in another bgDomain"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
     }
@@ -579,7 +579,7 @@ class BlueGreenServiceTest {
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace3));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace4));
 
-        RuntimeException exception = Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> blueGreenService.initBgDomain(bgStateRequest));
         Assertions.assertTrue(exception.getMessage().contains("These namespaces already belongs to different bgDomains"));
         Assertions.assertTrue(exception.getMessage().contains("CORE-DBAAS-4037"));
     }
@@ -629,8 +629,8 @@ class BlueGreenServiceTest {
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
         blueGreenService.commit(bgStateRequest);
         verify(declarativeDbaasCreationService).deleteDeclarativeConfigurationByNamespace(NS_2);
-        Assertions.assertEquals(ACTIVE_STATE, bgNamespace1.getState());
-        Assertions.assertEquals(IDLE_STATE, bgNamespace2.getState());
+        assertEquals(ACTIVE_STATE, bgNamespace1.getState());
+        assertEquals(IDLE_STATE, bgNamespace2.getState());
     }
 
     @Test
@@ -650,7 +650,7 @@ class BlueGreenServiceTest {
 
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace1));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace2));
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.commit(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.commit(bgStateRequest));
     }
 
     @Test
@@ -723,7 +723,7 @@ class BlueGreenServiceTest {
                 eq("v1"), eq(databaseDeclarativeConfig.getClassifier()), anyMap())).thenThrow(new RuntimeException());
         when(backupsService.deleteRestore(eq(namespaceBackup.getId()), any())).thenReturn(namespaceBackup);
 
-        Assertions.assertThrows(BackupExecutionException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
+        assertThrows(BackupExecutionException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
         verify(backupsService, times(5)).restore(eq(namespaceBackup), eq(restoreId), eq(databaseDeclarativeConfig.getNamespace()),
                 eq(true), eq("v1"), eq(databaseDeclarativeConfig.getClassifier()), anyMap());
     }
@@ -738,7 +738,7 @@ class BlueGreenServiceTest {
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(any(), any())).thenReturn(Optional.of(new DatabaseRegistry()));
 
 
-        Assertions.assertThrows(DBCreationConflictException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
+        assertThrows(DBCreationConflictException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
         verify(backupsService, times(0)).restore(eq(namespaceBackup), eq(restoreId), eq(databaseDeclarativeConfig.getNamespace()),
                 eq(true), eq("v1"), eq(databaseDeclarativeConfig.getClassifier()), anyMap());
     }
@@ -756,7 +756,7 @@ class BlueGreenServiceTest {
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
         when(backupsService.deleteRestore(eq(namespaceBackup.getId()), any())).thenReturn(namespaceBackup);
 
-        Assertions.assertThrows(BackupExecutionException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
+        assertThrows(BackupExecutionException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
 
         verify(backupsService, times(5)).restore(eq(namespaceBackup), eq(restoreId), eq(databaseDeclarativeConfig.getNamespace()),
                 eq(true), eq("v1"), eq(databaseDeclarativeConfig.getClassifier()), anyMap());
@@ -769,7 +769,7 @@ class BlueGreenServiceTest {
 
         when(backupsService.collectBackupSingleDatabase(NAMESPACE, backupId, true, databaseId)).thenThrow(new RuntimeException());
 
-        Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.createDatabaseBackup(backupId, NAMESPACE, databaseId));
+        assertThrows(RuntimeException.class, () -> blueGreenService.createDatabaseBackup(backupId, NAMESPACE, databaseId));
 
         verify(backupsService, times(5)).collectBackupSingleDatabase(NAMESPACE, backupId, true, databaseId);
     }
@@ -782,7 +782,7 @@ class BlueGreenServiceTest {
         when(backup.getStatus()).thenReturn(NamespaceBackup.Status.FAIL);
         when(backupsService.collectBackupSingleDatabase(NAMESPACE, backupId, true, databaseId)).thenReturn(backup);
 
-        Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.createDatabaseBackup(backupId, NAMESPACE, databaseId));
+        assertThrows(RuntimeException.class, () -> blueGreenService.createDatabaseBackup(backupId, NAMESPACE, databaseId));
 
         verify(backupsService, times(5)).collectBackupSingleDatabase(NAMESPACE, backupId, true, databaseId);
     }
@@ -795,7 +795,7 @@ class BlueGreenServiceTest {
 
         when(backupsService.deleteBackup(backup)).thenThrow(new RuntimeException());
 
-        Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.deleteBackup(backupId));
+        assertThrows(RuntimeException.class, () -> blueGreenService.deleteBackup(backupId));
 
         verify(backupsService, times(5)).deleteBackup(backup);
     }
@@ -810,14 +810,14 @@ class BlueGreenServiceTest {
         when(backupsService.restore(eq(namespaceBackup), eq(restoreId), eq(databaseDeclarativeConfig.getNamespace()), eq(true),
                 eq("v1"), eq(databaseDeclarativeConfig.getClassifier()), anyMap())).thenThrow(new RuntimeException());
 
-        Assertions.assertThrows(BackupExecutionException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
+        assertThrows(BackupExecutionException.class, () -> blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", backupId, restoreId, namespaceBackup.getId(), new HashMap<>()));
     }
 
 
     @Test
     void testDestroyDomainException() {
         Set<String> bgStateRequest = Set.of("test-namespace-active", "test-namespace-candidate");
-        Assertions.assertThrows(RuntimeException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
+        assertThrows(RuntimeException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
 
         verify(bgDomainRepository, times(0)).delete(any());
     }
@@ -856,7 +856,7 @@ class BlueGreenServiceTest {
 
         when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
 
-        Assertions.assertThrows(BgNamespaceNotEmptyException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
+        assertThrows(BgNamespaceNotEmptyException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
 
         verify(bgDomainRepository, times(0)).delete(bgDomain);
     }
@@ -928,7 +928,7 @@ class BlueGreenServiceTest {
     void testDestroyDomainNotFound() {
         Set<String> bgStateRequest = Set.of("test-namespace-active", "test-namespace-candidate");
 
-        Assertions.assertThrows(BgDomainNotFoundException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
+        assertThrows(BgDomainNotFoundException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
         verify(bgDomainRepository, times(0)).delete(any());
     }
 
@@ -947,7 +947,7 @@ class BlueGreenServiceTest {
         SortedSet<String> bgStateRequest = new TreeSet<>();// Set.of("test-namespace-active", "test-namespace-incorrect-candidate");
         bgStateRequest.add("test-namespace-active");
         bgStateRequest.add("test-namespace-incorrect-candidate");
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.destroyDomain(bgStateRequest));
         verify(bgDomainRepository, times(0)).delete(any());
     }
 
@@ -1000,7 +1000,7 @@ class BlueGreenServiceTest {
 
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace1));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace2));
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.promote(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.promote(bgStateRequest));
     }
 
     @Test
@@ -1051,7 +1051,7 @@ class BlueGreenServiceTest {
 
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_1)).thenReturn(Optional.of(bgNamespace1));
         when(bgNamespaceRepository.findBgNamespaceByNamespace(NS_2)).thenReturn(Optional.of(bgNamespace2));
-        Assertions.assertThrows(BgRequestValidationException.class, () -> blueGreenService.rollback(bgStateRequest));
+        assertThrows(BgRequestValidationException.class, () -> blueGreenService.rollback(bgStateRequest));
     }
 
     @Test
@@ -1120,7 +1120,7 @@ class BlueGreenServiceTest {
         when(deletionService.getOrphanRegistries(eq(List.of(NAMESPACE)))).thenReturn(List.of(dbRegistryVersioned, dbRegistryStatic));
 
         List<DatabaseRegistry> orphanDatabases = blueGreenService.dropOrphanDatabases(List.of(NAMESPACE), true);
-        Assertions.assertEquals(2, orphanDatabases.size());
+        assertEquals(2, orphanDatabases.size());
         Mockito.verify(deletionService).cleanupOrphanRegistriesAsync(eq(NAMESPACE));
     }
 
@@ -1139,7 +1139,7 @@ class BlueGreenServiceTest {
         when(deletionService.getOrphanRegistries(eq(List.of(NAMESPACE)))).thenReturn(List.of(dbRegistryVersioned, dbRegistryStatic));
 
         List<DatabaseRegistry> orphanDatabases = blueGreenService.dropOrphanDatabases(List.of(NAMESPACE), false);
-        Assertions.assertEquals(2, orphanDatabases.size());
+        assertEquals(2, orphanDatabases.size());
         verify(deletionService).getOrphanRegistries(eq(List.of(NAMESPACE)));
         verifyNoMoreInteractions(deletionService);
     }
