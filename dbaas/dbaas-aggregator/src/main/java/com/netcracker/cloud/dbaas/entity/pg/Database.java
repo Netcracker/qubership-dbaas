@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
 import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
@@ -10,11 +11,17 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.service.ConnectionPropertiesUtils.toStringWithMaskedPassword;
 
+// lastRotatedAt lives on `database` (a property of the shared credentials, not per-classifier) but is kept
+// OUT of the entity JSON: the H2 mirror's Database has no such column (stability tests assert PG/H2 serialize
+// identically), and serializing an OffsetDateTime would also break the backup jsonb converter, whose
+// ObjectMapper has no jsr310 module. The column persists; the changed feed exposes it via its own DTO.
+@JsonIgnoreProperties("lastRotatedAt")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
@@ -26,6 +33,11 @@ public class Database extends AbstractDatabase {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private List<DatabaseRegistry> databaseRegistry;
+
+    @Schema(hidden = true)
+    @EqualsAndHashCode.Exclude
+    @Column(name = "last_rotated_at")
+    private OffsetDateTime lastRotatedAt;
 
     @Schema(required = true, description = "It lists resource which will be deleted when sending the request for delete a database",
             ref = "DbResource")

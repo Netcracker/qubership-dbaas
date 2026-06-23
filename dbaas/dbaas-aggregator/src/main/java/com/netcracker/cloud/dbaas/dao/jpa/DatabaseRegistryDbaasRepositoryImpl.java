@@ -19,6 +19,7 @@ import org.apache.commons.lang.StringUtils;
 
 import javax.annotation.Nullable;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
@@ -64,6 +65,18 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         });
         log.debug("Was found {} logical database registry in namespace={}", databaseList.size(), namespace);
         return databaseList;
+    }
+
+    @Override
+    public List<DatabaseRegistry> findChangedSince(OffsetDateTime sinceTs, UUID sinceId, int limit) {
+        // PG-only: the rotation marker (last_rotated_at) is not mirrored to H2, so there is no H2 fallback.
+        // If Postgres is unavailable the operator poller simply retries on its next tick.
+        return databaseRegistryRepository.findChangedSince(sinceTs, sinceId, limit);
+    }
+
+    @Override
+    public Optional<DatabaseRegistry> latestChange() {
+        return databaseRegistryRepository.latestChange();
     }
 
     @Override

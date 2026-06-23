@@ -35,6 +35,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -876,6 +877,7 @@ public class DBBackupsService {
                     DescribedDatabase describedDatabase = describeDatabase(adapter, dbName);
                     db.setConnectionProperties(describedDatabase.getConnectionProperties());
                     db.setResources(describedDatabase.getResources());
+                    db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
                     databaseRegistryDbaasRepository.saveInternalDatabase(db);
                     log.info("Database {} described and saved", dbName);
                 }
@@ -927,6 +929,9 @@ public class DBBackupsService {
                 db.setResources(db.getResources().stream().distinct().collect(Collectors.toList()));
 
                 encryption.encryptPassword(db.getDatabase());
+                if (regenerateCredentials) {
+                    db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
+                }
                 databaseRegistryDbaasRepository.saveInternalDatabase(db);
                 log.info("Users {} ensured access to db {}",
                         users.stream()

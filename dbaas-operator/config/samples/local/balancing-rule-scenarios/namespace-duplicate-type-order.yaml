@@ -1,0 +1,15 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: NamespaceBalancingRule
+metadata:
+  name: namespace-balancing-rules
+  namespace: dbaas-system
+spec:
+  rules:
+    - name: pg-primary-rule
+      type: postgresql
+      physicalDatabaseId: postgresql-sample
+      order: 0
+    - name: pg-secondary-rule
+      type: postgresql
+      physicalDatabaseId: postgresql-sample-2
+      order: 0

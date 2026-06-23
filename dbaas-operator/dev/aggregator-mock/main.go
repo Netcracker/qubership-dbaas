@@ -17,10 +17,11 @@ limitations under the License.
 // aggregator-mock is a minimal HTTP server that emulates the dbaas-aggregator
 // endpoints used by dbaas-operator, for local development and kind-based testing.
 //
-// Authentication: every request must carry a non-empty Bearer token in the
-// Authorization header (any non-empty token is accepted — the mock does not
-// validate the token value, it only checks that one is present).
-// Missing or empty token → 401 Unauthorized.
+// Authentication: every request must be authenticated either with HTTP Basic Auth
+// (Basic mode, the default — operator runs with KUBERNETES_M2M_ENABLED=false) or a
+// non-empty Bearer token (M2M mode, KUBERNETES_M2M_ENABLED=true). The mock validates
+// neither value — it only checks that the operator authenticated somehow, so the same
+// mock serves both modes with no reconfiguration. No credentials → 401 Unauthorized.
 //
 // Error responses are returned in full TmfErrorResponse format (NC.TMFErrorResponse.v1.0),
 // matching what the real dbaas-aggregator returns for each HTTP error code.
@@ -35,23 +36,38 @@ limitations under the License.
 //	MOCK_APPLY_RULES_FILE – path to a JSON file mapping microserviceName → MockRule
 //	                      for POST /api/declarations/v1/apply (default: /config/apply-rules.json).
 //	                      Missing = not an error.
-//	                      For DbPolicy: no rule → 200 COMPLETED.
-//	                      For DatabaseDeclaration: no rule → 202 IN_PROGRESS with trackingId.
+//	                      For DatabaseAccessPolicy: no rule → 200 COMPLETED.
+//	                      For InternalDatabase: no rule → 202 IN_PROGRESS with trackingId.
 //	MOCK_POLL_RULES_FILE – path to a JSON file mapping trackingId → MockPollRule
 //	                      for GET /api/declarations/v1/operation/{id}/status
 //	                      (default: /config/poll-rules.json). Missing = not an error.
 //	                      No rule → 200 COMPLETED.
+//	MOCK_CHANGED_FILE    – path to a JSON array of ChangedEntry for the rotation
+//	                      feed GET /api/v3/dbaas/databases/changed
+//	                      (default: /config/changed.json). Missing = empty feed.
+//	                      The since-less seed call always reports no history
+//	                      (highWaterMark=null), so the operator seeds at epoch and
+//	                      replays the configured entries once — simulating rotations
+//	                      that occur after the operator starts.
+//	MOCK_GETBYCLASSIFIER_FILE – path to a JSON file mapping originService →
+//	                      connectionProperties (map) for
+//	                      POST /api/v3/dbaas/{ns}/databases/get-by-classifier/{type}
+//	                      (default: /config/get-by-classifier.json). No rule →
+//	                      a synthetic default property set.
 package main
 
 import (
 	"encoding/json"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
@@ -99,7 +115,36 @@ var (
 
 	// GET /api/declarations/v1/operation/{trackingId}/status
 	reOpStatus = regexp.MustCompile(`^/api/declarations/v1/operation/([^/]+)/status$`)
+
+	// PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices
+	reMicroserviceBalancingRule = regexp.MustCompile(
+		`^/api/v3/dbaas/([^/]+)/physical_databases/rules/onMicroservices$`)
+
+	// PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}
+	reNamespaceBalancingRule = regexp.MustCompile(
+		`^/api/v3/dbaas/([^/]+)/physical_databases/balancing/rules/([^/]+)$`)
+
+	// PUT|DELETE /api/v3/dbaas/balancing/rules/permanent
+	rePermanentBalancingRule = regexp.MustCompile(`^/api/v3/dbaas/balancing/rules/permanent$`)
+
+	// GET /api/v3/dbaas/databases/changed
+	reChanged = regexp.MustCompile(`^/api/v3/dbaas/databases/changed$`)
+
+	// POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}
+	reGetByClassifier = regexp.MustCompile(
+		`^/api/v3/dbaas/([^/]+)/databases/get-by-classifier/([^/]+)$`)
 )
+
+// ChangedEntry is one database in the rotation feed (changed.json). Its JSON tags
+// mirror the operator's ChangedDatabaseRef, so an entry serializes straight onto
+// the wire. lastRotatedAt is an RFC3339 timestamp.
+type ChangedEntry struct {
+	Id            string         `json:"id"`
+	Namespace     string         `json:"namespace"`
+	Type          string         `json:"type"`
+	LastRotatedAt string         `json:"lastRotatedAt"`
+	Classifier    map[string]any `json:"classifier"`
+}
 
 func main() {
 	port := envOr("PORT", "8080")
@@ -111,17 +156,26 @@ func main() {
 	applyRules := loadRules(applyRulesFile)
 	pollRulesFile := envOr("MOCK_POLL_RULES_FILE", "/config/poll-rules.json")
 	pollRules := loadPollRules(pollRulesFile)
+	changedFile := envOr("MOCK_CHANGED_FILE", "/config/changed.json")
+	changed := loadChanged(changedFile)
+	gbcFile := envOr("MOCK_GETBYCLASSIFIER_FILE", "/config/get-by-classifier.json")
+	gbcRules := loadGbcRules(gbcFile)
 
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
 		defaultRule.HTTPCode, len(rules))
-	log.Printf("  POST .../apply → DbPolicy:200 / DatabaseDeclaration:202 (%d per-microserviceName rules loaded)",
+	log.Printf("  POST .../apply → DatabaseAccessPolicy:200 / InternalDatabase:202 (%d per-microserviceName rules loaded)",
 		len(applyRules))
 	log.Printf("  GET  .../operation/.../status → default COMPLETED (%d per-trackingId poll rules loaded)",
 		len(pollRules))
-	log.Printf("  auth: Bearer token required (any non-empty token accepted)")
+	log.Printf("  POST .../get-by-classifier/{type} → 200 connectionProperties (%d per-originService rules loaded)",
+		len(gbcRules))
+	log.Printf("  GET  .../databases/changed → rotation feed (%d changed entries loaded; seed reports no history)",
+		len(changed))
+	log.Printf("  auth: Basic Auth or Bearer token required (value not validated — both modes accepted)")
 
-	if err := http.ListenAndServe(":"+port, handler(defaultRule, rules, applyRules, pollRules)); err != nil {
+	h := handler(defaultRule, rules, applyRules, pollRules, changed, gbcRules)
+	if err := http.ListenAndServe(":"+port, h); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
@@ -166,9 +220,50 @@ func loadPollRules(path string) map[string]MockPollRule {
 	return rules
 }
 
+// loadChanged reads the rotation feed (a JSON array of ChangedEntry).
+// A missing file is not an error — it yields an empty feed.
+func loadChanged(path string) []ChangedEntry {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("changed file %q not found or unreadable, rotation feed is empty: %v", path, err)
+		return nil
+	}
+	var entries []ChangedEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		log.Fatalf("parse changed file %q: %v", path, err)
+	}
+	log.Printf("loaded %d changed entries from %q", len(entries), path)
+	for _, e := range entries {
+		log.Printf("  changed: id=%q namespace=%q type=%q lastRotatedAt=%q classifier=%v",
+			e.Id, e.Namespace, e.Type, e.LastRotatedAt, e.Classifier)
+	}
+	return entries
+}
+
+// loadGbcRules reads a JSON file mapping originService → connectionProperties.
+// A missing file is not an error — get-by-classifier then falls back to a
+// synthetic default property set for every lookup.
+func loadGbcRules(path string) map[string]map[string]any {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("get-by-classifier file %q not found or unreadable, using synthetic defaults: %v", path, err)
+		return nil
+	}
+	var rules map[string]map[string]any
+	if err := json.Unmarshal(data, &rules); err != nil {
+		log.Fatalf("parse get-by-classifier file %q: %v", path, err)
+	}
+	log.Printf("loaded %d get-by-classifier rules from %q", len(rules), path)
+	for k := range rules {
+		log.Printf("  get-by-classifier rule: originService=%q", k)
+	}
+	return rules
+}
+
 func handler(
 	defaultRule MockRule, rules map[string]MockRule,
 	applyRules map[string]MockRule, pollRules map[string]MockPollRule,
+	changed []ChangedEntry, gbcRules map[string]map[string]any,
 ) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +283,24 @@ func handler(
 		case reOpStatus.MatchString(r.URL.Path) && r.Method == http.MethodGet:
 			handleOpStatus(w, r, pollRules)
 
+		case reChanged.MatchString(r.URL.Path) && r.Method == http.MethodGet:
+			handleChanged(w, r, changed)
+
+		case reGetByClassifier.MatchString(r.URL.Path) && r.Method == http.MethodPost:
+			handleGetByClassifier(w, r, body, gbcRules)
+
+		case reMicroserviceBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			handleMicroserviceBalancingRule(w, r)
+
+		case reNamespaceBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			handleNamespaceBalancingRule(w, r)
+
+		case rePermanentBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			handlePermanentBalancingRule(w, false)
+
+		case rePermanentBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodDelete:
+			handlePermanentBalancingRule(w, true)
+
 		default:
 			log.Printf("  → 404 no route for %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -196,17 +309,55 @@ func handler(
 	return mux
 }
 
-// checkAuth validates the Bearer token from the Authorization header.
-// Any non-empty token is accepted — the mock does not validate the token value.
-// Missing or empty token → 401 Unauthorized.
-func checkAuth(w http.ResponseWriter, r *http.Request) bool {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if token == "" {
-		log.Printf("  → 401 missing or empty Bearer token")
-		writeTmfError(w, authRuleUnauthorized)
-		return false
+// handleMicroserviceBalancingRule accepts on-microservice balancing rule updates.
+// The mock only validates route/auth and does not simulate physical DB label resolution.
+func handleMicroserviceBalancingRule(w http.ResponseWriter, r *http.Request) {
+	m := reMicroserviceBalancingRule.FindStringSubmatch(r.URL.Path)
+	namespace := m[1]
+	log.Printf("  -> microservice balancing rules accepted namespace=%q", namespace)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write([]byte("[]"))
+}
+
+// handleNamespaceBalancingRule accepts namespace balancing rule create/update.
+// The mock does not validate physicalDatabaseId existence.
+func handleNamespaceBalancingRule(w http.ResponseWriter, r *http.Request) {
+	m := reNamespaceBalancingRule.FindStringSubmatch(r.URL.Path)
+	namespace := m[1]
+	ruleName := m[2]
+	log.Printf("  -> namespace balancing rule accepted namespace=%q ruleName=%q", namespace, ruleName)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+}
+
+// handlePermanentBalancingRule accepts permanent balancing rule create/update/delete.
+// The mock does not persist state; it exists to exercise operator reconciliation.
+func handlePermanentBalancingRule(w http.ResponseWriter, delete bool) {
+	action := "applied"
+	if delete {
+		action = "deleted"
 	}
-	return true
+	log.Printf("  -> permanent balancing rules %s", action)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("[]"))
+}
+
+// checkAuth accepts a request authenticated with EITHER HTTP Basic Auth (Basic mode)
+// or a non-empty Bearer token (M2M mode). The mock validates neither value — it only
+// requires that the operator authenticated somehow, so it is mode-agnostic. A request
+// with neither → 401 Unauthorized.
+func checkAuth(w http.ResponseWriter, r *http.Request) bool {
+	if user, _, ok := r.BasicAuth(); ok && user != "" {
+		return true
+	}
+	if token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); token != "" {
+		return true
+	}
+	log.Printf("  → 401 missing credentials (neither Basic Auth nor Bearer token)")
+	writeTmfError(w, authRuleUnauthorized)
+	return false
 }
 
 // handleExternalDB serves PUT .../externally_manageable.
@@ -283,7 +434,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 
 	// Default behaviour depends on subKind.
 	if req.SubKind == "DatabaseDeclaration" {
-		// DatabaseDeclaration is always async: return 202 with a deterministic trackingId.
+		// InternalDatabase is always async: return 202 with a deterministic trackingId.
 		trackingID := "tracking-" + msName
 		log.Printf("  → apply config  subKind=DatabaseDeclaration microserviceName=%q"+
 			" → 202 IN_PROGRESS trackingId=%q (default)",
@@ -301,7 +452,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 		return
 	}
 
-	// DbPolicy and any other subKind: default 200 COMPLETED (synchronous).
+	// DatabaseAccessPolicy and any other subKind: default 200 COMPLETED (synchronous).
 	log.Printf("  → apply config  subKind=%q microserviceName=%q → 200 COMPLETED (default)", req.SubKind, msName)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -371,19 +522,148 @@ func handleOpStatus(w http.ResponseWriter, r *http.Request, pollRules map[string
 	})
 }
 
+// handleChanged serves GET /api/v3/dbaas/databases/changed — the rotation feed.
+//
+// The since-less seed call (no sinceTs) always reports no rotation history
+// (highWaterMark=null), so the operator seeds its cursor at epoch and then
+// replays the configured changed.json entries on the next poll — simulating
+// rotations that happen after the operator starts. A cursor call returns the
+// entries with (lastRotatedAt, id) strictly greater than the cursor, ordered
+// ascending, honouring an optional limit. Once the operator's cursor passes the
+// newest entry the feed returns nothing and the poller converges.
+func handleChanged(w http.ResponseWriter, r *http.Request, changed []ChangedEntry) {
+	sinceTs := r.URL.Query().Get("sinceTs")
+	sinceID := r.URL.Query().Get("sinceId")
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if sinceTs == "" {
+		log.Printf("  → changed feed seed → highWaterMark=null items=[] (replays %d at epoch)", len(changed))
+		writeJSON(w, map[string]any{"items": []ChangedEntry{}, "highWaterMark": nil})
+		return
+	}
+
+	since, err := parseTS(sinceTs)
+	if err != nil {
+		log.Printf("  → changed feed: bad sinceTs=%q (%v), treating as epoch", sinceTs, err)
+		since = time.Time{}
+	}
+
+	items := []ChangedEntry{}
+	for _, e := range changed {
+		t, perr := parseTS(e.LastRotatedAt)
+		if perr != nil {
+			log.Printf("  → changed feed: skipping entry id=%q with bad lastRotatedAt=%q: %v", e.Id, e.LastRotatedAt, perr)
+			continue
+		}
+		if t.After(since) || (t.Equal(since) && e.Id > sinceID) {
+			items = append(items, e)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		ti, _ := parseTS(items[i].LastRotatedAt)
+		tj, _ := parseTS(items[j].LastRotatedAt)
+		if ti.Equal(tj) {
+			return items[i].Id < items[j].Id
+		}
+		return ti.Before(tj)
+	})
+
+	if limit := atoiOr(r.URL.Query().Get("limit"), 0); limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+
+	log.Printf("  → changed feed since=(%s,%s) → %d item(s)", sinceTs, sinceID, len(items))
+	writeJSON(w, map[string]any{
+		"items":         items,
+		"highWaterMark": highWaterMark(changed),
+	})
+}
+
+// handleGetByClassifier serves POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}.
+// It returns 200 with a DatabaseResponseV3SingleCP-shaped body. connectionProperties
+// come from the per-originService rule when present, otherwise from a synthetic
+// default. Editing a rule's password (and restarting the mock) lets a subsequent
+// rotation fan-out surface a real SecretRotated; the stable default yields the
+// content-aware no-op (SecretUpToDate) on re-fetch.
+func handleGetByClassifier(w http.ResponseWriter, r *http.Request, body []byte, gbcRules map[string]map[string]any) {
+	m := reGetByClassifier.FindStringSubmatch(r.URL.Path)
+	namespace, dbType := m[1], m[2]
+
+	var req struct {
+		Classifier    map[string]any `json:"classifier"`
+		OriginService string         `json:"originService"`
+		UserRole      string         `json:"userRole"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	key := req.OriginService
+	if key == "" {
+		key, _ = req.Classifier["microserviceName"].(string)
+	}
+	role := req.UserRole
+	if role == "" {
+		role = "admin"
+	}
+
+	props, ok := gbcRules[key]
+	if ok && len(props) > 0 {
+		log.Printf("  → get-by-classifier originService=%q type=%q role=%q → 200 (rule props)", key, dbType, role)
+	} else {
+		props = defaultConnProps(role)
+		log.Printf("  → get-by-classifier originService=%q type=%q role=%q → 200 (default props)", key, dbType, role)
+	}
+
+	// Always surface the requested role without mutating the shared rule map.
+	if _, has := props["role"]; !has {
+		merged := make(map[string]any, len(props)+1)
+		maps.Copy(merged, props)
+		merged["role"] = role
+		props = merged
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	writeJSON(w, map[string]any{
+		"id":                   "db-" + key,
+		"name":                 stringOr(props["name"], key+"-db"),
+		"namespace":            namespace,
+		"type":                 dbType,
+		"connectionProperties": props,
+	})
+}
+
+// defaultConnProps is the synthetic connection-property set returned by
+// get-by-classifier when no per-originService rule matches. It is stable, so a
+// rotation fan-out re-fetch is a content-aware no-op (SecretUpToDate).
+func defaultConnProps(role string) map[string]any {
+	return map[string]any{
+		"host":     "pg.example.com",
+		"port":     5432,
+		"name":     "app_db",
+		"username": "app_user",
+		"password": "p-static",
+		"url":      "jdbc:postgresql://pg.example.com:5432/app_db",
+		"role":     role,
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // logRequest logs the incoming request and returns the body bytes.
 // The caller is responsible for passing the body to any handler that needs it.
 func logRequest(r *http.Request) []byte {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	tokenPreview := ""
-	if len(token) > 8 {
-		tokenPreview = token[:8] + "..."
-	} else {
-		tokenPreview = token
+	auth := "none"
+	if user, _, ok := r.BasicAuth(); ok && user != "" {
+		auth = "basic user=" + user
+	} else if token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); token != "" {
+		preview := token
+		if len(token) > 8 {
+			preview = token[:8] + "..."
+		}
+		auth = "bearer=" + preview
 	}
-	log.Printf("← %s %s  bearer=%q", r.Method, r.URL.Path, tokenPreview)
+	log.Printf("← %s %s  auth=%s", r.Method, r.URL.Path, auth)
 
 	body, _ := io.ReadAll(r.Body)
 
@@ -437,4 +717,50 @@ func envInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func atoiOr(s string, fallback int) int {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	return fallback
+}
+
+func stringOr(v any, fallback string) string {
+	if s, ok := v.(string); ok && s != "" {
+		return s
+	}
+	return fallback
+}
+
+// parseTS parses an RFC3339 timestamp, tolerating both the nano and second forms.
+func parseTS(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
+// highWaterMark returns the greatest (lastRotatedAt, id) across the feed as a
+// ChangeCursor-shaped map, or nil when the feed is empty.
+func highWaterMark(changed []ChangedEntry) any {
+	var maxT time.Time
+	var maxID string
+	found := false
+	for _, e := range changed {
+		t, err := parseTS(e.LastRotatedAt)
+		if err != nil {
+			continue
+		}
+		if !found || t.After(maxT) || (t.Equal(maxT) && e.Id > maxID) {
+			maxT, maxID, found = t, e.Id, true
+		}
+	}
+	if !found {
+		return nil
+	}
+	return map[string]any{
+		"lastRotatedAt": maxT.UTC().Format(time.RFC3339Nano),
+		"id":            maxID,
+	}
 }

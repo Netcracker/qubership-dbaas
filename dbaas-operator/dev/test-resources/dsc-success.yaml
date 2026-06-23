@@ -1,0 +1,31 @@
+# DatabaseSecretClaim — happy path + rotation demo.
+#
+# On creation the operator calls POST .../databases/get-by-classifier/postgresql,
+# the mock returns connectionProperties for originService "secret-svc"
+# (get-by-classifier.json), and the operator materializes the target Secret
+# "dsc-success-secret" → Succeeded (reason: SecretCreated).
+#
+# The rotation poller then pulls the changed feed (changed.json), whose single
+# entry matches this CR's (classifier, type), and patches the rotation-trigger
+# annotation — waking this reconcile again. Because the mock returns the same
+# credentials, the re-fetch is a content-aware no-op (reason: SecretUpToDate).
+# Edit the password in get-by-classifier.json (ConfigMap) + restart the mock to
+# see a real SecretRotated on the next poll.
+#
+# The app.kubernetes.io/name label is REQUIRED — its value is sent as
+# originService in the get-by-classifier request.
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: dsc-success
+  namespace: test-ns
+  labels:
+    app.kubernetes.io/name: secret-svc
+spec:
+  type: postgresql
+  userRole: admin
+  secretName: dsc-success-secret
+  classifier:
+    microserviceName: secret-svc
+    scope: service
+    namespace: test-ns

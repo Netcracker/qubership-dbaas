@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
     app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
     app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
-    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/part-of: 'dbaas'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
     app.kubernetes.io/component: 'operator'
     app.kubernetes.io/technology: 'go'
@@ -42,14 +42,20 @@ spec:
   template:
     metadata:
       labels:
-        name: '{{ coalesce .Values.DEPLOYMENT_RESOURCE_NAME .Values.SERVICE_NAME }}'
-        app.kubernetes.io/name: '{{ $.Values.SERVICE_NAME }}'
-        app.kubernetes.io/part-of: '{{ $.Values.APPLICATION_NAME }}'
+        app: '{{ .Values.SERVICE_NAME }}'
+        name: '{{ .Values.SERVICE_NAME }}'
+        app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+        app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+        app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
+        app.kubernetes.io/component: 'operator'
+        app.kubernetes.io/part-of: 'dbaas'
+        app.kubernetes.io/technology: 'go'
     spec:
       nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
       serviceAccountName: '{{ .Values.SERVICE_NAME }}'
       volumes:
+        {{- if .Values.KUBERNETES_M2M_ENABLED }}
         - name: projected-tokens
           projected:
             defaultMode: 292
@@ -58,27 +64,42 @@ spec:
                   path: dbaas/token
                   audience: dbaas
                   expirationSeconds: 600
+        {{- else }}
+        # Basic Auth mode: mount the operator's own credentials Secret (username/password),
+        # created by Secret.yaml from DBAAS_OPERATOR_CREDENTIALS_*.
+        - name: dbaas-security-volume
+          secret:
+            secretName: '{{ .Values.SERVICE_NAME }}-aggregator-credentials'
+        {{- end }}
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
           volumeMounts:
+            {{- if .Values.KUBERNETES_M2M_ENABLED }}
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
               readOnly: true
-          # A Pod's `args` field REPLACES image CMD entirely. State the binary path in
-          # `command` so the deployment keeps working regardless of whether the Dockerfile
-          # uses ENTRYPOINT or CMD for /app/dbaas-operator.
+            {{- else }}
+            - name: dbaas-security-volume
+              mountPath: /etc/dbaas/security
+              readOnly: true
+            {{- end }}
+          # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
+          # which loads the Kubernetes service-account ca.crt into the image trust store
+          # before exec'ing its arguments, so any outbound TLS (e.g. an HTTPS aggregator
+          # URL) trusts the cluster CA. A Pod's `args` REPLACES the image CMD, so the
+          # binary is passed as the first entrypoint argument here rather than relying on
+          # the Dockerfile CMD.
           command:
-            - /app/dbaas-operator
+            - /usr/bin/entrypoint.sh
           args:
+            - /app/dbaas-operator
             - --health-probe-bind-address=:8081
-            - --metrics-bind-address=:8080
+            - --http-bind-address=:8080
             {{- if .Values.LEADER_ELECT }}
             - --leader-elect
             {{- end }}
           env:
-            - name: ALPHA_APIS_ENABLED
-              value: "false"
             - name: CLOUD_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -87,6 +108,17 @@ spec:
               value: '{{ lower .Values.LOG_LEVEL }}'
             - name: K8S_EVENTS_ENABLED
               value: '{{ .Values.K8S_EVENTS_ENABLED }}'
+            {{- if .Values.DBAAS_ROTATION_POLL_INTERVAL }}
+            # Override the rotation poll period (Go duration, e.g. 15s, 1m). When
+            # unset the operator uses its built-in default (30s).
+            - name: DBAAS_ROTATION_POLL_INTERVAL
+              value: '{{ .Values.DBAAS_ROTATION_POLL_INTERVAL }}'
+            {{- end }}
+            # Aggregator auth mode (must match the aggregator's KUBERNETES_M2M_ENABLED).
+            # In Basic Auth mode the operator reads username/password from the mounted
+            # credentials Secret at /etc/dbaas/security (no extra env needed).
+            - name: KUBERNETES_M2M_ENABLED
+              value: '{{ .Values.KUBERNETES_M2M_ENABLED }}'
           ports:
             - name: web
               containerPort: 8081

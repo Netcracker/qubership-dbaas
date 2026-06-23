@@ -18,10 +18,14 @@ limitations under the License.
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -32,12 +36,26 @@ import (
 const defaultTimeout = 30 * time.Second
 
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
-// It authenticates using a Kubernetes projected service account token with
-// audience "dbaas", fetched fresh on every request via the tokensource library.
+// It authenticates in one of two mutually exclusive modes, selected at
+// construction to mirror the aggregator's KUBERNETES_M2M_ENABLED setting:
+//   - M2M (Bearer): a Kubernetes projected service account token with audience
+//     "dbaas", fetched fresh on every request via the tokensource library;
+//   - Basic Auth: a username/password pair loaded from the mounted security
+//     Secret, hot-swappable at runtime via SetCredentials.
+//
 // It is safe for concurrent use.
 type AggregatorClient struct {
-	rc       *resty.Client
+	rc *resty.Client
+	// getToken is set in M2M mode and nil in Basic Auth mode.
 	getToken func(ctx context.Context) (string, error)
+	// creds holds the Basic Auth pair in Basic Auth mode; nil in M2M mode.
+	creds atomic.Pointer[credentials]
+}
+
+// credentials holds the HTTP Basic Auth pair as an immutable value, swapped
+// atomically on credential reload.
+type credentials struct {
+	username, password string
 }
 
 // NewAggregatorClient creates a new AggregatorClient.
@@ -62,7 +80,26 @@ func NewClientWithTokenFunc(baseURL string, getToken func(ctx context.Context) (
 	return newClient(baseURL, getToken)
 }
 
-// newClient is the internal constructor used in package-level tests.
+// NewBasicAuthClient creates an AggregatorClient that authenticates with HTTP
+// Basic Auth. Used when M2M token auth is disabled (KUBERNETES_M2M_ENABLED=false),
+// in which case the aggregator rejects Bearer tokens and expects Basic credentials.
+// The credentials can be hot-swapped at runtime via SetCredentials, so a mounted
+// Secret update is picked up without a pod restart.
+func NewBasicAuthClient(baseURL, username, password string) *AggregatorClient {
+	c := newClient(baseURL, nil)
+	c.creds.Store(&credentials{username: username, password: password})
+	return c
+}
+
+// SetCredentials atomically replaces the Basic Auth credentials used for all
+// subsequent requests. Safe for concurrent use.
+func (c *AggregatorClient) SetCredentials(username, password string) {
+	c.creds.Store(&credentials{username: username, password: password})
+}
+
+// newClient is the internal constructor used in package-level tests. A non-nil
+// getToken selects M2M (Bearer) mode; nil selects Basic Auth mode, in which case
+// the caller must seed credentials via creds.Store / SetCredentials.
 func newClient(baseURL string, getToken func(ctx context.Context) (string, error)) *AggregatorClient {
 	c := &AggregatorClient{getToken: getToken}
 
@@ -70,22 +107,94 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		SetBaseURL(baseURL).
 		SetTimeout(defaultTimeout).
 		SetHeader("Accept", "application/json").
+		// Suppress resty's per-request "Using Basic Auth in HTTP mode is not
+		// secure, use HTTPS" warning. Operator→aggregator traffic is in-cluster
+		// and Basic Auth over HTTP is the intended default (KUBERNETES_M2M_ENABLED=false),
+		// so the warning is pure noise logged on every call (incl. the rotation poll loop).
+		SetDisableWarn(true).
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
-			token, err := c.getToken(r.Context())
-			if err != nil {
-				return fmt.Errorf("get dbaas audience token: %w", err)
+			// M2M mode — fetch a fresh dbaas-audience token per request.
+			if c.getToken != nil {
+				token, err := c.getToken(r.Context())
+				if err != nil {
+					return fmt.Errorf("get dbaas audience token: %w", err)
+				}
+				r.SetAuthToken(token)
+				return nil
 			}
-			r.SetAuthToken(token)
+			// Basic Auth mode — apply the currently loaded credentials.
+			if cr := c.creds.Load(); cr != nil {
+				r.SetBasicAuth(cr.username, cr.password)
+			}
 			return nil
 		})
 
 	return c
 }
 
+// doRequest sends method+path to the aggregator through the shared resty client
+// (so the auth OnBeforeRequest hook applies), with ctx, an optional JSON body, and
+// an optional prep hook to tweak the request (e.g. query params). It returns the
+// response only when its status is in okCodes; otherwise an *AggregatorError. It
+// centralizes the transport + status-check boilerplate shared by every endpoint;
+// per-endpoint semantics (verb, OK codes, whether/what to decode) stay at the call site.
+func (c *AggregatorClient) doRequest(
+	ctx context.Context, method, path string, body any, prep func(*resty.Request), okCodes ...int,
+) (*resty.Response, error) {
+	r := c.rc.R().SetContext(ctx)
+	if body != nil {
+		r.SetBody(body)
+	}
+	if prep != nil {
+		prep(r)
+	}
+	resp, err := r.Execute(method, path)
+	if err != nil {
+		return nil, err
+	}
+	if slices.Contains(okCodes, resp.StatusCode()) {
+		return resp, nil
+	}
+	return nil, newAggregatorError(resp)
+}
+
+// decodeInto unmarshals an aggregator response body into a *T.
+//
+// When allowEmpty is true an empty body yields the zero value — the declarative
+// apply/operation-status endpoints may legitimately return a success status with
+// no payload. When allowEmpty is false an empty body is a decode error: callers
+// that always expect a JSON object (get-by-classifier, the changed-databases feed)
+// must NOT treat an empty 200 as a valid zero value. For the feed in particular a
+// zero value reads as "no rotation history" and would seed the poller cursor at
+// epoch, triggering a full replay instead of a retry. label names the endpoint.
+//
+// When useNumber is true JSON numbers decode as json.Number rather than float64.
+// The changed-databases feed needs this so large integers in a classifier
+// identity field keep their exact value, matching the precision-preserving
+// ClassifierFlatMap on the controller side (otherwise the poller's index key
+// would diverge for such databases and the rotation would be silently missed).
+func decodeInto[T any](body []byte, label string, allowEmpty, useNumber bool) (*T, error) {
+	var result T
+	if len(body) == 0 {
+		if allowEmpty {
+			return &result, nil
+		}
+		return nil, fmt.Errorf("decode %s response: empty body", label)
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if useNumber {
+		dec.UseNumber()
+	}
+	if err := dec.Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode %s response: %w", label, err)
+	}
+	return &result, nil
+}
+
 // ApplyConfig posts a declarative payload to POST /api/declarations/v1/apply.
 //
 // The caller constructs the payload with the appropriate kind/subKind/spec for
-// the resource (DatabaseDeclaration or DbPolicy).
+// the resource (InternalDatabase or DatabaseAccessPolicy).
 //
 // Return semantics:
 //   - response.TrackingID != "" → operation is asynchronous (HTTP 202 from the
@@ -95,19 +204,12 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 //   - error (*AggregatorError) → non-2xx response; IsSpecRejection() distinguishes
 //     a permanent spec error (400/403/409/410/422) from a transient failure.
 func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *DeclarativePayload) (*DeclarativeResponse, error) {
-	resp, err := c.rc.R().
-		SetContext(ctx).
-		SetBody(payload).
-		Post("/api/declarations/v1/apply")
+	resp, err := c.doRequest(ctx, http.MethodPost, "/api/declarations/v1/apply", payload, nil,
+		http.StatusOK, http.StatusAccepted)
 	if err != nil {
 		return nil, err
 	}
-
-	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusAccepted {
-		return nil, newAggregatorError(resp)
-	}
-
-	return decodeResponse(resp.Body(), "apply")
+	return decodeInto[DeclarativeResponse](resp.Body(), "apply", true, false)
 }
 
 // GetOperationStatus polls the status of an asynchronous operation.
@@ -117,18 +219,13 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 //
 // Returns *AggregatorError on non-2xx.
 func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID string) (*DeclarativeResponse, error) {
-	resp, err := c.rc.R().
-		SetContext(ctx).
-		Get(fmt.Sprintf("/api/declarations/v1/operation/%s/status", trackingID))
+	resp, err := c.doRequest(ctx, http.MethodGet,
+		fmt.Sprintf("/api/declarations/v1/operation/%s/status", trackingID), nil, nil,
+		http.StatusOK)
 	if err != nil {
 		return nil, err
 	}
-
-	if resp.StatusCode() != http.StatusOK {
-		return nil, newAggregatorError(resp)
-	}
-
-	return decodeResponse(resp.Body(), "operation status")
+	return decodeInto[DeclarativeResponse](resp.Body(), "operation status", true, false)
 }
 
 // RegisterExternalDatabase sends a PUT request to register an externally managed
@@ -140,29 +237,97 @@ func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID st
 // The call is synchronous; no polling is needed.
 // Returns *AggregatorError on non-2xx.
 func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespace string, req *ExternalDatabaseRequest) error {
-	resp, err := c.rc.R().
-		SetContext(ctx).
-		SetBody(req).
-		Put(fmt.Sprintf("/api/v3/dbaas/%s/databases/registration/externally_manageable", namespace))
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusCreated {
-		return newAggregatorError(resp)
-	}
-
-	return nil
+	_, err := c.doRequest(ctx, http.MethodPut,
+		fmt.Sprintf("/api/v3/dbaas/%s/databases/registration/externally_manageable", namespace), req, nil,
+		http.StatusOK, http.StatusCreated)
+	return err
 }
 
-func decodeResponse(body []byte, label string) (*DeclarativeResponse, error) {
-	var result DeclarativeResponse
-	if len(body) > 0 {
-		if err := json.Unmarshal(body, &result); err != nil {
-			return nil, fmt.Errorf("decode %s response: %w", label, err)
-		}
+// ApplyMicroserviceBalancingRules sends on-microservice balancing rules to
+// PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices.
+func (c *AggregatorClient) ApplyMicroserviceBalancingRules(ctx context.Context, namespace string, req []OnMicroserviceRuleRequest) error {
+	_, err := c.doRequest(ctx, http.MethodPut,
+		fmt.Sprintf("/api/v3/dbaas/%s/physical_databases/rules/onMicroservices", namespace), req, nil,
+		http.StatusOK, http.StatusCreated)
+	return err
+}
+
+// ApplyNamespaceBalancingRule sends one namespace balancing rule to
+// PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}.
+func (c *AggregatorClient) ApplyNamespaceBalancingRule(ctx context.Context, namespace, ruleName string, req *NamespaceBalancingRuleRequest) error {
+	_, err := c.doRequest(ctx, http.MethodPut,
+		fmt.Sprintf("/api/v3/dbaas/%s/physical_databases/balancing/rules/%s", namespace, ruleName), req, nil,
+		http.StatusOK, http.StatusCreated)
+	return err
+}
+
+// DeleteNamespaceBalancingRule deletes one namespace balancing rule with
+// DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}.
+func (c *AggregatorClient) DeleteNamespaceBalancingRule(ctx context.Context, namespace, ruleName string) error {
+	_, err := c.doRequest(ctx, http.MethodDelete,
+		fmt.Sprintf("/api/v3/dbaas/%s/physical_databases/balancing/rules/%s", namespace, ruleName), nil, nil,
+		http.StatusOK, http.StatusNoContent, http.StatusNotFound)
+	return err
+}
+
+// ApplyPermanentBalancingRules sends permanent balancing rules to
+// PUT /api/v3/dbaas/balancing/rules/permanent.
+func (c *AggregatorClient) ApplyPermanentBalancingRules(ctx context.Context, req []PermanentBalancingRuleRequest) error {
+	_, err := c.doRequest(ctx, http.MethodPut, "/api/v3/dbaas/balancing/rules/permanent", req, nil,
+		http.StatusOK, http.StatusCreated)
+	return err
+}
+
+// DeletePermanentBalancingRules deletes permanent balancing rules with
+// DELETE /api/v3/dbaas/balancing/rules/permanent.
+func (c *AggregatorClient) DeletePermanentBalancingRules(ctx context.Context, req []PermanentBalancingRuleDeleteRequest) error {
+	_, err := c.doRequest(ctx, http.MethodDelete, "/api/v3/dbaas/balancing/rules/permanent", req, nil,
+		http.StatusOK, http.StatusNoContent)
+	return err
+}
+
+// GetDatabaseByClassifier fetches connection properties for a database.
+// POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{dbType}
+// Returns *AggregatorError on non-2xx.
+func (c *AggregatorClient) GetDatabaseByClassifier(
+	ctx context.Context, namespace, dbType string, req *GetByClassifierRequest,
+) (*DatabaseResponseSingleCP, error) {
+	resp, err := c.doRequest(ctx, http.MethodPost,
+		fmt.Sprintf("/api/v3/dbaas/%s/databases/get-by-classifier/%s", namespace, dbType), req, nil,
+		http.StatusOK)
+	if err != nil {
+		return nil, err
 	}
-	return &result, nil
+	return decodeInto[DatabaseResponseSingleCP](resp.Body(), "get-by-classifier", false, false)
+}
+
+// GetChangedSince fetches databases whose credentials changed (password rotation
+// or restore) strictly after the given keyset cursor, ordered by (lastRotatedAt,
+// id). GET /api/v3/dbaas/databases/changed?sinceTs={iso}&sinceId={uuid}&limit={n}
+//
+// Pass cursor=nil on the first call to receive only the current high-water mark
+// (an empty Items list) — use it to seed the cursor without replaying history.
+// limit <= 0 lets the aggregator apply its default page size.
+// Requires the caller identity to hold the CLUSTER_OPERATOR role.
+// Returns *AggregatorError on non-2xx.
+func (c *AggregatorClient) GetChangedSince(ctx context.Context, cursor *ChangeCursor, limit int) (*ChangedDatabasesResponse, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/v3/dbaas/databases/changed", nil,
+		func(r *resty.Request) {
+			if cursor != nil {
+				r.SetQueryParam("sinceTs", cursor.LastRotatedAt.UTC().Format(time.RFC3339Nano))
+				r.SetQueryParam("sinceId", cursor.Id)
+			}
+			if limit > 0 {
+				r.SetQueryParam("limit", strconv.Itoa(limit))
+			}
+		},
+		http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	// useNumber=true: keep large integers in a classifier identity field exact so
+	// the poller's index key matches the precision-preserving controller side.
+	return decodeInto[ChangedDatabasesResponse](resp.Body(), "changed-databases", false, true)
 }
 
 func newAggregatorError(resp *resty.Response) *AggregatorError {
@@ -172,8 +337,11 @@ func newAggregatorError(resp *resty.Response) *AggregatorError {
 	}
 
 	var tmfResp tmf.Response
-	if json.Unmarshal(resp.Body(), &tmfResp) == nil && tmfResp.Message != "" {
-		aggErr.TmfMessage = tmfResp.Message
+	if json.Unmarshal(resp.Body(), &tmfResp) == nil {
+		aggErr.TmfCode = tmfResp.Code
+		if tmfResp.Message != "" {
+			aggErr.TmfMessage = tmfResp.Message
+		}
 	}
 
 	return aggErr

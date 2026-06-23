@@ -269,6 +269,21 @@ class SecurityTest {
     }
 
     @Test
+    void testCreateDatabaseWithOperatorTokenKeepsExplicitOriginService() {
+        // CLUSTER_OPERATOR via JWT must NOT overwrite originService from request body.
+        // If it did, originService would become "operator-sa" != microserviceName "test-name",
+        // causing getSupportedRoleFromRequest to return null → 422 instead of 201.
+        String token = jwtUtils.getJwt("operator-sa", "unit-test-namespace");
+        given().auth().preemptive().oauth2(token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"type\":\"" + TEST_TYPE + "\", \"classifier\":{\"scope\":\"service\", \"microserviceName\":\"test-name\", \"namespace\":\"unit-test-namespace\"}, \"originService\":\"test-name\"}")
+                .accept(MediaType.APPLICATION_JSON)
+                .put(DBAAS_PATH_V3 + "/unit-test-namespace/databases")
+                .then()
+                .statusCode(CREATED.getStatusCode());
+    }
+
+    @Test
     void testCreateDatabaseWithInvalidKubernetesToken() {
         createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace")+"pad-to-make-invalid-signature")
                 .statusCode(UNAUTHORIZED.getStatusCode());
