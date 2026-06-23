@@ -33,8 +33,9 @@ the database from `/etc/secrets/dbaas-secrets` **before** the agent provider (RE
 test deploys the service with `API_DBAAS_ADDRESS` pointed at an **unreachable** host, so a successful
 insert/list proves the connection came from the mounted secret, not REST.
 
-The `quarkus_test_app_items` table is created lazily via `CREATE TABLE IF NOT EXISTS` on the
-dbaas-resolved connection (the dbaas Flyway integration is exercised by the Spring service).
+The `quarkus_test_app_items` table is created by the dbaas Flyway integration
+(`MigrationService.migrate`) from `classpath:db/migration`, run lazily on the first request.
+`baseline-version=0` lets `V1` apply on top of the (non-empty) dbaas-provisioned schema.
 
 ## Build & run
 

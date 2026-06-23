@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.testapp.quarkus;
 
+import com.netcracker.cloud.core.quarkus.dbaas.datasource.service.MigrationService;
 import io.agroal.api.AgroalDataSource;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -17,7 +18,6 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,8 +28,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * PostgreSQL endpoints exercised by the integration test. The injected {@code serviceDataSource} is
  * produced by the dbaas-datasource extension and resolves from the mounted secret before any REST
  * call to dbaas-aggregator; so when the secret is mounted the service keeps working even if the
- * aggregator is unreachable. The {@code quarkus_test_app_items} table is created lazily on the
- * dbaas-resolved connection.
+ * aggregator is unreachable.
+ *
+ * <p>The {@code quarkus_test_app_items} table is created by the dbaas Flyway integration
+ * ({@link MigrationService#migrate}), run lazily on the first request so the pod can boot before the
+ * database is reachable. Migrations live in {@code classpath:db/migration}; {@code baseline-version=0}
+ * lets {@code V1} apply on top of the (non-empty) dbaas-provisioned schema.
  */
 @Path("/postgres")
 @Produces(MediaType.APPLICATION_JSON)
@@ -39,20 +43,19 @@ public class PostgresResource {
     @Named("serviceDataSource")
     AgroalDataSource dataSource;
 
-    private final AtomicBoolean schemaReady = new AtomicBoolean(false);
+    @Inject
+    MigrationService migrationService;
 
-    private void ensureSchema() throws SQLException {
-        if (schemaReady.get()) {
+    private final AtomicBoolean migrated = new AtomicBoolean(false);
+
+    private void ensureMigrated() {
+        if (migrated.get()) {
             return;
         }
         synchronized (this) {
-            if (!schemaReady.get()) {
-                try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
-                    s.execute("CREATE TABLE IF NOT EXISTS quarkus_test_app_items ("
-                            + "id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, "
-                            + "created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
-                }
-                schemaReady.set(true);
+            if (!migrated.get()) {
+                migrationService.migrate(dataSource);
+                migrated.set(true);
             }
         }
     }
@@ -64,7 +67,7 @@ public class PostgresResource {
         if (request == null || request.name == null || request.name.isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST).entity(Map.of("error", "name is required")).build();
         }
-        ensureSchema();
+        ensureMigrated();
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement(
                      "INSERT INTO quarkus_test_app_items(name) VALUES (?) RETURNING id, name, created_at")) {
@@ -80,7 +83,7 @@ public class PostgresResource {
     @GET
     @Path("/items")
     public Map<String, Object> list() throws SQLException {
-        ensureSchema();
+        ensureMigrated();
         List<Item> items = new ArrayList<>();
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement("SELECT id, name, created_at FROM quarkus_test_app_items ORDER BY id");
@@ -95,7 +98,7 @@ public class PostgresResource {
     @DELETE
     @Path("/items")
     public Map<String, Object> deleteAll() throws SQLException {
-        ensureSchema();
+        ensureMigrated();
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement("DELETE FROM quarkus_test_app_items")) {
             return Map.of("deleted", ps.executeUpdate());
