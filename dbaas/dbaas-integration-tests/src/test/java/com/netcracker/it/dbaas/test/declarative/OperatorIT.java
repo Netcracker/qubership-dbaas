@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 import static com.netcracker.it.dbaas.helpers.BGHelper.TEST_NAMESPACE_CANDIDATE;
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
@@ -1633,7 +1634,7 @@ public class OperatorIT extends AbstractIT {
 
     @Test
     void testDatabaseSecretClaimDatabaseIsAbsentInActiveNamespace() throws IOException {
-        assumeTrue(helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).isEmpty(), "DbRegistry must be empty");
+        assumeFalse(helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).isEmpty(), String.format("Namespace %s must be empty to create BG domain", NAMESPACE));
         String crName = generateName();
         String microserviceName = generateName();
         String secretName = generateName();
