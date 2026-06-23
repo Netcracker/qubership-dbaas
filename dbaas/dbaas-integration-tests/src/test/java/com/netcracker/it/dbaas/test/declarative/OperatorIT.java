@@ -1,5 +1,8 @@
 package com.netcracker.it.dbaas.test.declarative;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtension;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v1.BackupStatus;
@@ -15,6 +18,7 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
+import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.parallel.Execution;
@@ -40,6 +44,7 @@ public class OperatorIT extends AbstractIT {
     private static BGHelper bgHelper;
     private static BackupHelperV1 backupHelperV1;
     private static BackupHelperV3 backupHelperV3;
+    private static BalancingRulesHelperV3 balancingRulesHelperV3;
 
     @BeforeAll
     static void setUp() throws IOException {
@@ -48,6 +53,7 @@ public class OperatorIT extends AbstractIT {
         bgHelper = new BGHelper(helperV3);
         backupHelperV1 = new BackupHelperV1(helperV3);
         backupHelperV3 = new BackupHelperV3(helperV3);
+        balancingRulesHelperV3 = new BalancingRulesHelperV3(helperV3);
         cleanUp();
         createNamespaceBindingCROrSkipTests();
     }
@@ -64,6 +70,15 @@ public class OperatorIT extends AbstractIT {
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.genericKubernetesResources(CRD_MICROSERVICE_BALANCING_RULE)
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BALANCING_RULE)
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.genericKubernetesResources(CRD_PERMANENT_BALANCING_RULE)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
@@ -1424,12 +1439,201 @@ public class OperatorIT extends AbstractIT {
                         deleteDb(sourceClassifier, POSTGRES_TYPE);
                     }
                 }
+
+                @Test
+                void testDatabaseSecretClaimExtraKeysAndCustomKeysClassifierShape() throws IOException {
+                    String edbCRName = generateName();
+                    String dscCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String extraKeyValue = "eu-west";
+                    String customKeyValue = "billing";
+
+                    // ExternalDatabase with extraKeys and customKeys in the classifier.
+                    var edbCR = buildExternalDatabaseCR(edbCRName, microserviceName, NAMESPACE, "billing-db", "");
+                    Map<String, Object> spec = (Map<String, Object>) edbCR.getAdditionalProperties().get("spec");
+                    Map<String, Object> classifier = (Map<String, Object>) spec.get("classifier");
+                    classifier.put("extraKeys", Map.of("region", extraKeyValue));
+                    classifier.put("customKeys", Map.of("logicalDBName", customKeyValue));
+
+                    createCR(CRD_EXTERNAL_DATABASE, edbCR);
+                    waitForDesiredState(CRD_EXTERNAL_DATABASE, edbCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+
+                    // DatabaseSecretClaim with the same classifier.
+                    var dscCR = buildDatabaseSecretClaimCR(dscCRName, microserviceName, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE);
+                    Map<String, Object> dscSpec = (Map<String, Object>) dscCR.getAdditionalProperties().get("spec");
+                    Map<String, Object> dscClassifier = (Map<String, Object>) dscSpec.get("classifier");
+                    dscClassifier.put("extraKeys", Map.of("region", extraKeyValue));
+                    dscClassifier.put("customKeys", Map.of("logicalDBName", customKeyValue));
+
+                    var createdDscCR = createCR(CRD_DATABASE_SECRET_CLAIM, dscCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDscCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var secret = getSecret(secretName);
+                    assertSecretOwnedByCR(secret, createdDscCR);
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "admin");
+
+                    // Decode metadata.json to verify classifier shape.
+                    String decodedJson = new String(
+                            java.util.Base64.getDecoder().decode(secret.getData().get(METADATA_KEY)),
+                            java.nio.charset.StandardCharsets.UTF_8
+                    );
+                    JsonNode metaClassifier =
+                            new ObjectMapper()
+                                    .readTree(decodedJson)
+                                    .path("classifier");
+
+                    // extraKeys must be flattened to the top level alongside microserviceName/scope.
+                    assertEquals(extraKeyValue, metaClassifier.path("region").asText(),
+                            "extraKeys entry 'region' must sit at classifier top level");
+                    assertFalse(metaClassifier.has("extraKeys"),
+                            "extraKeys wrapper key must not appear in the flattened classifier");
+
+                    // customKeys must remain nested, not promoted to the top level.
+                    JsonNode customKeys = metaClassifier.path("customKeys");
+                    assertFalse(customKeys.isMissingNode(),
+                            "customKeys must be a nested object inside the classifier");
+                    assertEquals(customKeyValue, customKeys.path("logicalDBName").asText(),
+                            "customKeys entry 'logicalDBName' must be nested under classifier.customKeys");
+                    assertFalse(metaClassifier.has("logicalDBName"),
+                            "customKeys entry 'logicalDBName' must not be promoted to classifier top level");
+                }
+            }
+
+            // BalancingRules CRs are singletons (fixed names), so unlike the sibling
+            // classes these tests cannot use generateName() per test. They run
+            // sequentially within this class (JUnit only parallelises the sibling
+            // @Nested classes against each other), and @AfterEach deletes each
+            // singleton CR — the finalizer cleanup clears the rule from the aggregator,
+            // resetting both k8s and aggregator state between tests.
+            @Nested
+            @EnableExtension
+            class BalancingRules {
+
+                @AfterEach
+                void cleanBalancingRules() {
+                    deleteBalancingRuleAndWait(CRD_MICROSERVICE_BALANCING_RULE, CR_MICROSERVICE_BALANCING_RULE_NAME);
+                    deleteBalancingRuleAndWait(CRD_NAMESPACE_BALANCING_RULE, CR_NAMESPACE_BALANCING_RULE_NAME);
+                    deleteBalancingRuleAndWait(CRD_PERMANENT_BALANCING_RULE, CR_PERMANENT_BALANCING_RULE_NAME);
+                }
+
+                // ---------- MicroserviceBalancingRule ----------
+
+                @Test
+                void testMicroserviceBalancingRuleAppliedSuccessfully() throws IOException {
+                    var label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
+                    assumeTrue(label != null, "No unique labels in physical databases");
+                    String microserviceName = generateName();
+
+                    var cr = buildMicroserviceBalancingRuleCR(List.of(Map.of(
+                            "type", POSTGRES_TYPE,
+                            "microservices", List.of(microserviceName),
+                            "label", label.getKey() + "=" + label.getValue())));
+
+                    createCR(CRD_MICROSERVICE_BALANCING_RULE, cr);
+                    waitForDesiredState(CRD_MICROSERVICE_BALANCING_RULE, cr,
+                            PHASE_SUCCEEDED, STATUS_TRUE, REASON_BALANCING_RULE_APPLIED, STATUS_FALSE);
+
+                    assertTrue(getOnMicroserviceRules().stream()
+                                    .anyMatch(rule -> microserviceName.equals(rule.getMicroservice())),
+                            "aggregator must hold an onMicroservices rule for the microservice");
+                }
+
+                @Test
+                void testMicroserviceBalancingRuleDuplicateMicroserviceInvalid() throws IOException {
+                    String microserviceName = generateName();
+                    // Two rule entries of the same type sharing one microservice -> validateMicroserviceRule rejects.
+                    var cr = buildMicroserviceBalancingRuleCR(List.of(
+                            Map.of("type", POSTGRES_TYPE, "microservices", List.of(microserviceName), "label", "zone=a"),
+                            Map.of("type", POSTGRES_TYPE, "microservices", List.of(microserviceName), "label", "zone=b")));
+
+                    createCR(CRD_MICROSERVICE_BALANCING_RULE, cr);
+                    waitForDesiredState(CRD_MICROSERVICE_BALANCING_RULE, cr,
+                            PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+
+                    assertTrue(getOnMicroserviceRules().stream()
+                                    .noneMatch(rule -> microserviceName.equals(rule.getMicroservice())),
+                            "aggregator must not be mutated when the spec is rejected");
+                }
+
+                // ---------- NamespaceBalancingRule ----------
+
+                @Test
+                void testNamespaceBalancingRuleAppliedSuccessfully() throws IOException {
+                    String physDbId = getAnyRegisteredPhysDbId(POSTGRES_TYPE);
+                    String microserviceName = generateName();
+
+                    var cr = buildNamespaceBalancingRuleCR(List.of(Map.of(
+                            "name", generateName(),
+                            "type", POSTGRES_TYPE,
+                            "physicalDatabaseId", physDbId,
+                            "order", 0L)));
+
+                    createCR(CRD_NAMESPACE_BALANCING_RULE, cr);
+                    waitForDesiredState(CRD_NAMESPACE_BALANCING_RULE, cr,
+                            PHASE_SUCCEEDED, STATUS_TRUE, REASON_BALANCING_RULE_APPLIED, STATUS_FALSE);
+
+                    // No GET endpoint for namespace rules -> verify via the debug endpoint, like BalancingRulesV3IT.
+                    var pgDebug = debugRulesForMicroservice(microserviceName).get(POSTGRES_TYPE);
+                    assertNotNull(pgDebug);
+                    assertEquals(DebugRulesDbTypeData.NAMESPACE_RULE_INFO, pgDebug.getAppliedRuleInfo());
+                    assertEquals(physDbId, pgDebug.getPhysicalDbIdentifier());
+                }
+
+                @Test
+                void testNamespaceBalancingRuleDuplicateOrderInvalid() {
+                    // Two rules with the same type and same order -> validateNamespaceRule rejects.
+                    var cr = buildNamespaceBalancingRuleCR(List.of(
+                            Map.of("name", "rule-a", "type", POSTGRES_TYPE, "physicalDatabaseId", "id-1", "order", 0L),
+                            Map.of("name", "rule-b", "type", POSTGRES_TYPE, "physicalDatabaseId", "id-2", "order", 0L)));
+
+                    createCR(CRD_NAMESPACE_BALANCING_RULE, cr);
+                    waitForDesiredState(CRD_NAMESPACE_BALANCING_RULE, cr,
+                            PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+                }
+
+                // ---------- PermanentBalancingRule ----------
+
+                @Test
+                void testPermanentBalancingRuleAppliedSuccessfully() throws IOException {
+                    String physDbId = getAnyRegisteredPhysDbId(POSTGRES_TYPE);
+                    // CR lives in the operator namespace (== NAMESPACE) and targets an owned namespace (NAMESPACE).
+                    var cr = buildPermanentBalancingRuleCR(List.of(Map.of(
+                            "dbType", POSTGRES_TYPE,
+                            "physicalDatabaseId", physDbId,
+                            "namespaces", List.of(NAMESPACE))));
+
+                    createCR(CRD_PERMANENT_BALANCING_RULE, cr);
+                    waitForDesiredState(CRD_PERMANENT_BALANCING_RULE, cr,
+                            PHASE_SUCCEEDED, STATUS_TRUE, REASON_BALANCING_RULE_APPLIED, STATUS_FALSE);
+
+                    assertTrue(getPermanentRules(NAMESPACE).stream()
+                                    .anyMatch(rule -> POSTGRES_TYPE.equals(rule.getDbType())
+                                            && physDbId.equals(rule.getPhysicalDatabaseId())),
+                            "aggregator must hold the permanent rule for the namespace");
+                }
+
+                @Test
+                void testPermanentBalancingRuleDuplicateNamespaceInvalid() throws IOException {
+                    // Two rules with the same dbType and an overlapping namespace -> validatePermanentRule rejects.
+                    var cr = buildPermanentBalancingRuleCR(List.of(
+                            Map.of("dbType", POSTGRES_TYPE, "physicalDatabaseId", "id-1", "namespaces", List.of(NAMESPACE)),
+                            Map.of("dbType", POSTGRES_TYPE, "physicalDatabaseId", "id-2", "namespaces", List.of(NAMESPACE))));
+
+                    createCR(CRD_PERMANENT_BALANCING_RULE, cr);
+                    waitForDesiredState(CRD_PERMANENT_BALANCING_RULE, cr,
+                            PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
+
+                    assertTrue(getPermanentRules(NAMESPACE).isEmpty(),
+                            "aggregator must not be mutated when the spec is rejected");
+                }
             }
         }
     }
 
     @Test
     void testDatabaseSecretClaimDatabaseIsAbsentInActiveNamespace() throws IOException {
+        assumeTrue(helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).isEmpty(), "DbRegistry must be empty");
         String crName = generateName();
         String microserviceName = generateName();
         String secretName = generateName();
@@ -1753,5 +1957,70 @@ public class OperatorIT extends AbstractIT {
         classifierWithRolesRequest.setOriginService((String) classifier.get("microserviceName"));
 
         helperV3.deleteDatabasesByClassifierRequest((String) classifier.get("namespace"), type, classifierWithRolesRequest, 200);
+    }
+
+    // Deletes a balancing-rule singleton CR by name and waits until it is gone.
+    // The finalizer-driven cleanup removes the rule from the aggregator, so this
+    // also resets aggregator state between tests. The exception is swallowed: a
+    // missing CR (already absent) is the desired end state.
+    private void deleteBalancingRuleAndWait(CustomResourceDefinitionContext crd, String name) {
+        try {
+            kubernetesClient.genericKubernetesResources(crd)
+                    .inNamespace(NAMESPACE)
+                    .withName(name)
+                    .delete();
+            kubernetesClient.genericKubernetesResources(crd)
+                    .inNamespace(NAMESPACE)
+                    .withName(name)
+                    .waitUntilCondition(Objects::isNull, 2, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.info("Balancing rule '{}' cleanup: {}", name, e.toString());
+        }
+    }
+
+    private List<PerMicroserviceRuleDTO> getOnMicroserviceRules() throws IOException {
+        Request request = helperV3.createRequest(
+                String.format("/api/v3/dbaas/%s/physical_databases/rules/onMicroservices", NAMESPACE),
+                helperV3.getClusterDbaAuthorization(), null, "GET");
+        try (Response response = helperV3.executeRequest(request, 200)) {
+            return helperV3.objectMapper.readValue(response.body().string(),
+                    new TypeReference<List<PerMicroserviceRuleDTO>>() {
+                    });
+        }
+    }
+
+    private List<PermanentPerNamespaceRuleDTO> getPermanentRules(String namespace) throws IOException {
+        Request request = helperV3.createRequest(
+                String.format("/api/v3/dbaas/balancing/rules/permanent?namespace=%s", namespace),
+                helperV3.getClusterDbaAuthorization(), null, "GET");
+        try (Response response = helperV3.executeRequest(request, 200)) {
+            return helperV3.objectMapper.readValue(response.body().string(),
+                    new TypeReference<List<PermanentPerNamespaceRuleDTO>>() {
+                    });
+        }
+    }
+
+    private Map<String, DebugRulesDbTypeData> debugRulesForMicroservice(String microserviceName) {
+        DebugRulesRequest debugRulesRequest = new DebugRulesRequest();
+        debugRulesRequest.setRules(List.of());
+        debugRulesRequest.setMicroservices(List.of(microserviceName));
+        Request request = helperV3.createRequest(
+                String.format("api/v3/dbaas/%s/physical_databases/rules/debug", NAMESPACE),
+                helperV3.getClusterDbaAuthorization(), debugRulesRequest, "POST");
+        Map result = helperV3.executeRequest(request, Map.class, 200);
+        Map<String, Map<String, DebugRulesDbTypeData>> debugResponseData =
+                helperV3.objectMapper.convertValue(result, new TypeReference<>() {
+                });
+        Map<String, DebugRulesDbTypeData> microserviceData = debugResponseData.get(microserviceName);
+        assertNotNull(microserviceData);
+        return microserviceData;
+    }
+
+    private String getAnyRegisteredPhysDbId(String dbType) throws IOException {
+        var databases = helperV3.getRegisteredPhysicalDatabases(dbType, helperV3.getClusterDbaAuthorization(), 200)
+                .getIdentified();
+        var physDbId = databases.keySet().stream().findFirst();
+        assumeTrue(physDbId.isPresent(), "No registered physical database of type " + dbType);
+        return physDbId.get();
     }
 }
