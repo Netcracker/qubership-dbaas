@@ -1,0 +1,6 @@
+# Only the prebuilt Quarkus fast-jar is needed in the image context.
+src/
+helm-templates/
+*.md
+target/*
+!target/quarkus-app

@@ -22,6 +22,9 @@ jobs:
       SPRING_SERVICE_NAME: spring-test-app-service
       SPRING_IMAGE_REPOSITORY: spring-test-app-service
       SPRING_IMAGE_TAG: it
+      QUARKUS_SERVICE_NAME: quarkus-test-app-service
+      QUARKUS_IMAGE_REPOSITORY: quarkus-test-app-service
+      QUARKUS_IMAGE_TAG: it
       TEST_NAMESPACE: dbaas
 
     steps:
@@ -111,6 +114,15 @@ jobs:
           docker build -t "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" test-apps/spring-test-app-service
           kind load docker-image "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" --name kind
 
+      - name: Build quarkus test app image and load into kind
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn --batch-mode --no-transfer-progress -f test-apps/quarkus-test-app-service/pom.xml package -DskipTests
+          docker build -t "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" test-apps/quarkus-test-app-service
+          kind load docker-image "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" --name kind
+
       - name: Deploy DBaaS Aggregator, Operator, and PostgreSQL
         working-directory: bootstrap
         run: >
@@ -191,10 +203,24 @@ jobs:
             --set IMAGE_PULL_POLICY="Never" \
             --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
 
+      - name: Deploy quarkus test app service
+        run: |
+          # Same as spring: an unreachable aggregator URL forces the mounted-secret path.
+          helm upgrade --install "$QUARKUS_SERVICE_NAME" \
+            test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service \
+            -f test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service/resource-profiles/dev.yaml \
+            --namespace "$TEST_NAMESPACE" \
+            --set NAMESPACE="$TEST_NAMESPACE" \
+            --set IMAGE_REPOSITORY="$QUARKUS_IMAGE_REPOSITORY" \
+            --set TAG="$QUARKUS_IMAGE_TAG" \
+            --set IMAGE_PULL_POLICY="Never" \
+            --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
+
       - name: Wait for sample services
         run: |
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
 
       - name: Run sample service Java integration tests
         id: tests
@@ -246,7 +272,7 @@ jobs:
           echo "::group::All pods"
           kubectl get pods -A -o wide
           echo "::endgroup::"
-          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "$GO_SERVICE_NAME:$TEST_NAMESPACE" "$SPRING_SERVICE_NAME:$TEST_NAMESPACE"; do
+          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "$GO_SERVICE_NAME:$TEST_NAMESPACE" "$SPRING_SERVICE_NAME:$TEST_NAMESPACE" "$QUARKUS_SERVICE_NAME:$TEST_NAMESPACE"; do
             d="${pair%%:*}"; ns="${pair##*:}"
             echo "::group::describe deploy/$d ($ns)"
             kubectl -n "$ns" describe deploy/"$d"
@@ -263,6 +289,8 @@ jobs:
           kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim go-test-app-service-postgres-claim
           kubectl -n "$TEST_NAMESPACE" describe internaldatabase spring-test-app-service-postgres
           kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim spring-test-app-service-postgres-claim
+          kubectl -n "$TEST_NAMESPACE" describe internaldatabase quarkus-test-app-service-postgres
+          kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim quarkus-test-app-service-postgres-claim
           echo "::endgroup::"
           echo "::group::Recent dbaas events"
           kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -100
