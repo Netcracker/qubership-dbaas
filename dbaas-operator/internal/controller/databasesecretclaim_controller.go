@@ -104,7 +104,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		return result, nil
 	}
 	trigger := r.triggerForSecretClaim(key, s)
-	recordReconcileTrigger(controllerDS, trigger)
+	recordReconcileTrigger(controllerDSC, trigger)
 
 	original := s.DeepCopy()
 	defer func() {
@@ -138,7 +138,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 	aggStart := time.Now()
 	dbResp, err := r.Aggregator.GetDatabaseByClassifier(ctx, s.Namespace, s.Spec.Type, aggReq)
-	recordAggregatorCall(controllerDS, operationGetDatabase, aggStart, err)
+	recordAggregatorCall(controllerDSC, operationGetDatabase, aggStart, err)
 	if err != nil {
 		return r.handleAggregatorErr(ctx, s, err, requestID)
 	}

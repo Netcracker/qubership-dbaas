@@ -31,10 +31,10 @@ import (
 // Keeping the constants here because they are only relevant to Prometheus metrics.
 const (
 	controllerEDB = "externaldatabase"
-	controllerDD  = "internaldatabase"
-	controllerDP  = "databaseaccesspolicy"
+	controllerIDB = "internaldatabase"
+	controllerDAP = "databaseaccesspolicy"
 	controllerBR  = "balancingrule"
-	controllerDS  = "databasesecretclaim"
+	controllerDSC = "databasesecretclaim"
 	controllerMBR = "microservicebalancingrule"
 	controllerNBR = "namespacebalancingrule"
 	controllerPBR = "permanentbalancingrule"
