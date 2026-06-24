@@ -148,8 +148,8 @@ The operator authenticates to dbaas-aggregator in one of two modes, selected by
 `KUBERNETES_M2M_ENABLED` and **must match the aggregator's own setting** (a mismatch is
 rejected outright):
 
-- `false` (**default**) — **HTTP Basic Auth**. Credentials are read from the mounted
-  `dbaas-operator-aggregator-credentials` Secret (`/etc/dbaas/security/{username,password}`)
+- `false` (**default**) — **HTTP Basic Auth**. Credentials are read from `users.json`
+  inside the mounted `dbaas-security-configuration-secret` (`/etc/dbaas/security/users.json`)
   and hot-reloaded on Secret change, so a rotation needs no pod restart.
 - `true` — **Kubernetes projected service-account token** (Bearer / M2M) via the platform
   token source:
@@ -564,15 +564,15 @@ Variables read by the operator binary:
 |---|---|---|
 | `CLOUD_NAMESPACE` | Operator's own namespace (ownership checks) | Yes |
 | `DBAAS_AGGREGATOR_URL` | Aggregator base URL (default: `http://dbaas-aggregator:8080`) | No |
-| `KUBERNETES_M2M_ENABLED` | Auth mode; **must match the aggregator**. `false` (default) → HTTP Basic Auth (creds from the mounted `dbaas-operator-aggregator-credentials` Secret); `true` → M2M Bearer token. | No |
+| `KUBERNETES_M2M_ENABLED` | Auth mode; **must match the aggregator**. `false` (default) → HTTP Basic Auth (creds from `users.json` in the mounted `dbaas-security-configuration-secret`); `true` → M2M Bearer token. | No |
 | `DBAAS_ROTATION_POLL_INTERVAL` | Poll period for the changed-databases feed used to propagate credential rotations (Go duration; empty → built-in default `30s`). | No |
 | `K8S_EVENTS_ENABLED` | Enable/disable Kubernetes event recording (`true`/`false`). | No |
 
 Notes:
-- **Basic Auth credentials are not environment variables** — the operator reads `username`/`password`
-  from the mounted Secret at `/etc/dbaas/security`. The chart populates that Secret from its
-  `DBAAS_OPERATOR_CREDENTIALS_USERNAME` / `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` values, which must
-  match the user provisioned on the aggregator side.
+- **Basic Auth credentials are not environment variables** — the operator reads its credentials
+  from `users.json` inside the mounted `dbaas-security-configuration-secret` at `/etc/dbaas/security`.
+  The aggregator's Helm chart generates the operator user's password and stores it in that Secret;
+  the operator parses the JSON and extracts the `dbaas-operator` entry.
 - **Leader election** is enabled via the `--leader-elect` flag (helm value `LEADER_ELECT`), not an env var.
 - **Log level** is consumed by the platform logger (helm value `LOG_LEVEL`).
 

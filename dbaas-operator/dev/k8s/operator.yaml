@@ -109,20 +109,6 @@ subjects:
     name: dbaas-operator
     namespace: dbaas-system
 ---
-# Basic Auth credentials for the operator (Basic mode, the default): the operator's
-# own credentials Secret with plain username/password keys. The aggregator-mock does
-# not validate the password, so any value works here. In M2M mode the operator ignores
-# this Secret (it authenticates with the projected SA token instead).
-apiVersion: v1
-kind: Secret
-metadata:
-  name: dbaas-operator-aggregator-credentials
-  namespace: dbaas-system
-type: Opaque
-stringData:
-  username: dbaas-operator
-  password: dev-password
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -146,7 +132,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       # Both auth sources are mounted; the KUBERNETES_M2M_ENABLED env var below selects
-      # which one the operator actually uses (basic → the Secret, m2m → the token).
+      # which one the operator actually uses (basic → dbaas-security-configuration-secret, m2m → the token).
       volumes:
         - name: projected-tokens
           projected:
@@ -158,7 +144,7 @@ spec:
                   expirationSeconds: 600
         - name: dbaas-security-volume
           secret:
-            secretName: dbaas-operator-aggregator-credentials
+            secretName: dbaas-security-configuration-secret
       containers:
         - name: manager
           image: dbaas-operator:dev
