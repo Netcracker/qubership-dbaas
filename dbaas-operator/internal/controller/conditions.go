@@ -39,12 +39,6 @@ const ownershipPollInterval = 30 * time.Second
 // workload CR will eventually be reconciled even if that watch trigger was lost.
 const ownershipUnboundRetryInterval = 5 * time.Minute
 
-// secretNamesIndex is the field index key used to look up ExternalDatabases
-// by the namespace-qualified name of a secret they reference in credentialsSecretRef.
-// The key format is "namespace/name" to prevent spurious cross-namespace reconciles
-// when two namespaces share a secret with the same name.
-const secretNamesIndex = "spec.credentialSecretNames"
-
 // databaseNotFoundTimeout is the duration after which a DatabaseSecretClaim that has
 // been continuously receiving DatabaseNotFound (404) responses from the aggregator
 // is considered stuck. Polling continues (so the CR can recover if the database

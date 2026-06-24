@@ -37,7 +37,7 @@
                    {
                        "id":  1,
                        "type":  "row",
-                       "title":  "Secret Watcher - Credential Rotation",
+                       "title":  "Credentials & Secret Resolution",
                        "collapsed":  false,
                        "gridPos":  {
                                        "h":  1,
@@ -50,7 +50,7 @@
                        "id":  2,
                        "type":  "timeseries",
                        "title":  "Reconcile Triggers by Source (EDB)",
-                       "description":  "Compares how many reconciles are driven by Secret rotations vs spec changes. A spike in secret_change confirms the watcher is firing.",
+                       "description":  "Reconcile invocations for ExternalDatabase by trigger source (spec_change, namespace_binding_change).",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  12,
@@ -66,21 +66,6 @@
                                                                        }
                                                         },
                                            "overrides":  [
-                                                             {
-                                                                 "matcher":  {
-                                                                                 "id":  "byName",
-                                                                                 "options":  "secret_change"
-                                                                             },
-                                                                 "properties":  [
-                                                                                    {
-                                                                                        "id":  "color",
-                                                                                        "value":  {
-                                                                                                      "fixedColor":  "orange",
-                                                                                                      "mode":  "fixed"
-                                                                                                  }
-                                                                                    }
-                                                                                ]
-                                                             },
                                                              {
                                                                  "matcher":  {
                                                                                  "id":  "byName",
@@ -108,47 +93,6 @@
                                        {
                                            "expr":  "sum by (trigger) (rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"externaldatabase\"}[1m]))",
                                            "legendFormat":  "{{trigger}}"
-                                       }
-                                   ]
-                   },
-                   {
-                       "id":  3,
-                       "type":  "timeseries",
-                       "title":  "Secret Rotation Propagation Time (seconds)",
-                       "description":  "End-to-end time from a Secret change being detected to the ExternalDatabase reaching Succeeded. This is the SLO metric for credential rotation.",
-                       "gridPos":  {
-                                       "h":  8,
-                                       "w":  12,
-                                       "x":  12,
-                                       "y":  1
-                                   },
-                       "datasource":  "$datasource",
-                       "fieldConfig":  {
-                                           "defaults":  {
-                                                            "unit":  "s",
-                                                            "custom":  {
-                                                                           "lineWidth":  2
-                                                                       }
-                                                        }
-                                       },
-                       "options":  {
-                                       "legend":  {
-                                                      "displayMode":  "list",
-                                                      "placement":  "bottom"
-                                                  }
-                                   },
-                       "targets":  [
-                                       {
-                                           "expr":  "histogram_quantile(0.50, rate(dbaas_secret_rotation_propagation_seconds_bucket{namespace=\"#namespace#\"}[5m]))",
-                                           "legendFormat":  "P50"
-                                       },
-                                       {
-                                           "expr":  "histogram_quantile(0.90, rate(dbaas_secret_rotation_propagation_seconds_bucket{namespace=\"#namespace#\"}[5m]))",
-                                           "legendFormat":  "P90"
-                                       },
-                                       {
-                                           "expr":  "histogram_quantile(0.99, rate(dbaas_secret_rotation_propagation_seconds_bucket{namespace=\"#namespace#\"}[5m]))",
-                                           "legendFormat":  "P99"
                                        }
                                    ]
                    },

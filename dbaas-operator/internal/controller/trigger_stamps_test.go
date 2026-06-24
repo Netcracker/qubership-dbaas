@@ -9,49 +9,6 @@ import (
 // testEDBKey is the namespace/name key reused across trigger-stamp tests.
 const testEDBKey = "test-ns/test-edb"
 
-func TestExternalDatabaseSecretClaimTriggerLifecycle(t *testing.T) {
-	r := &ExternalDatabaseReconciler{}
-	key := testEDBKey
-	start := time.Unix(100, 0)
-	later := start.Add(time.Minute)
-
-	r.stampSecretTrigger(key, start)
-	r.stampSecretTrigger(key, later)
-
-	if !r.consumeSecretTrigger(key) {
-		t.Fatalf("consumeSecretTrigger() = false, want true")
-	}
-	if r.consumeSecretTrigger(key) {
-		t.Fatalf("second consumeSecretTrigger() = true, want false")
-	}
-
-	gotStart, ok := r.consumeSecretPropagation(key)
-	if !ok {
-		t.Fatalf("consumeSecretPropagation() ok = false, want true")
-	}
-	if !gotStart.Equal(start) {
-		t.Fatalf("consumeSecretPropagation() = %v, want earliest %v", gotStart, start)
-	}
-	if _, ok := r.consumeSecretPropagation(key); ok {
-		t.Fatalf("second consumeSecretPropagation() ok = true, want false")
-	}
-}
-
-func TestExternalDatabaseClearSecretTriggerClearsTriggerAndPropagation(t *testing.T) {
-	r := &ExternalDatabaseReconciler{}
-	key := testEDBKey
-
-	r.stampSecretTrigger(key, time.Unix(100, 0))
-	r.clearSecretTrigger(key)
-
-	if r.consumeSecretTrigger(key) {
-		t.Fatalf("consumeSecretTrigger() after clear = true, want false")
-	}
-	if _, ok := r.consumeSecretPropagation(key); ok {
-		t.Fatalf("consumeSecretPropagation() after clear ok = true, want false")
-	}
-}
-
 func TestExternalDatabaseBindingTriggerLifecycle(t *testing.T) {
 	r := &ExternalDatabaseReconciler{}
 	assertBindingTriggerLifecycle(t, r.stampBindingTrigger, r.consumeBindingTrigger, r.clearBindingTrigger)
@@ -88,20 +45,8 @@ func TestExternalDatabaseTriggerStampsConcurrentAccess(t *testing.T) {
 	key := testEDBKey
 
 	var wg sync.WaitGroup
-	for i := range 50 {
-		wg.Add(5)
-		go func(i int) {
-			defer wg.Done()
-			r.stampSecretTrigger(key, time.Unix(int64(i), 0))
-		}(i)
-		go func() {
-			defer wg.Done()
-			_ = r.consumeSecretTrigger(key)
-		}()
-		go func() {
-			defer wg.Done()
-			_, _ = r.consumeSecretPropagation(key)
-		}()
+	for range 50 {
+		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			r.stampBindingTrigger(key)
@@ -113,15 +58,7 @@ func TestExternalDatabaseTriggerStampsConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 
-	r.clearSecretTrigger(key)
 	r.clearBindingTrigger(key)
-
-	if r.consumeSecretTrigger(key) {
-		t.Fatalf("consumeSecretTrigger() after concurrent clear = true, want false")
-	}
-	if _, ok := r.consumeSecretPropagation(key); ok {
-		t.Fatalf("consumeSecretPropagation() after concurrent clear ok = true, want false")
-	}
 	if r.consumeBindingTrigger(key) {
 		t.Fatalf("consumeBindingTrigger() after concurrent clear = true, want false")
 	}

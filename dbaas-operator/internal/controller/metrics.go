@@ -40,7 +40,6 @@ const (
 	controllerPBR = "permanentbalancingrule"
 
 	triggerSpecChange             = "spec_change"
-	triggerSecretChange           = "secret_change"
 	triggerNamespaceBindingChange = "namespace_binding_change"
 	triggerPolling                = "polling"
 	triggerRotation               = "rotation_trigger"
@@ -100,17 +99,6 @@ var dbaasSecretResolutionErrorsTotal = prometheus.NewCounterVec(
 	[]string{"namespace", "reason"},
 )
 
-// dbaasSecretRotationPropagationSeconds measures end-to-end time from a
-// Secret change triggering a reconcile to the ExternalDatabase reaching
-// Succeeded. This is the SLO metric for the credential-rotation feature.
-var dbaasSecretRotationPropagationSeconds = prometheus.NewHistogram(
-	prometheus.HistogramOpts{
-		Name:    "dbaas_secret_rotation_propagation_seconds",
-		Help:    "Time from a Secret change trigger to ExternalDatabase reaching Succeeded.",
-		Buckets: []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600},
-	},
-)
-
 // dbaasAggregatorRequestDurationSeconds tracks HTTP call latency to dbaas-aggregator.
 // P50/P90/P99 per operation type feed latency SLO alerting.
 var dbaasAggregatorRequestDurationSeconds = prometheus.NewHistogramVec(
@@ -150,7 +138,6 @@ func init() {
 	metrics.Registry.MustRegister(
 		dbaasReconcileTriggerTotal,
 		dbaasSecretResolutionErrorsTotal,
-		dbaasSecretRotationPropagationSeconds,
 		dbaasAggregatorRequestDurationSeconds,
 		dbaasAggregatorRequestsTotal,
 		dbaasAsyncOperationDurationSeconds,

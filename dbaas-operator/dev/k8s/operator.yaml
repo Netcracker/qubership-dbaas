@@ -51,11 +51,9 @@ rules:
   - apiGroups: [dbaas.netcracker.com]
     resources: [namespacebindings/finalizers]
     verbs: [update]
-  # Secrets: list+watch for WatchesMetadata, get for reconcile reads,
-  # create/update/patch for DatabaseSecretClaim materialization.
-  - apiGroups: [""]
-    resources: [secrets]
-    verbs: [get, list, watch, create, update, patch]
+  # Secrets are NOT in the ClusterRole: access is namespaced (a Role + RoleBinding per
+  # namespace, provisioned alongside the NamespaceBinding). The operator's own namespace is
+  # covered by the Role below; business namespaces by dev/test-resources/secret-rbac.yaml.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -94,6 +92,9 @@ rules:
   - apiGroups: [dbaas.netcracker.com]
     resources: [permanentbalancingrules/finalizers]
     verbs: [update]
+  # No Secret access here: the operator reads its own aggregator credentials from the mounted
+  # dbaas-security-volume (not the API). DatabaseSecretClaim/ExternalDatabase Secret access is
+  # granted per namespace by dev/test-resources/secret-rbac.yaml, alongside the NamespaceBinding.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -174,6 +175,10 @@ spec:
             # credentials Secret at /etc/dbaas/security (no extra env needed).
             - name: KUBERNETES_M2M_ENABLED
               value: "${KUBERNETES_M2M_ENABLED}"
+            # ExternalDatabase has no Secret watch; this resync re-reads referenced credential
+            # Secrets. Short here so credential rotations are picked up quickly in dev.
+            - name: DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL
+              value: "2s"
           # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
           # which loads the Kubernetes service-account ca.crt into the trust store before
           # exec'ing its args, so any outbound TLS (e.g. an HTTPS aggregator URL) trusts the
