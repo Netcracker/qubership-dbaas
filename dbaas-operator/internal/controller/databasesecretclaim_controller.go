@@ -18,7 +18,9 @@ package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;create;update;patch
+//
+// Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
+// NamespaceBinding (not a ClusterRole), so there is no cluster-wide secrets RBAC marker here.
 
 import (
 	"bytes"

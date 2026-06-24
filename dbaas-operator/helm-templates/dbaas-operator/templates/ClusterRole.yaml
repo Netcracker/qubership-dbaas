@@ -62,9 +62,8 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ namespacebindings/finalizers ]
     verbs: [ update ]
-  # Secrets (for credentials in ExternalDatabase, create/update/patch for DatabaseSecretClaim materialization)
-  # list + watch required for WatchesMetadata (ExternalDatabase, secret rotation watch), list required for pre-flight sibling check(DatabaseSecretClaim); get required for reconcile reads.
-  - apiGroups: [ "" ]
-    resources: [ secrets ]
-    verbs: [ get, list, create, update, patch, watch ]
+  # No Secret rule here: the operator holds NO cluster-wide Secret RBAC. Secret access is granted
+  # per namespace by a dbaas-operator-secrets Role + RoleBinding provisioned alongside that
+  # namespace's NamespaceBinding (see config/samples/namespaced-secret-rbac.yaml). The operator
+  # reads its own aggregator credentials from a mounted volume, not the API.
 {{- end }}
