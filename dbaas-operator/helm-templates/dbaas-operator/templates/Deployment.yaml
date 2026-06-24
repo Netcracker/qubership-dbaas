@@ -65,11 +65,11 @@ spec:
                   audience: dbaas
                   expirationSeconds: 600
         {{- else }}
-        # Basic Auth mode: mount the operator's own credentials Secret (username/password),
-        # created by Secret.yaml from DBAAS_OPERATOR_CREDENTIALS_*.
+        # Basic Auth mode: mount the aggregator's dbaas-security-configuration-secret;
+        # the operator reads its credentials from the users.json it contains.
         - name: dbaas-security-volume
           secret:
-            secretName: '{{ .Values.SERVICE_NAME }}-aggregator-credentials'
+            secretName: 'dbaas-security-configuration-secret'
         {{- end }}
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'

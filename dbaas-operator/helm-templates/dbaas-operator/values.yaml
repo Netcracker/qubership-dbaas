@@ -29,13 +29,7 @@ DBAAS_ROTATION_POLL_INTERVAL: ""
 # aggregator's own KUBERNETES_M2M_ENABLED setting, otherwise every call is rejected:
 #   true  → Kubernetes projected service-account token (Bearer / M2M); a
 #           dbaas-audience token volume is mounted at /var/run/secrets/tokens.
-#   false → HTTP Basic Auth; the chart creates the dbaas-operator-aggregator-credentials
-#           Secret from the values below, mounts it at /etc/dbaas/security, and the
-#           operator reads username/password from it (hot-reloaded on rotation).
+#   false → HTTP Basic Auth; the aggregator's dbaas-security-configuration-secret is
+#           mounted at /etc/dbaas/security and the operator reads its credentials from
+#           the users.json it contains (hot-reloaded on rotation).
 KUBERNETES_M2M_ENABLED: false
-# Basic Auth credentials (Basic Auth mode only). Must match the user provisioned on
-# the aggregator side (its DBAAS_OPERATOR_CREDENTIALS_*), which must carry the
-# DB_CLIENT and CLUSTER_OPERATOR roles. The password is required in Basic Auth mode.
-DBAAS_OPERATOR_CREDENTIALS_USERNAME: dbaas-operator
-DBAAS_OPERATOR_CREDENTIALS_PASSWORD: ""
-

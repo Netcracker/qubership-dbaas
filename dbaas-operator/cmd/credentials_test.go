@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -29,15 +30,13 @@ import (
 
 // ── test helpers ──────────────────────────────────────────────────────────────
 
-// writeCreds writes the username and password files into dir, mirroring the
-// dbaas-operator-aggregator-credentials Secret mount layout.
-func writeCreds(t *testing.T, dir, username, password string) {
+// writeUsersJSON writes a users.json into dir with a single "dbaas-operator"
+// entry, mirroring the dbaas-security-configuration-secret mount layout.
+func writeUsersJSON(t *testing.T, dir, password string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, "username"), []byte(username), 0o600); err != nil {
-		t.Fatalf("writeCreds: username: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "password"), []byte(password), 0o600); err != nil {
-		t.Fatalf("writeCreds: password: %v", err)
+	content := fmt.Sprintf(`{"dbaas-operator":{"password":%q}}`, password)
+	if err := os.WriteFile(filepath.Join(dir, usersJSONFile), []byte(content), 0o600); err != nil {
+		t.Fatalf("writeUsersJSON: %v", err)
 	}
 }
 
@@ -67,23 +66,28 @@ func TestReadCredentials(t *testing.T) {
 	}{
 		{
 			name:     "success",
-			setup:    func(dir string) { writeCreds(t, dir, "custom-operator", "s3cr3t") },
-			wantUser: "custom-operator",
+			setup:    func(dir string) { writeUsersJSON(t, dir, "s3cr3t") },
+			wantUser: operatorUsername,
 			wantPass: "s3cr3t",
 		},
 		{
-			name:    "username_missing",
-			setup:   func(dir string) { _ = os.WriteFile(filepath.Join(dir, "password"), []byte("p"), 0o600) },
+			name: "operator_user_missing_from_json",
+			setup: func(dir string) {
+				content := `{"other-user":{"password":"x"}}`
+				_ = os.WriteFile(filepath.Join(dir, usersJSONFile), []byte(content), 0o600)
+			},
 			wantErr: true,
 		},
 		{
-			name:    "password_missing",
-			setup:   func(dir string) { _ = os.WriteFile(filepath.Join(dir, "username"), []byte("u"), 0o600) },
-			wantErr: true,
-		},
-		{
-			name:    "both_missing",
+			name:    "file_missing",
 			setup:   func(dir string) { /* empty dir */ },
+			wantErr: true,
+		},
+		{
+			name: "invalid_json",
+			setup: func(dir string) {
+				_ = os.WriteFile(filepath.Join(dir, usersJSONFile), []byte("not-json"), 0o600)
+			},
 			wantErr: true,
 		},
 	}
@@ -118,12 +122,12 @@ func TestLoadAggregatorCredentials(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeCreds(t, dir, "dbaas-operator", "secret")
+	writeUsersJSON(t, dir, "secret")
 
 	user, pass := loadAggregatorCredentials(logging.GetLogger("dbaas-operator"), dir)
 
-	if user != "dbaas-operator" {
-		t.Errorf("username = %q, want %q", user, "dbaas-operator")
+	if user != operatorUsername {
+		t.Errorf("username = %q, want %q", user, operatorUsername)
 	}
 	if pass != "secret" {
 		t.Errorf("password = %q, want %q", pass, "secret")
@@ -132,13 +136,13 @@ func TestLoadAggregatorCredentials(t *testing.T) {
 
 // ── watchCredentials ──────────────────────────────────────────────────────────
 
-// TestWatchCredentials_ReloadsOnFileChange verifies that overwriting the password
-// file triggers a SetCredentials call with the new password.
+// TestWatchCredentials_ReloadsOnFileChange verifies that overwriting users.json
+// triggers a SetCredentials call with the new password.
 func TestWatchCredentials_ReloadsOnFileChange(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeCreds(t, dir, "dbaas-operator", "initial")
+	writeUsersJSON(t, dir, "initial")
 
 	mock := newMockSetter()
 	ctx := t.Context()
@@ -147,7 +151,7 @@ func TestWatchCredentials_ReloadsOnFileChange(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond) // allow watcher to register inotify watches
 
-	writeCreds(t, dir, "dbaas-operator", "updated")
+	writeUsersJSON(t, dir, "updated")
 
 	// Drain until we see the expected password (stale events are ignored).
 	deadline := time.After(5 * time.Second)
@@ -180,22 +184,18 @@ func TestWatchCredentials_ReloadsOnKubernetesSymlinkSwap(t *testing.T) {
 	dir := t.TempDir()
 
 	// Set up the initial Kubernetes-style volume mount layout:
-	//   dir/..data        → dir/..v1/
-	//   dir/username      → ..data/username  (relative symlink)
-	//   dir/password      → ..data/password  (relative symlink)
-	//   dir/..v1/{username,password} → real files
+	//   dir/..data       → dir/..v1/
+	//   dir/users.json   → ..data/users.json  (relative symlink)
+	//   dir/..v1/users.json → real file
 	v1 := filepath.Join(dir, "..v1")
 	if err := os.Mkdir(v1, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeCreds(t, v1, "dbaas-operator", "v1-pass")
+	writeUsersJSON(t, v1, "v1-pass")
 	if err := os.Symlink(v1, filepath.Join(dir, "..data")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("..data/username", filepath.Join(dir, "username")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("..data/password", filepath.Join(dir, "password")); err != nil {
+	if err := os.Symlink("..data/users.json", filepath.Join(dir, usersJSONFile)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -207,13 +207,11 @@ func TestWatchCredentials_ReloadsOnKubernetesSymlinkSwap(t *testing.T) {
 	time.Sleep(100 * time.Millisecond) // allow watcher to start
 
 	// Simulate kubelet updating the Secret: new versioned dir + replace "..data".
-	// Remove + Symlink generates an explicit Create event on "..data" that works
-	// on both Linux (inotify) and macOS (kqueue).
 	v2 := filepath.Join(dir, "..v2")
 	if err := os.Mkdir(v2, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeCreds(t, v2, "dbaas-operator", "v2-pass")
+	writeUsersJSON(t, v2, "v2-pass")
 
 	if err := os.Remove(filepath.Join(dir, "..data")); err != nil {
 		t.Fatal(err)
@@ -241,7 +239,7 @@ func TestWatchCredentials_StopsOnContextCancel(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeCreds(t, dir, "dbaas-operator", "pass")
+	writeUsersJSON(t, dir, "pass")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
