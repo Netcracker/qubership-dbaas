@@ -92,10 +92,11 @@ are the minimum the operator uses: `get, create, update, patch` (no `list`/`watc
 Secret informer; no `delete` — owned Secrets are garbage-collected via ownerReferences). See
 `config/samples/namespaced-secret-rbac.yaml` for the production-shaped template.
 
-> The operator is deployed **without a self-`NamespaceBinding`** for its own namespace. The own-namespace
-> `Role` above still grants Secret access (the operator reads its own aggregator-credentials Secret),
-> but the operator only reconciles CRs in a namespace once a `NamespaceBinding` for it exists — create
-> one for `dbaas-system` too if you want the operator to manage CRs in its own namespace.
+> The operator is deployed **without a self-`NamespaceBinding`** for its own namespace, and its
+> own-namespace `Role` grants **no Secret access** — the operator reads its own aggregator
+> credentials from a mounted volume, not the API. It reconciles CRs in a namespace only once a
+> `NamespaceBinding` for it exists, so to manage CRs in `dbaas-system` too, create both a
+> `NamespaceBinding` and a `dbaas-operator-secrets` `Role`+`RoleBinding` there (as for `test-ns`).
 
 Apply all test CRs at once and observe their phases:
 
@@ -380,7 +381,7 @@ dev/
 └── test-resources/
     ├── namespace.yaml               # namespace test-ns
     ├── namespacebinding.yaml        # NamespaceBinding/binding — claims test-ns (operatorNamespace=dbaas-system)
-    ├── secret-rbac.yaml             # namespaced Secret Role+RoleBinding for test-ns + self-binding for dbaas-system
+    ├── secret-rbac.yaml             # namespaced Secret Role+RoleBinding for test-ns
     ├── secret.yaml                  # Secret pg-credentials (and pg-credentials-incomplete)
     │
     │   # ExternalDatabase test CRs
