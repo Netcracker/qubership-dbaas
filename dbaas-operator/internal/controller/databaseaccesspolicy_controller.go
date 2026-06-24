@@ -81,7 +81,7 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if bindingTriggered {
 		trigger = triggerNamespaceBindingChange
 	}
-	recordReconcileTrigger(controllerDP, trigger)
+	recordReconcileTrigger(controllerDAP, trigger)
 
 	// Snapshot for the status patch at the end of reconcile.
 	original := dp.DeepCopy()
@@ -110,7 +110,7 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	dp.Status.LastRequestID = requestID
 	aggStart := time.Now()
 	_, aggErr := r.Aggregator.ApplyConfig(ctx, payload)
-	recordAggregatorCall(controllerDP, operationApplyConfig, aggStart, aggErr)
+	recordAggregatorCall(controllerDAP, operationApplyConfig, aggStart, aggErr)
 	if aggErr != nil {
 		log.ErrorC(ctx, "failed to apply DatabaseAccessPolicy to dbaas-aggregator: %v", aggErr)
 		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, aggErr, requestID)

@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -67,6 +68,11 @@ type DatabaseSecretClaimReconciler struct {
 	Aggregator *aggregatorclient.AggregatorClient
 	Recorder   record.EventRecorder
 	Ownership  *ownership.OwnershipResolver
+
+	bindingTriggerTracker
+	triggerMu             sync.Mutex
+	siblingTriggerStamps  map[string]struct{}
+	rotationTriggerValues map[string]string
 }
 
 func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -74,16 +80,31 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	s := &dbaasv1.DatabaseSecretClaim{}
 	if err := r.Get(ctx, req.NamespacedName, s); err != nil {
+		if apierrors.IsNotFound(err) {
+			key := req.Namespace + "/" + req.Name
+			r.clearBindingTrigger(key)
+			r.clearSiblingTrigger(key)
+			r.clearRotationTrigger(key)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	key := s.Namespace + "/" + s.Name
 
 	owned, result, err := checkOwnership(ctx, r.Ownership, s.Namespace, s.Name, "DatabaseSecretClaim")
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !owned {
+		if r.Ownership.GetState(s.Namespace) == ownership.Foreign {
+			r.clearBindingTrigger(key)
+			r.clearSiblingTrigger(key)
+			r.clearRotationTrigger(key)
+		}
 		return result, nil
 	}
+	trigger := r.triggerForSecretClaim(key, s)
+	recordReconcileTrigger(controllerDSC, trigger)
 
 	original := s.DeepCopy()
 	defer func() {
@@ -115,7 +136,9 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		OriginService: s.Labels["app.kubernetes.io/name"],
 		UserRole:      s.Spec.UserRole,
 	}
+	aggStart := time.Now()
 	dbResp, err := r.Aggregator.GetDatabaseByClassifier(ctx, s.Namespace, s.Spec.Type, aggReq)
+	recordAggregatorCall(controllerDSC, operationGetDatabase, aggStart, err)
 	if err != nil {
 		return r.handleAggregatorErr(ctx, s, err, requestID)
 	}
@@ -644,7 +667,8 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 }
 
 func (r *DatabaseSecretClaimReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseSecretClaimList{}, obj.GetNamespace(), nil)
+	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseSecretClaimList{}, obj.GetNamespace(),
+		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
 }
 
 // enqueueSiblingsBySecretName re-enqueues every DatabaseSecretClaim in the same
@@ -670,9 +694,67 @@ func (r *DatabaseSecretClaimReconciler) enqueueSiblingsBySecretName(ctx context.
 		if list.Items[i].UID == ds.UID {
 			continue
 		}
+		r.stampSiblingTrigger(list.Items[i].Namespace + "/" + list.Items[i].Name)
 		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 	}
 	return reqs
+}
+
+func (r *DatabaseSecretClaimReconciler) triggerForSecretClaim(key string, s *dbaasv1.DatabaseSecretClaim) string {
+	switch {
+	case r.consumeRotationTrigger(key, s.Annotations[dbaasv1.AnnotationRotationTrigger]):
+		return triggerRotation
+	case r.consumeBindingTrigger(key):
+		return triggerNamespaceBindingChange
+	case r.consumeSiblingTrigger(key):
+		return triggerSiblingSecretClaim
+	case s.Status.ObservedGeneration >= s.Generation && s.Status.Phase == dbaasv1.PhaseSucceeded:
+		return triggerSafetyNet
+	default:
+		return triggerSpecChange
+	}
+}
+
+func (r *DatabaseSecretClaimReconciler) stampSiblingTrigger(key string) {
+	r.triggerMu.Lock()
+	defer r.triggerMu.Unlock()
+	if r.siblingTriggerStamps == nil {
+		r.siblingTriggerStamps = make(map[string]struct{})
+	}
+	r.siblingTriggerStamps[key] = struct{}{}
+}
+
+func (r *DatabaseSecretClaimReconciler) consumeSiblingTrigger(key string) bool {
+	r.triggerMu.Lock()
+	defer r.triggerMu.Unlock()
+	if _, ok := r.siblingTriggerStamps[key]; !ok {
+		return false
+	}
+	delete(r.siblingTriggerStamps, key)
+	return true
+}
+
+func (r *DatabaseSecretClaimReconciler) clearSiblingTrigger(key string) {
+	r.triggerMu.Lock()
+	defer r.triggerMu.Unlock()
+	delete(r.siblingTriggerStamps, key)
+}
+
+func (r *DatabaseSecretClaimReconciler) consumeRotationTrigger(key, current string) bool {
+	r.triggerMu.Lock()
+	defer r.triggerMu.Unlock()
+	if r.rotationTriggerValues == nil {
+		r.rotationTriggerValues = make(map[string]string)
+	}
+	previous, seen := r.rotationTriggerValues[key]
+	r.rotationTriggerValues[key] = current
+	return seen && current != "" && current != previous
+}
+
+func (r *DatabaseSecretClaimReconciler) clearRotationTrigger(key string) {
+	r.triggerMu.Lock()
+	defer r.triggerMu.Unlock()
+	delete(r.rotationTriggerValues, key)
 }
 
 func (r *DatabaseSecretClaimReconciler) buildOwnedSecret(

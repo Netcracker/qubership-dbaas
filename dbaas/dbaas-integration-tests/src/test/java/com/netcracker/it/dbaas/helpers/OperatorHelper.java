@@ -25,6 +25,10 @@ public class OperatorHelper {
     public static final String DBAAS_OPERATOR_NAME = "dbaas-operator";
 
     public static final String CR_NAMESPACE_BINDING_NAME = "binding";
+    // Balancing-rule CRs are singletons with fixed names (see dbaas-operator api/v1/balancingrule_types.go).
+    public static final String CR_MICROSERVICE_BALANCING_RULE_NAME = "microservice-balancing-rules";
+    public static final String CR_NAMESPACE_BALANCING_RULE_NAME = "namespace-balancing-rules";
+    public static final String CR_PERMANENT_BALANCING_RULE_NAME = "permanent-balancing-rules";
     public static final String TEST_ID = "dbaas-autotest";
     public static final String CONNECTION_PROPERTIES_KEY = "connectionProperties.json";
     public static final String METADATA_KEY = "metadata.json";
@@ -53,6 +57,7 @@ public class OperatorHelper {
     public static final String REASON_OPERATION_TERMINATED = "OperationTerminated";
     public static final String REASON_POLICY_APPLIED = "PolicyApplied";
     public static final String REASON_PROVISIONING_STARTED = "ProvisioningStarted";
+    public static final String REASON_BALANCING_RULE_APPLIED = "BalancingRuleApplied";
 
     public static String NAMESPACE;
 
@@ -92,6 +97,30 @@ public class OperatorHelper {
                     .withGroup("dbaas.netcracker.com")
                     .withVersion("v1")
                     .withPlural("databasesecretclaims")
+                    .withScope("Namespaced")
+                    .build();
+
+    public static final CustomResourceDefinitionContext CRD_MICROSERVICE_BALANCING_RULE =
+            new CustomResourceDefinitionContext.Builder()
+                    .withGroup("dbaas.netcracker.com")
+                    .withVersion("v1")
+                    .withPlural("microservicebalancingrules")
+                    .withScope("Namespaced")
+                    .build();
+
+    public static final CustomResourceDefinitionContext CRD_NAMESPACE_BALANCING_RULE =
+            new CustomResourceDefinitionContext.Builder()
+                    .withGroup("dbaas.netcracker.com")
+                    .withVersion("v1")
+                    .withPlural("namespacebalancingrules")
+                    .withScope("Namespaced")
+                    .build();
+
+    public static final CustomResourceDefinitionContext CRD_PERMANENT_BALANCING_RULE =
+            new CustomResourceDefinitionContext.Builder()
+                    .withGroup("dbaas.netcracker.com")
+                    .withVersion("v1")
+                    .withPlural("permanentbalancingrules")
                     .withScope("Namespaced")
                     .build();
 
@@ -427,6 +456,40 @@ public class OperatorHelper {
 
         cr.setAdditionalProperty("spec", specBody);
         return cr;
+    }
+
+    // Balancing-rule builders accept raw rule maps so tests can supply valid or
+    // invalid rule lists inline. The CR name is the fixed singleton name; the
+    // rule item shapes mirror balancingrule_types.go.
+    // ponytail: raw-map rules, add typed params only if a third caller needs them.
+    private static GenericKubernetesResource buildBalancingRuleCR(String kind, String crName, String namespace,
+                                                                  List<Map<String, Object>> rules) {
+        GenericKubernetesResource cr = new GenericKubernetesResource();
+        cr.setApiVersion("dbaas.netcracker.com/v1");
+        cr.setKind(kind);
+
+        ObjectMeta meta = new ObjectMeta();
+        meta.setName(crName);
+        meta.setNamespace(namespace);
+        meta.getLabels().put(TEST_ID, TEST_ID);
+        cr.setMetadata(meta);
+
+        Map<String, Object> specBody = new HashMap<>();
+        specBody.put("rules", rules);
+        cr.setAdditionalProperty("spec", specBody);
+        return cr;
+    }
+
+    public static GenericKubernetesResource buildMicroserviceBalancingRuleCR(List<Map<String, Object>> rules) {
+        return buildBalancingRuleCR("MicroserviceBalancingRule", CR_MICROSERVICE_BALANCING_RULE_NAME, NAMESPACE, rules);
+    }
+
+    public static GenericKubernetesResource buildNamespaceBalancingRuleCR(List<Map<String, Object>> rules) {
+        return buildBalancingRuleCR("NamespaceBalancingRule", CR_NAMESPACE_BALANCING_RULE_NAME, NAMESPACE, rules);
+    }
+
+    public static GenericKubernetesResource buildPermanentBalancingRuleCR(List<Map<String, Object>> rules) {
+        return buildBalancingRuleCR("PermanentBalancingRule", CR_PERMANENT_BALANCING_RULE_NAME, NAMESPACE, rules);
     }
 
     public static String extractPasswordFromSecret(Secret secret) {

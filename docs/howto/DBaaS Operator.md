@@ -371,184 +371,37 @@ The operator runs cluster-wide and watches resources in all namespaces. Namespac
 
 Three things are scoped to the operator's own namespace and so use a namespace-scoped `Role` (sufficient and more secure): leader-election leases, Kubernetes Events, and **`permanentbalancingrules`** — the latter because it is an operator-namespace-only resource whose informer is scoped to `CLOUD_NAMESPACE`, so the operator never watches it cluster-wide.
 
-#### Required ClusterRole
+#### RBAC manifests (source of truth)
 
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: dbaas-operator
-rules:
-  # DatabaseAccessPolicy: the controller reads and watches CRs.
-  # Status is written via the /status subresource.
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["databaseaccesspolicies"]
-    verbs: ["get", "list", "watch"]
+The chart renders the RBAC objects from the templates below, which are kept in
+sync with the controllers' `+kubebuilder:rbac` markers by `make manifests`. They
+are the single source of truth and are intentionally **not** reproduced inline
+here (so this doc never drifts from the code):
 
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["databaseaccesspolicies/status"]
-    verbs: ["get", "update", "patch"]
+- [`ClusterRole.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas CRs and Secrets
+- [`ClusterRoleBinding.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/ClusterRoleBinding.yaml) — binds the `ClusterRole` to the `ServiceAccount`
+- [`Role.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/Role.yaml) — operator-namespace-only access: leader-election leases, Events, and `permanentbalancingrules`
+- [`RoleBinding.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/RoleBinding.yaml) — binds the `Role` to the `ServiceAccount`
 
-  # InternalDatabase: the controller reads and watches CRs.
-  # Status is written via the /status subresource.
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["internaldatabases"]
-    verbs: ["get", "list", "watch"]
+The cluster-scoped templates are gated on `not restrictedEnvironment`, so with
+`restrictedEnvironment: true` the chart skips the `ClusterRole`/`ClusterRoleBinding`
+(the `ServiceAccount`/`Role`/`RoleBinding` are still created). Render the two
+cluster-scoped objects from the chart and apply them manually before starting the
+operator — this also fills in the real operator namespace for the binding subject:
 
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["internaldatabases/status"]
-    verbs: ["get", "update", "patch"]
-
-  # ExternalDatabase: the controller only reads (Get/List) and watches CRs.
-  # Status is written via the /status subresource — no write access to the main resource is needed.
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["externaldatabases"]
-    verbs: ["get", "list", "watch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["externaldatabases/status"]
-    verbs: ["get", "update", "patch"]
-
-  # DatabaseSecretClaim: the controller reads and watches CRs; patch on the main
-  # resource is required for the rotation poller to stamp the
-  # dbaas.netcracker.com/rotation-trigger annotation. Status is written via the
-  # /status subresource.
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["databasesecretclaims"]
-    verbs: ["get", "list", "watch", "patch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["databasesecretclaims/status"]
-    verbs: ["get", "update", "patch"]
-
-  # NamespaceBinding: patch is required to add/remove the binding-protection finalizer (client.MergeFrom).
-  # Kubernetes additionally checks update on /finalizers when metadata.finalizers changes during a patch.
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["namespacebindings"]
-    verbs: ["get", "list", "watch", "patch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["namespacebindings/finalizers"]
-    verbs: ["update"]
-
-  # Balancing rules: the controllers read and watch the singleton CRs.
-  # All three balancing-rule kinds use a finalizer for aggregator-side cleanup, so each
-  # needs patch on the resource and update on its /finalizers subresource.
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["microservicebalancingrules"]
-    verbs: ["get", "list", "watch", "patch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["microservicebalancingrules/finalizers"]
-    verbs: ["update"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["microservicebalancingrules/status"]
-    verbs: ["get", "update", "patch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["namespacebalancingrules"]
-    verbs: ["get", "list", "watch", "patch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["namespacebalancingrules/finalizers"]
-    verbs: ["update"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["namespacebalancingrules/status"]
-    verbs: ["get", "update", "patch"]
-
-  # NOTE: permanentbalancingrules are NOT here. They are an operator-namespace-only
-  # resource (the informer is scoped to the operator namespace), so their RBAC is
-  # namespaced and lives in the Role below — no cluster-wide access.
-
-  # Read Secrets to resolve credentials referenced by ExternalDatabase CRs.
-  # get is required to read Secret data during reconcile.
-  # list and watch are required for the metadata-only Secret watch that triggers
-  # automatic reconciliation when a referenced Secret changes (credential rotation).
-  # Secrets: read credentials referenced by ExternalDatabase CRs and materialize
-  # the target Secret for DatabaseSecretClaim CRs.
-  # get reads Secret data during reconcile; list/watch back the metadata-only
-  # Secret watch that triggers reconciliation on referenced-Secret changes;
-  # create/update/patch write the DatabaseSecretClaim-managed Secret.
-  # Only metadata (not data) is cached — Secret bodies are fetched on demand.
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
-```
-
-#### Required ClusterRoleBinding
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: dbaas-operator
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: dbaas-operator
-subjects:
-  - kind: ServiceAccount
-    name: dbaas-operator
-    namespace: <operator-namespace>   # replace with the namespace where the operator runs
-```
-
-#### Required Role
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: dbaas-operator
-  namespace: <operator-namespace>     # replace with the namespace where the operator runs
-rules:
-  # Leader election — the lease object is always in the operator's own namespace
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # Kubernetes Events — required only when K8S_EVENTS_ENABLED=true
-  # Remove this block if K8S_EVENTS_ENABLED=false
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "patch"]
-
-  # permanentbalancingrules are an operator-namespace-only resource: the operator's
-  # informer is scoped to the operator namespace, so it watches/reconciles them here
-  # only — namespaced RBAC, no ClusterRole.
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["permanentbalancingrules"]
-    verbs: ["get", "list", "watch", "patch"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["permanentbalancingrules/finalizers"]
-    verbs: ["update"]
-
-  - apiGroups: ["dbaas.netcracker.com"]
-    resources: ["permanentbalancingrules/status"]
-    verbs: ["get", "update", "patch"]
-```
-
-#### Required RoleBinding
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: dbaas-operator
-  namespace: <operator-namespace>     # replace with the namespace where the operator runs
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: dbaas-operator
-subjects:
-  - kind: ServiceAccount
-    name: dbaas-operator
-    namespace: <operator-namespace>   # replace with the namespace where the operator runs
+```bash
+helm template <release> helm-templates/dbaas-operator \
+  --namespace <operator-namespace> \
+  --set DBAAS_OPERATOR_ENABLED=true --set restrictedEnvironment=false \
+  -s templates/ClusterRole.yaml -s templates/ClusterRoleBinding.yaml \
+  | kubectl apply -f -
 ```
 
 #### Permission reference
+
+The tables below explain *why* each permission is needed; the authoritative rule
+set is the linked templates above (and the `+kubebuilder:rbac` markers they are
+generated from).
 
 **ClusterRole** (cluster-wide access):
 
