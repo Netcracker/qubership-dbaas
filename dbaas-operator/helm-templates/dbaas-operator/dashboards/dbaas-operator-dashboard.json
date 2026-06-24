@@ -246,7 +246,7 @@
                        "id":  7,
                        "type":  "timeseries",
                        "title":  "Aggregator Call Outcomes (calls/s)",
-                       "description":  "Result breakdown: spec_rejection = CR/spec owner, auth_error = operator credentials/RBAC, server_error = aggregator, network_error = connectivity/platform.",
+                       "description":  "Result breakdown: database_not_found = DatabaseSecretClaim waiting for DB registration, spec_rejection = CR/spec owner, auth_error = operator credentials/RBAC, server_error = aggregator, network_error = connectivity/platform.",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  12,
@@ -287,6 +287,21 @@
                                                                                         "id":  "color",
                                                                                         "value":  {
                                                                                                       "fixedColor":  "yellow",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "database_not_found"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "blue",
                                                                                                       "mode":  "fixed"
                                                                                                   }
                                                                                     }
@@ -400,7 +415,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (controller, result) (increase(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!=\"success\"}[$__range]))",
+                                           "expr":  "sum by (controller, result) (increase(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!~\"success|database_not_found\"}[$__range]))",
                                            "legendFormat":  "aggregator {{controller}} / {{result}}",
                                            "refId":  "A"
                                        },
@@ -447,7 +462,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (controller, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!=\"success\"}[15m])) \u003e 0",
+                                           "expr":  "sum by (controller, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!~\"success|database_not_found\"}[15m])) \u003e 0",
                                            "legendFormat":  "aggregator {{controller}} / {{result}}",
                                            "refId":  "A"
                                        },
@@ -711,7 +726,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (kind, phase) (dbaas_resource_phase{namespace=\"#namespace#\"})",
+                                          "expr":  "sum by (kind, phase) (max without (pod, instance) (dbaas_resource_phase{namespace=\"#namespace#\"}))",
                                            "legendFormat":  "{{kind}} / {{phase}}"
                                        }
                                    ]
@@ -744,7 +759,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (kind, reason) (dbaas_resource_condition{namespace=\"#namespace#\",condition=\"Ready\",status!=\"True\"})",
+                                          "expr":  "sum by (kind, reason) (max without (pod, instance) (dbaas_resource_condition{namespace=\"#namespace#\",condition=\"Ready\",status!=\"True\"}))",
                                            "legendFormat":  "{{kind}} / {{reason}}"
                                        }
                                    ]
@@ -777,7 +792,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (kind, resource_namespace, name) (dbaas_resource_observed_generation_lag{namespace=\"#namespace#\"} > 0)",
+                                          "expr":  "sum by (kind, resource_namespace, name) (max without (pod, instance) (dbaas_resource_observed_generation_lag{namespace=\"#namespace#\"}) > 0)",
                                            "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}}"
                                        }
                                    ]
@@ -855,7 +870,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "max by (resource_namespace, name) (dbaas_secret_claim_not_found_age_seconds{namespace=\"#namespace#\"})",
+                                          "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_first_not_found_timestamp_seconds{namespace=\"#namespace#\"})",
                                            "legendFormat":  "{{resource_namespace}}/{{name}}"
                                        }
                                    ]
@@ -933,12 +948,12 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (kind, resource_namespace, name, target_type) (dbaas_balancing_rule_desired_targets{namespace=\"#namespace#\"})",
+                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_desired_targets{namespace=\"#namespace#\"}))",
                                            "legendFormat":  "desired {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
                                            "refId":  "A"
                                        },
                                        {
-                                           "expr":  "sum by (kind, resource_namespace, name, target_type) (dbaas_balancing_rule_applied_targets{namespace=\"#namespace#\"})",
+                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_applied_targets{namespace=\"#namespace#\"}))",
                                            "legendFormat":  "applied {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
                                            "refId":  "B"
                                        }
@@ -972,7 +987,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (state) (dbaas_namespace_binding_state{namespace=\"#namespace#\"})",
+                                          "expr":  "sum by (state) (max without (pod, instance) (dbaas_namespace_binding_state{namespace=\"#namespace#\"}))",
                                            "legendFormat":  "{{state}}"
                                        }
                                    ]
@@ -1005,7 +1020,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (kind, resource_namespace, name, state) (dbaas_resource_deletion_state{namespace=\"#namespace#\"})",
+                                          "expr":  "sum by (kind, resource_namespace, name, state) (max without (pod, instance) (dbaas_resource_deletion_state{namespace=\"#namespace#\"}))",
                                            "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}} / {{state}}"
                                        }
                                    ]

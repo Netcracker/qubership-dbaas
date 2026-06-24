@@ -90,17 +90,20 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	key := s.Namespace + "/" + s.Name
-	trigger := r.triggerForSecretClaim(key, s)
 
 	owned, result, err := checkOwnership(ctx, r.Ownership, s.Namespace, s.Name, "DatabaseSecretClaim")
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !owned {
-		r.clearBindingTrigger(key)
-		r.clearSiblingTrigger(key)
+		if r.Ownership.GetState(s.Namespace) == ownership.Foreign {
+			r.clearBindingTrigger(key)
+			r.clearSiblingTrigger(key)
+			r.clearRotationTrigger(key)
+		}
 		return result, nil
 	}
+	trigger := r.triggerForSecretClaim(key, s)
 	recordReconcileTrigger(controllerDS, trigger)
 
 	original := s.DeepCopy()

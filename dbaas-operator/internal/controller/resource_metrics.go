@@ -101,9 +101,9 @@ var (
 		[]string{"resource_namespace", "name"},
 		nil,
 	)
-	secretClaimNotFoundAgeDesc = prometheus.NewDesc(
-		"dbaas_secret_claim_not_found_age_seconds",
-		"Age in seconds of the current DatabaseNotFound streak for a DatabaseSecretClaim.",
+	secretClaimFirstNotFoundTimestampDesc = prometheus.NewDesc(
+		"dbaas_secret_claim_first_not_found_timestamp_seconds",
+		"Unix timestamp when the current DatabaseNotFound streak started for a DatabaseSecretClaim.",
 		[]string{"resource_namespace", "name"},
 		nil,
 	)
@@ -144,7 +144,7 @@ func (c *resourceMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- balancingRuleDesiredTargetsDesc
 	ch <- balancingRuleAppliedTargetsDesc
 	ch <- secretClaimLastRotationTimestampDesc
-	ch <- secretClaimNotFoundAgeDesc
+	ch <- secretClaimFirstNotFoundTimestampDesc
 	ch <- resourceCollectorSuccessDesc
 }
 
@@ -209,7 +209,6 @@ func (c *resourceMetricsCollector) collectDatabaseSecretClaims(ctx context.Conte
 	if !c.collectList(ctx, ch, resourceKindDatabaseSecretClaim, list) {
 		return
 	}
-	now := time.Now()
 	for i := range list.Items {
 		item := &list.Items[i]
 		if !c.ownsNamespace(item.Namespace) {
@@ -227,14 +226,10 @@ func (c *resourceMetricsCollector) collectDatabaseSecretClaims(ctx context.Conte
 			)
 		}
 		if item.Status.FirstNotFoundAt != nil {
-			age := now.Sub(item.Status.FirstNotFoundAt.Time).Seconds()
-			if age < 0 {
-				age = 0
-			}
 			ch <- prometheus.MustNewConstMetric(
-				secretClaimNotFoundAgeDesc,
+				secretClaimFirstNotFoundTimestampDesc,
 				prometheus.GaugeValue,
-				age,
+				float64(item.Status.FirstNotFoundAt.Unix()),
 				item.Namespace,
 				item.Name,
 			)
@@ -309,15 +304,16 @@ func (c *resourceMetricsCollector) collectNamespaceBalancingRules(ctx context.Co
 }
 
 func (c *resourceMetricsCollector) collectPermanentBalancingRules(ctx context.Context, ch chan<- prometheus.Metric) {
+	if c.operatorNamespace == "" {
+		ch <- prometheus.MustNewConstMetric(resourceCollectorSuccessDesc, prometheus.GaugeValue, 0, resourceKindPermanentBalancingRule)
+		return
+	}
 	list := &dbaasv1.PermanentBalancingRuleList{}
 	if err := c.client.List(ctx, list, client.InNamespace(c.operatorNamespace)); err != nil {
 		ch <- prometheus.MustNewConstMetric(resourceCollectorSuccessDesc, prometheus.GaugeValue, 0, resourceKindPermanentBalancingRule)
 		return
 	}
 	ch <- prometheus.MustNewConstMetric(resourceCollectorSuccessDesc, prometheus.GaugeValue, 1, resourceKindPermanentBalancingRule)
-	if c.operatorNamespace == "" {
-		return
-	}
 	for i := range list.Items {
 		item := &list.Items[i]
 		collectOperatorStatus(ch, resourceKindPermanentBalancingRule, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
@@ -412,7 +408,12 @@ func collectOperatorStatus(
 		namespace,
 		name,
 	)
+	seenConditions := make(map[string]struct{}, len(status.Conditions))
 	for _, condition := range status.Conditions {
+		if _, ok := seenConditions[condition.Type]; ok {
+			continue
+		}
+		seenConditions[condition.Type] = struct{}{}
 		ch <- prometheus.MustNewConstMetric(
 			resourceConditionDesc,
 			prometheus.GaugeValue,
