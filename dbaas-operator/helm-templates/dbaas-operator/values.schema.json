@@ -194,6 +194,18 @@
         "1m"
       ]
     },
+    "DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL": {
+      "$id": "#/properties/DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL",
+      "type": "string",
+      "title": "The DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL schema",
+      "description": "ExternalDatabase resync period as a Go duration (e.g. 30s, 1m). ExternalDatabase has no Secret watch, so a referenced credential Secret change is picked up on this resync. Leave empty to use the operator's built-in default (10m).",
+      "default": "",
+      "examples": [
+        "",
+        "30s",
+        "10m"
+      ]
+    },
     "DBAAS_OPERATOR_ENABLED": {
       "$id": "#/properties/DBAAS_OPERATOR_ENABLED",
       "$ref": "#/definitions/booleanOrString",

@@ -114,6 +114,12 @@ spec:
             - name: DBAAS_ROTATION_POLL_INTERVAL
               value: '{{ .Values.DBAAS_ROTATION_POLL_INTERVAL }}'
             {{- end }}
+            {{- if .Values.DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL }}
+            # ExternalDatabase resync period (Go duration). No Secret watch, so a referenced
+            # credential Secret change is picked up on this resync. Unset → default (10m).
+            - name: DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL
+              value: '{{ .Values.DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL }}'
+            {{- end }}
             # Aggregator auth mode (must match the aggregator's KUBERNETES_M2M_ENABLED).
             # In Basic Auth mode the operator reads username/password from the mounted
             # credentials Secret at /etc/dbaas/security (no extra env needed).

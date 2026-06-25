@@ -24,6 +24,11 @@ LEADER_ELECT: true
 # changed-databases feed at this interval to propagate password rotations.
 DBAAS_ROTATION_POLL_INTERVAL: ""
 
+# ExternalDatabase resync period as a Go duration (e.g. 30s, 1m). ExternalDatabase has no Secret
+# watch, so a referenced credential Secret change is picked up on this resync. Leave empty to use
+# the operator's built-in default (10m).
+DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL: ""
+
 # ============== AGGREGATOR AUTHENTICATION ============================
 # Authentication mode for outbound calls to dbaas-aggregator. MUST match the
 # aggregator's own KUBERNETES_M2M_ENABLED setting, otherwise every call is rejected:

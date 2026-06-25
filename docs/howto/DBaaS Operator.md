@@ -18,6 +18,7 @@
 - [RBAC and Required Permissions](#rbac-and-required-permissions)
   - [Default Installation](#default-installation)
   - [Restricted Environment](#restricted-environment)
+  - [Secret access (namespaced)](#secret-access-namespaced)
 - [Custom Resources](#custom-resources)
   - [NamespaceBinding](#namespacebinding)
     - [Resource Fields](#namespacebinding-resource-fields)
@@ -110,8 +111,8 @@ Workload CRs by namespace:
 - The operator runs **cluster-wide** — no static `--watch-namespaces` list.
 - Namespace ownership is determined dynamically via `NamespaceBinding` CRs.
 - Workload CRs in namespaces without a matching `NamespaceBinding` are silently skipped.
-- Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time.
-- The operator watches referenced Secrets and automatically reconciles affected `ExternalDatabase` CRs when their credentials rotate — no manual spec change required.
+- Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time. The operator does **not** watch Secrets — each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`), which re-reads the referenced Secrets and so picks up credential rotations without a spec change. (`DatabaseSecretClaim` rotation is driven separately by the leader's changed-databases-feed poller.)
+- Secret access is **namespaced**, not cluster-wide: the `ClusterRole` carries no `secrets` permission. Each namespace the operator works in grants Secret access via a small `Role` + `RoleBinding` provisioned alongside its `NamespaceBinding` — see [Secret access (namespaced)](#secret-access-namespaced).
 - Authentication to dbaas-aggregator is dual-mode (`KUBERNETES_M2M_ENABLED`): HTTP Basic Auth by default, or a projected service-account token (M2M) when enabled — see [Authentication](#authentication-basic-auth-or-m2m-token).
 - Resource-identity fields on all workload CRs are immutable after creation (enforced by CRD CEL rules) — to retarget a CR at a different database, microservice, or operator instance, delete and recreate it. See the per-resource sections for the exact set of immutable fields.
 
@@ -354,7 +355,7 @@ When `restrictedEnvironment: false` (the default), the chart creates:
 | Resource | Name | Scope | Purpose |
 |----------|------|-------|---------|
 | `ServiceAccount` | `dbaas-operator` | Namespaced (operator namespace) | Pod identity |
-| `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs and Secrets across all namespaces |
+| `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs across all namespaces (**no `secrets`** — Secret access is namespaced, see below) |
 | `ClusterRoleBinding` | `dbaas-operator` | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
 | `Role` | `dbaas-operator` | Namespaced (operator namespace) | Leader election leases and event recording |
 | `RoleBinding` | `dbaas-operator` | Namespaced (operator namespace) | Binds `Role` to the `ServiceAccount` |
@@ -367,7 +368,7 @@ When `restrictedEnvironment: true`, only the `ServiceAccount`, `Role`, and `Role
 
 #### Why cluster-scoped RBAC is needed
 
-The operator runs cluster-wide and watches resources in all namespaces. Namespace-scoped `Role`/`RoleBinding` cannot grant access to resources across multiple namespaces, so a `ClusterRole` is required for most dbaas CRs and Secrets.
+The operator runs cluster-wide and watches dbaas CRs in all namespaces. Namespace-scoped `Role`/`RoleBinding` cannot grant access to resources across multiple namespaces, so a `ClusterRole` is required for the dbaas CRs. **Secrets are the exception**: the operator holds no cluster-wide `secrets` permission — Secret access is granted per namespace (see [Secret access (namespaced)](#secret-access-namespaced)).
 
 Three things are scoped to the operator's own namespace and so use a namespace-scoped `Role` (sufficient and more secure): leader-election leases, Kubernetes Events, and **`permanentbalancingrules`** — the latter because it is an operator-namespace-only resource whose informer is scoped to `CLOUD_NAMESPACE`, so the operator never watches it cluster-wide.
 
@@ -378,7 +379,7 @@ sync with the controllers' `+kubebuilder:rbac` markers by `make manifests`. They
 are the single source of truth and are intentionally **not** reproduced inline
 here (so this doc never drifts from the code):
 
-- [`ClusterRole.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas CRs and Secrets
+- [`ClusterRole.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas CRs (no `secrets`)
 - [`ClusterRoleBinding.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/ClusterRoleBinding.yaml) — binds the `ClusterRole` to the `ServiceAccount`
 - [`Role.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/Role.yaml) — operator-namespace-only access: leader-election leases, Events, and `permanentbalancingrules`
 - [`RoleBinding.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/RoleBinding.yaml) — binds the `Role` to the `ServiceAccount`
@@ -423,8 +424,8 @@ generated from).
 | `dbaas.netcracker.com` | `namespacebalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton namespace balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
 | `dbaas.netcracker.com` | `namespacebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `namespacebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
-| `""` (core) | `secrets` | `get`, `list`, `watch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). Secret bodies are not cached. |
-| `""` (core) | `secrets` | `get`, `list`, `watch`, `create`, `update`, `patch` | `get`: read Secret data during reconcile. `list`/`watch`: metadata-only Secret watch that triggers automatic reconciliation when a referenced Secret changes (credential rotation). `create`/`update`/`patch`: materialize the Secret managed by a `DatabaseSecretClaim` CR. Secret bodies are not cached. |
+
+> **Secrets are not in the `ClusterRole`** — Secret access is namespaced (see [Secret access (namespaced)](#secret-access-namespaced) below).
 
 **Role** (operator namespace only):
 
@@ -437,6 +438,22 @@ generated from).
 | `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 
 > **Note:** If you set `K8S_EVENTS_ENABLED=false` (the default), you may omit the `events` rule from the `Role`. If you set `LEADER_ELECT=false`, you may omit the `leases` rule, but this is only safe when running a single replica.
+
+### Secret access (namespaced)
+
+The operator holds **no cluster-wide `secrets` permission** — its `ClusterRole` grants access only to dbaas CRs. This keeps Secret access least-privilege: the operator reads its own aggregator credentials from a mounted volume (`/etc/dbaas/security`), not the Kubernetes API, so it needs no Secret RBAC merely to start.
+
+Secret access is granted **per namespace**, by a `Role` + `RoleBinding` installed alongside that namespace's `NamespaceBinding`:
+
+| API group | Resource | Verbs | Why it is needed |
+|-----------|----------|-------|-----------------|
+| `""` (core) | `secrets` | `get`, `create`, `update`, `patch` | `get`: read the credential Secret referenced by an `ExternalDatabase`, and read back the Secret managed by a `DatabaseSecretClaim`. `create`/`update`/`patch`: materialize and keep the `DatabaseSecretClaim` Secret in sync. **No `list`/`watch`** — the operator runs no Secret informer. **No `delete`** — owned Secrets are garbage-collected via `ownerReferences`. |
+
+- The `Role` and `RoleBinding` live in the **business** namespace; the `RoleBinding` subject is the operator's `ServiceAccount` (`dbaas-operator`) in the **operator** namespace.
+- Without them, `ExternalDatabase` (reads a referenced credential Secret) and `DatabaseSecretClaim` (creates the owned Secret) fail with `forbidden`.
+- The operator's own namespace needs this bundle **only if it also hosts workload CRs** (i.e. it has its own `NamespaceBinding`); leader-election leases, Events, and `permanentbalancingrules` there do not require Secret access.
+
+A ready-to-apply bundle for one namespace — `NamespaceBinding` + `Role` + `RoleBinding` — is in [`config/samples/namespaced-secret-rbac.yaml`](../../dbaas-operator/config/samples/namespaced-secret-rbac.yaml). Apply it for each namespace the operator manages.
 
 ---
 
@@ -719,7 +736,7 @@ the controller sends the following `classifier` to dbaas-aggregator:
 | `keys[].key` | Yes | Key in `Secret.data` to read (e.g., `db-user`) |
 | `keys[].name` | Yes | Target field name in the aggregator request (e.g., `username`) |
 
-> **Credential rotation:** the operator watches every Secret referenced by any `ExternalDatabase` CR and automatically reconciles affected CRs when a referenced Secret changes (e.g., during credential rotation). Updated credentials are pushed to dbaas-aggregator without any manual spec change. The watch is metadata-only — Secret bodies are not cached in operator memory; the full content is fetched from the API server only at reconcile time.
+> **Credential rotation:** the operator does **not** watch Secrets. Each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`); every reconcile re-reads the referenced Secrets and pushes any changed credentials to dbaas-aggregator without a manual spec change. So a credential rotation is picked up within one resync interval rather than instantly. Secret bodies are not cached — they are fetched from the API server only at reconcile time.
 
 #### How ExternalDatabase Works
 
@@ -727,7 +744,7 @@ A reconcile is triggered when any of the following happens:
 
 - The CR is created.
 - The CR spec changes (i.e., `metadata.generation` increments).
-- A Secret referenced via `credentialsSecretRef` changes (credential rotation) — the operator watches every referenced Secret and re-enqueues all `ExternalDatabase` CRs that reference it.
+- The periodic resync fires (every `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`). Each reconcile re-reads the referenced Secrets, so a credential rotation is picked up on the next resync — the operator does **not** watch Secrets, so the reaction is bounded by this interval rather than instant.
 - The covering `NamespaceBinding` is created or updated (e.g., the namespace is being claimed for the first time).
 
 On each reconcile, the controller:
@@ -739,7 +756,7 @@ On each reconcile, the controller:
 5. Updates `status.phase` and `status.conditions` based on the outcome.
 
 ```
-CR created / spec changed / referenced Secret changed
+CR created / spec changed / periodic resync (re-reads Secrets)
         │
         ▼
   Ownership check (NamespaceBinding)
@@ -1909,7 +1926,8 @@ The following parameters control the operator's deployment and behavior. They ar
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
 | `DBAAS_AGGREGATOR_URL` | string | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (e.g. cross-cluster deployments). Read by the operator as an environment variable; not set by the Helm chart unless explicitly configured. |
 | `KUBERNETES_M2M_ENABLED` | boolean | `false` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `KUBERNETES_M2M_ENABLED`**. `false` (default): HTTP Basic Auth, with credentials from the chart-created `dbaas-operator-aggregator-credentials` Secret. `true`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
-| `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate credential rotations. Empty uses the operator's built-in default (`30s`). |
+| `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate `DatabaseSecretClaim` credential rotations. Empty uses the operator's built-in default (`30s`). |
+| `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30s`, `1m`) for `ExternalDatabase` CRs. The operator does not watch Secrets, so a referenced credential Secret change is picked up on the next resync rather than instantly. Empty uses the operator's built-in default (`10m`). |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |
 | `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
 | `MONITORING_ENABLED` | boolean | — | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Requires Platform System Monitor CRDs. |

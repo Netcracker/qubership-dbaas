@@ -221,6 +221,7 @@ func main() {
 
 	// ── Ownership resolver ────────────────────────────────────────────────────
 	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
+	controller.RegisterResourceMetrics(mgr.GetClient(), ownershipResolver, cloudNamespace)
 	if err := mgr.Add(&ownershipWarmupRunnable{resolver: ownershipResolver}); err != nil {
 		setupLog.Errorf("Failed to register ownership warmup runnable: %v", err)
 		os.Exit(1)
@@ -256,13 +257,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.ExternalDatabaseReconciler{
+	externalDatabaseReconciler := &controller.ExternalDatabaseReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		Aggregator: aggregator,
 		Recorder:   recorderFor(mgr, "externaldatabase", eventsEnabled),
 		Ownership:  ownershipResolver,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}
+	// ExternalDatabase has no Secret watch, so a referenced credential Secret change is picked up
+	// by a periodic resync. Defaults to 10m (controller.externalDatabaseDefaultResync); override
+	// (e.g. to 30s in integration tests) for faster credential-rotation pickup.
+	if v := os.Getenv("DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL"); v != "" {
+		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
+			externalDatabaseReconciler.ResyncInterval = d
+		} else {
+			setupLog.Infof("Ignoring invalid DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL=%q, using default", v)
+		}
+	}
+	if err := externalDatabaseReconciler.SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
 		os.Exit(1)
 	}

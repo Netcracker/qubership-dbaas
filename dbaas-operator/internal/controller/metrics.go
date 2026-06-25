@@ -31,20 +31,27 @@ import (
 // Keeping the constants here because they are only relevant to Prometheus metrics.
 const (
 	controllerEDB = "externaldatabase"
-	controllerDD  = "internaldatabase"
-	controllerDP  = "databaseaccesspolicy"
+	controllerIDB = "internaldatabase"
+	controllerDAP = "databaseaccesspolicy"
 	controllerBR  = "balancingrule"
+	controllerDSC = "databasesecretclaim"
+	controllerMBR = "microservicebalancingrule"
+	controllerNBR = "namespacebalancingrule"
+	controllerPBR = "permanentbalancingrule"
 
 	triggerSpecChange             = "spec_change"
-	triggerSecretChange           = "secret_change"
 	triggerNamespaceBindingChange = "namespace_binding_change"
 	triggerPolling                = "polling"
+	triggerRotation               = "rotation_trigger"
+	triggerSiblingSecretClaim     = "sibling_secret_claim_change"
+	triggerSafetyNet              = "safety_net"
 
-	resultSuccess       = "success"
-	resultAuthError     = "auth_error"
-	resultSpecRejection = "spec_rejection"
-	resultServerError   = "server_error"
-	resultNetworkError  = "network_error"
+	resultSuccess          = "success"
+	resultAuthError        = "auth_error"
+	resultSpecRejection    = "spec_rejection"
+	resultDatabaseNotFound = "database_not_found"
+	resultServerError      = "server_error"
+	resultNetworkError     = "network_error"
 
 	asyncResultFailed     = "failed"
 	asyncResultTerminated = "terminated"
@@ -58,6 +65,7 @@ const (
 	operationRegisterEDB = "register_external_database"
 	operationApplyConfig = "apply_config"
 	operationPollStatus  = "poll_status"
+	operationGetDatabase = "get_database_by_classifier"
 
 	operationApplyMicroserviceRule   = "apply_microservice_balancing_rule"
 	operationCleanupMicroserviceRule = "cleanup_microservice_balancing_rule"
@@ -91,17 +99,6 @@ var dbaasSecretResolutionErrorsTotal = prometheus.NewCounterVec(
 	[]string{"namespace", "reason"},
 )
 
-// dbaasSecretRotationPropagationSeconds measures end-to-end time from a
-// Secret change triggering a reconcile to the ExternalDatabase reaching
-// Succeeded. This is the SLO metric for the credential-rotation feature.
-var dbaasSecretRotationPropagationSeconds = prometheus.NewHistogram(
-	prometheus.HistogramOpts{
-		Name:    "dbaas_secret_rotation_propagation_seconds",
-		Help:    "Time from a Secret change trigger to ExternalDatabase reaching Succeeded.",
-		Buckets: []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600},
-	},
-)
-
 // dbaasAggregatorRequestDurationSeconds tracks HTTP call latency to dbaas-aggregator.
 // P50/P90/P99 per operation type feed latency SLO alerting.
 var dbaasAggregatorRequestDurationSeconds = prometheus.NewHistogramVec(
@@ -115,8 +112,9 @@ var dbaasAggregatorRequestDurationSeconds = prometheus.NewHistogramVec(
 
 // dbaasAggregatorRequestsTotal counts aggregator calls by controller, operation,
 // and result. The result label distinguishes user errors (spec_rejection) from
-// platform errors (auth_error, server_error) so each can be routed to the
-// correct owner.
+// platform errors (auth_error, server_error). database_not_found is a normal
+// DatabaseSecretClaim waiting state and should not be routed as an aggregator
+// server failure.
 var dbaasAggregatorRequestsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "dbaas_aggregator_requests_total",
@@ -140,7 +138,6 @@ func init() {
 	metrics.Registry.MustRegister(
 		dbaasReconcileTriggerTotal,
 		dbaasSecretResolutionErrorsTotal,
-		dbaasSecretRotationPropagationSeconds,
 		dbaasAggregatorRequestDurationSeconds,
 		dbaasAggregatorRequestsTotal,
 		dbaasAsyncOperationDurationSeconds,
@@ -173,6 +170,9 @@ func aggregatorResult(err error) string {
 		}
 		if aggErr.IsSpecRejection() {
 			return resultSpecRejection
+		}
+		if aggErr.IsDatabaseNotFound() {
+			return resultDatabaseNotFound
 		}
 		return resultServerError
 	}

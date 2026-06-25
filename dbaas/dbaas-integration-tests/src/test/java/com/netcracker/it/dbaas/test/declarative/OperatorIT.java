@@ -14,6 +14,8 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
+import io.fabric8.kubernetes.api.model.rbac.RoleBindingBuilder;
+import io.fabric8.kubernetes.api.model.rbac.RoleBuilder;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +48,11 @@ public class OperatorIT extends AbstractIT {
     private static BackupHelperV1 backupHelperV1;
     private static BackupHelperV3 backupHelperV3;
     private static BalancingRulesHelperV3 balancingRulesHelperV3;
+
+    // The operator deploy carries no Secret RBAC, so OperatorIT grants it per-namespace Secret
+    // access (a Role + RoleBinding) alongside the NamespaceBinding, mirroring real onboarding.
+    private static final String OPERATOR_SERVICE_ACCOUNT = "dbaas-operator";
+    private static final String OPERATOR_SECRET_RBAC_NAME = "dbaas-operator-secrets";
 
     @BeforeAll
     static void setUp() throws IOException {
@@ -86,6 +93,14 @@ public class OperatorIT extends AbstractIT {
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.secrets()
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.rbac().roleBindings()
+                .inNamespace(NAMESPACE)
+                .withLabel(TEST_ID, TEST_ID)
+                .delete();
+        kubernetesClient.rbac().roles()
+                .inNamespace(NAMESPACE)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         deleteAllLogicalDatabases();
@@ -1926,6 +1941,11 @@ public class OperatorIT extends AbstractIT {
 
     private static void createNamespaceBindingCROrSkipTests() {
         try {
+            // The operator deploy holds no Secret RBAC, so grant it Secret access in this namespace
+            // via a Role + RoleBinding — provisioned alongside the NamespaceBinding, exactly as a
+            // real namespace onboarding would (see config/samples/namespaced-secret-rbac.yaml).
+            createOperatorSecretRbac();
+
             var cr = buildNamespaceBindingCR();
             kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
                     .inNamespace(NAMESPACE)
@@ -1939,6 +1959,38 @@ public class OperatorIT extends AbstractIT {
         } catch (Exception ex) {
             throw new TestAbortedException("Failed to create CR 'NamespaceBinding', tests aborted");
         }
+    }
+
+    // Grants the operator (dbaas-operator ServiceAccount) namespaced Secret access in NAMESPACE.
+    // Mirrors production, where each namespace's onboarding provisions this Role + RoleBinding
+    // next to the NamespaceBinding; the operator deploy itself carries no Secret RBAC.
+    private static void createOperatorSecretRbac() {
+        var role = new RoleBuilder()
+                .withNewMetadata()
+                .withName(OPERATOR_SECRET_RBAC_NAME).withNamespace(NAMESPACE)
+                .addToLabels(TEST_ID, TEST_ID)
+                .endMetadata()
+                .addNewRule()
+                .withApiGroups("")
+                .withResources("secrets")
+                .withVerbs("get", "create", "update", "patch")
+                .endRule()
+                .build();
+        kubernetesClient.rbac().roles().inNamespace(NAMESPACE).resource(role).create();
+
+        var roleBinding = new RoleBindingBuilder()
+                .withNewMetadata()
+                .withName(OPERATOR_SECRET_RBAC_NAME).withNamespace(NAMESPACE)
+                .addToLabels(TEST_ID, TEST_ID)
+                .endMetadata()
+                .withNewRoleRef()
+                .withApiGroup("rbac.authorization.k8s.io").withKind("Role").withName(OPERATOR_SECRET_RBAC_NAME)
+                .endRoleRef()
+                .addNewSubject()
+                .withKind("ServiceAccount").withName(OPERATOR_SERVICE_ACCOUNT).withNamespace(NAMESPACE)
+                .endSubject()
+                .build();
+        kubernetesClient.rbac().roleBindings().inNamespace(NAMESPACE).resource(roleBinding).create();
     }
 
     private static void deleteAllLogicalDatabases() throws IOException {

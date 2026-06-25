@@ -18,13 +18,14 @@ package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//
+// Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
+// NamespaceBinding (not a ClusterRole), so there is no cluster-wide secrets RBAC marker here.
 
 import (
 	"context"
 	"fmt"
 	"maps"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -45,6 +46,11 @@ import (
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
+// externalDatabaseDefaultResync is the fallback re-reconcile period used when
+// ResyncInterval is left zero. The operator no longer watches Secrets, so a change
+// to a referenced credentials Secret is picked up on the next periodic resync.
+const externalDatabaseDefaultResync = 10 * time.Minute
+
 // ExternalDatabaseReconciler reconciles ExternalDatabase objects.
 //
 // On every reconcile it assembles the registration request (reading credentials
@@ -58,13 +64,10 @@ type ExternalDatabaseReconciler struct {
 	Recorder   record.EventRecorder
 	Ownership  *ownership.OwnershipResolver
 
-	// secretTriggerMu guards the Secret-trigger maps below.
-	secretTriggerMu sync.Mutex
-	// secretTriggerStamps is consumed when classifying the next reconcile.
-	// secretPropagationStamps records the first Secret-change time for the next
-	// reconcile. It is consumed on reconcile exit and observed only on Succeeded.
-	secretTriggerStamps     map[string]struct{}
-	secretPropagationStamps map[string]time.Time
+	// ResyncInterval re-reconciles each ExternalDatabase periodically so a change to a
+	// referenced credentials Secret is eventually picked up without a Secret watch.
+	// Defaults to externalDatabaseDefaultResync when zero.
+	ResyncInterval time.Duration
 
 	bindingTriggerTracker
 }
@@ -76,27 +79,15 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	edb := &dbaasv1.ExternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.clearSecretTrigger(edbKey)
 			r.clearBindingTrigger(edbKey)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Determine whether this reconcile was triggered by a Secret change or a
-	// spec change, and record the trigger counter.
-	fromSecret := r.consumeSecretTrigger(edbKey)
-	observeSecretPropagation := false
-	defer func() {
-		secretStart, ok := r.consumeSecretPropagation(edbKey)
-		if ok && observeSecretPropagation {
-			dbaasSecretRotationPropagationSeconds.Observe(time.Since(secretStart).Seconds())
-		}
-	}()
-
+	// Classify the reconcile trigger for the metric: a spec change (default) or a
+	// NamespaceBinding change. Periodic resyncs are also counted as spec_change.
 	trigger := triggerSpecChange
-	if fromSecret {
-		trigger = triggerSecretChange
-	} else if r.consumeBindingTrigger(edbKey) {
+	if r.consumeBindingTrigger(edbKey) {
 		trigger = triggerNamespaceBindingChange
 	}
 
@@ -106,7 +97,6 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	if !owned {
-		r.clearSecretTrigger(edbKey)
 		r.clearBindingTrigger(edbKey)
 		return result, nil
 	}
@@ -190,10 +180,11 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	log.InfoC(ctx, "external database registered successfully. type: %v, dbName: %v", edb.Spec.Type, edb.Spec.DbName)
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
-	observeSecretPropagation = true
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
-	return ctrl.Result{}, nil
+	// Periodically re-reconcile so a change to a referenced credentials Secret is picked up
+	// without a Secret watch (the operator holds only namespaced Secret RBAC).
+	return ctrl.Result{RequeueAfter: r.ResyncInterval}, nil
 }
 
 // buildRequest assembles an ExternalDatabaseRequest from the CR spec.
@@ -323,22 +314,17 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 // GenerationChangedPredicate ensures the controller reconciles only when the
 // spec changes (metadata.generation increments), not on its own status updates.
 //
+// There is intentionally no Secret watch: the operator holds only namespaced Secret
+// RBAC (no cluster-wide list/watch), so credential-Secret changes are picked up by the
+// periodic resync (ResyncInterval) via RequeueAfter on a successful reconcile.
+//
 // opts allows callers to customise the controller's behaviour — most notably
 // the RateLimiter, which controls the exponential backoff applied when
 // Reconcile returns an error (BackingOff phase).  Pass
 // ctrlcontroller.Options{} to keep the controller-runtime defaults.
 func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
-	// Register the field index before building the controller.
-	// controller-runtime calls indexSecretNames for every ExternalDatabase to
-	// build the reverse map ("namespace/secretName" → EDBs), then keeps it up to date
-	// automatically as EDBs are created, updated, or deleted.
-	if err := mgr.GetFieldIndexer().IndexField(
-		context.Background(),
-		&dbaasv1.ExternalDatabase{},
-		secretNamesIndex,
-		indexSecretNames,
-	); err != nil {
-		return err
+	if r.ResyncInterval == 0 {
+		r.ResyncInterval = externalDatabaseDefaultResync
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -349,13 +335,6 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
-		// Re-enqueue ExternalDatabases that reference a Secret when that Secret
-		// changes, so credential rotations take effect without a spec change.
-		// WatchesMetadata avoids caching Secret data (credentials) in operator memory —
-		// enqueueForSecret only needs the name/namespace to query the field index.
-		WatchesMetadata(&corev1.Secret{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForSecret),
-			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		WithOptions(opts).
 		Named("externaldatabase").
 		Complete(r)
@@ -366,94 +345,4 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	return enqueueForBindingList(ctx, r.Client, &dbaasv1.ExternalDatabaseList{}, obj.GetNamespace(),
 		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
-}
-
-// stampSecretTrigger records that the next reconcile for key was most likely
-// caused by a Secret change. This is best-effort: overlapping triggers or
-// ownership skips can swap or drop labels between queued reconciles, so the
-// metric is informational and should not be used as exact causal tracing.
-func (r *ExternalDatabaseReconciler) stampSecretTrigger(key string, startedAt time.Time) {
-	r.secretTriggerMu.Lock()
-	defer r.secretTriggerMu.Unlock()
-	if r.secretTriggerStamps == nil {
-		r.secretTriggerStamps = make(map[string]struct{})
-	}
-	r.secretTriggerStamps[key] = struct{}{}
-	if r.secretPropagationStamps == nil {
-		r.secretPropagationStamps = make(map[string]time.Time)
-	}
-	if _, exists := r.secretPropagationStamps[key]; !exists {
-		r.secretPropagationStamps[key] = startedAt
-	}
-}
-
-func (r *ExternalDatabaseReconciler) consumeSecretTrigger(key string) bool {
-	r.secretTriggerMu.Lock()
-	defer r.secretTriggerMu.Unlock()
-	if _, ok := r.secretTriggerStamps[key]; !ok {
-		return false
-	}
-	delete(r.secretTriggerStamps, key)
-	return true
-}
-
-func (r *ExternalDatabaseReconciler) consumeSecretPropagation(key string) (time.Time, bool) {
-	r.secretTriggerMu.Lock()
-	defer r.secretTriggerMu.Unlock()
-	start, ok := r.secretPropagationStamps[key]
-	if ok {
-		delete(r.secretPropagationStamps, key)
-	}
-	return start, ok
-}
-
-func (r *ExternalDatabaseReconciler) clearSecretTrigger(key string) {
-	r.secretTriggerMu.Lock()
-	defer r.secretTriggerMu.Unlock()
-	delete(r.secretTriggerStamps, key)
-	delete(r.secretPropagationStamps, key)
-}
-
-// indexSecretNames is the indexer function registered at startup.
-// controller-runtime calls it for every ExternalDatabase to populate and
-// maintain the reverse map: "namespace/secretName" → []ExternalDatabase.
-// The key includes the namespace to prevent spurious cross-namespace reconciles
-// when two namespaces have secrets with the same name.
-func indexSecretNames(obj client.Object) []string {
-	edb, ok := obj.(*dbaasv1.ExternalDatabase)
-	if !ok {
-		log.Warnf("indexSecretNames: unexpected object type %T", obj)
-		return nil
-	}
-	var keys []string
-	for _, cp := range edb.Spec.ConnectionProperties {
-		if cp.CredentialsSecretRef != nil {
-			keys = append(keys, edb.Namespace+"/"+cp.CredentialsSecretRef.Name)
-		}
-	}
-	return keys
-}
-
-// enqueueForSecret maps a Secret event to reconcile requests for ExternalDatabases
-// that reference it. Uses the field index for an O(1) lookup — no full list scan.
-func (r *ExternalDatabaseReconciler) enqueueForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
-	list := &dbaasv1.ExternalDatabaseList{}
-	if err := r.List(ctx, list,
-		// MatchingFields resolves against the in-memory index — no API server call, no scan.
-		// The key encodes namespace+name so results are already namespace-scoped.
-		client.MatchingFields{secretNamesIndex: obj.GetNamespace() + "/" + obj.GetName()},
-	); err != nil {
-		log.ErrorC(ctx, "enqueueForSecret: index lookup for Secret %s/%s: %v",
-			obj.GetNamespace(), obj.GetName(), err)
-		return nil
-	}
-
-	now := time.Now()
-	reqs := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		key := list.Items[i].Namespace + "/" + list.Items[i].Name
-		r.stampSecretTrigger(key, now)
-		reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
-	}
-	return reqs
 }
