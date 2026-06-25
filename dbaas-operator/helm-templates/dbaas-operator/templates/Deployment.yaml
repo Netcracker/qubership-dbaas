@@ -65,11 +65,11 @@ spec:
                   audience: dbaas
                   expirationSeconds: 600
         {{- else }}
-        # Basic Auth mode: mount the operator's own credentials Secret (username/password),
-        # created by Secret.yaml from DBAAS_OPERATOR_CREDENTIALS_*.
+        # Basic Auth mode: mount the aggregator's dbaas-security-configuration-secret;
+        # the operator reads its credentials from the users.json it contains.
         - name: dbaas-security-volume
           secret:
-            secretName: '{{ .Values.SERVICE_NAME }}-aggregator-credentials'
+            secretName: 'dbaas-security-configuration-secret'
         {{- end }}
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
@@ -113,6 +113,12 @@ spec:
             # unset the operator uses its built-in default (30s).
             - name: DBAAS_ROTATION_POLL_INTERVAL
               value: '{{ .Values.DBAAS_ROTATION_POLL_INTERVAL }}'
+            {{- end }}
+            {{- if .Values.DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL }}
+            # ExternalDatabase resync period (Go duration). No Secret watch, so a referenced
+            # credential Secret change is picked up on this resync. Unset → default (10m).
+            - name: DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL
+              value: '{{ .Values.DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL }}'
             {{- end }}
             # Aggregator auth mode (must match the aggregator's KUBERNETES_M2M_ENABLED).
             # In Basic Auth mode the operator reads username/password from the mounted

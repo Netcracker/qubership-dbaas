@@ -221,3 +221,19 @@ spec:
   ports:
     - port: 8080
       targetPort: 8080
+---
+# Basic Auth credentials Secret the operator mounts at /etc/dbaas/security.
+# In production the dbaas-aggregator Helm chart generates this Secret (its
+# users.json holds every user's password); here the aggregator-mock stands in
+# for the aggregator and ships a static one. The mock does not validate the
+# password, so any value works — the operator only needs the dbaas-operator
+# entry present in users.json to start in Basic Auth mode.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dbaas-security-configuration-secret
+  namespace: dbaas-system
+type: Opaque
+stringData:
+  users.json: |
+    {"dbaas-operator":{"password":"dev-password","roles":["DB_CLIENT","CLUSTER_OPERATOR"]}}

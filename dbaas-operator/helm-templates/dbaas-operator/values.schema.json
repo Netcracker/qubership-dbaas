@@ -194,6 +194,18 @@
         "1m"
       ]
     },
+    "DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL": {
+      "$id": "#/properties/DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL",
+      "type": "string",
+      "title": "The DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL schema",
+      "description": "ExternalDatabase resync period as a Go duration (e.g. 30s, 1m). ExternalDatabase has no Secret watch, so a referenced credential Secret change is picked up on this resync. Leave empty to use the operator's built-in default (10m).",
+      "default": "",
+      "examples": [
+        "",
+        "30s",
+        "10m"
+      ]
+    },
     "DBAAS_OPERATOR_ENABLED": {
       "$id": "#/properties/DBAAS_OPERATOR_ENABLED",
       "$ref": "#/definitions/booleanOrString",
@@ -215,21 +227,6 @@
         true,
         false
       ]
-    },
-    "DBAAS_OPERATOR_CREDENTIALS_USERNAME": {
-      "$id": "#/properties/DBAAS_OPERATOR_CREDENTIALS_USERNAME",
-      "type": "string",
-      "title": "The DBAAS_OPERATOR_CREDENTIALS_USERNAME schema",
-      "description": "Basic Auth user for dbaas-operator (roles DB_CLIENT, CLUSTER_OPERATOR). Only used when the operator runs in Basic Auth mode (KUBERNETES_M2M_ENABLED=false).",
-      "default": "dbaas-operator",
-      "internal": true
-    },
-    "DBAAS_OPERATOR_CREDENTIALS_PASSWORD": {
-      "$id": "#/properties/DBAAS_OPERATOR_CREDENTIALS_PASSWORD",
-      "type": "string",
-      "title": "The DBAAS_OPERATOR_CREDENTIALS_PASSWORD schema",
-      "description": "Password for the dbaas-operator Basic Auth user. When unset, the dbaas-operator user is omitted from policy.json (M2M-only deployments). Required when the operator runs in Basic Auth mode.",
-      "internal": true
     },
     "LOG_LEVEL": {
       "$id": "#/properties/LOG_LEVEL",

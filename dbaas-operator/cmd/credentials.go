@@ -18,6 +18,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -25,16 +27,15 @@ import (
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 )
 
-// securityDir is the fixed mount path of the operator's aggregator-credentials
-// Secret (dbaas-operator-aggregator-credentials, keys: username, password). The
-// Helm chart and the dev manifests mount that Secret here when the operator runs
-// in Basic Auth mode (KUBERNETES_M2M_ENABLED=false).
+// securityDir is the fixed mount path of the dbaas-security-configuration-secret
+// (mounted in Basic Auth mode, KUBERNETES_M2M_ENABLED=false).
 const securityDir = "/etc/dbaas/security"
 
-const (
-	usernameFile = "username"
-	passwordFile = "password"
-)
+const usersJSONFile = "users.json"
+
+// operatorUsername is the fixed Basic Auth username the operator uses to authenticate
+// against dbaas-aggregator. It must be present as a key in the mounted users.json.
+const operatorUsername = "dbaas-operator"
 
 // credentialsSetter is the narrow interface required by watchCredentials.
 // *aggregatorclient.AggregatorClient satisfies it automatically.
@@ -42,30 +43,37 @@ type credentialsSetter interface {
 	SetCredentials(username, password string)
 }
 
-// readCredentials reads the username and password files from dir (the mounted
-// Secret). Returns os.ErrNotExist (via errors.Is) when a file is absent, so the
-// caller can distinguish "not mounted yet" from a real error.
+// readCredentials reads the users.json from dir (the mounted
+// dbaas-security-configuration-secret) and extracts the username and password for
+// the operatorUsername entry. Returns os.ErrNotExist (via errors.Is) when the file
+// is absent, so the caller can distinguish "not mounted yet" from a real error.
 func readCredentials(dir string) (username, password string, err error) {
-	u, err := os.ReadFile(filepath.Join(dir, usernameFile))
+	raw, err := os.ReadFile(filepath.Join(dir, usersJSONFile))
 	if err != nil {
 		return "", "", err
 	}
-	p, err := os.ReadFile(filepath.Join(dir, passwordFile))
-	if err != nil {
-		return "", "", err
+	var users map[string]struct {
+		Password string `json:"password"`
 	}
-	return string(u), string(p), nil
+	if err := json.Unmarshal(raw, &users); err != nil {
+		return "", "", fmt.Errorf("parse %s: %w", usersJSONFile, err)
+	}
+	entry, ok := users[operatorUsername]
+	if !ok {
+		return "", "", fmt.Errorf("user %q not found in %s", operatorUsername, usersJSONFile)
+	}
+	return operatorUsername, entry.Password, nil
 }
 
 // loadAggregatorCredentials loads the Basic Auth username and password from the
-// mounted credentials Secret at startup. Calls os.Exit(1) if they cannot be read —
-// in Basic Auth mode the Secret is required, and Kubernetes will not start the pod
-// until the Secret volume is available, so the files are present in production.
+// mounted dbaas-security-configuration-secret at startup. Calls os.Exit(1) if they
+// cannot be read — in Basic Auth mode the Secret is required, and Kubernetes will not
+// start the pod until the Secret volume is available, so the file is present in production.
 func loadAggregatorCredentials(log logging.Logger, dir string) (username, password string) {
 	username, password, err := readCredentials(dir)
 	if err != nil {
 		log.Errorf("failed to load aggregator credentials from %s — mount the "+
-			"dbaas-operator-aggregator-credentials Secret (Basic Auth mode): %v", dir, err)
+			"dbaas-security-configuration-secret (Basic Auth mode): %v", dir, err)
 		os.Exit(1)
 	}
 	log.Infof("loaded aggregator credentials username=%v", username)
@@ -77,9 +85,9 @@ func loadAggregatorCredentials(log logging.Logger, dir string) (username, passwo
 // restart.
 //
 // Kubernetes updates Secret-backed volume mounts atomically via a "..data" symlink
-// swap, so we watch the directory (not the files directly) and react to Create/Rename
-// events on "..data". Direct Write events on the username/password files are also
-// handled for local-dev mounts.
+// swap, so we watch the directory (not the file directly) and react to Create/Rename
+// events on "..data". Direct Write events on users.json are also handled for
+// local-dev mounts.
 //
 // The function blocks until ctx is cancelled. Errors starting the watcher are logged
 // and treated as non-fatal (credential auto-reload is simply disabled).
@@ -118,8 +126,8 @@ func watchCredentials(ctx context.Context, log logging.Logger, dir string, clien
 			}
 			base := filepath.Base(event.Name)
 			// "..data" — Kubernetes atomic symlink replacement on Secret update.
-			// username/password — direct file writes in local dev.
-			if base != "..data" && base != usernameFile && base != passwordFile {
+			// users.json — direct file write in local dev.
+			if base != "..data" && base != usersJSONFile {
 				continue
 			}
 			if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {
