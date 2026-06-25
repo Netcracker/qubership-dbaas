@@ -117,7 +117,7 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 		r.clearBindingTrigger(key)
 		return result, nil
 	}
-	recordReconcileTrigger(controllerBR, trigger)
+	recordReconcileTrigger(controllerMBR, trigger)
 
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcileMicroserviceDelete(ctx, rule, requestID)
@@ -189,7 +189,7 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		r.clearBindingTrigger(key)
 		return result, nil
 	}
-	recordReconcileTrigger(controllerBR, trigger)
+	recordReconcileTrigger(controllerNBR, trigger)
 
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcileNamespaceDelete(ctx, rule, requestID)
@@ -292,7 +292,7 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	// scoped to CLOUD_NAMESPACE, so only CRs in the operator namespace reach this
 	// reconcile; validatePermanentRule re-checks metadata.namespace defensively.
 	// Neither the CR's own namespace nor its target namespaces require a binding.
-	recordReconcileTrigger(controllerBR, "")
+	recordReconcileTrigger(controllerPBR, triggerSpecChange)
 
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcilePermanentDelete(ctx, rule, requestID)

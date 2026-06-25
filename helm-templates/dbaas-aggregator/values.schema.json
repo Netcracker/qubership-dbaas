@@ -382,21 +382,6 @@
       "description": "This credentials are for role cluster-dba.",
       "internal": true
     },
-    "DBAAS_OPERATOR_CREDENTIALS_USERNAME": {
-      "$id": "#/properties/DBAAS_OPERATOR_CREDENTIALS_USERNAME",
-      "type": "string",
-      "title": "The DBAAS_OPERATOR_CREDENTIALS_USERNAME schema",
-      "description": "Basic Auth user for dbaas-operator. Only used when the operator runs in Basic Auth mode (KUBERNETES_M2M_ENABLED=false).",
-      "default": "dbaas-operator",
-      "internal": true
-    },
-    "DBAAS_OPERATOR_CREDENTIALS_PASSWORD": {
-      "$id": "#/properties/DBAAS_OPERATOR_CREDENTIALS_PASSWORD",
-      "type": "string",
-      "title": "The DBAAS_OPERATOR_CREDENTIALS_PASSWORD schema",
-      "description": "Password for the dbaas-operator Basic Auth user. When unset, the dbaas-operator user is omitted from policy.json (M2M-only deployments). Required when the operator runs in Basic Auth mode.",
-      "internal": true
-    },
     "BACKUP_DAEMON_DBAAS_ACCESS_USERNAME": {
       "$id": "#/properties/BACKUP_DAEMON_DBAAS_ACCESS_USERNAME",
       "type": "string",

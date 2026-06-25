@@ -27,6 +27,11 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ permanentbalancingrules/finalizers ]
     verbs: [ update ]
+  # NOTE: Secret access is intentionally NOT in this Role. The operator reads its own
+  # aggregator credentials from a mounted volume (/etc/dbaas/security), not the API, so it
+  # needs no Secret RBAC by default. DatabaseSecretClaim/ExternalDatabase Secret access is
+  # granted per namespace by a dbaas-operator-secrets Role + RoleBinding provisioned alongside
+  # that namespace's NamespaceBinding (see config/samples/namespaced-secret-rbac.yaml).
   {{- if .Values.K8S_EVENTS_ENABLED }}
   # Event recording — events are written to the operator's own namespace
   - apiGroups: [ "" ]

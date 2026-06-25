@@ -129,7 +129,7 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	} else if dd.Status.TrackingID != "" {
 		trigger = triggerPolling
 	}
-	recordReconcileTrigger(controllerDD, trigger)
+	recordReconcileTrigger(controllerIDB, trigger)
 
 	if dd.Status.TrackingID != "" {
 		return r.reconcilePoll(ctx, dd)
@@ -151,7 +151,7 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 	dd.Status.LastRequestID = requestID
 	aggStart := time.Now()
 	resp, err := r.Aggregator.ApplyConfig(ctx, payload)
-	recordAggregatorCall(controllerDD, operationApplyConfig, aggStart, err)
+	recordAggregatorCall(controllerIDB, operationApplyConfig, aggStart, err)
 	if err != nil {
 		log.ErrorC(ctx, "failed to apply InternalDatabase to dbaas-aggregator: %v", err)
 		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
@@ -195,7 +195,7 @@ func (r *InternalDatabaseReconciler) reconcilePoll(ctx context.Context, dd *dbaa
 
 	aggStart := time.Now()
 	resp, err := r.Aggregator.GetOperationStatus(ctx, trackingID)
-	recordAggregatorCall(controllerDD, operationPollStatus, aggStart, err)
+	recordAggregatorCall(controllerIDB, operationPollStatus, aggStart, err)
 	if err != nil {
 		return r.handlePollError(ctx, dd, trackingID, requestID, err)
 	}
