@@ -337,7 +337,7 @@ curl --location --request GET http://localhost:8080/api/v3/dbaas/debug/internal/
 
 </details>
 
-## Database exists in DBaaS registry but is missing in the actual database instance
+## Database exists in DBaaS registry but is missing in the actual physical database instance (lost)
 
 ### Symptom
 
@@ -345,7 +345,7 @@ An application fails to start because it cannot connect to its database, even th
 
 ### Cause
 
-This is known as a **lost database**. It happens when the physical database was deleted (manually, by a failed cleanup, or by a storage failure) while the logical database record remained in the DBaaS registry. DBaaS trusts its own registry, so it returns the stale connection properties, and the application fails when it tries to use them.
+This is known as a **lost database**. It happens when the logical database was deleted in the physical one (manually, by a failed cleanup, or by a storage failure) while the logical database record remained in the DBaaS registry. DBaaS trusts its own registry, so it returns the stale connection properties, and the application fails when it tries to use them.
 
 ### How to confirm
 
@@ -394,9 +394,7 @@ curl -X POST \
   ]'
 ```
 
-DBaaS creates a new empty physical database, updates the registry record, and returns new connection properties. The previous stale record is archived. After this call, restart the affected application — it will receive the new connection properties on its next DBaaS call.
-
-> **Note:** This operation is prohibited while a blue-green deployment is in progress.
+DBaaS creates a new empty logical database, updates the registry record, and returns new connection properties. The previous stale record is archived. After this call, restart the affected application — it will receive the new connection properties on its next DBaaS call.
 
 > **Note:** Each call to this API creates a new database, even if the database was already recreated before. If the response contains entries in `unsuccessfully`, fix only those entries in the next request.
 
@@ -420,10 +418,10 @@ curl -X DELETE \
   }'
 ```
 
-The `force=true` parameter makes DBaaS remove the registry entry even if the adapter returns an error (which it will, since the physical database is already gone). After deletion, restarting the application causes it to request a new database from DBaaS, which will provision one normally.
+The `force=true` parameter makes DBaaS remove the registry entry even if the physical adapter returns an error. After deletion, restarting the application causes it to request a new database from DBaaS, which will provision one normally.
 
 > **Warning:** This endpoint is disabled in PROD mode (`406 Not Acceptable`). In that case, use Option A.
 
 #### Option C — Restore from backup
 
-Use this when the database contained important data that must be recovered. Refer to [Backup and Restore](../howto/Backup%20and%20Restore%20V2.md) for the restore procedure. After a successful restore, the physical database will exist again and the registry inconsistency will be resolved automatically.
+Use this when the database contained important data that must be recovered. Refer to [Backup and Restore](../howto/Backup%20and%20Restore%20V2.md) for the restore procedure. After a successful restore, the logical database will exist again and the registry inconsistency will be resolved automatically.
