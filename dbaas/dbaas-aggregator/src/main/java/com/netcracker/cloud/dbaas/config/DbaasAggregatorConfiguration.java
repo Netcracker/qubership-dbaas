@@ -4,12 +4,10 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasReposi
 import com.netcracker.cloud.dbaas.service.*;
 import io.quarkus.arc.All;
 import io.quarkus.runtime.Startup;
-import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.List;
@@ -21,7 +19,7 @@ public class DbaasAggregatorConfiguration {
     public static final String POSTGRESQL = "postgresql";
 
     @Produces
-    @ApplicationScoped
+    @Singleton
     public PasswordEncryption passwordEncryption(EncryptionServiceProvider serviceProvider) {
         return new PasswordEncryption(serviceProvider);
     }

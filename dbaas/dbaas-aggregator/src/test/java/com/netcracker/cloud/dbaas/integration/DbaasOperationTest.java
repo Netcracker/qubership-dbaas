@@ -72,7 +72,6 @@ class DbaasOperationTest {
 
     @Transactional
     public void clean() {
-        physicalDatabasesService.clearAdaptersCache();
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType().forEach(dbr -> databaseRegistryDbaasRepository.delete(dbr));
         physicalDatabaseDbaasRepository.findAll().forEach(pd -> physicalDatabaseDbaasRepository.delete(pd));
     }
