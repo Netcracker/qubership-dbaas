@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
+import com.netcracker.cloud.dbaas.Constants;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
@@ -419,7 +420,8 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
     }
 
     private void checkOriginService(UserRolesServices rolesServices) {
-        if (securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal principal) {
+        if (!securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)
+                && securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal principal) {
             rolesServices.setOriginService(JwtUtils.getServiceAccountName(principal));
         }
         if (rolesServices.getOriginService() == null || rolesServices.getOriginService().isEmpty()) {
@@ -429,6 +431,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
     }
 
     private void checkTenantId(Map<String, Object> classifier) {
+        if (securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)) {
+            return;
+        }
         if (!(securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal)) {
             return;
         }

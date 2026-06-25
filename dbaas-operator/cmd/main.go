@@ -36,11 +36,14 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
@@ -48,10 +51,10 @@ import (
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	_ "github.com/netcracker/qubership-core-lib-go/v3/memlimit"
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/poller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -64,7 +67,6 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(dbaasv1.AddToScheme(scheme))
-	utilruntime.Must(dbaasv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -74,12 +76,13 @@ func main() {
 		xrequestid.XRequestIdProvider{},
 	})
 
-	var metricsAddr string
+	var httpAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var backoffBaseDelay time.Duration
 	var backoffMaxDelay time.Duration
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
+	flag.StringVar(&httpAddr, "http-bind-address", ":8080",
+		"Address the operator's HTTP server binds to. Hosts the Prometheus /metrics endpoint.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -91,10 +94,21 @@ func main() {
 		"Maximum delay cap for exponential backoff on reconcile errors.")
 	flag.Parse()
 
-	ctrl.SetLogger(newLogrLogger("dbaas-operator"))
+	// Route both controller-runtime (logr) and client-go (klog) through the platform
+	// logger. Without klog.SetLogger, client-go internals (leader election, transport)
+	// log to stderr in klog's default glog format (I0622.../E0622...), which does not
+	// match the Qubership log format the rest of the operator uses.
+	logrLogger := newLogrLogger("dbaas-operator")
+	ctrl.SetLogger(logrLogger)
+	klog.SetLogger(logrLogger)
 
-	metricsServerOptions := metricsserver.Options{
-		BindAddress: metricsAddr,
+	// httpServerOpts configures the operator's general-purpose HTTP server. It
+	// hosts the Prometheus /metrics endpoint (the operator exposes no inbound
+	// endpoint of its own). The option type is named metricsserver.Options for
+	// historical reasons inside controller-runtime — conceptually it is the
+	// manager's HTTP listener.
+	httpServerOpts := httpserver.Options{
+		BindAddress: httpAddr,
 	}
 
 	// ── Operator namespace ────────────────────────────────────────────────────
@@ -110,8 +124,30 @@ func main() {
 	if aggregatorURL == "" {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
-	aggregator := aggregatorclient.NewAggregatorClient(aggregatorURL)
-	setupLog.Infof("dbaas-aggregator client configured url=%v", aggregatorURL)
+
+	// Authentication mode mirrors the aggregator's KUBERNETES_M2M_ENABLED flag:
+	//   true  → Kubernetes projected service-account token (Bearer / M2M);
+	//   false → HTTP Basic Auth with credentials from the mounted security Secret.
+	// The aggregator rejects a Bearer token outright when M2M is disabled, so the
+	// operator must match the cluster's setting. Defaults to false (Basic Auth).
+	m2mEnabled := strings.EqualFold(os.Getenv("KUBERNETES_M2M_ENABLED"), "true")
+	var aggregator *aggregatorclient.AggregatorClient
+	var credentialWatcher manager.Runnable
+	if m2mEnabled {
+		aggregator = aggregatorclient.NewAggregatorClient(aggregatorURL)
+		setupLog.Infof("dbaas-aggregator client configured url=%v auth=m2m-token", aggregatorURL)
+	} else {
+		// Basic Auth: read username/password from the mounted operator credentials
+		// Secret (dbaas-operator-aggregator-credentials at securityDir).
+		username, password := loadAggregatorCredentials(setupLog, securityDir)
+		aggregator = aggregatorclient.NewBasicAuthClient(aggregatorURL, username, password)
+		// Reload credentials on Secret rotation without a pod restart; shares the
+		// manager lifecycle (registered below once the manager is constructed).
+		credentialWatcher = manager.RunnableFunc(func(ctx context.Context) error {
+			return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregator)
+		})
+		setupLog.Infof("dbaas-aggregator client configured url=%v auth=basic username=%v", aggregatorURL, username)
+	}
 
 	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
 	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)
@@ -128,10 +164,26 @@ func main() {
 		leaderElectionConfig.WrapTransport = silentEventsTransport
 	}
 
+	// Scope the PermanentBalancingRule informer to the operator's own namespace.
+	// It is an operator-namespace-only resource (decoupled from NamespaceBinding),
+	// so a cluster-wide watch is neither needed nor wanted: namespace-scoping lets
+	// the operator run with only a namespaced Role for it (no ClusterRole) and
+	// means CRs created in other namespaces are simply never reconciled. All other
+	// CRs remain cluster-wide. Guarded on a non-empty CLOUD_NAMESPACE.
+	cacheOpts := cache.Options{}
+	if cloudNamespace != "" {
+		cacheOpts.ByObject = map[client.Object]cache.ByObject{
+			&dbaasv1.PermanentBalancingRule{}: {
+				Namespaces: map[string]cache.Config{cloudNamespace: {}},
+			},
+		}
+	}
+
 	mgr, err := ctrl.NewManager(baseConfig, ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                metricsServerOptions,
+		Metrics:                httpServerOpts,
 		HealthProbeBindAddress: probeAddr,
+		Cache:                  cacheOpts,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
 		LeaderElectionConfig:   leaderElectionConfig,
@@ -174,29 +226,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	alphaAPIsEnabled := strings.EqualFold(os.Getenv("ALPHA_APIS_ENABLED"), "true")
-
 	// ── NamespaceBinding controller (always enabled) ───────────────────────────
-	edbChecker := ownership.NewKindChecker(
-		mgr.GetClient(),
-		func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} },
-		func(l *dbaasv1.ExternalDatabaseList) int { return len(l.Items) },
+	edbChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
+	dpChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} })
+	ddChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} })
+	microserviceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} })
+	namespaceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} })
+	dsChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} })
+	// PermanentBalancingRule is intentionally excluded: it is an operator-namespace
+	// resource decoupled from NamespaceBinding, so it never blocks a (tenant)
+	// NamespaceBinding deletion.
+	blockingChecker := ownership.NewCompositeChecker(
+		edbChecker,
+		dpChecker,
+		ddChecker,
+		dsChecker,
+		microserviceRuleChecker,
+		namespaceRuleChecker,
 	)
-	blockingChecker := ownership.NewCompositeChecker(edbChecker)
-	if alphaAPIsEnabled {
-		ddChecker := ownership.NewKindChecker(
-			mgr.GetClient(),
-			func() *dbaasv1alpha1.DatabaseDeclarationList { return &dbaasv1alpha1.DatabaseDeclarationList{} },
-			func(l *dbaasv1alpha1.DatabaseDeclarationList) int { return len(l.Items) },
-		)
-		dpChecker := ownership.NewKindChecker(
-			mgr.GetClient(),
-			func() *dbaasv1alpha1.DbPolicyList { return &dbaasv1alpha1.DbPolicyList{} },
-			func(l *dbaasv1alpha1.DbPolicyList) int { return len(l.Items) },
-		)
-		blockingChecker.Add(ddChecker)
-		blockingChecker.Add(dpChecker)
-	}
 	if err := (&controller.NamespaceBindingReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
@@ -204,7 +251,7 @@ func main() {
 		MyNamespace: cloudNamespace,
 		Ownership:   ownershipResolver,
 		Checker:     blockingChecker,
-	}).SetupWithManager(mgr, ctrlOpts, alphaAPIsEnabled); err != nil {
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
 		os.Exit(1)
 	}
@@ -220,32 +267,51 @@ func main() {
 		os.Exit(1)
 	}
 
-	if alphaAPIsEnabled {
-		setupLog.Info("Alpha APIs are enabled")
-
-		if err := (&controller.DatabaseDeclarationReconciler{
-			Client:     mgr.GetClient(),
-			Scheme:     mgr.GetScheme(),
-			Aggregator: aggregator,
-			Recorder:   recorderFor(mgr, "databasedeclaration", eventsEnabled),
-			Ownership:  ownershipResolver,
-		}).SetupWithManager(mgr, ctrlOpts); err != nil {
-			setupLog.Errorf("Failed to create controller controller=DatabaseDeclaration: %v", err)
-			os.Exit(1)
-		}
-		if err := (&controller.DbPolicyReconciler{
-			Client:     mgr.GetClient(),
-			Scheme:     mgr.GetScheme(),
-			Aggregator: aggregator,
-			Recorder:   recorderFor(mgr, "dbpolicy", eventsEnabled),
-			Ownership:  ownershipResolver,
-		}).SetupWithManager(mgr, ctrlOpts); err != nil {
-			setupLog.Errorf("Failed to create controller controller=DbPolicy: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		setupLog.Info("Alpha APIs are disabled")
+	if err := (&controller.DatabaseAccessPolicyReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
+		Ownership:  ownershipResolver,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
+		os.Exit(1)
 	}
+
+	if err := (&controller.InternalDatabaseReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   recorderFor(mgr, "internaldatabase", eventsEnabled),
+		Ownership:  ownershipResolver,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
+		os.Exit(1)
+	}
+
+	if err := (&controller.BalancingRuleReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Aggregator:  aggregator,
+		Recorder:    recorderFor(mgr, "balancingrule", eventsEnabled),
+		Ownership:   ownershipResolver,
+		MyNamespace: cloudNamespace,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
+		os.Exit(1)
+	}
+
+	if err := (&controller.DatabaseSecretClaimReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Aggregator: aggregator,
+		Recorder:   recorderFor(mgr, "databasesecretclaim", eventsEnabled),
+		Ownership:  ownershipResolver,
+	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+		setupLog.Errorf("Failed to create controller controller=DatabaseSecretClaim: %v", err)
+		os.Exit(1)
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -255,6 +321,43 @@ func main() {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Errorf("Failed to set up ready check: %v", err)
 		os.Exit(1)
+	}
+
+	// ── Rotation poller ───────────────────────────────────────────────────────
+	// Leader-only loop that pulls dbaas-aggregator's changed-databases feed and
+	// patches the AnnotationRotationTrigger annotation on each affected
+	// DatabaseSecretClaim CR, waking its reconcile. Replaces the former inbound
+	// rotation webhook: a single outbound direction (operator → aggregator) that
+	// reuses the existing dbaas-audience token, with no inbound endpoint or second
+	// auth surface. Correctness is backstopped by the startup reconcile and the
+	// per-CR safety-net requeue, so the cursor is kept in-memory.
+	pollInterval := 30 * time.Second
+	if v := os.Getenv("DBAAS_ROTATION_POLL_INTERVAL"); v != "" {
+		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
+			pollInterval = d
+		} else {
+			setupLog.Infof("Ignoring invalid DBAAS_ROTATION_POLL_INTERVAL=%q, using default %v", v, pollInterval)
+		}
+	}
+	if err := mgr.Add(&poller.RotationPoller{
+		Client:   mgr.GetClient(),
+		Source:   aggregator,
+		Interval: pollInterval,
+		Limit:    poller.DefaultLimit,
+	}); err != nil {
+		setupLog.Errorf("Failed to register rotation poller: %v", err)
+		os.Exit(1)
+	}
+	setupLog.Infof("Rotation poller registered interval=%v", pollInterval)
+
+	// In Basic Auth mode, reload the aggregator credentials when the mounted
+	// Secret is updated, so a password rotation is picked up without a restart.
+	if credentialWatcher != nil {
+		if err := mgr.Add(credentialWatcher); err != nil {
+			setupLog.Errorf("Failed to register credential watcher: %v", err)
+			os.Exit(1)
+		}
+		setupLog.Info("Credential watcher registered (basic-auth mode)")
 	}
 
 	setupLog.Info("Starting manager")

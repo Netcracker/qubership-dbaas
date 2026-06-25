@@ -616,6 +616,67 @@
           }
         }
       },
+      "ChangedDatabaseResponse": {
+        "type": "object",
+        "description": "A database whose credentials changed (password rotation or restore). Carries only the identity needed to locate the consumer; connection properties are fetched separately.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Registry id. Together with lastRotatedAt it forms the keyset cursor the caller echoes back as sinceId to page deterministically through rows that share a timestamp."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace where the database is placed."
+          },
+          "classifier": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Classifier identifying the database within the namespace."
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of database (e.g. postgresql, mongodb)."
+          },
+          "lastRotatedAt": {
+            "$ref": "#/components/schemas/OffsetDateTime",
+            "type": "string",
+            "description": "Timestamp of the credential change; also serves as the poll cursor."
+          }
+        }
+      },
+      "ChangedDatabasesCursor": {
+        "type": "object",
+        "description": "Keyset cursor (lastRotatedAt, id) for the changed-databases feed. Seed the poll cursor from the high-water mark on the first (since-less) call; thereafter advance the cursor from the returned items.",
+        "properties": {
+          "lastRotatedAt": {
+            "$ref": "#/components/schemas/OffsetDateTime",
+            "type": "string",
+            "description": "lastRotatedAt component of the cursor."
+          },
+          "id": {
+            "type": "string",
+            "description": "Registry id component of the cursor (tie-breaker for equal timestamps)."
+          }
+        }
+      },
+      "ChangedDatabasesResponse": {
+        "type": "object",
+        "description": "Page of databases whose credentials changed since the requested keyset cursor, plus the current high-water mark used to seed the cursor.",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangedDatabaseResponse"
+            },
+            "description": "Databases changed after the requested cursor, ordered by (lastRotatedAt, id) ascending. Advance the cursor from the last item."
+          },
+          "highWaterMark": {
+            "$ref": "#/components/schemas/ChangedDatabasesCursor",
+            "type": "object",
+            "description": "Latest (lastRotatedAt, id) currently known across all databases. Use it only to SEED the cursor on the first (since-less) call; null when nothing has rotated yet."
+          }
+        }
+      },
       "ClassifierDetailsResponse": {
         "type": "object",
         "required": [
@@ -2343,6 +2404,13 @@
             "description": "Contains a message of error that occurred during recreating"
           }
         }
+      },
+      "OffsetDateTime": {
+        "type": "string",
+        "format": "date-time",
+        "examples": [
+          "2022-03-10T12:15:50-04:00"
+        ]
       },
       "OnMicroserviceRuleRequest": {
         "type": "object",
@@ -6225,6 +6293,85 @@
         ]
       }
     },
+    "/api/v3/dbaas/databases/changed": {
+      "get": {
+        "summary": "V3. List databases changed since a cursor",
+        "description": "Returns databases whose credentials changed (password rotation or restore) strictly after the given cursor, ordered by change time, plus the current high-water mark. Consumed by the dbaas-operator rotation poller. Cluster-scoped: requires the CLUSTER_OPERATOR role.",
+        "parameters": [
+          {
+            "description": "Maximum number of databases to return (1..1000).",
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 500
+            }
+          },
+          {
+            "description": "Registry id component of the keyset cursor (tie-breaker for rows sharing sinceTs). Defaults to the zero UUID when omitted.",
+            "name": "sinceId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return databases changed strictly after this ISO-8601 timestamp (keyset cursor, paired with sinceId). Omit on the first call to receive only the current high-water mark.",
+            "name": "sinceTs",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Changed databases and the current high-water mark",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangedDatabasesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid \u0027since\u0027 or \u0027limit\u0027 parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required and has failed or has not been provided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not Allowed"
+          }
+        },
+        "tags": [
+          "Aggregated Database Administration No Namespace Controller V 3"
+        ],
+        "security": [
+          {
+            "SecurityScheme": [
+              "CLUSTER_OPERATOR"
+            ]
+          }
+        ]
+      }
+    },
     "/api/v3/dbaas/databases/find-by-name/{dbname}": {
       "get": {
         "summary": "V3. Get database by name",
@@ -8590,6 +8737,54 @@
       }
     },
     "/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}": {
+      "delete": {
+        "summary": "V3. Delete on namespace physDb balancing rule",
+        "description": "Deletes a namespace balancing rule by name. The rule is deleted only if it belongs to the requested namespace.",
+        "tags": [
+          "Balancing Rules Administration V3"
+        ],
+        "parameters": [
+          {
+            "description": "Namespace where the rule is placed",
+            "required": true,
+            "name": "namespace",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Name of the rule used as an identifier",
+            "required": true,
+            "name": "ruleName",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule deleted"
+          },
+          "404": {
+            "description": "Rule not found in the requested namespace"
+          },
+          "401": {
+            "description": "Not Authorized"
+          },
+          "403": {
+            "description": "Not Allowed"
+          }
+        },
+        "security": [
+          {
+            "SecurityScheme": [
+              "DB_CLIENT"
+            ]
+          }
+        ]
+      },
       "put": {
         "summary": "V3. On namespace physDb balancing rule",
         "description": "There are no changes in comparison with version 1. Auto balancing rules allows configure behavior of DBaaS when a physical database of some specific type is choosen for new logical database. This rule currently works for new databases only, no migration of logical databases between physical databases is supported yet.",

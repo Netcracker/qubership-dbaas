@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.client.ClientResponseContext;
@@ -15,7 +16,7 @@ import java.util.List;
 @Slf4j
 public class DbaasAdapterRestClientLoggingFilter implements ClientRequestFilter, ClientResponseFilter {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     @Override
     public void filter(ClientRequestContext requestContext) throws IOException {

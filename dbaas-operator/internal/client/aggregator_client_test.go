@@ -28,6 +28,9 @@ import (
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// dbTypePostgresql is the database type used throughout these client tests.
+const dbTypePostgresql = "postgresql"
+
 // staticToken returns a TokenSource function that always returns the given token.
 // Used in tests to avoid touching the global tokensource state.
 func staticToken(token string) func(context.Context) (string, error) {
@@ -38,7 +41,7 @@ func staticToken(token string) func(context.Context) (string, error) {
 func minimalExtDBRequest() *ExternalDatabaseRequest {
 	return &ExternalDatabaseRequest{
 		Classifier:           map[string]any{"namespace": "test"},
-		Type:                 "postgresql",
+		Type:                 dbTypePostgresql,
 		DbName:               "test-db",
 		ConnectionProperties: []map[string]string{{"role": "admin"}},
 	}
@@ -55,7 +58,7 @@ func minimalDeclarativePayload() *DeclarativePayload {
 			Namespace:        "test-ns",
 			MicroserviceName: "test-service",
 		},
-		Spec: map[string]string{"type": "postgresql"},
+		Spec: map[string]string{"type": dbTypePostgresql},
 	}
 }
 
@@ -158,6 +161,63 @@ func TestRegisterExternalDatabase_TokenFetchedPerRequest(t *testing.T) {
 	}
 }
 
+// ── Basic Auth mode (KUBERNETES_M2M_ENABLED=false) ────────────────────────────
+
+// TestBasicAuthClient_SendsBasicAuth verifies that a client built with
+// NewBasicAuthClient authenticates with HTTP Basic Auth (not a Bearer token).
+func TestBasicAuthClient_SendsBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	var gotUser, gotPass string
+	var gotOK bool
+	var gotAuthHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser, gotPass, gotOK = r.BasicAuth()
+		gotAuthHeader = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewBasicAuthClient(srv.URL, "dbaas-operator", "s3cr3t")
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+
+	if !gotOK || gotUser != "dbaas-operator" || gotPass != "s3cr3t" {
+		t.Errorf("BasicAuth: got (%q,%q,ok=%v), want (dbaas-operator,s3cr3t,ok=true)", gotUser, gotPass, gotOK)
+	}
+	if strings.HasPrefix(gotAuthHeader, "Bearer ") {
+		t.Errorf("expected Basic auth, got Bearer header %q", gotAuthHeader)
+	}
+}
+
+// TestBasicAuthClient_SetCredentialsHotSwap verifies that SetCredentials replaces
+// the credentials used for subsequent requests (Secret rotation without restart).
+func TestBasicAuthClient_SetCredentialsHotSwap(t *testing.T) {
+	t.Parallel()
+
+	var passwords []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, pass, _ := r.BasicAuth()
+		passwords = append(passwords, pass)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewBasicAuthClient(srv.URL, "dbaas-operator", "old-pass")
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	c.SetCredentials("dbaas-operator", "new-pass")
+	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+
+	if len(passwords) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(passwords))
+	}
+	if passwords[0] != "old-pass" {
+		t.Errorf("first request: got %q, want old-pass", passwords[0])
+	}
+	if passwords[1] != "new-pass" {
+		t.Errorf("second request after SetCredentials: got %q, want new-pass", passwords[1])
+	}
+}
+
 func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 	t.Parallel()
 
@@ -171,7 +231,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 
 	req := &ExternalDatabaseRequest{
 		Classifier:                 map[string]any{"namespace": "ns", "microserviceName": "svc"},
-		Type:                       "postgresql",
+		Type:                       dbTypePostgresql,
 		DbName:                     "mydb",
 		ConnectionProperties:       []map[string]string{{"role": "admin", "host": "pg:5432"}},
 		UpdateConnectionProperties: true,
@@ -185,7 +245,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
-	if got.Type != "postgresql" || got.DbName != "mydb" || !got.UpdateConnectionProperties {
+	if got.Type != dbTypePostgresql || got.DbName != "mydb" || !got.UpdateConnectionProperties {
 		t.Errorf("body mismatch: %+v", got)
 	}
 }
@@ -266,6 +326,229 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	err := c.RegisterExternalDatabase(ctx, "ns", minimalExtDBRequest())
 	if err == nil {
 		t.Error("expected error on cancelled context, got nil")
+	}
+}
+
+func TestApplyMicroserviceBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got []OnMicroserviceRuleRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.ApplyMicroserviceBalancingRules(context.Background(), "payments", []OnMicroserviceRuleRequest{{
+		Type:          dbTypePostgresql,
+		Rules:         []RuleOnMicroservice{{Label: "zone=fast"}},
+		Microservices: []string{"billing-service"},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: got %q, want PUT", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/payments/physical_databases/rules/onMicroservices"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if len(got) != 1 || got[0].Rules[0].Label != "zone=fast" {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+}
+
+func TestApplyNamespaceBalancingRule_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got NamespaceBalancingRuleRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	order := int64(3)
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.ApplyNamespaceBalancingRule(context.Background(), "payments", "pg-fast", &NamespaceBalancingRuleRequest{
+		Order: &order,
+		Type:  dbTypePostgresql,
+		Rule: NamespaceBalancingRuleBody{
+			Type: "perNamespace",
+			Config: map[string]any{
+				"perNamespace": map[string]any{"phydbid": "postgresql-sample"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: got %q, want PUT", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/payments/physical_databases/balancing/rules/pg-fast"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if got.Rule.Type != "perNamespace" || got.Rule.Config["perNamespace"] == nil {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+}
+
+func TestDeleteNamespaceBalancingRule_UsesCorrectURLAndMethod(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method: got %q, want DELETE", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/payments/physical_databases/balancing/rules/pg-fast"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+}
+
+func TestDeleteNamespaceBalancingRule_SuccessStatuses(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{http.StatusOK, http.StatusNoContent, http.StatusNotFound} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(code)
+			}))
+			defer srv.Close()
+
+			c := newClient(srv.URL, staticToken("test-token"))
+			if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err != nil {
+				t.Errorf("HTTP %d should be success, got: %v", code, err)
+			}
+		})
+	}
+}
+
+func TestDeleteNamespaceBalancingRule_NonSuccessReturnsError(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{http.StatusMethodNotAllowed, http.StatusInternalServerError} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(code)
+			}))
+			defer srv.Close()
+
+			c := newClient(srv.URL, staticToken("test-token"))
+			if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err == nil {
+				t.Fatalf("expected error for HTTP %d, got nil", code)
+			}
+		})
+	}
+}
+
+func TestDeleteNamespaceBalancingRule_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c := newClient("http://127.0.0.1", staticToken("test-token"))
+	if err := c.DeleteNamespaceBalancingRule(ctx, "payments", "pg-fast"); err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+}
+
+func TestApplyPermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got []PermanentBalancingRuleRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.ApplyPermanentBalancingRules(context.Background(), []PermanentBalancingRuleRequest{{
+		DbType:             dbTypePostgresql,
+		PhysicalDatabaseID: "postgresql-prod-a",
+		Namespaces:         []string{"payments", "orders"},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: got %q, want PUT", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/balancing/rules/permanent"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if len(got) != 1 || got[0].PhysicalDatabaseID != "postgresql-prod-a" {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+}
+
+func TestDeletePermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var got []PermanentBalancingRuleDeleteRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.DeletePermanentBalancingRules(context.Background(), []PermanentBalancingRuleDeleteRequest{{
+		DbType:     dbTypePostgresql,
+		Namespaces: []string{"payments"},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method: got %q, want DELETE", gotMethod)
+	}
+	wantPath := "/api/v3/dbaas/balancing/rules/permanent"
+	if gotPath != wantPath {
+		t.Errorf("path: got %q, want %q", gotPath, wantPath)
+	}
+	if len(got) != 1 || got[0].DbType != dbTypePostgresql || got[0].Namespaces[0] != "payments" {
+		t.Fatalf("body mismatch: %+v", got)
 	}
 }
 
@@ -738,5 +1021,73 @@ func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
 	}
 	if aggErr.UserMessage() != tmfBody {
 		t.Errorf("UserMessage(): got %q, want raw TMF body", aggErr.UserMessage())
+	}
+}
+
+// ── empty-body handling (decodeInto allowEmpty) ───────────────────────────────
+
+// A 200 with an empty body on the changed-databases feed must be a decode error,
+// NOT a zero ChangedDatabasesResponse. A zero value (HighWaterMark=nil) would read
+// as "no rotation history" and seed the poller cursor at epoch, triggering a full
+// rotation replay instead of a safe retry on the next tick.
+func TestGetChangedSince_EmptyBodyReturnsError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // 200 with no body
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	got, err := c.GetChangedSince(context.Background(), nil, 0)
+	if err == nil {
+		t.Fatalf("expected an error for an empty 200 body, got nil (result=%+v)", got)
+	}
+	if got != nil {
+		t.Errorf("result must be nil on error, got %+v", got)
+	}
+}
+
+// A 200 with an empty body on get-by-classifier must be a decode error, not an
+// empty DatabaseResponseSingleCP.
+func TestGetDatabaseByClassifier_EmptyBodyReturnsError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // 200 with no body
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	got, err := c.GetDatabaseByClassifier(context.Background(), "test-ns", dbTypePostgresql,
+		&GetByClassifierRequest{Classifier: map[string]any{"namespace": "test-ns"}})
+	if err == nil {
+		t.Fatalf("expected an error for an empty 200 body, got nil (result=%+v)", got)
+	}
+	if got != nil {
+		t.Errorf("result must be nil on error, got %+v", got)
+	}
+}
+
+// Conversely, the declarative apply/operation-status endpoints DO tolerate an
+// empty body (a success status with no payload yields the zero value, no error).
+func TestGetOperationStatus_EmptyBodyIsZeroValue(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // 200 with no body
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	got, err := c.GetOperationStatus(context.Background(), "tracking-123")
+	if err != nil {
+		t.Fatalf("empty declarative body must not error, got %v", err)
+	}
+	if got == nil {
+		t.Fatalf("expected a zero-value response, got nil")
+	}
+	if got.Status != "" || got.TrackingID != "" || len(got.Conditions) != 0 {
+		t.Errorf("expected zero-value DeclarativeResponse, got %+v", got)
 	}
 }

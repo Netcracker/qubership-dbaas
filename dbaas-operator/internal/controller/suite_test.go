@@ -31,13 +31,14 @@ import (
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -45,11 +46,12 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	ctx       context.Context
-	cancel    context.CancelFunc
-	testEnv   *envtest.Environment
-	cfg       *rest.Config
-	k8sClient client.Client
+	ctx         context.Context
+	cancel      context.CancelFunc
+	testEnv     *envtest.Environment
+	cfg         *rest.Config
+	k8sClient   client.Client
+	cacheClient client.Client // manager-backed caching client; supports MatchingFields on custom indexes
 )
 
 func TestControllers(t *testing.T) {
@@ -73,8 +75,6 @@ var _ = BeforeSuite(func() {
 	var err error
 	err = dbaasv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-	err = dbaasv1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
 
@@ -82,7 +82,6 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
-			filepath.Join("..", "..", "config-dev", "crd", "bases"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -100,6 +99,45 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
+
+	// Start a background manager whose caching client supports MatchingFields on
+	// custom field indexes (e.g. secretNameIndex).  The raw k8sClient above cannot
+	// serve these queries because the API server has no knowledge of operator-defined
+	// indexes — only the in-process cache does.
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:                 scheme.Scheme,
+		Metrics:                httpserver.Options{BindAddress: "0"},
+		HealthProbeBindAddress: "0",
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	Expect(mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&dbaasv1.DatabaseSecretClaim{},
+		secretNameIndex,
+		func(obj client.Object) []string {
+			return []string{obj.(*dbaasv1.DatabaseSecretClaim).Spec.SecretName}
+		},
+	)).To(Succeed())
+
+	Expect(mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&dbaasv1.DatabaseSecretClaim{},
+		dbaasv1.ClassifierTypeIndex,
+		func(obj client.Object) []string {
+			ds := obj.(*dbaasv1.DatabaseSecretClaim)
+			c := dbaasv1.EffectiveClassifier(ds.Spec.Classifier, ds.Namespace)
+			return []string{dbaasv1.ClassifierIndexKey(c, ds.Spec.Type)}
+		},
+	)).To(Succeed())
+
+	cacheClient = mgr.GetClient()
+
+	go func() {
+		defer GinkgoRecover()
+		Expect(mgr.Start(ctx)).To(Succeed())
+	}()
+	Expect(mgr.GetCache().WaitForCacheSync(ctx)).To(BeTrue())
 })
 
 var _ = AfterSuite(func() {

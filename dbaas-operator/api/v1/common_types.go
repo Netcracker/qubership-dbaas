@@ -64,6 +64,24 @@ type Classifier struct {
 	// through as-is.
 	// +optional
 	CustomKeys map[string]apiextensionsv1.JSON `json:"customKeys,omitempty"`
+
+	// extraKeys are arbitrary additional classifier identity fields flattened
+	// onto the TOP level of the wire classifier, alongside microserviceName/
+	// scope/namespace/tenantId (unlike customKeys, which is nested under
+	// "customKeys"). They exist for compatibility with the legacy open
+	// classifier model, where services could place arbitrary identity fields
+	// at the classifier's top level. Values may be any JSON type (string,
+	// number, boolean, nested object, array). The reserved keys
+	// microserviceName, scope, namespace, tenantId and customKeys are not
+	// allowed: the controller rejects such a spec with InvalidConfiguration, and
+	// ClassifierFlatMap also skips them defensively so the typed fields always
+	// win. (A CEL rule cannot guard this map because its values are unstructured
+	// JSON, so the check lives in the controller.)
+	// Because these fields are part of the database identity, every consumer's
+	// dbaas-client must produce the same keys/values, otherwise the database
+	// (and its mounted Secret) will not be found.
+	// +optional
+	ExtraKeys map[string]apiextensionsv1.JSON `json:"extraKeys,omitempty"`
 }
 
 // Phase represents the processing phase of a dbaas operator resource.
@@ -72,6 +90,11 @@ type Classifier struct {
 //	Unknown → Processing → Succeeded
 //	                     ↘ BackingOff (transient error, will retry)
 //	                     ↘ InvalidConfiguration (permanent error, no retry)
+//
+// InternalDatabase additionally uses WaitingForDependency while polling
+// an asynchronous provisioning operation in dbaas-aggregator.
+// ExternalDatabase and DatabaseAccessPolicy never transition into WaitingForDependency —
+// their reconcile flows are fully synchronous.
 //
 // +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
 type Phase string
@@ -85,8 +108,10 @@ const (
 	// resource with dbaas-aggregator.
 	PhaseProcessing Phase = "Processing"
 
-	// PhaseWaitingForDependency is reserved for future use by resources that
-	// have asynchronous provisioning dependencies.
+	// PhaseWaitingForDependency indicates the controller is polling an
+	// asynchronous provisioning operation in dbaas-aggregator (HTTP 202 +
+	// trackingId flow). Used only by InternalDatabase — ExternalDatabase
+	// and DatabaseAccessPolicy have synchronous reconcile flows and never use this phase.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
 	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.
@@ -118,17 +143,27 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Condition types used by ExternalDatabase:
-	//   - "Ready"   — True when the resource was successfully registered with
-	//                 dbaas-aggregator for the current generation (reason "DatabaseRegistered").
+	// Condition types used by all dbaas operator resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase):
+	//   - "Ready"   — True when the resource was successfully processed by
+	//                 dbaas-aggregator for the current generation.
+	//                 ExternalDatabase: reason "DatabaseRegistered" on success.
+	//                 DatabaseAccessPolicy: reason "PolicyApplied" on success.
+	//                 InternalDatabase: reason "DatabaseProvisioned" on success;
+	//                   reason "ProvisioningStarted" while the async operation is in progress.
 	//                 False on any error; see Reason for the error category.
 	//   - "Stalled" — True when the error is permanent and the controller will
 	//                 not retry until the spec is changed (e.g. InvalidSpec,
 	//                 AggregatorRejected). False for transient errors that are
 	//                 retried automatically (e.g. SecretError, AggregatorError,
-	//                 Unauthorized).
+	//                 Unauthorized, ProvisioningStarted).
 	// +optional
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
+	// Use this value to correlate operator logs with dbaas-aggregator logs when
+	// investigating issues for a specific resource.
+	// +optional
+	LastRequestID string `json:"lastRequestId,omitempty"`
 }

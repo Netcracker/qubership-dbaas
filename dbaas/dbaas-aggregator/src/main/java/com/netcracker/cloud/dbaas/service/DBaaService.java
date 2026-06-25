@@ -6,7 +6,10 @@ import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
-import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.exceptions.DBCreateValidationException;
+import com.netcracker.cloud.dbaas.exceptions.InvalidUpdateConnectionPropertiesRequestException;
+import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
+import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import jakarta.annotation.PostConstruct;
@@ -14,14 +17,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.beanutils.PropertyUtils;
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,10 +28,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_1;
@@ -192,60 +188,6 @@ public class DBaaService {
     }
 
     @Transactional
-    public PasswordChangeResponse changeUserPassword(PasswordChangeRequestV3 passwordChangeRequest, String namespace) {
-        return changeUserPassword(passwordChangeRequest, namespace, null);
-    }
-
-    @Transactional
-    public PasswordChangeResponse changeUserPassword(PasswordChangeRequestV3 passwordChangeRequest, String namespace, String role) {
-        String dbType = passwordChangeRequest.getType();
-        List<DatabaseRegistry> databasesForChangePassword = new ArrayList<>();
-        if (!MapUtils.isEmpty(passwordChangeRequest.getClassifier())) {
-            passwordChangeRequest.getClassifier().put("namespace", namespace);
-            if (!isValidClassifierV3(passwordChangeRequest.getClassifier())) {
-                throw new PasswordChangeValidationException("PasswordChangeRequest =" + passwordChangeRequest + " contains not valid V3 classifier",
-                        Source.builder().pointer("/classifier").build());
-            }
-            Optional<DatabaseRegistry> databaseRegistry;
-            log.info("Password will be changed from one database with classifier {} and type {}", passwordChangeRequest.getClassifier(), passwordChangeRequest.getType());
-            databaseRegistry = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().getDatabaseByClassifierAndType(passwordChangeRequest.getClassifier(), dbType);
-            if (databaseRegistry.isPresent()) {
-                databasesForChangePassword.add(databaseRegistry.get());
-            }
-        } else {
-            databasesForChangePassword = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findInternalDatabaseRegistryByNamespace(namespace)
-                    .stream()
-                    .filter(databaseRegistry -> databaseRegistry.getType().equals(dbType))
-                    .filter(Predicate.not(DeletionService::isMarkedForDrop))
-                    .collect(Collectors.toList());
-            log.info("The password will be change from {} databases which are located in {} namespace and have {} database type", databasesForChangePassword.size(), namespace, dbType);
-            log.debug("List of databases {}", databasesForChangePassword);
-        }
-        Map<DbaasAdapter, Boolean> adaptersAndUserSupportedMap;
-        try {
-            adaptersAndUserSupportedMap = getAdaptersAndUserSupportedMap(databasesForChangePassword);
-            log.debug("Map of adapters and user support opportunities {}", adaptersAndUserSupportedMap);
-        } catch (Exception e) {
-            throw new UnknownErrorCodeException(e);
-        }
-        List<String> unsupportedUserAdapters = adaptersAndUserSupportedMap.entrySet().stream()
-                .filter(dbaasAdapterBooleanEntry -> !dbaasAdapterBooleanEntry.getValue())
-                .map(dbaasAdapterBooleanEntry -> dbaasAdapterBooleanEntry.getKey().adapterAddress())
-                .collect(Collectors.toList());
-        if (!CollectionUtils.isEmpty(unsupportedUserAdapters)) {
-            throw new PasswordChangeValidationException("The following adapters: " + unsupportedUserAdapters + " do not support user password change",
-                    Source.builder().build());
-        }
-        PasswordChangeResponse response;
-        response = performChangePassword(databasesForChangePassword, role);
-        if (!CollectionUtils.isEmpty(response.getFailed())) {
-            throw new PasswordChangeFailedException(response, response.getFailedHttpStatus());
-        } else {
-            return response;
-        }
-    }
-
-    @Transactional
     public DatabaseRegistry updateDatabaseConnectionProperties(UpdateConnectionPropertiesRequest updateConnectionPropertiesRequest, String type) {
         Optional<DatabaseRegistry> databaseRegistry = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().getDatabaseByClassifierAndType(updateConnectionPropertiesRequest.getClassifier(), type);
         return getDatabase(updateConnectionPropertiesRequest, databaseRegistry.orElseThrow());
@@ -310,54 +252,6 @@ public class DBaaService {
         return databaseRegistry;
     }
 
-    PasswordChangeResponse performChangePassword(List<DatabaseRegistry> databasesForChangePassword, @Nullable String role) {
-        log.info("Change password {}",
-                role == null ? "for whole database roles" : "for role=" + role);
-        PasswordChangeResponse response = new PasswordChangeResponse();
-        long count = databasesForChangePassword.stream().map(databaseRegistry -> {
-            Database database = databaseRegistry.getDatabase();
-            long sum = 0L;
-            DbaasAdapter adapter = getAdapter(database).get();
-            List<Map<String, Object>> connectionProperties = database.getConnectionProperties();
-            if (role != null) {
-                connectionProperties = connectionProperties.stream()
-                        .filter(cp -> cp.get(ROLE) instanceof String && role.equalsIgnoreCase((String) cp.get(ROLE)))
-                        .collect(Collectors.toList());
-            }
-            for (Map<String, Object> cp : connectionProperties) {
-                try {
-                    String dbName = database.getName();
-                    String password = null;
-                    EnsuredUser ensuredUser;
-                    ensuredUser = recreateUsers(adapter, (String) cp.get("username"), dbName, password, (String) cp.get(ROLE));
-
-                    log.info("Get resources {}", ensuredUser.getConnectionProperties());
-                    encryption.deletePassword(database, (String) cp.get(ROLE));
-                    List<Map<String, Object>> replaceConnectionProperties = ConnectionPropertiesUtils.replaceConnectionProperties((String) cp.get(ROLE), database.getConnectionProperties(), ensuredUser.getConnectionProperties());
-                    database.setConnectionProperties(replaceConnectionProperties);
-
-                    database.setResources(getMergedResources(database.getResources(), ensuredUser.getResources()));
-
-
-                    response.putSuccessEntity(databaseRegistry.getClassifier(), new HashMap<>(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), (String) cp.get(ROLE))));
-                    encryption.encryptPassword(database, (String) cp.get(ROLE));
-                    logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveInternalDatabase(databaseRegistry);
-                    log.info("The password was changed successfully from database with classifier {} and type {} and role {}", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE));
-                    sum += 1L;
-                } catch (WebApplicationException e) {
-                    response.putFailedEntity(databaseRegistry.getClassifier(), e.getMessage());
-                    log.error("Faled during change password from database with classifier {} and type {} and role {}. Error: ", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE), e);
-                    if (e.getResponse().getStatus() > response.getFailedHttpStatus()) {
-                        response.setFailedHttpStatus(e.getResponse().getStatus());
-                    }
-                }
-            }
-            return sum;
-        }).mapToLong(Long::valueOf).sum();
-        log.info("From {} databases was changed password", count);
-        return response;
-    }
-
     public boolean decryptPassword(Database database) {
         return encryption.decryptPassword(database);
     }
@@ -393,15 +287,6 @@ public class DBaaService {
         }
     }
 
-    protected List<DbResource> getMergedResources(List<DbResource> previous, List<DbResource> current) {
-        Collector<DbResource, ?, Map<Pair<String, String>, DbResource>> collector =
-                Collectors.toMap(dbr -> Pair.of(dbr.getKind(), dbr.getName()), dbr -> dbr, (first, duplicate) -> first);
-        Map<Pair<String, String>, DbResource> previousMap = previous != null ? previous.stream().collect(collector) : Collections.emptyMap();
-        Map<Pair<String, String>, DbResource> currentMap = current != null ? current.stream().collect(collector) : Collections.emptyMap();
-        return Stream.concat(previousMap.keySet().stream(), currentMap.keySet().stream()).distinct()
-                .map(kindAndName -> currentMap.getOrDefault(kindAndName, previousMap.get(kindAndName))).collect(Collectors.toList());
-    }
-
     protected Map<String, Object> getMergedConnectionProperties(Map<String, Object> previous, Map<String, Object> current) {
         Map<String, Object> result = new HashMap<>();
         if (current != null) {
@@ -411,16 +296,6 @@ public class DBaaService {
             previous.forEach(result::putIfAbsent);
         }
         return result;
-    }
-
-    private Map<DbaasAdapter, Boolean> getAdaptersAndUserSupportedMap(List<DatabaseRegistry> databases) {
-        return databases
-                .stream()
-                .map(dbRegistry -> getAdapter(dbRegistry.getDatabase()).orElseThrow(() ->
-                        new UnregisteredPhysicalDatabaseException("Adapter identifier: " + dbRegistry.getAdapterId())
-                ))
-                .distinct()
-                .collect(Collectors.toMap(adapter -> adapter, DbaasAdapter::isUsersSupported));
     }
 
     public DatabaseRegistry saveExternalDatabase(DatabaseRegistry databaseRegistry) {
