@@ -95,7 +95,7 @@
         <dependency>
             <groupId>org.opensearch.client</groupId>
             <artifactId>opensearch-java</artifactId>
-            <version>3.8.0</version>
+            <version>3.9.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.httpcomponents.core5</groupId>
