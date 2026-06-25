@@ -1649,7 +1649,7 @@ public class OperatorIT extends AbstractIT {
 
     @Test
     void testDatabaseSecretClaimDatabaseIsAbsentInActiveNamespace() throws IOException {
-        assumeFalse(helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).isEmpty(), String.format("Namespace %s must be empty to create BG domain", NAMESPACE));
+        assumeTrue(helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).isEmpty(), String.format("Namespace '%s' must be empty to create BG domain", NAMESPACE));
         String crName = generateName();
         String microserviceName = generateName();
         String secretName = generateName();
