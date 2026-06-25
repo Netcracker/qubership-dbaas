@@ -12,7 +12,6 @@ import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseExcepti
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.core.Response;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -24,6 +23,7 @@ import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -59,8 +59,10 @@ public class MigrationServiceTest {
     private final String TEST_DB_NAME = "test-db";
     private final String TEST_USER = "test-user";
     private final String TEST_TYPE = "test-type";
+    private final String ROLE_RW = "rw";
 
     @Test
+
     void testRegisterRequestValidation() {
         final RegisterDatabaseRequestV3 wrongAdapterId = getRegisterDatabaseRequestSample();
         wrongAdapterId.setAdapterId("wrong-adapter-id");
@@ -98,7 +100,9 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
@@ -116,6 +120,7 @@ public class MigrationServiceTest {
         registerDatabaseRequest.setNamespace(TEST_NAMESPACE);
         registerDatabaseRequest.setAdapterId(TEST_ADAPTER_ID);
         registerDatabaseRequest.setType(TEST_TYPE);
+        registerDatabaseRequest.setClassifier(getClassifier());
         final Map<String, Object> connectionProperties = new HashMap<>();
         connectionProperties.put(PASSWORD_FIELD, "test-password");
         connectionProperties.put(ROLE, Role.ADMIN.toString());
@@ -127,7 +132,9 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
@@ -136,7 +143,7 @@ public class MigrationServiceTest {
     @Test
     void testRegisterDatabasesWithUserCreation() {
         PhysicalDatabase physicalDatabaseSample = getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID);
-        physicalDatabaseSample.setRoles(Arrays.asList("admin", "rw"));
+        physicalDatabaseSample.setRoles(Arrays.asList("admin", ROLE_RW));
         when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabaseSample);
         when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(physicalDatabaseSample);
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
@@ -146,8 +153,8 @@ public class MigrationServiceTest {
 
         when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, "admin"))
                 .thenReturn(createEnsureUser(getConnectionProp("admin")));
-        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, "rw"))
-                .thenReturn(createEnsureUser(getConnectionProp("rw")));
+        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, ROLE_RW))
+                .thenReturn(createEnsureUser(getConnectionProp(ROLE_RW)));
 
         RegisterDatabaseRequestV3 registerDatabaseRequest = new RegisterDatabaseRequestV3();
         registerDatabaseRequest.setName(TEST_DB_NAME);
@@ -168,9 +175,12 @@ public class MigrationServiceTest {
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
         verify(physicalDatabasesService, times(4)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verify(dBaaService, times(2)).recreateUsers(any(), any(), any(), any(), any());
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
     }
 
@@ -217,7 +227,8 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(physicalDatabasesService).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
@@ -242,7 +253,8 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService, times(1)).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(1)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(dbaasAdapter, times(1)).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(physicalDatabasesService, times(1)).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
@@ -268,7 +280,9 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService, times(1)).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(1)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(1)).getByAdapterId(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(physicalDatabasesService, times(1)).getAllAdapters();
         verify(dbaasAdapter, times(2)).identifier();
         verify(dbaasAdapter, times(1)).type();
@@ -345,7 +359,9 @@ public class MigrationServiceTest {
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(dBaaService, times(1)).encryptAndSaveDatabaseEntity(any(DatabaseRegistry.class));
-        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(3)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService).getByAdapterId(TEST_ADAPTER_ID);
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
@@ -422,31 +438,39 @@ public class MigrationServiceTest {
         when(dbaasAdapter.getDatabases()).thenReturn(Collections.singleton(TEST_DB_NAME));
         when(dbaasAdapter.identifier()).thenReturn(TEST_ADAPTER_ID);
 
+        SortedMap<String, Object> classifier = getClassifier();
         RegisterDatabaseRequestV3 testRequest = getRegisterDatabaseRequestSample();
         testRequest.setAdapterId(null);
         testRequest.setDbHost(TEST_TYPE + "." + TEST_NAMESPACE);
+        testRequest.setClassifier(classifier);
 
         Database testDb = new Database();
         testDb.setName(TEST_DB_NAME);
         testDb.setPhysicalDatabaseId(TEST_PHYDBID);
         testDb.setExternallyManageable(true);
-        testDb.setClassifier(testRequest.getClassifier());
+        testDb.setClassifier(classifier);
         testDb.setConnectionProperties(List.of(Map.of("username", "username", "password", "password")));
+
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         databaseRegistry.setDatabase(testDb);
+        databaseRegistry.setClassifier(classifier);
+
         testDb.setDatabaseRegistry(Arrays.asList(databaseRegistry));
         when(dBaaService.findDatabaseByOldClassifierAndType(testRequest.getClassifier(), TEST_TYPE, true)).thenReturn(databaseRegistry);
         final List<RegisterDatabaseRequestV3> registerDatabaseRequestList = Collections.singletonList(testRequest);
 
         mockConnectionPropertiesResponse(dBaaService);
+
         final RegisterDatabaseResponseBuilder registerDatabaseResponseBuilder = migrationService.registerDatabases(registerDatabaseRequestList, API_VERSION.V1, false);
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());
 
         verify(physicalDatabasesService, times(1)).getPhysicalDatabaseByAdapterHost(TEST_NAMESPACE);
-        verify(physicalDatabasesService, times(1)).getAdapterById(TEST_ADAPTER_ID);
+        verify(physicalDatabasesService, times(2)).getAdapterById(TEST_ADAPTER_ID);
         verify(physicalDatabasesService, times(1)).getByPhysicalDatabaseIdentifier(TEST_PHYDBID);
         verify(dbaasAdapter, times(1)).getDatabases();
         verify(dbaasAdapter, times(1)).identifier();
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
+
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
     }
 
@@ -479,12 +503,52 @@ public class MigrationServiceTest {
         assertEquals(true, hasDatabase, "Database resource should be present in saved entity");
     }
 
+    @Test
+    void testRegisterExternalAsInternalWithUserCreationShouldSetCreatedStatusAndUpdateMetadata() {
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID);
+        physicalDatabase.setRoles(Arrays.asList(Role.ADMIN.toString(), ROLE_RW));
+
+        RegisterDatabaseRequestV3 request = prepareExternalAsInternalMigration(physicalDatabase);
+
+        when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(physicalDatabase);
+
+        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, Role.ADMIN.toString()))
+                .thenReturn(createEnsureUser(getConnectionProp(Role.ADMIN.toString())));
+        when(dBaaService.recreateUsers(dbaasAdapter, null, TEST_DB_NAME, null, ROLE_RW))
+                .thenReturn(createEnsureUser(getConnectionProp(ROLE_RW)));
+
+        RegisterDatabaseResponseBuilder result = migrationService.registerDatabases(
+                Collections.singletonList(request), API_VERSION.V3, true);
+
+        assertEquals(Response.Status.OK.getStatusCode(), result.buildAndResponse().getStatus());
+
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
+        verify(dBaaService, times(2)).recreateUsers(any(), any(), any(), any(), any());
+        assertSavedDatabaseHasCreatedStatus();
+    }
+
+    @Test
+    void testRegisterExternalAsInternalWithoutUserCreationShouldSetCreatedStatusAndUpdateMetadata() {
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID);
+        RegisterDatabaseRequestV3 request = prepareExternalAsInternalMigration(physicalDatabase);
+
+        RegisterDatabaseResponseBuilder result = migrationService.registerDatabases(
+                Collections.singletonList(request), API_VERSION.V3, false);
+
+        assertEquals(Response.Status.OK.getStatusCode(), result.buildAndResponse().getStatus());
+
+        verify(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
+        verify(dBaaService, never()).recreateUsers(any(), any(), any(), any(), any());
+        assertSavedDatabaseHasCreatedStatus();
+    }
+
     private RegisterDatabaseRequestV3 getRegisterDatabaseRequestSample() {
         final RegisterDatabaseRequestV3 registerDatabaseRequest = new RegisterDatabaseRequestV3();
         registerDatabaseRequest.setName(TEST_DB_NAME);
         registerDatabaseRequest.setNamespace(TEST_NAMESPACE);
         registerDatabaseRequest.setAdapterId(TEST_ADAPTER_ID);
         registerDatabaseRequest.setType(TEST_TYPE);
+        registerDatabaseRequest.setClassifier(getClassifier());
         final Map<String, Object> connectionProperties = new HashMap<>();
         connectionProperties.put(PASSWORD_FIELD, "test-password");
         connectionProperties.put(ROLE, Role.ADMIN.toString());
@@ -498,5 +562,52 @@ public class MigrationServiceTest {
         physicalDatabase.setAdapter(new ExternalAdapterRegistrationEntry(adapterId, "test-address", new HttpBasicCredentials("", ""), VERSION_2, null));
         physicalDatabase.setType(TEST_TYPE);
         return physicalDatabase;
+    }
+
+    private RegisterDatabaseRequestV3 prepareExternalAsInternalMigration(PhysicalDatabase physicalDatabase) {
+        physicalDatabase.setPhysicalDatabaseIdentifier(TEST_PHYDBID);
+
+        when(physicalDatabasesService.getPhysicalDatabaseByAdapterHost(TEST_NAMESPACE))
+                .thenReturn(Collections.singletonList(physicalDatabase));
+        when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
+        when(physicalDatabasesService.getByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
+
+        when(dbaasAdapter.getDatabases()).thenReturn(Collections.singleton(TEST_DB_NAME));
+        when(dbaasAdapter.identifier()).thenReturn(TEST_ADAPTER_ID);
+        doNothing().when(dbaasAdapter).changeMetaData(eq(TEST_DB_NAME), anyMap());
+
+        RegisterDatabaseRequestV3 request = getRegisterDatabaseRequestSample();
+        request.setAdapterId(null);
+        request.setDbHost(TEST_TYPE + "." + TEST_NAMESPACE);
+        request.setClassifier(getClassifier());
+
+        Database externalDb = new Database();
+        externalDb.setName(TEST_DB_NAME);
+        externalDb.setPhysicalDatabaseId(TEST_PHYDBID);
+        externalDb.setExternallyManageable(true);
+        externalDb.setClassifier(request.getClassifier());
+        externalDb.setConnectionProperties(List.of(Map.of(
+                "username", TEST_USER,
+                PASSWORD_FIELD, "password"
+        )));
+
+        DatabaseRegistry databaseRegistry = new DatabaseRegistry();
+        databaseRegistry.setDatabase(externalDb);
+        externalDb.setDatabaseRegistry(Collections.singletonList(databaseRegistry));
+
+        when(dBaaService.findDatabaseByClassifierAndType(request.getClassifier(), TEST_TYPE, true))
+                .thenReturn(databaseRegistry);
+
+        mockConnectionPropertiesResponse(dBaaService);
+
+        return request;
+    }
+
+    private void assertSavedDatabaseHasCreatedStatus() {
+        ArgumentCaptor<DatabaseRegistry> databaseCaptor = ArgumentCaptor.forClass(DatabaseRegistry.class);
+        verify(dBaaService).encryptAndSaveDatabaseEntity(databaseCaptor.capture());
+        DatabaseRegistry savedRegistry = databaseCaptor.getValue();
+        assertEquals(CREATED, savedRegistry.getDatabase().getDbState().getDatabaseState(),
+                "Migrated database should be saved with CREATED state");
     }
 }

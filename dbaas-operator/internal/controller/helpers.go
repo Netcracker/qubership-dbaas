@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
@@ -28,6 +29,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -41,6 +43,78 @@ const (
 	apiVersionV1 = "core.netcracker.com/v1"
 	xRequestID   = "X-Request-Id"
 )
+
+// bindingTriggerTracker is a concurrency-safe set of "the next reconcile for this
+// key was most likely caused by a NamespaceBinding change" stamps, keyed by
+// namespace/name. Embed it by value into a reconciler to get stamp/consume/clear
+// via method promotion; the zero value is ready to use. It is best-effort: a
+// missed stamp only mis-classifies the reconcile trigger metric, never affects
+// correctness.
+type bindingTriggerTracker struct {
+	mu     sync.Mutex
+	stamps map[string]struct{}
+}
+
+// stampBindingTrigger records that the next reconcile for key was most likely
+// caused by a NamespaceBinding change.
+func (t *bindingTriggerTracker) stampBindingTrigger(key string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.stamps == nil {
+		t.stamps = make(map[string]struct{})
+	}
+	t.stamps[key] = struct{}{}
+}
+
+// consumeBindingTrigger reports whether key had a pending stamp, removing it.
+func (t *bindingTriggerTracker) consumeBindingTrigger(key string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, ok := t.stamps[key]; !ok {
+		return false
+	}
+	delete(t.stamps, key)
+	return true
+}
+
+// clearBindingTrigger drops any pending NamespaceBinding trigger stamp for key.
+func (t *bindingTriggerTracker) clearBindingTrigger(key string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.stamps, key)
+}
+
+// enqueueForBindingList lists objects of list type L in namespace and returns one
+// reconcile request per object — the shared body behind every controller's
+// NamespaceBinding watch mapper. When stamp is non-nil it is invoked with each
+// object before the request is appended (used to mark the resulting reconcile as
+// binding-triggered). On a list error it logs and returns nil, so a transient
+// failure simply drops this fan-out — the per-CR safety-net reconcile heals it.
+func enqueueForBindingList[L client.ObjectList](
+	ctx context.Context, c client.Client, list L, namespace string, stamp func(client.Object),
+) []ctrl.Request {
+	if err := c.List(ctx, list, client.InNamespace(namespace)); err != nil {
+		log.ErrorC(ctx, "enqueueForBinding: list %T in %s: %v", list, namespace, err)
+		return nil
+	}
+	objs, err := apimeta.ExtractList(list)
+	if err != nil {
+		log.ErrorC(ctx, "enqueueForBinding: extract %T items: %v", list, err)
+		return nil
+	}
+	reqs := make([]ctrl.Request, 0, len(objs))
+	for _, ro := range objs {
+		o, ok := ro.(client.Object)
+		if !ok {
+			continue
+		}
+		if stamp != nil {
+			stamp(o)
+		}
+		reqs = append(reqs, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(o)})
+	}
+	return reqs
+}
 
 // requestIDFromContext extracts the X-Request-Id string from ctx.
 // Raising a panic if it can't fetch it

@@ -218,7 +218,6 @@ var _ = Describe("OwnershipResolver", func() {
 			checker := ownership.NewKindChecker(
 				cl,
 				func() *dbaasv1.NamespaceBindingList { return &dbaasv1.NamespaceBindingList{} },
-				func(l *dbaasv1.NamespaceBindingList) int { return len(l.Items) },
 			)
 			blocking, err := checker.HasBlockingResources(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
@@ -233,7 +232,6 @@ var _ = Describe("OwnershipResolver", func() {
 			checker := ownership.NewKindChecker(
 				cl,
 				func() *dbaasv1.NamespaceBindingList { return &dbaasv1.NamespaceBindingList{} },
-				func(l *dbaasv1.NamespaceBindingList) int { return len(l.Items) },
 			)
 			blocking, err := checker.HasBlockingResources(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())

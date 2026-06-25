@@ -31,19 +31,23 @@ const (
 	// successfully registered with dbaas-aggregator. Type: Normal.
 	EventReasonDatabaseRegistered = "DatabaseRegistered"
 
-	// EventReasonPolicyApplied is emitted when a DbPolicy is successfully
+	// EventReasonPolicyApplied is emitted when a DatabaseAccessPolicy is successfully
 	// applied via dbaas-aggregator POST /api/declarations/v1/apply. Type: Normal.
 	EventReasonPolicyApplied = "PolicyApplied"
 
 	// EventReasonProvisioningStarted is emitted when dbaas-aggregator returns HTTP 202
-	// for a DatabaseDeclaration, meaning the async operation has been accepted.
+	// for a InternalDatabase, meaning the async operation has been accepted.
 	// Type: Normal (informational — not yet complete).
 	EventReasonProvisioningStarted = "ProvisioningStarted"
 
-	// EventReasonDatabaseProvisioned is emitted when a DatabaseDeclaration is
+	// EventReasonDatabaseProvisioned is emitted when a InternalDatabase is
 	// successfully provisioned by dbaas-aggregator (either via HTTP 200 sync or
 	// after polling completes with COMPLETED). Type: Normal.
 	EventReasonDatabaseProvisioned = "DatabaseProvisioned"
+
+	// EventReasonBalancingRuleApplied is emitted when a balancing rule CR is
+	// successfully applied to dbaas-aggregator. Type: Normal.
+	EventReasonBalancingRuleApplied = "BalancingRuleApplied"
 
 	// EventReasonInvalidSpec is emitted when the CR spec fails pre-flight
 	// validation before the aggregator is even contacted. Type: Warning.
@@ -86,6 +90,55 @@ const (
 
 	// EventReasonBindingBlocked is emitted when an NamespaceBinding deletion is
 	// deferred because the namespace still contains dbaas workload resources
-	// (ExternalDatabase, DatabaseDeclaration, or DbPolicy). Type: Warning.
+	// (ExternalDatabase, InternalDatabase, or DatabaseAccessPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
+
+	// EventReasonSecretCreated is emitted when a DatabaseSecretClaim successfully
+	// creates the target Kubernetes Secret with connection properties for the
+	// first time. Subsequent content changes (e.g. rotation) use SecretRotated.
+	// Type: Normal.
+	EventReasonSecretCreated = "SecretCreated"
+
+	// EventReasonSecretRotated is emitted when a DatabaseSecretClaim reconcile detects
+	// that the connectionProperties returned by dbaas-aggregator differ from what
+	// is currently stored in the target Kubernetes Secret, and writes the new
+	// content. Triggered both by rotation events from the aggregator and by
+	// safety-net polls that detect drift. The initial Secret creation uses
+	// SecretCreated instead. Type: Normal.
+	EventReasonSecretRotated = "SecretRotated"
+
+	// EventReasonSecretConflict is emitted when the target Kubernetes Secret
+	// already exists but its ownerReference points to a different resource or
+	// has no ownerReference at all. Type: Warning.
+	EventReasonSecretConflict = "SecretConflict"
+
+	// ReasonSecretUpToDate is the Ready condition reason for a steady-state
+	// reconcile that wrote nothing because the target Secret already matches the
+	// desired content, and for a metadata/label backfill that rewrote the Secret
+	// without a credential change. It is a condition-only reason — no Kubernetes
+	// event is emitted — so the Ready reason stays accurate (nothing was created
+	// or rotated) instead of reusing SecretCreated, and it does not overwrite the
+	// rotation history carried by Status.LastRotatedAt and the SecretRotated event.
+	ReasonSecretUpToDate = "SecretUpToDate"
+
+	// EventReasonDatabaseNotFound is emitted when dbaas-aggregator returns HTTP 404
+	// for a get-by-classifier request, meaning the database is not yet registered and
+	// the operator retries until it appears. The controller retries with exponential backoff. Type: Warning.
+	EventReasonDatabaseNotFound = "DatabaseNotFound"
+
+	// EventReasonEmptyConnectionProperties is emitted when dbaas-aggregator returns HTTP 200
+	// but the connectionProperties map is empty for the requested userRole. This is treated
+	// as a transient state (the aggregator/adapter is expected to populate it on a subsequent
+	// reconcile) and the controller retries with backoff rather than failing permanently.
+	// Type: Warning.
+	EventReasonEmptyConnectionProperties = "EmptyConnectionProperties"
+
+	// EventReasonDatabaseNotFoundTimeout is emitted once when a DatabaseSecretClaim has been
+	// waiting on a DatabaseNotFound (HTTP 404) response from dbaas-aggregator for longer
+	// than databaseNotFoundTimeout. The controller continues polling (Phase remains
+	// BackingOff, Stalled remains False — the CR may still self-heal once the database
+	// appears) but stops emitting per-cycle DatabaseNotFound Warnings to avoid event spam.
+	// Surfaces a single alertable signal that an operator's classifier may be wrong.
+	// Type: Warning.
+	EventReasonDatabaseNotFoundTimeout = "DatabaseNotFoundTimeout"
 )

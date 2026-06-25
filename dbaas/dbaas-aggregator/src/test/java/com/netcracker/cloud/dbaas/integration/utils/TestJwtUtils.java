@@ -30,7 +30,7 @@ public class TestJwtUtils {
     }
 
     public String getJwt(String serviceAccountName, String namespace) {
-        return Jwt.subject("some-service")
+        return Jwt.subject("system:serviceaccount:" + namespace + ":" + serviceAccountName)
                 .issuer(issuer)
                 .audience(audience)
                 .claim("jti", java.util.UUID.randomUUID().toString())

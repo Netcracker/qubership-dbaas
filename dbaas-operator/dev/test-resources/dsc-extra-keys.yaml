@@ -1,0 +1,40 @@
+# DatabaseSecretClaim — extraKeys end-to-end (arbitrary top-level classifier fields).
+#
+# spec.classifier.extraKeys carries arbitrary identity fields that the operator
+# FLATTENS onto the top level of the wire classifier (unlike customKeys, which is
+# nested). This single CR exercises all three touchpoints where the CR's
+# extraKeys-envelope and the aggregator's flat classifier must line up:
+#
+#   1. get-by-classifier — the operator sends
+#      {microserviceName, scope, namespace, region}  (region FLAT at the top level)
+#      and the mock returns props for originService "extra-svc"
+#      → the Secret "dsc-extra-keys-secret" is created.
+#   2. metadata.json descriptor — its .classifier carries "region" at the top level
+#      (there is no "extraKeys" envelope on the wire), matching what dbaas-client
+#      canonicalizes against.
+#   3. rotation — changed.json holds an entry whose FLAT classifier includes region;
+#      the poller reverse-maps that flat classifier back through ExtraKeys, computes
+#      the same index key the controller stored, matches THIS CR, and stamps the
+#      rotation-trigger annotation. (Without the reverse round-trip the extra field
+#      would be dropped, the index key would differ, and this CR would never be
+#      matched — silent rotation loss.)
+#
+# dev/e2e-extra-keys.sh asserts all three. The app.kubernetes.io/name label is
+# REQUIRED — its value is sent as originService in the get-by-classifier request.
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: dsc-extra-keys
+  namespace: test-ns
+  labels:
+    app.kubernetes.io/name: extra-svc
+spec:
+  type: postgresql
+  userRole: admin
+  secretName: dsc-extra-keys-secret
+  classifier:
+    microserviceName: extra-svc
+    scope: service
+    namespace: test-ns
+    extraKeys:
+      region: eu

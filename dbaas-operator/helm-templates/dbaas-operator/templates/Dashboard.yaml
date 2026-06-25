@@ -1,0 +1,17 @@
+{{- if and .Values.DBAAS_OPERATOR_ENABLED .Values.MONITORING_ENABLED }}
+---
+apiVersion: integreatly.org/v1alpha1
+kind: GrafanaDashboard
+metadata:
+  name: dbaas-operator-dashboard
+  labels:
+    app: grafana
+    app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME | default "dbaas" }}'
+    app.kubernetes.io/managed-by: "{{ .Values.MANAGED_BY }}"
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
+spec:
+  name: dbaas-operator-dashboard.json
+  json: {{ .Files.Get "dashboards/dbaas-operator-dashboard.json" | toJson | replace "#namespace#" .Values.NAMESPACE }}
+{{- end }}

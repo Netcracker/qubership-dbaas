@@ -16,6 +16,9 @@ limitations under the License.
 
 package controller
 
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
+
 import (
 	"context"
 
@@ -32,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	dbaasv1alpha1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1alpha1"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
@@ -44,10 +46,10 @@ import (
 //  2. Manage the NamespaceBindingProtectionFinalizer: add it when the namespace
 //     contains blocking dbaas resources; remove it (allowing deletion) only once
 //     those resources are gone.
-//  3. Watch workload resources (ExternalDatabase, and optionally
-//     DatabaseDeclaration + DbPolicy when alpha APIs are enabled) so that any
-//     create/delete of a workload in a bound namespace triggers a re-evaluation
-//     of the finalizer.
+//  3. Watch workload resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase,
+//     and balancing rules)
+//     so that any create/delete of a workload in a bound namespace triggers a
+//     re-evaluation of the finalizer.
 type NamespaceBindingReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
@@ -56,9 +58,6 @@ type NamespaceBindingReconciler struct {
 	Ownership   *ownership.OwnershipResolver
 	Checker     ownership.BlockingResourceChecker
 }
-
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;patch
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
 
 func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ctx, requestID := initReconcileContext(ctx)
@@ -146,41 +145,49 @@ func enqueueBindingForWorkload(_ context.Context, obj client.Object) []reconcile
 }
 
 // SetupWithManager registers the controller and configures watches.
-// alphaEnabled controls whether DatabaseDeclaration and DbPolicy watches are added.
 func (r *NamespaceBindingReconciler) SetupWithManager(
 	mgr ctrl.Manager,
 	opts ctrlcontroller.Options,
-	alphaEnabled bool,
 ) error {
-	b := ctrl.NewControllerManagedBy(mgr).
+	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.NamespaceBinding{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			&dbaasv1.ExternalDatabase{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 		).
+		Watches(
+			&dbaasv1.DatabaseAccessPolicy{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
+		Watches(
+			&dbaasv1.InternalDatabase{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
+		Watches(
+			&dbaasv1.MicroserviceBalancingRule{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
+		Watches(
+			&dbaasv1.NamespaceBalancingRule{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
+		// PermanentBalancingRule is intentionally NOT watched here: it is
+		// operator-namespace-only and decoupled from NamespaceBinding, so it never
+		// blocks a (tenant) NamespaceBinding's deletion and needs no re-enqueue.
+		Watches(
+			&dbaasv1.DatabaseSecretClaim{},
+			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+		).
 		WithOptions(opts).
-		Named("namespacebinding")
-
-	if alphaEnabled {
-		b = b.
-			Watches(
-				&dbaasv1alpha1.DatabaseDeclaration{},
-				handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
-			).
-			Watches(
-				&dbaasv1alpha1.DbPolicy{},
-				handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
-			)
-	}
-
-	return b.Complete(r)
+		Named("namespacebinding").
+		Complete(r)
 }
 
 // SetupWithManagerOpts is an alias that passes zero controller options.
 // Useful in tests where custom rate limiters are not needed.
-func (r *NamespaceBindingReconciler) SetupWithManagerOpts(mgr ctrl.Manager, alphaEnabled bool) error {
-	return r.SetupWithManager(mgr, ctrlcontroller.Options{}, alphaEnabled)
+func (r *NamespaceBindingReconciler) SetupWithManagerOpts(mgr ctrl.Manager) error {
+	return r.SetupWithManager(mgr, ctrlcontroller.Options{})
 }
 
 // Ensure runtime.Object is satisfied (required for recorder.Eventf).

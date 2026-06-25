@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
+import com.netcracker.cloud.dbaas.Constants;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.ClassifierWithRolesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
@@ -370,7 +371,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
 
 
     @Operation(summary = " V3.Delete database by classifier",
-            description = "Deletes database by id in the specific namespace.")
+            description = "Deletes database by id in the specific namespace. " +
+                    "If the optional 'force' parameter is set to true, errors from the physical adapter during drop are ignored " +
+                    "and the database is removed from DBaaS regardless. " +
+                    "Warning: using force=true may result in the logical database leaking in the physical database.")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Successfully deleted database.", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "401", description = ROLE_IS_NOT_ALLOWED, content = @Content(schema = @Schema(implementation = String.class))),
@@ -386,7 +390,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                                @Parameter(description = "Project namespace in which the base is used")
                                                @PathParam(NAMESPACE_PARAMETER) String namespace,
                                                @Parameter(description = "The physical type of logical database. For example mongodb or postgresql", required = true)
-                                               @PathParam("type") String type) {
+                                               @PathParam("type") String type,
+                                               @Parameter(description = "If true, errors from the physical adapter during drop are ignored")
+                                               @QueryParam("force") @DefaultValue("false") Boolean force) {
         assertNotProdMode();
         checkOriginService(classifierRequest);
         String supportedRole = databaseRolesService.getSupportedRoleFromRequest(classifierRequest, type, namespace);
@@ -403,7 +409,10 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                 throw new ForbiddenNamespaceException(namespace, databaseRegistry.getNamespace(),
                         Source.builder().pathVariable("namespace").build());
             }
-            deletionService.dropRegistrySafe(databaseRegistry);
+            boolean dropped = deletionService.dropRegistrySafe(databaseRegistry, Boolean.TRUE.equals(force));
+            if (!dropped) {
+                throw new RuntimeException("Database deletion failed. Check DBaaS Aggregator logs for details.");
+            }
             log.info("Database in namespace={} with classifier={} is dropped", namespace, databaseRegistry.getClassifier());
         }
         //should return ok if db not found
@@ -411,7 +420,8 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
     }
 
     private void checkOriginService(UserRolesServices rolesServices) {
-        if (securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal principal) {
+        if (!securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)
+                && securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal principal) {
             rolesServices.setOriginService(JwtUtils.getServiceAccountName(principal));
         }
         if (rolesServices.getOriginService() == null || rolesServices.getOriginService().isEmpty()) {
@@ -421,6 +431,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
     }
 
     private void checkTenantId(Map<String, Object> classifier) {
+        if (securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)) {
+            return;
+        }
         if (!(securityContext.getUserPrincipal() instanceof DefaultJWTCallerPrincipal)) {
             return;
         }

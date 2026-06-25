@@ -7,6 +7,8 @@ on:
 permissions:
   pages: write
   id-token: write
+  contents: read
+  issues: write
 
 concurrency:
   group: "integration-tests-report"
@@ -17,6 +19,7 @@ jobs:
     uses: ./.github/workflows/integration-tests.yml
   update-report:
     needs: run-tests
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     environment:
       name: pages

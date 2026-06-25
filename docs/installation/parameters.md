@@ -24,12 +24,13 @@
         + [DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS](#dbaas_backup_restore_retry_delay_seconds)
         + [DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS](#dbaas_backup_restore_retry_attempts)
         + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
-        + [KUBERNETES_JWT_ENABLED](#kubernetes_jwt_enabled)
-        + [KUBERNETES_JWT_AUDIENCE](#kubernetes_jwt_audience)
+        + [KUBERNETES_M2M_ENABLED](#kubernetes_m2m_enabled)
+        + [KUBERNETES_M2M_AUDIENCE](#kubernetes_m2m_audience)
         + [priorityClassName](#priorityClassName)
     * [CREDENTIALS](#credentials)
         + [DBAAS_DB_EDITOR_CREDENTIALS_USERNAME / DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD](#dbaas_db_editor_credentials_username--dbaas_db_editor_credentials_password)
         + [DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME / DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD](#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password)
+        + [DBAAS_OPERATOR_CREDENTIALS_USERNAME / DBAAS_OPERATOR_CREDENTIALS_PASSWORD](#dbaas_operator_credentials_username--dbaas_operator_credentials_password)
         + [BACKUP_DAEMON_DBAAS_ACCESS_USERNAME / BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD](#backup_daemon_dbaas_access_username--backup_daemon_dbaas_access_password)
         + [DBAAS_TENANT_USERNAME / DBAAS_TENANT_PASSWORD](#dbaas_tenant_username--dbaas_tenant_password)
         + [DISCR_TOOL_USER_USERNAME / DISCR_TOOL_USER_PASSWORD](#discr_tool_user_username--discr_tool_user_password)
@@ -327,17 +328,17 @@ If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator w
 |---------|----------------------------------------------------------|
 | true    | Set to true if need to enable namespace isolation |
 
-#### KUBERNETES_JWT_ENABLED
+#### KUBERNETES_M2M_ENABLED
 
-If KUBERNETES_JWT_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens M2M.
+If KUBERNETES_M2M_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens for M2M authentication.
 
 | Default | Recommended                                              |
 |---------|----------------------------------------------------------|
-| true    | Set to true if need to enable kubernetes M2M      |
+| false   | Set to true if need to enable kubernetes M2M      |
 
-#### KUBERNETES_JWT_AUDIENCE
+#### KUBERNETES_M2M_AUDIENCE
 
-KUBERNETES_JWT_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected.
+KUBERNETES_M2M_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected.
 
 | Default | Recommended                                                               |
 |---------|---------------------------------------------------------------------------|
@@ -382,6 +383,19 @@ those credentials in `dbaas-adapter` must match.
 | Default                                                                                                                                                                     | Recommended                                                                                                                                                                                                                                                                                                                                                       | 
 |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | <p>DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME=**cluster-dba** <p>DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD=**None** <p>You need to change that if you need to secure installation. | <p>You can generate these credentials during first DBaaS installation, save them in configuration and do not change them (at least until you know, that all functional projects are updated with new credentials). <p>Same credentials should be used during installation of functional projects where dbaas-agent or config-server or tenant-manager is included | 
+
+#### DBAAS_OPERATOR_CREDENTIALS_USERNAME / DBAAS_OPERATOR_CREDENTIALS_PASSWORD
+
+Credentials for the `dbaas-operator` user (roles `DB_CLIENT` and `CLUSTER_OPERATOR`). Used only when the dbaas-operator
+runs in Basic Auth mode (`KUBERNETES_M2M_ENABLED=false`, the default): this is the **aggregator side**, which adds the
+user to `users.json` so the aggregator can validate the operator's Basic Auth. The operator must be configured with the
+**same** username/password via its own chart's `DBAAS_OPERATOR_CREDENTIALS_*` values (it carries them in its own Secret,
+not this one). When `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` is unset here, the `dbaas-operator` user is omitted from
+`users.json` entirely, which is the correct setup for M2M-only installations (`KUBERNETES_M2M_ENABLED=true`).
+
+| Default                                                                                                                                                                          | Recommended                                                                                                                                                                                |
+|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <p>DBAAS_OPERATOR_CREDENTIALS_USERNAME=**dbaas-operator** <p>DBAAS_OPERATOR_CREDENTIALS_PASSWORD=**None** <p>Set the password to deploy the operator in Basic Auth mode; leave unset for M2M-only installations. | <p>Generate the password during DBaaS installation. The dbaas-operator reads it from the shared security Secret, so no separate configuration is needed on the operator side. Required only when `KUBERNETES_M2M_ENABLED=false`. |
 
 #### BACKUP_DAEMON_DBAAS_ACCESS_USERNAME / BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD
 

@@ -1,6 +1,7 @@
 package com.netcracker.it.dbaas.test.backup;
 
 import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtension;
+import com.netcracker.it.dbaas.entity.DatabaseResponse;
 import com.netcracker.it.dbaas.entity.DatabaseV3;
 import com.netcracker.it.dbaas.entity.LinkDatabasesRequest;
 import com.netcracker.it.dbaas.entity.backup.v1.*;
@@ -15,6 +16,7 @@ import org.bson.Document;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.text.MessageFormat;
@@ -24,7 +26,8 @@ import java.util.Map;
 import static com.netcracker.it.dbaas.helpers.BackupHelperV1.BACKUP_METADATA;
 import static com.netcracker.it.dbaas.helpers.BackupHelperV1.DIGEST;
 import static com.netcracker.it.dbaas.helpers.BackupHelperV3.*;
-import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.*;
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.EXTERNALLY_MANAGEABLE_V3;
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.calculateDigest;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,6 +39,7 @@ class BackupV3IT extends AbstractIT {
 
     private static BackupHelperV3 backupHelperV3;
     private static BackupHelperV1 backupHelperV1;
+    private static MigrationHelper migrationHelper;
     private static DeclarativeConfigHelper declarativeHelper;
     private static BGHelper bgHelper;
 
@@ -47,6 +51,7 @@ class BackupV3IT extends AbstractIT {
     static void initHelper() throws IOException {
         backupHelperV3 = new BackupHelperV3(helperV3);
         backupHelperV1 = new BackupHelperV1(helperV3);
+        migrationHelper = new MigrationHelper(helperV3);
         bgHelper = new BGHelper(helperV3);
         declarativeHelper = new DeclarativeConfigHelper(helperV3);
         deleteTestData();
@@ -196,6 +201,11 @@ class BackupV3IT extends AbstractIT {
             @Test
             void testBackupRestoreV1_backupRestore() throws IOException {
                 BackupV3IT.this.testBackupRestoreToSameNamespace(POSTGRES_TYPE);
+            }
+
+            @Test
+            void testMigratedExternalToInternalDatabasesBackupRestore() throws IOException {
+                BackupV3IT.this.testMigratedExternalToInternalDatabasesBackupRestore();
             }
         }
 
@@ -839,5 +849,131 @@ class BackupV3IT extends AbstractIT {
 
         backupHelperV3.checkConnections(false, List.of(backupedSourceDb1, backupedSourceDb2), null, changedData, false);
         backupHelperV3.checkConnections(false, List.of(restoredLogicalDatabase), null, BACKUPED_DATA, false);
+    }
+
+    public void testMigratedExternalToInternalDatabasesBackupRestore() throws IOException {
+        assumeTrue(helperV3.hasAdapterOfType(POSTGRES_TYPE),
+                MessageFormat.format("No {0} adapter. Skip test.", POSTGRES_TYPE));
+
+        String sourceNamespace = helperV3.generateTestNamespace();
+        String targetNamespace = helperV3.generateTestNamespace();
+
+        DatabaseResponse migratedWithUserCreation = migrationHelper.prepareMigratedExternalToInternalPostgresDatabase(
+                sourceNamespace,
+                DBAAS_AUTO_TEST_1,
+                true
+        );
+
+        DatabaseResponse migratedWithoutUserCreation = migrationHelper.prepareMigratedExternalToInternalPostgresDatabase(
+                sourceNamespace,
+                DBAAS_AUTO_TEST_2,
+                false
+        );
+
+        List<DatabaseResponse> migratedDbs = List.of(
+                migratedWithUserCreation,
+                migratedWithoutUserCreation
+        );
+
+        backupHelperV3.checkConnections(
+                false,
+                migratedDbs,
+                BACKUPED_DATA,
+                BACKUPED_DATA,
+                false
+        );
+
+        var backupRequest = new BackupRequestBuilder()
+                .filterCriteria(fc -> fc.include(f -> f
+                        .ns(sourceNamespace)
+                        .dbType(POSTGRES_TYPE)))
+                .build();
+
+        var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+
+        assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus(),
+                "Backup should be completed for migrated external-to-internal PostgreSQL databases");
+
+        int backedUpDatabasesCount = backupResponse.getLogicalBackups().stream()
+                .mapToInt(logicalBackup -> logicalBackup.getBackupDatabases().size())
+                .sum();
+
+        assertEquals(2, backedUpDatabasesCount,
+                "Backup should include both migrated external-to-internal PostgreSQL databases");
+
+        String changedData = "changedData";
+
+        backupHelperV3.checkConnections(
+                false,
+                migratedDbs,
+                changedData,
+                changedData,
+                false
+        );
+
+        var restoreRequest = new RestoreRequestBuilder()
+                .mapping(m -> m.ns(sourceNamespace, targetNamespace))
+                .build();
+
+        var restoreResponse = backupHelperV1.runRestoreAndWait(
+                backupRequest.getBackupName(),
+                restoreRequest,
+                false
+        );
+
+        assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus(),
+                "Restore should be completed for migrated external-to-internal PostgreSQL databases");
+
+        DatabaseResponse restoredWithUserCreation = helperV3.getDatabaseByClassifierAsPOJO(
+                helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder()
+                        .ms(DBAAS_AUTO_TEST_1)
+                        .ns(targetNamespace)
+                        .build(),
+                targetNamespace,
+                POSTGRES_TYPE,
+                HttpStatus.OK.value()
+        );
+
+        DatabaseResponse restoredWithoutUserCreation = helperV3.getDatabaseByClassifierAsPOJO(
+                helperV3.getClusterDbaAuthorization(),
+                new ClassifierBuilder()
+                        .ms(DBAAS_AUTO_TEST_2)
+                        .ns(targetNamespace)
+                        .build(),
+                targetNamespace,
+                POSTGRES_TYPE,
+                HttpStatus.OK.value()
+        );
+
+        assertNotEquals(migratedWithUserCreation.getName(), restoredWithUserCreation.getName(),
+                "Restored with-user-creation database should have a different physical database name");
+
+        assertNotEquals(migratedWithoutUserCreation.getName(), restoredWithoutUserCreation.getName(),
+                "Restored without user creation database should have a different physical database name");
+
+        assertNotEquals(migratedWithUserCreation.getConnectionProperties(),
+                restoredWithUserCreation.getConnectionProperties(),
+                "Restored with user creation database should have different connection properties");
+
+        assertNotEquals(migratedWithoutUserCreation.getConnectionProperties(),
+                restoredWithoutUserCreation.getConnectionProperties(),
+                "Restored without user creation database should have different connection properties");
+
+        backupHelperV3.checkConnections(
+                false,
+                migratedDbs,
+                null,
+                changedData,
+                false
+        );
+
+        backupHelperV3.checkConnections(
+                false,
+                List.of(restoredWithUserCreation, restoredWithoutUserCreation),
+                null,
+                BACKUPED_DATA,
+                false
+        );
     }
 }
