@@ -161,9 +161,13 @@ jobs:
           exit 1
 
       # NamespaceBinding is per-namespace (one object named "binding"), shared by both sample
-      # services, so it lives in a common location and is applied once.
-      - name: Apply sample service namespace binding
+      # services, so it lives in a common location and is applied once. The operator holds no
+      # cluster-wide Secret RBAC, so the namespace also gets a dbaas-operator-secrets Role +
+      # RoleBinding (bound to the operator ServiceAccount) — without it the operator cannot
+      # materialize the DatabaseSecretClaim Secrets the sample services mount.
+      - name: Apply sample service namespace binding and Secret RBAC
         run: |
+          sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/secret-rbac.yaml | kubectl apply -f -
           sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/namespacebinding.yaml | kubectl apply -f -
           for i in {1..60}; do
             finalizers="$(kubectl -n "$TEST_NAMESPACE" get namespacebinding binding -o jsonpath='{.metadata.finalizers}' || true)"
