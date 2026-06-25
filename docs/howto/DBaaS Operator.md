@@ -310,10 +310,10 @@ The operator authenticates to dbaas-aggregator in one of two mutually exclusive 
 
 ### Basic Auth (default)
 
-- The Helm chart creates a `dbaas-operator-aggregator-credentials` Secret from the `DBAAS_OPERATOR_CREDENTIALS_USERNAME` / `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` values and mounts it at `/etc/dbaas/security` (keys `username`, `password`).
-- At startup the operator loads these credentials; if the files are absent it logs a fatal error and exits — the credentials are **required** in Basic Auth mode.
-- A filesystem watcher reloads the credentials in memory whenever the mounted Secret changes, so a password rotation is applied **without a pod restart** (the value is swapped atomically; there is no other caching).
-- **Aggregator side:** the same user must exist in the aggregator's `users.json` (rendered from `policy.json`) with the `DB_CLIENT` and `CLUSTER_OPERATOR` roles. Provision it with the **identical** username/password via the aggregator chart's own `DBAAS_OPERATOR_CREDENTIALS_*` values.
+- The aggregator's Helm chart auto-generates the `dbaas-operator` user password at deploy time and stores it — together with all other aggregator users — in `dbaas-security-configuration-secret` (key `users.json`). No external credential input is required.
+- The operator chart mounts `dbaas-security-configuration-secret` at `/etc/dbaas/security`. At startup the operator parses `users.json` and extracts the entry for the hardcoded username `dbaas-operator`; if the entry is absent it logs a fatal error and exits.
+- A filesystem watcher reloads `users.json` whenever the mounted Secret changes, so a password rotation is applied **without a pod restart** (the value is swapped atomically; there is no other caching).
+- **Aggregator side:** the `dbaas-operator` user is included in `users.json` with the `DB_CLIENT` and `CLUSTER_OPERATOR` roles automatically — no manual credential configuration is needed on either side.
 
 ### M2M token (`KUBERNETES_M2M_ENABLED=true`)
 
@@ -1926,8 +1926,6 @@ The following parameters control the operator's deployment and behavior. They ar
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
 | `DBAAS_AGGREGATOR_URL` | string | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (e.g. cross-cluster deployments). Read by the operator as an environment variable; not set by the Helm chart unless explicitly configured. |
 | `KUBERNETES_M2M_ENABLED` | boolean | `false` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `KUBERNETES_M2M_ENABLED`**. `false` (default): HTTP Basic Auth, with credentials from the chart-created `dbaas-operator-aggregator-credentials` Secret. `true`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
-| `DBAAS_OPERATOR_CREDENTIALS_USERNAME` | string | `dbaas-operator` | Basic Auth username (Basic Auth mode only). The chart writes it into the `dbaas-operator-aggregator-credentials` Secret, mounted at `/etc/dbaas/security`. Must match the user provisioned on the aggregator (its `DBAAS_OPERATOR_CREDENTIALS_USERNAME`), which carries the `DB_CLIENT` and `CLUSTER_OPERATOR` roles. |
-| `DBAAS_OPERATOR_CREDENTIALS_PASSWORD` | string | — | Basic Auth password, written into the credentials Secret and hot-reloaded on rotation. **Required** when `KUBERNETES_M2M_ENABLED=false`; must match the password configured on the aggregator side. |
 | `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate `DatabaseSecretClaim` credential rotations. Empty uses the operator's built-in default (`30s`). |
 | `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30s`, `1m`) for `ExternalDatabase` CRs. The operator does not watch Secrets, so a referenced credential Secret change is picked up on the next resync rather than instantly. Empty uses the operator's built-in default (`10m`). |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |

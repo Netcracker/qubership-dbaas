@@ -32,7 +32,7 @@
       "DISCR_TOOL_CLIENT"
     ]
   }{{- if .Values.DBAAS_OPERATOR_CREDENTIALS_PASSWORD }},
-  {{ .Values.DBAAS_OPERATOR_CREDENTIALS_USERNAME | default "dbaas-operator" | quote }}: {
+  "dbaas-operator": {
     "password": {{ .Values.DBAAS_OPERATOR_CREDENTIALS_PASSWORD | quote }},
     "roles": [
       "DB_CLIENT",
