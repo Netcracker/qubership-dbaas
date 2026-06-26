@@ -33,6 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	config "sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -1218,5 +1219,56 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		// After Forget the counter is reset; the next failure starts from base again.
 		rateLimiter.Forget(req)
 		Expect(rateLimiter.When(req)).To(Equal(base))
+	})
+})
+
+// ── specOrRefreshTriggerPredicate ────────────────────────────────────────────
+
+var _ = Describe("ExternalDatabase Controller — refresh-trigger predicate", func() {
+	pred := specOrRefreshTriggerPredicate{}
+
+	edbWith := func(generation int64, refresh string) *dbaasv1.ExternalDatabase {
+		edb := &dbaasv1.ExternalDatabase{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "edb",
+				Namespace:  "default",
+				Generation: generation,
+			},
+		}
+		if refresh != "" {
+			edb.Annotations = map[string]string{dbaasv1.AnnotationRefresh: refresh}
+		}
+		return edb
+	}
+
+	Describe("Update", func() {
+		It("fires when the generation changed (spec update)", func() {
+			ok := pred.Update(event.UpdateEvent{ObjectOld: edbWith(1, ""), ObjectNew: edbWith(2, "")})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("fires when the refresh annotation changed", func() {
+			ok := pred.Update(event.UpdateEvent{ObjectOld: edbWith(1, "t1"), ObjectNew: edbWith(1, "t2")})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("fires when the refresh annotation is first added", func() {
+			ok := pred.Update(event.UpdateEvent{ObjectOld: edbWith(1, ""), ObjectNew: edbWith(1, "t1")})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("does NOT fire on a status-only update (no generation or annotation change)", func() {
+			ok := pred.Update(event.UpdateEvent{ObjectOld: edbWith(3, "t1"), ObjectNew: edbWith(3, "t1")})
+			Expect(ok).To(BeFalse())
+		})
+
+		It("does NOT fire when only an unrelated annotation changed", func() {
+			old := edbWith(1, "t1")
+			old.Annotations["unrelated"] = "a"
+			updated := edbWith(1, "t1")
+			updated.Annotations["unrelated"] = "b"
+			ok := pred.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated})
+			Expect(ok).To(BeFalse())
+		})
 	})
 })

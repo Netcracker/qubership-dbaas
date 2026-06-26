@@ -738,6 +738,12 @@ the controller sends the following `classifier` to dbaas-aggregator:
 
 > **Credential rotation:** the operator does **not** watch Secrets. Each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`); every reconcile re-reads the referenced Secrets and pushes any changed credentials to dbaas-aggregator without a manual spec change. So a credential rotation is picked up within one resync interval rather than instantly. Secret bodies are not cached — they are fetched from the API server only at reconcile time.
 
+> **Force an immediate refresh:** to apply a referenced-Secret change at once (instead of waiting for the resync), change the `dbaas.netcracker.com/refresh` annotation on the CR — the controller reconciles immediately, re-reads the Secret, and re-registers with dbaas-aggregator. Use a changing value (e.g. a timestamp) so the underlying watch fires:
+
+```bash
+kubectl annotate externaldatabase <name> dbaas.netcracker.com/refresh="$(date +%s)" --overwrite
+```
+
 #### How ExternalDatabase Works
 
 A reconcile is triggered when any of the following happens:
@@ -745,6 +751,7 @@ A reconcile is triggered when any of the following happens:
 - The CR is created.
 - The CR spec changes (i.e., `metadata.generation` increments).
 - The periodic resync fires (every `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`). Each reconcile re-reads the referenced Secrets, so a credential rotation is picked up on the next resync — the operator does **not** watch Secrets, so the reaction is bounded by this interval rather than instant.
+- The `dbaas.netcracker.com/refresh` annotation changes — a manual escape hatch to apply a referenced-Secret change at once, without waiting for the resync (see below).
 - The covering `NamespaceBinding` is created or updated (e.g., the namespace is being claimed for the first time).
 
 On each reconcile, the controller:
