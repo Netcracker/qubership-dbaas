@@ -221,7 +221,7 @@ The dashboard is organised into rows that mirror the metric groups above.
 
 | Value | Meaning |
 |---|---|
-| `spec_change` | The CR spec / generation changed |
+| `spec_change` | The CR spec / generation changed. It is also the **default/catch-all** bucket: for `ExternalDatabase` it additionally counts the periodic resync (`ResyncInterval`) and `refresh`-annotation force-reconciles, since those are not classified as any of the more specific triggers below. |
 | `namespace_binding_change` | A `NamespaceBinding` change re-enqueued the CR |
 | `polling` | The rotation poller's changed-databases feed |
 | `rotation_trigger` | A rotation-trigger annotation was stamped |
