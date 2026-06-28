@@ -44,7 +44,7 @@ default** — once you enable it (`DBAAS_OPERATOR_ENABLED=true`), the `PodMonito
 created automatically (with `MONITORING_ENABLED` left at its `true` default):
 
 - **`PodMonitor`** (`<SERVICE_NAME>-pod-monitor`, `monitoring.coreos.com/v1`) — selects the operator
-  pods (`app: <SERVICE_NAME>`) in the operator's namespace and scrapes the `metrics` port at
+  pods (`name: <SERVICE_NAME>`) in the operator's namespace and scrapes the `metrics` port at
   `/metrics` every **30 s** over HTTP. It carries the label
   `app.kubernetes.io/processed-by-operator: victoriametrics-operator`, so the **VictoriaMetrics
   Operator** reconciles it into scrape config (the `PodMonitor` CRD is shared with prometheus-operator).
