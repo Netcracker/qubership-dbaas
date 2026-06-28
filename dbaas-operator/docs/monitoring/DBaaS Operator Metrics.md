@@ -200,7 +200,7 @@ The dashboard is organised into rows that mirror the metric groups above.
 |---|---|---|
 | Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
 | NamespaceBinding States | NamespaceBindings by state (`mine` / `foreign` / `deleting` …) | `dbaas_namespace_binding_state` |
-| Resources Deleting With Finalizers | CRs stuck in deletion with finalizers still present | `dbaas_resource_deletion_state` |
+| Resources being deleted | CRs stuck in deletion | `dbaas_resource_deletion_state` |
 
 ---
 
