@@ -193,10 +193,11 @@ jobs:
 
       - name: Deploy spring test app service
         run: |
-          # Point the service's aggregator URL at an unreachable host on purpose: the
-          # InternalDatabase/DatabaseSecretClaim are provisioned by the operator (which uses the
-          # real aggregator), but the service itself must resolve its database from the mounted
-          # secret. If any DML succeeds, REST was not the source — it could not have been.
+          # Deploy against the live aggregator (like the go app). The IT then runs a baseline over
+          # the mounted-secret datasource, and a second test flips API_DBAAS_ADDRESS to an
+          # unreachable host at runtime to prove the service resolves its database from the mounted
+          # secret rather than REST. The InternalDatabase/DatabaseSecretClaim are provisioned by the
+          # operator, which uses its own aggregator config independent of the service's URL.
           helm upgrade --install "$SPRING_SERVICE_NAME" \
             test-apps/spring-test-app-service/helm-templates/spring-test-app-service \
             -f test-apps/spring-test-app-service/helm-templates/spring-test-app-service/resource-profiles/dev.yaml \
@@ -205,11 +206,12 @@ jobs:
             --set IMAGE_REPOSITORY="$SPRING_IMAGE_REPOSITORY" \
             --set TAG="$SPRING_IMAGE_TAG" \
             --set IMAGE_PULL_POLICY="Never" \
-            --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
+            --set API_DBAAS_ADDRESS="http://dbaas-aggregator.$TEST_NAMESPACE:8080"
 
       - name: Deploy quarkus test app service
         run: |
-          # Same as spring: an unreachable aggregator URL forces the mounted-secret path.
+          # Same as spring: deploy against the live aggregator; the IT flips API_DBAAS_ADDRESS to an
+          # unreachable host at runtime to prove the mounted-secret path.
           helm upgrade --install "$QUARKUS_SERVICE_NAME" \
             test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service \
             -f test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service/resource-profiles/dev.yaml \
@@ -218,7 +220,7 @@ jobs:
             --set IMAGE_REPOSITORY="$QUARKUS_IMAGE_REPOSITORY" \
             --set TAG="$QUARKUS_IMAGE_TAG" \
             --set IMAGE_PULL_POLICY="Never" \
-            --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
+            --set API_DBAAS_ADDRESS="http://dbaas-aggregator.$TEST_NAMESPACE:8080"
 
       - name: Wait for sample services
         run: |
