@@ -243,6 +243,19 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 	return err
 }
 
+// CreateDatabase materializes (get-or-create) a logical database for the given classifier at
+// PUT /api/v3/dbaas/{namespace}/databases — the same call a microservice's dbaas client makes at
+// runtime. The operator uses it to eagerly create a concrete {scope=tenant, tenantId} database that
+// the declarative tenant InternalDatabase does not materialize on its own. The call is synchronous
+// for the postgresql-family adapters used here (the response body — the database descriptor — is not
+// needed, only the success status). Returns *AggregatorError on non-2xx.
+func (c *AggregatorClient) CreateDatabase(ctx context.Context, namespace string, req *CreateDatabaseRequest) error {
+	_, err := c.doRequest(ctx, http.MethodPut,
+		fmt.Sprintf("/api/v3/dbaas/%s/databases", namespace), req, nil,
+		http.StatusOK, http.StatusCreated)
+	return err
+}
+
 // ApplyMicroserviceBalancingRules sends on-microservice balancing rules to
 // PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices.
 func (c *AggregatorClient) ApplyMicroserviceBalancingRules(ctx context.Context, namespace string, req []OnMicroserviceRuleRequest) error {

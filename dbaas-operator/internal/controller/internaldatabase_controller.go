@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -176,6 +177,10 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 
 	// HTTP 200 OK — synchronous completion.
 	log.InfoC(ctx, "database provisioned synchronously. microserviceName = %v", dd.Spec.Classifier.MicroserviceName)
+	if err := r.materializeTenantDatabaseIfPinned(ctx, dd); err != nil {
+		log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
+		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+	}
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 		"database provisioned synchronously (microserviceName=%s)",
@@ -218,6 +223,31 @@ func (r *InternalDatabaseReconciler) buildPayload(dd *dbaasv1.InternalDatabase) 
 		},
 		Spec: toWireSpec(dd.Spec, dd.Namespace),
 	}
+}
+
+// materializeTenantDatabaseIfPinned eagerly creates the concrete {scope=tenant, tenantId} database for
+// a tenant-scoped InternalDatabase that pins an explicit tenantId. The declarative apply only registers
+// a tenant-agnostic template: the aggregator drops tenantId from a tenant declaration and materializes
+// per-tenant databases only for tenants that already exist, so a freshly declared, never-yet-connected
+// tenant has no database. Without this, a DatabaseSecretClaim for {scope=tenant, tenantId} does a
+// read-only get-by-classifier and waits forever (DatabaseNotFound). Calling the get-or-create database
+// API materializes the database exactly as the first runtime tenant connection would, after which the
+// claim resolves. No-op for service scope or a tenant declaration without a pinned tenantId.
+func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx context.Context, dd *dbaasv1.InternalDatabase) error {
+	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantId == "" {
+		return nil
+	}
+	req := &aggregatorclient.CreateDatabaseRequest{
+		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(dd.Spec.Classifier, dd.Namespace)),
+		Type:          dd.Spec.Type,
+		OriginService: dd.Spec.Classifier.MicroserviceName,
+	}
+	log.InfoC(ctx, "materializing pinned tenant database tenantId=%v microserviceName=%v",
+		dd.Spec.Classifier.TenantId, dd.Spec.Classifier.MicroserviceName)
+	start := time.Now()
+	err := r.Aggregator.CreateDatabase(ctx, dd.Namespace, req)
+	recordAggregatorCall(controllerIDB, operationCreateDatabase, start, err)
+	return err
 }
 
 // toWireSpec converts a InternalDatabaseSpec (CRD shape) into the wire format
@@ -452,6 +482,10 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 			trackingID, dd.Spec.Classifier.MicroserviceName)
 		clearPendingOperation(dd)
 		r.observeAsyncCompletion(dd, resultSuccess)
+		if err := r.materializeTenantDatabaseIfPinned(ctx, dd); err != nil {
+			log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
+			return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		}
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 			"database provisioned (microserviceName=%s, trackingId=%s)",
