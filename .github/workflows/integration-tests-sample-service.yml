@@ -123,6 +123,19 @@ jobs:
           docker build -t "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" test-apps/quarkus-test-app-service
           kind load docker-image "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" --name kind
 
+      - name: Defuse backup-restore self-check for kind (no backup daemon present)
+        run: |
+          # kind installs no backup daemon, so the aggregator's scheduled backup-restore self-check
+          # (DbBackupV2Service @Scheduled, every=DBAAS_BACKUP_RESTORE_CHECK_INTERVAL) can never succeed and
+          # retries DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS times — each attempt create+drops a throwaway
+          # database, and that burst overwhelms the single-node Patroni, breaking unrelated provisioning.
+          # Push the interval past the run and drop the retries. Workflow-only override via DBAAS_VALUES_FILE;
+          # bootstrap/dbaas-values.yaml is left untouched.
+          sed -e 's/^DBAAS_BACKUP_RESTORE_CHECK_INTERVAL:.*/DBAAS_BACKUP_RESTORE_CHECK_INTERVAL: 24h/' \
+              -e 's/^DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS:.*/DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS: 1/' \
+              bootstrap/dbaas-values.yaml > "$GITHUB_WORKSPACE/dbaas-values-it.yaml"
+          grep -E 'DBAAS_BACKUP_RESTORE_CHECK_(INTERVAL|ATTEMPTS)' "$GITHUB_WORKSPACE/dbaas-values-it.yaml"
+
       - name: Deploy DBaaS Aggregator, Operator, and PostgreSQL
         working-directory: bootstrap
         run: >
@@ -130,6 +143,7 @@ jobs:
           CONFIG_FILE=local.mk
           KUBERNETES_M2M_ENABLED=true
           OPERATOR_M2M_ENABLED=false
+          DBAAS_VALUES_FILE=$GITHUB_WORKSPACE/dbaas-values-it.yaml
           PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
           REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 
