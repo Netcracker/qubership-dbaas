@@ -21,8 +21,10 @@
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.version>3.33.1</quarkus.platform.version>
-        <!-- Pin the dbaas Quarkus extension to the snapshot that carries the mounted-secret feature. -->
-        <dbaas-quarkus.version>10.1.1-SNAPSHOT</dbaas-quarkus.version>
+        <!-- Pin to the unique snapshot published from the throwaway branch (throwaway/quarkus-mounted-secret-publish)
+             so a master rebuild of 10.1.1-SNAPSHOT does NOT overwrite the mounted-secret artifacts.
+             Revert to the released version once the feature lands. -->
+        <dbaas-quarkus.version>10.1.1-mounted-secret-SNAPSHOT</dbaas-quarkus.version>
         <skipITs>true</skipITs>
     </properties>
 
