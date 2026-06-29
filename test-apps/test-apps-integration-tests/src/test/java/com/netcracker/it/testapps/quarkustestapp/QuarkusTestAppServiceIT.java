@@ -36,29 +36,41 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Black-box integration test for the Quarkus mounted-secret PostgreSQL client path, mirroring
- * {@code GoTestAppServiceIT} / {@code SpringTestAppServiceIT}.
+ * Black-box integration test for the Quarkus mounted-secret PostgreSQL client across all four
+ * (scope × role) quadrants, mirroring {@code GoTestAppServiceIT} / {@code SpringTestAppServiceIT}.
  *
- * <p>The service is deployed against the <b>live</b> aggregator (the {@code InternalDatabase}/
- * {@code DatabaseSecretClaim} are provisioned by the operator, which uses its own aggregator config).
- * Two tests, matching the go suite:
- * <ul>
- *   <li>a baseline that runs the Flyway migration and DML over the mounted-secret datasource; and</li>
- *   <li>a proof that flips {@code API_DBAAS_ADDRESS} to an unreachable host at runtime — if DML still
- *       succeeds, the connection came from the mount, not REST (a dead host cannot return one).</li>
- * </ul>
+ * <p>The service is deployed with its aggregator URL ({@code API_DBAAS_ADDRESS}) pointed at an
+ * <b>unreachable</b> host on purpose. The operator (which uses the real aggregator) provisions two
+ * databases (service + tenant) and four {@code DatabaseSecretClaim}s — service/tenant × no-role/admin —
+ * each materialized into its own mounted secret. The app resolves a matching datasource per quadrant
+ * from those secrets, so a successful insert/list on each endpoint proves the connection came from the
+ * mount, not REST (a dead host cannot return one):
+ * <pre>
+ *   /postgres               Q1 service + no role     /postgres-admin         Q2 service + admin
+ *   /postgres-tenant        Q3 tenant  + no role     /postgres-tenant-admin  Q4 tenant  + admin
+ * </pre>
  */
 public class QuarkusTestAppServiceIT {
 
     private static final String SAMPLE_SERVICE_NAME = "quarkus-test-app-service";
-    private static final String INTERNAL_DATABASE_NAME = "quarkus-test-app-service-postgres";
-    private static final String DATABASE_SECRET_CLAIM_NAME = "quarkus-test-app-service-postgres-claim";
-    private static final String DATABASE_SECRET_NAME = "quarkus-test-app-service-postgres";
     private static final String CONNECTION_PROPERTIES_KEY = "connectionProperties.json";
     private static final String METADATA_KEY = "metadata.json";
     private static final String POSTGRES_TYPE = "postgresql";
+    private static final String TENANT_ID = "acme";
+    private static final String ADMIN_ROLE = "admin";
     private static final int HTTP_PORT = 8080;
     private static final MediaType JSON = MediaType.get("application/json");
+
+    private static final String INTERNAL_DB_SERVICE = "quarkus-test-app-service-postgres";
+    private static final String INTERNAL_DB_TENANT = "quarkus-test-app-service-postgres-tenant";
+    private static final String CLAIM_SERVICE = "quarkus-test-app-service-postgres-claim";
+    private static final String CLAIM_SERVICE_ADMIN = "quarkus-test-app-service-postgres-admin-claim";
+    private static final String CLAIM_TENANT = "quarkus-test-app-service-postgres-tenant-claim";
+    private static final String CLAIM_TENANT_ADMIN = "quarkus-test-app-service-postgres-tenant-admin-claim";
+    private static final String SECRET_SERVICE = "quarkus-test-app-service-postgres";
+    private static final String SECRET_SERVICE_ADMIN = "quarkus-test-app-service-postgres-admin";
+    private static final String SECRET_TENANT = "quarkus-test-app-service-postgres-tenant";
+    private static final String SECRET_TENANT_ADMIN = "quarkus-test-app-service-postgres-tenant-admin";
 
     private static final CustomResourceDefinitionContext CRD_INTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
@@ -92,13 +104,17 @@ public class QuarkusTestAppServiceIT {
         namespace = getRequiredPropertyOrEnv("clouds.cloud.namespaces.namespace");
         kubernetesClient = new KubernetesClientBuilder().build();
 
-        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DATABASE_NAME,
-                "Succeeded", "True", "DatabaseProvisioned", "False");
-        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, DATABASE_SECRET_CLAIM_NAME,
-                "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_SERVICE, "Succeeded", "True", "DatabaseProvisioned", "False");
+        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_TENANT, "Succeeded", "True", "DatabaseProvisioned", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE, "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE_ADMIN, "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT, "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT_ADMIN, "Succeeded", "True", "SecretCreated", "False");
 
-        Secret secret = waitForSecret(DATABASE_SECRET_NAME);
-        assertMountedSecretContent(secret);
+        assertSecret(waitForSecret(SECRET_SERVICE), "service", null, null);
+        assertSecret(waitForSecret(SECRET_SERVICE_ADMIN), "service", null, ADMIN_ROLE);
+        assertSecret(waitForSecret(SECRET_TENANT), "tenant", TENANT_ID, null);
+        assertSecret(waitForSecret(SECRET_TENANT_ADMIN), "tenant", TENANT_ID, ADMIN_ROLE);
 
         startPortForward();
     }
@@ -126,100 +142,46 @@ public class QuarkusTestAppServiceIT {
         }
     }
 
-    /**
-     * Baseline (live aggregator): the Flyway migration runs and DML round-trips through the
-     * datasource the Quarkus client resolves from the mounted secret.
-     */
+    // Each endpoint is backed by a datasource resolved from a distinct mounted secret matched by
+    // (classifier, type, userRole); a successful round-trip proves that quadrant's secret matched.
+
     @Test
-    void testMountedSecretPostgresClientRunsMigrationsAndDml() throws IOException {
-        String itemName = "quarkus-test-app-e2e-" + UUID.randomUUID();
-
-        executeEventually(new Request.Builder().url(sampleUrl("/postgres/items")).delete().build(), 200);
-
-        String createdBody = execute(new Request.Builder()
-                .url(sampleUrl("/postgres/items"))
-                .post(RequestBody.create("{\"name\":\"" + itemName + "\"}", JSON))
-                .build(), 201);
-        assertTrue(createdBody.contains(itemName), "created item response must contain inserted name");
-
-        String listBody = execute(new Request.Builder().url(sampleUrl("/postgres/items")).get().build(), 200);
-        JsonObject response = GSON.fromJson(listBody, JsonObject.class);
-        JsonArray items = response.getAsJsonArray("items");
-        assertNotNull(items, "items response field must be present");
-        assertTrue(containsItemName(items, itemName), "inserted item must be returned by GET /postgres/items");
+    void serviceNoRole_Q1() throws IOException {
+        crudRoundTrip("/postgres");
     }
 
-    /**
-     * Proof: flip {@code API_DBAAS_ADDRESS} to an unreachable host at runtime, wait for the new pod,
-     * and re-run DML. Success can only mean the connection came from the mounted secret — a REST call
-     * to dbaas-aggregator could not have returned one. The original URL is restored afterwards.
-     */
     @Test
-    void testServiceWorksWithInvalidAggregatorUrl() throws IOException {
-        var deployment = kubernetesClient.apps().deployments()
-                .inNamespace(namespace)
-                .withName(SAMPLE_SERVICE_NAME)
-                .get();
-        assertNotNull(deployment, "Deployment must exist before test");
+    void serviceAdmin_Q2() throws IOException {
+        crudRoundTrip("/postgres-admin");
+    }
 
-        String originalAggregatorUrl = deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
-                .filter(env -> "API_DBAAS_ADDRESS".equals(env.getName()))
-                .findFirst()
-                .map(env -> env.getValue())
-                .orElse(null);
-        assertNotNull(originalAggregatorUrl, "API_DBAAS_ADDRESS env var must exist before test");
+    @Test
+    void tenantNoRole_Q3() throws IOException {
+        crudRoundTrip("/postgres-tenant");
+    }
 
-        try {
-            deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
-                    .filter(env -> "API_DBAAS_ADDRESS".equals(env.getName()))
-                    .findFirst()
-                    .ifPresent(env -> env.setValue("http://invalid-aggregator.example.com:9999"));
+    @Test
+    void tenantAdmin_Q4() throws IOException {
+        crudRoundTrip("/postgres-tenant-admin");
+    }
 
-            var updatedDeployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .resource(deployment)
-                    .update();
+    private void crudRoundTrip(String basePath) throws IOException {
+        String itemName = "quarkus-e2e-" + UUID.randomUUID();
 
-            waitForDeploymentReady(updatedDeployment.getMetadata().getGeneration());
-            restartPortForward();
+        // First call also lazily runs the Flyway migration on the resolved datasource; retry while it warms up.
+        executeEventually(new Request.Builder().url(sampleUrl(basePath + "/items")).delete().build(), 200);
 
-            String itemName = "invalid-aggregator-test-" + UUID.randomUUID();
+        String createdBody = execute(new Request.Builder()
+                .url(sampleUrl(basePath + "/items"))
+                .post(RequestBody.create("{\"name\":\"" + itemName + "\"}", JSON))
+                .build(), 201);
+        assertTrue(createdBody.contains(itemName), basePath + ": created item response must contain inserted name");
 
-            executeEventually(new Request.Builder().url(sampleUrl("/postgres/items")).delete().build(), 200);
-
-            String createdBody = execute(new Request.Builder()
-                    .url(sampleUrl("/postgres/items"))
-                    .post(RequestBody.create("{\"name\":\"" + itemName + "\"}", JSON))
-                    .build(), 201);
-            assertTrue(createdBody.contains(itemName),
-                    "Service must successfully create item even with invalid aggregator URL");
-
-            String listBody = execute(new Request.Builder().url(sampleUrl("/postgres/items")).get().build(), 200);
-            JsonObject response = GSON.fromJson(listBody, JsonObject.class);
-            JsonArray items = response.getAsJsonArray("items");
-            assertNotNull(items, "items response field must be present");
-            assertTrue(containsItemName(items, itemName),
-                    "Service must successfully retrieve items even with invalid aggregator URL - proves it reads from mounted secret");
-
-        } finally {
-            var restoredDeployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .withName(SAMPLE_SERVICE_NAME)
-                    .get();
-
-            restoredDeployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
-                    .filter(env -> "API_DBAAS_ADDRESS".equals(env.getName()))
-                    .findFirst()
-                    .ifPresent(env -> env.setValue(originalAggregatorUrl));
-
-            var restoredUpdatedDeployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .resource(restoredDeployment)
-                    .update();
-
-            waitForDeploymentReady(restoredUpdatedDeployment.getMetadata().getGeneration());
-            restartPortForward();
-        }
+        String listBody = execute(new Request.Builder().url(sampleUrl(basePath + "/items")).get().build(), 200);
+        JsonObject response = GSON.fromJson(listBody, JsonObject.class);
+        JsonArray items = response.getAsJsonArray("items");
+        assertNotNull(items, basePath + ": items response field must be present");
+        assertTrue(containsItemName(items, itemName), basePath + ": inserted item must be returned by GET");
     }
 
     private static void startPortForward() throws IOException {
@@ -233,11 +195,6 @@ public class QuarkusTestAppServiceIT {
                 .start();
         sampleServiceUrl = new URL("http://127.0.0.1:" + localPort);
         waitForServiceHealth();
-    }
-
-    private static void restartPortForward() throws IOException {
-        stopPortForward();
-        startPortForward();
     }
 
     private static int findFreePort() throws IOException {
@@ -328,7 +285,7 @@ public class QuarkusTestAppServiceIT {
         return secret;
     }
 
-    private static void assertMountedSecretContent(Secret secret) {
+    private static void assertSecret(Secret secret, String scope, String tenantId, String expectedUserRole) {
         assertNotNull(secret.getData(), "Secret data must not be null");
         assertTrue(secret.getData().containsKey(CONNECTION_PROPERTIES_KEY),
                 "Secret must contain key: " + CONNECTION_PROPERTIES_KEY);
@@ -341,7 +298,15 @@ public class QuarkusTestAppServiceIT {
         assertNotNull(classifier, "metadata classifier must be present");
         assertEquals(SAMPLE_SERVICE_NAME, classifier.get("microserviceName").getAsString());
         assertEquals(namespace, classifier.get("namespace").getAsString());
-        assertEquals("service", classifier.get("scope").getAsString());
+        assertEquals(scope, classifier.get("scope").getAsString());
+        if (tenantId != null) {
+            assertNotNull(classifier.get("tenantId"), "tenant classifier must carry tenantId");
+            assertEquals(tenantId, classifier.get("tenantId").getAsString());
+        }
+        if (expectedUserRole != null) {
+            assertNotNull(metadata.get("userRole"), "role-scoped secret must carry userRole in metadata");
+            assertEquals(expectedUserRole, metadata.get("userRole").getAsString(), "metadata userRole must match the claim");
+        }
     }
 
     private static JsonObject decodeSecretJson(Secret secret, String key) {
@@ -415,46 +380,6 @@ public class QuarkusTestAppServiceIT {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    private static void waitForDeploymentReady(Long targetGeneration) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120);
-        while (System.nanoTime() < deadline) {
-            var deployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .withName(SAMPLE_SERVICE_NAME)
-                    .get();
-            if (deployment == null || deployment.getStatus() == null || deployment.getSpec() == null) {
-                sleep(Duration.ofSeconds(2));
-                continue;
-            }
-
-            int desiredReplicas = deployment.getSpec().getReplicas() == null ? 1 : deployment.getSpec().getReplicas();
-            Long observedGeneration = deployment.getStatus().getObservedGeneration();
-            Integer replicas = deployment.getStatus().getReplicas();
-            Integer readyReplicas = deployment.getStatus().getReadyReplicas();
-            Integer updatedReplicas = deployment.getStatus().getUpdatedReplicas();
-            Integer availableReplicas = deployment.getStatus().getAvailableReplicas();
-            Integer unavailableReplicas = deployment.getStatus().getUnavailableReplicas();
-
-            if (observedGeneration != null
-                    && observedGeneration >= targetGeneration
-                    && replicas != null
-                    && replicas == desiredReplicas
-                    && readyReplicas != null
-                    && readyReplicas == desiredReplicas
-                    && updatedReplicas != null
-                    && updatedReplicas == desiredReplicas
-                    && availableReplicas != null
-                    && availableReplicas == desiredReplicas
-                    && (unavailableReplicas == null || unavailableReplicas == 0)) {
-                return;
-            }
-
-            sleep(Duration.ofSeconds(2));
-        }
-
-        throw new AssertionError("Deployment did not roll out and become ready within timeout");
     }
 
     private static String waitForReadyPodName() {

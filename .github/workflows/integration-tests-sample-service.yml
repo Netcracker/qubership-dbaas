@@ -210,8 +210,9 @@ jobs:
 
       - name: Deploy quarkus test app service
         run: |
-          # Same as spring: deploy against the live aggregator; the IT flips API_DBAAS_ADDRESS to an
-          # unreachable host at runtime to prove the mounted-secret path.
+          # Deploy against an UNREACHABLE aggregator on purpose: the app resolves four datasources
+          # (service/tenant x no-role/admin) from four mounted secrets, so a successful insert/list on
+          # each /postgres* endpoint proves the connection came from the mount, not a REST call.
           helm upgrade --install "$QUARKUS_SERVICE_NAME" \
             test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service \
             -f test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service/resource-profiles/dev.yaml \
@@ -220,7 +221,7 @@ jobs:
             --set IMAGE_REPOSITORY="$QUARKUS_IMAGE_REPOSITORY" \
             --set TAG="$QUARKUS_IMAGE_TAG" \
             --set IMAGE_PULL_POLICY="Never" \
-            --set API_DBAAS_ADDRESS="http://dbaas-aggregator.$TEST_NAMESPACE:8080"
+            --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
 
       - name: Wait for sample services
         run: |
