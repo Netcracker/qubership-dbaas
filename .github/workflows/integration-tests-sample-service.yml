@@ -266,41 +266,48 @@ jobs:
           if-no-files-found: warn
 
       - name: Dump diagnostics on failure
-        if: always() && steps.tests.outcome != 'skipped'
+        # always() so this also runs when the deploy/rollout fails (which skips the tests step);
+        # the body stays quiet on a fully green run.
+        if: always()
         run: |
           set +e
           shopt -s nullglob
           reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
-          if [ "${#reports[@]}" -eq 0 ]; then
-            echo "::warning::No Surefire XML reports found"
-          elif ! grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
+          if [ "${#reports[@]}" -gt 0 ] && ! grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
+            echo "All sample-service tests passed; skipping diagnostics."
             exit 0
           fi
           echo "::group::All pods"
           kubectl get pods -A -o wide
           echo "::endgroup::"
-          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "$GO_SERVICE_NAME:$TEST_NAMESPACE" "$SPRING_SERVICE_NAME:$TEST_NAMESPACE" "$QUARKUS_SERVICE_NAME:$TEST_NAMESPACE"; do
+          echo "::group::Sample-service pods describe (scheduling / FailedMount events)"
+          for svc in "$GO_SERVICE_NAME" "$SPRING_SERVICE_NAME" "$QUARKUS_SERVICE_NAME"; do
+            kubectl -n "$TEST_NAMESPACE" describe pod -l app.kubernetes.io/name="$svc"
+          done
+          echo "::endgroup::"
+          echo "::group::All InternalDatabase + DatabaseSecretClaim ($TEST_NAMESPACE)"
+          kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o wide
+          kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o yaml
+          echo "::endgroup::"
+          echo "::group::Secrets ($TEST_NAMESPACE)"
+          kubectl -n "$TEST_NAMESPACE" get secret -o name
+          echo "::endgroup::"
+          echo "::group::Physical databases on Patroni + dbaas classifier registry (who created what)"
+          PG_POD="$(kubectl -n postgres get pods -o name | grep '^pod/pg-patroni-' | head -1 | cut -d/ -f2)"
+          echo "patroni pod: $PG_POD"
+          kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -P pager=off -c '\l'" 2>&1
+          echo "--- every dbaas-managed classifier (microserviceName/namespace/scope/tenantId) by creation time ---"
+          kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -d dbaas -P pager=off -c \"select time_db_creation, type, namespace, classifier from classifier order by time_db_creation;\"" 2>&1
+          echo "::endgroup::"
+          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "dbaas-postgres-adapter:postgres"; do
             d="${pair%%:*}"; ns="${pair##*:}"
-            echo "::group::describe deploy/$d ($ns)"
-            kubectl -n "$ns" describe deploy/"$d"
-            echo "::endgroup::"
-            echo "::group::logs $d ($ns, current)"
-            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=300
-            echo "::endgroup::"
-            echo "::group::logs $d ($ns, previous)"
-            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --previous --tail=300
+            echo "::group::logs $d ($ns)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=2000 2>&1
             echo "::endgroup::"
           done
-          echo "::group::Mounted-secret CRs"
-          kubectl -n "$TEST_NAMESPACE" describe internaldatabase go-test-app-service-postgres
-          kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim go-test-app-service-postgres-claim
-          kubectl -n "$TEST_NAMESPACE" describe internaldatabase spring-test-app-service-postgres
-          kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim spring-test-app-service-postgres-claim
-          kubectl -n "$TEST_NAMESPACE" describe internaldatabase quarkus-test-app-service-postgres
-          kubectl -n "$TEST_NAMESPACE" describe databasesecretclaim quarkus-test-app-service-postgres-claim
-          echo "::endgroup::"
-          echo "::group::Recent dbaas events"
-          kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -100
+          echo "::group::Recent events ($TEST_NAMESPACE + postgres)"
+          kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -150
+          kubectl -n postgres get events --sort-by=.lastTimestamp | tail -100
           echo "::endgroup::"
 
       - name: Fail job if sample service tests failed
