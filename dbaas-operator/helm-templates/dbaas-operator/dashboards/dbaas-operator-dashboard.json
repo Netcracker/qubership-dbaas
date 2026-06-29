@@ -939,7 +939,7 @@
                    {
                        "id":  30,
                        "type":  "timeseries",
-                       "title":  "Resources Deleting With Finalizers",
+                       "title":  "Resources being deleted",
                        "description":  "Current dbaas resources that have deletionTimestamp set. deleting_with_finalizer means cleanup/finalizer removal is still pending.",
                        "gridPos":  {
                                        "h":  8,
