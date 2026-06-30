@@ -231,24 +231,9 @@ jobs:
             --set IMAGE_PULL_POLICY="Never" \
             --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
 
-      - name: Materialize the static tenant database
-        run: |
-          # A tenant-scoped InternalDatabase only registers a per-tenant template via /declarations/apply;
-          # it does NOT create a concrete {scope=tenant, tenantId=acme} database. The DatabaseSecretClaim
-          # only GETs by classifier, so it would wait forever. Create the tenant database once via the
-          # aggregator API (exactly as a tenant connection would at runtime); both tenant claims then find
-          # it and mint their secrets. Service-scope databases are created by their InternalDatabase directly.
-          U=$(kubectl -n postgres get secret dbaas-aggregator-registration-credentials -o jsonpath='{.data.username}' | base64 -d)
-          P=$(kubectl -n postgres get secret dbaas-aggregator-registration-credentials -o jsonpath='{.data.password}' | base64 -d)
-          kubectl -n "$TEST_NAMESPACE" port-forward svc/dbaas-aggregator 18080:8080 >/tmp/agg-pf.log 2>&1 &
-          PF=$!
-          for i in {1..30}; do curl -sf -o /dev/null "http://127.0.0.1:18080/health" && break; sleep 2; done
-          echo "Creating {scope=tenant, tenantId=acme} database via aggregator:"
-          curl -s -w '\nHTTP %{http_code}\n' -u "$U:$P" -X PUT \
-            "http://127.0.0.1:18080/api/v3/dbaas/$TEST_NAMESPACE/databases" \
-            -H 'Content-Type: application/json' \
-            -d "{\"classifier\":{\"microserviceName\":\"quarkus-test-app-service\",\"namespace\":\"$TEST_NAMESPACE\",\"scope\":\"tenant\",\"tenantId\":\"acme\"},\"type\":\"postgresql\",\"originService\":\"quarkus-test-app-service\"}"
-          kill $PF 2>/dev/null || true
+      # Tenant databases are materialized by the operator: a tenant InternalDatabase that pins a
+      # tenantId triggers a get-or-create after the declarative apply, so each tenant DatabaseSecretClaim
+      # resolves without any out-of-band step here. (Previously a quarkus-only curl created the tenant DB.)
 
       - name: Wait for sample services
         run: |
