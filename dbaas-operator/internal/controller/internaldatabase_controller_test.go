@@ -56,15 +56,19 @@ var _ = Describe("InternalDatabase Controller", func() {
 	)
 
 	var (
-		applyCode         int
-		applyBody         string
-		pollCode          int
-		pollBody          string
-		capturedApplyBody []byte
-		mockServer        *httptest.Server
-		reconciler        *InternalDatabaseReconciler
-		fakeRecorder      *record.FakeRecorder
-		namespacedName    types.NamespacedName
+		applyCode          int
+		applyBody          string
+		pollCode           int
+		pollBody           string
+		capturedApplyBody  []byte
+		createCode         int
+		capturedCreateBody []byte
+		createPath         string
+		createReqCount     int
+		mockServer         *httptest.Server
+		reconciler         *InternalDatabaseReconciler
+		fakeRecorder       *record.FakeRecorder
+		namespacedName     types.NamespacedName
 	)
 
 	// baseSpec returns a minimal valid InternalDatabase spec.
@@ -84,6 +88,10 @@ var _ = Describe("InternalDatabase Controller", func() {
 		pollCode = http.StatusOK
 		pollBody = statusCompleted
 		capturedApplyBody = nil
+		createCode = http.StatusOK
+		capturedCreateBody = nil
+		createPath = ""
+		createReqCount = 0
 
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -102,6 +110,18 @@ var _ = Describe("InternalDatabase Controller", func() {
 				if pollBody != "" {
 					_, _ = w.Write([]byte(pollBody))
 				}
+				return
+			}
+
+			// get-or-create database: PUT /api/v3/dbaas/{namespace}/databases — the
+			// pinned-tenant materialization call. Match the exact suffix so the
+			// externally_manageable registration path (…/databases/registration/…)
+			// does not collide.
+			if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/databases") {
+				capturedCreateBody, _ = io.ReadAll(r.Body)
+				createPath = r.URL.Path
+				createReqCount++
+				w.WriteHeader(createCode)
 				return
 			}
 
@@ -344,6 +364,118 @@ var _ = Describe("InternalDatabase Controller", func() {
 
 			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
 			expectNoRecordedEvent(fakeRecorder.Events)
+		})
+	})
+
+	// ── pinned-tenant database materialization ───────────────────────────────
+	// A tenant-scoped InternalDatabase that pins an explicit tenantId must, after the
+	// declarative apply, also get-or-create the concrete {scope=tenant, tenantId} database
+	// (PUT /api/v3/dbaas/{ns}/databases) so a matching DatabaseSecretClaim resolves. Service
+	// scope and tenant-without-tenantId must NOT trigger that extra call.
+
+	tenantSpec := func(tenantID string) dbaasv1.InternalDatabaseSpec {
+		spec := baseSpec()
+		spec.Classifier.Scope = "tenant"
+		spec.Classifier.TenantId = tenantID
+		return spec
+	}
+
+	Context("scope=tenant with a pinned tenantId (synchronous apply)", func() {
+		It("materializes the concrete tenant database via PUT /databases and succeeds", func() {
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       tenantSpec("acme"),
+			})).To(Succeed())
+
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+
+			Expect(createReqCount).To(Equal(1), "pinned tenant must be materialized exactly once")
+			Expect(createPath).To(Equal("/api/v3/dbaas/" + ns + "/databases"))
+
+			var sent struct {
+				Classifier    map[string]any `json:"classifier"`
+				Type          string         `json:"type"`
+				OriginService string         `json:"originService"`
+			}
+			Expect(json.Unmarshal(capturedCreateBody, &sent)).To(Succeed())
+			Expect(sent.Type).To(Equal("postgresql"))
+			Expect(sent.OriginService).To(Equal("test-service"))
+			Expect(sent.Classifier["scope"]).To(Equal("tenant"))
+			Expect(sent.Classifier["tenantId"]).To(Equal("acme"))
+			Expect(sent.Classifier["microserviceName"]).To(Equal("test-service"))
+			Expect(sent.Classifier["namespace"]).To(Equal(ns))
+		})
+	})
+
+	Context("scope=tenant with a pinned tenantId (asynchronous apply)", func() {
+		It("materializes the tenant database only after the async operation completes", func() {
+			applyCode = http.StatusAccepted
+			applyBody = `{"status":"IN_PROGRESS","trackingId":"trk-1"}`
+
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       tenantSpec("acme"),
+			})).To(Succeed())
+
+			// First reconcile: async submit (202) — must NOT materialize yet.
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			Expect(dd.Status.TrackingID).To(Equal("trk-1"))
+			Expect(createReqCount).To(Equal(0), "must not materialize before provisioning completes")
+
+			// Second reconcile: poll returns COMPLETED (BeforeEach default) — now materialize.
+			dd, _, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(createReqCount).To(Equal(1))
+		})
+	})
+
+	Context("scope=service", func() {
+		It("succeeds without any get-or-create call", func() {
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			dd, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(createReqCount).To(Equal(0), "service scope must not materialize a tenant database")
+		})
+	})
+
+	Context("scope=tenant without a pinned tenantId (tenant-agnostic template)", func() {
+		It("succeeds without any get-or-create call", func() {
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       tenantSpec(""),
+			})).To(Succeed())
+
+			dd, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(createReqCount).To(Equal(0), "a tenant template without a pinned tenantId must not materialize")
+		})
+	})
+
+	Context("scope=tenant with a pinned tenantId — materialization fails", func() {
+		It("does not mark Succeeded and requeues with an error", func() {
+			createCode = http.StatusInternalServerError
+
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       tenantSpec("acme"),
+			})).To(Succeed())
+
+			dd, _, err := reconcileAndFetch()
+			Expect(err).To(HaveOccurred())
+			Expect(createReqCount).To(Equal(1))
+			Expect(dd.Status.Phase).NotTo(Equal(dbaasv1.PhaseSucceeded))
 		})
 	})
 

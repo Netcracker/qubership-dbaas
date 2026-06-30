@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
     app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
     app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
-    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
     app.kubernetes.io/component: 'operator'
     app.kubernetes.io/technology: 'go'
@@ -48,7 +48,7 @@ spec:
         app.kubernetes.io/instance: '{{ cat .Values.SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
         app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
         app.kubernetes.io/component: 'operator'
-        app.kubernetes.io/part-of: 'dbaas'
+        app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
         app.kubernetes.io/technology: 'go'
     spec:
       nodeSelector:

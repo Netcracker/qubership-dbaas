@@ -296,6 +296,32 @@ defer func() {
 
 ---
 
+## Metrics & monitoring
+
+The operator exposes Prometheus metrics on `:8080/metrics`, defined in:
+
+- `internal/controller/metrics.go` — event/operation counters & histograms (reconcile triggers,
+  aggregator calls, async provisioning, secret-resolution errors) plus their recording helpers.
+- `internal/controller/resource_metrics.go` — `kube-state-metrics`-style current-state gauges
+  emitted by a custom `prometheus.Collector` (phase, conditions, generation lag, deletion state,
+  balancing targets, …).
+
+The Helm chart ships a `PodMonitor` (`helm-templates/dbaas-operator/templates/PodMonitor.yaml`) and a
+Grafana dashboard (`templates/Dashboard.yaml` +
+`helm-templates/dbaas-operator/dashboards/dbaas-operator-dashboard.json`), both gated on
+`DBAAS_OPERATOR_ENABLED && MONITORING_ENABLED`.
+
+**Reference:** [`docs/monitoring/DBaaS Operator Metrics.md`](docs/monitoring/DBaaS%20Operator%20Metrics.md)
+— the user-facing catalogue of every metric, its labels and label values, the dashboard panels, and
+example PromQL.
+
+> **Keep the docs in sync — mandatory.** Any change to the metrics surface MUST be reflected in
+> `docs/monitoring/DBaaS Operator Metrics.md` in the **same** change: adding, removing, or renaming a
+> metric, label, or label value; changing histogram buckets; or adding/altering a dashboard panel
+> (also update the dashboard JSON). A metrics change without the matching docs update is incomplete.
+
+---
+
 ## Testing
 
 ### Test framework
@@ -414,12 +440,15 @@ internal/controller/*_controller.go   Reconciliation logic
 internal/controller/helpers.go        Shared condition/status/ownership utilities
 internal/controller/events.go         Event reason constants
 internal/controller/conditions.go     Condition type constants + timing intervals
+internal/controller/metrics.go        Prometheus metrics — definitions + recording helpers
+internal/controller/resource_metrics.go  Resource-state metrics (custom collector)
 internal/client/                      HTTP client for dbaas-aggregator
 internal/poller/                      Rotation poller (changed-databases feed)
 internal/ownership/                   Namespace ownership resolution
 config/                               Kustomize manifests (CRDs, RBAC, samples) — dev/test + envtest
 helm-templates/                       Helm chart templates (production install)
 dev/                                  Local development utilities (Kind, aggregator-mock)
+docs/monitoring/                      Metrics & Grafana dashboard reference docs
 ```
 
 ### Custom Resources (all `dbaas.netcracker.com/v1`)

@@ -317,6 +317,24 @@ public class OperatorHelper {
             String expectedType,
             String expectedUserRole
     ) {
+        assertSecretContainsMetadata(secret, expectedMicroserviceName, expectedNamespace,
+                expectedType, expectedUserRole, "service", null);
+    }
+
+    /**
+     * Tenant-aware variant of {@link #assertSecretContainsMetadata(Secret, String, String, String, String)}:
+     * asserts classifier.scope == expectedScope and, when expectedTenantId is non-null,
+     * classifier.tenantId == expectedTenantId.
+     */
+    public static void assertSecretContainsMetadata(
+            Secret secret,
+            String expectedMicroserviceName,
+            String expectedNamespace,
+            String expectedType,
+            String expectedUserRole,
+            String expectedScope,
+            String expectedTenantId
+    ) {
         assertNotNull(secret.getData(), "Secret data must not be null");
         assertTrue(
                 secret.getData().containsKey(METADATA_KEY),
@@ -342,8 +360,12 @@ public class OperatorHelper {
                 "metadata.classifier.microserviceName");
         assertEquals(expectedNamespace, classifier.path("namespace").asText(),
                 "metadata.classifier.namespace");
-        assertEquals("service", classifier.path("scope").asText(),
+        assertEquals(expectedScope, classifier.path("scope").asText(),
                 "metadata.classifier.scope");
+        if (expectedTenantId != null) {
+            assertEquals(expectedTenantId, classifier.path("tenantId").asText(),
+                    "metadata.classifier.tenantId");
+        }
 
         if (expectedUserRole == null || expectedUserRole.isBlank()) {
             assertFalse(meta.has("userRole"),
@@ -429,6 +451,19 @@ public class OperatorHelper {
         }
 
         cr.setAdditionalProperty("spec", specBody);
+        return cr;
+    }
+
+    /**
+     * Marks an InternalDatabase / DatabaseSecretClaim / ExternalDatabase CR as tenant-scoped:
+     * sets spec.classifier.scope=tenant and spec.classifier.tenantId. Returns the same CR for chaining.
+     */
+    @SuppressWarnings("unchecked")
+    public static GenericKubernetesResource asTenant(GenericKubernetesResource cr, String tenantId) {
+        Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
+        Map<String, Object> classifier = (Map<String, Object>) spec.get("classifier");
+        classifier.put("scope", "tenant");
+        classifier.put("tenantId", tenantId);
         return cr;
     }
 

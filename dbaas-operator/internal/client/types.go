@@ -97,6 +97,17 @@ type ExternalDatabaseRequest struct {
 	UpdateConnectionProperties bool                `json:"updateConnectionProperties,omitempty"`
 }
 
+// CreateDatabaseRequest is the body for PUT /api/v3/dbaas/{namespace}/databases — the
+// get-or-create call a microservice's dbaas client makes at runtime. The operator uses it to
+// eagerly materialize a concrete {scope=tenant, tenantId} database that a declarative tenant
+// InternalDatabase does not create on its own. Classifier carries the full identity
+// (microserviceName, namespace, scope, tenantId, …) as map[string]any to preserve wire fidelity.
+type CreateDatabaseRequest struct {
+	Classifier    map[string]any `json:"classifier"`
+	Type          string         `json:"type"`
+	OriginService string         `json:"originService,omitempty"`
+}
+
 // OnMicroserviceRuleRequest is the request item for
 // PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices.
 type OnMicroserviceRuleRequest struct {

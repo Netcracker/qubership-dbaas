@@ -154,6 +154,19 @@ data:
         "role": "admin"
       }
     }
+  # Per-originService response rules for the get-or-create database call
+  # PUT /api/v3/dbaas/{ns}/databases — the operator's pinned-tenant materialization
+  # for a tenant InternalDatabase. Falls back to 200 (success) when no rule matches;
+  # the rule below is illustrative, to simulate a materialization failure on demand.
+  create-db-rules.json: |
+    {
+      "tenant-svc-500": {
+        "httpCode": 500,
+        "tmfCode": "CORE-DBAAS-2000",
+        "reason": "Unexpected exception",
+        "message": "Unexpected exception"
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -194,6 +207,8 @@ spec:
               value: /config/changed.json
             - name: MOCK_GETBYCLASSIFIER_FILE
               value: /config/get-by-classifier.json
+            - name: MOCK_CREATEDB_RULES_FILE
+              value: /config/create-db-rules.json
           volumeMounts:
             - name: rules
               mountPath: /config
