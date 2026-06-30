@@ -30,10 +30,12 @@ spec:
         # The DBaaS PostgreSQL client reads connectionProperties.json + metadata.json from
         # /etc/secrets/dbaas-secrets/<secretName> before any REST call to dbaas-aggregator.
         # One volume per mounted secret — one secret per (scope x role) quadrant.
+        {{- if .Values.MOUNT_SECRETS }}
         {{- range .Values.SECRET_CLAIMS }}
         - name: 'secret-{{ .secretName }}'
           secret:
             secretName: '{{ .secretName }}'
+        {{- end }}
         {{- end }}
         # Writable temp dir so the JVM/Tomcat can run with a read-only root filesystem.
         - name: tmp
@@ -60,10 +62,12 @@ spec:
               containerPort: 8080
               protocol: TCP
           volumeMounts:
+            {{- if .Values.MOUNT_SECRETS }}
             {{- range .Values.SECRET_CLAIMS }}
             - name: 'secret-{{ .secretName }}'
               mountPath: /etc/secrets/dbaas-secrets/{{ .secretName }}
               readOnly: true
+            {{- end }}
             {{- end }}
             - name: tmp
               mountPath: /tmp

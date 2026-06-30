@@ -1,4 +1,7 @@
 SAMPLE_SERVICE_ENABLED: true
+# When false, the DBaaS secrets are NOT mounted into the pod — the client then falls back to
+# resolving each database via the REST aggregator API (used by the REST-fallback test phase).
+MOUNT_SECRETS: true
 SERVICE_NAME: go-test-app-service
 APPLICATION_NAME: dbaas
 MANAGED_BY: Helm

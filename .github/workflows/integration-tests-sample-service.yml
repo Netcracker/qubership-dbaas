@@ -187,66 +187,53 @@ jobs:
           echo "NamespaceBinding/binding was not registered by dbaas-operator in time"
           exit 1
 
-      - name: Deploy go test app service
+      # ───────────────────────── Pass A — mount proof ─────────────────────────
+      # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED. A working
+      # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
+      # quadrant tests prove every datasource reads its connection from the mount. Tenant databases are
+      # materialized by the operator (a pinned-tenant InternalDatabase get-or-creates after apply).
+      - name: "Pass A — deploy sample services (broken aggregator + mounted secrets)"
         run: |
-          helm upgrade --install "$GO_SERVICE_NAME" \
-            test-apps/go-test-app-service/helm-templates/go-test-app-service \
-            -f test-apps/go-test-app-service/helm-templates/go-test-app-service/resource-profiles/dev.yaml \
-            --namespace "$TEST_NAMESPACE" \
-            --set NAMESPACE="$TEST_NAMESPACE" \
-            --set IMAGE_REPOSITORY="$GO_IMAGE_REPOSITORY" \
-            --set TAG="$GO_IMAGE_TAG" \
-            --set IMAGE_PULL_POLICY="Never" \
-            --set DBAAS_AGENT="http://dbaas-aggregator.$TEST_NAMESPACE:8080"
+          chmod +x .github/scripts/deploy-sample-services.sh
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator-unreachable.invalid:8080" true
 
-      - name: Deploy spring test app service
-        run: |
-          # Deploy against the live aggregator (like the go app). The IT then runs a baseline over
-          # the mounted-secret datasource, and a second test flips API_DBAAS_ADDRESS to an
-          # unreachable host at runtime to prove the service resolves its database from the mounted
-          # secret rather than REST. The InternalDatabase/DatabaseSecretClaim are provisioned by the
-          # operator, which uses its own aggregator config independent of the service's URL.
-          helm upgrade --install "$SPRING_SERVICE_NAME" \
-            test-apps/spring-test-app-service/helm-templates/spring-test-app-service \
-            -f test-apps/spring-test-app-service/helm-templates/spring-test-app-service/resource-profiles/dev.yaml \
-            --namespace "$TEST_NAMESPACE" \
-            --set NAMESPACE="$TEST_NAMESPACE" \
-            --set IMAGE_REPOSITORY="$SPRING_IMAGE_REPOSITORY" \
-            --set TAG="$SPRING_IMAGE_TAG" \
-            --set IMAGE_PULL_POLICY="Never" \
-            --set API_DBAAS_ADDRESS="http://dbaas-aggregator.$TEST_NAMESPACE:8080"
-
-      - name: Deploy quarkus test app service
-        run: |
-          # Deploy against an UNREACHABLE aggregator on purpose: the app resolves four datasources
-          # (service/tenant x no-role/admin) from four mounted secrets, so a successful insert/list on
-          # each /postgres* endpoint proves the connection came from the mount, not a REST call.
-          helm upgrade --install "$QUARKUS_SERVICE_NAME" \
-            test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service \
-            -f test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service/resource-profiles/dev.yaml \
-            --namespace "$TEST_NAMESPACE" \
-            --set NAMESPACE="$TEST_NAMESPACE" \
-            --set IMAGE_REPOSITORY="$QUARKUS_IMAGE_REPOSITORY" \
-            --set TAG="$QUARKUS_IMAGE_TAG" \
-            --set IMAGE_PULL_POLICY="Never" \
-            --set API_DBAAS_ADDRESS="http://dbaas-aggregator-unreachable.invalid:8080"
-
-      # Tenant databases are materialized by the operator: a tenant InternalDatabase that pins a
-      # tenantId triggers a get-or-create after the declarative apply, so each tenant DatabaseSecretClaim
-      # resolves without any out-of-band step here. (Previously a quarkus-only curl created the tenant DB.)
-
-      - name: Wait for sample services
+      - name: "Pass A — wait for sample services"
         run: |
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
 
-      - name: Run sample service Java integration tests
-        id: tests
+      - name: "Pass A — run integration tests (mount proof)"
+        id: tests_a
         working-directory: test-apps/test-apps-integration-tests
         run: >
           mvn --batch-mode
-          -Dmaven.test.failure.ignore=true
+          -DskipIT=false
+          -Dclouds.cloud.name=kind
+          -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ──────────────────────── Pass B — REST fallback ────────────────────────
+      # Redeploy all three apps against the WORKING aggregator with the secrets NOT mounted. Each
+      # client misses the mount and must resolve its database through the REST aggregator API, so a
+      # working /postgres* round-trip proves the REST fallback path in every library.
+      - name: "Pass B — deploy sample services (working aggregator + no mounted secrets)"
+        run: |
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false
+
+      - name: "Pass B — wait for sample services"
+        run: |
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
+
+      - name: "Pass B — run integration tests (REST fallback)"
+        id: tests_b
+        working-directory: test-apps/test-apps-integration-tests
+        run: >
+          mvn --batch-mode
           -DskipIT=false
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
@@ -255,7 +242,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Surefire reports
-        if: always() && steps.tests.outcome != 'skipped'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: sample-services-surefire-reports
@@ -323,7 +310,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Fail job if sample service tests failed
-        if: always() && steps.tests.outcome != 'skipped'
+        if: always()
         run: |
           shopt -s nullglob
           reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)

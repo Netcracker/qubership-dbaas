@@ -169,75 +169,6 @@ public class GoTestAppServiceIT {
         assertTrue(containsItemName(items, itemName), basePath + ": inserted item must be returned by GET");
     }
 
-    @Test
-    void testServiceWorksWithInvalidAggregatorUrl() throws IOException {
-        var deployment = kubernetesClient.apps().deployments()
-                .inNamespace(namespace)
-                .withName(SAMPLE_SERVICE_NAME)
-                .get();
-        assertNotNull(deployment, "Deployment must exist before test");
-
-        var originalEnv = deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv();
-        String originalAggregatorUrl = originalEnv.stream()
-                .filter(env -> "DBAAS_AGENT".equals(env.getName()))
-                .findFirst()
-                .map(env -> env.getValue())
-                .orElse(null);
-        assertNotNull(originalAggregatorUrl, "DBAAS_AGENT env var must exist before test");
-
-        try {
-            deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
-                    .filter(env -> "DBAAS_AGENT".equals(env.getName()))
-                    .findFirst()
-                    .ifPresent(env -> env.setValue("http://invalid-aggregator.example.com:9999"));
-
-            var updatedDeployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .resource(deployment)
-                    .update();
-
-            waitForDeploymentReady(updatedDeployment.getMetadata().getGeneration());
-            restartPortForward();
-
-            String itemName = "invalid-aggregator-test-" + UUID.randomUUID();
-
-            executeEventually(new Request.Builder().url(sampleUrl("/postgres/items")).delete().build(), 200);
-
-            String createdBody = execute(new Request.Builder()
-                    .url(sampleUrl("/postgres/items"))
-                    .post(RequestBody.create("{\"name\":\"" + itemName + "\"}", JSON))
-                    .build(), 201);
-            assertTrue(createdBody.contains(itemName),
-                    "Service must successfully create item even with invalid aggregator URL");
-
-            String listBody = execute(new Request.Builder().url(sampleUrl("/postgres/items")).get().build(), 200);
-            JsonObject response = GSON.fromJson(listBody, JsonObject.class);
-            JsonArray items = response.getAsJsonArray("items");
-            assertNotNull(items, "items response field must be present");
-            assertTrue(containsItemName(items, itemName),
-                    "Service must successfully retrieve items even with invalid aggregator URL - proves it reads from mounted secret");
-
-        } finally {
-            var restoredDeployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .withName(SAMPLE_SERVICE_NAME)
-                    .get();
-
-            restoredDeployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv().stream()
-                    .filter(env -> "DBAAS_AGENT".equals(env.getName()))
-                    .findFirst()
-                    .ifPresent(env -> env.setValue(originalAggregatorUrl));
-
-            var restoredUpdatedDeployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .resource(restoredDeployment)
-                    .update();
-
-            waitForDeploymentReady(restoredUpdatedDeployment.getMetadata().getGeneration());
-            restartPortForward();
-        }
-    }
-
     private static void startPortForward() throws IOException {
         int localPort = findFreePort();
         String podName = waitForReadyPodName();
@@ -249,11 +180,6 @@ public class GoTestAppServiceIT {
                 .start();
         sampleServiceUrl = new URL("http://127.0.0.1:" + localPort);
         waitForServiceHealth();
-    }
-
-    private static void restartPortForward() throws IOException {
-        stopPortForward();
-        startPortForward();
     }
 
     private static int findFreePort() throws IOException {
@@ -439,61 +365,6 @@ public class GoTestAppServiceIT {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    private static void restartDeploymentAndWait() throws IOException {
-        kubernetesClient.apps().deployments()
-                .inNamespace(namespace)
-                .withName(SAMPLE_SERVICE_NAME)
-                .rolling()
-                .restart();
-        var deployment = kubernetesClient.apps().deployments()
-                .inNamespace(namespace)
-                .withName(SAMPLE_SERVICE_NAME)
-                .get();
-        assertNotNull(deployment, "Deployment must exist after restart request");
-        waitForDeploymentReady(deployment.getMetadata().getGeneration());
-        restartPortForward();
-    }
-
-    private static void waitForDeploymentReady(Long targetGeneration) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120);
-        while (System.nanoTime() < deadline) {
-            var deployment = kubernetesClient.apps().deployments()
-                    .inNamespace(namespace)
-                    .withName(SAMPLE_SERVICE_NAME)
-                    .get();
-            if (deployment == null || deployment.getStatus() == null || deployment.getSpec() == null) {
-                sleep(Duration.ofSeconds(2));
-                continue;
-            }
-
-            int desiredReplicas = deployment.getSpec().getReplicas() == null ? 1 : deployment.getSpec().getReplicas();
-            Long observedGeneration = deployment.getStatus().getObservedGeneration();
-            Integer replicas = deployment.getStatus().getReplicas();
-            Integer readyReplicas = deployment.getStatus().getReadyReplicas();
-            Integer updatedReplicas = deployment.getStatus().getUpdatedReplicas();
-            Integer availableReplicas = deployment.getStatus().getAvailableReplicas();
-            Integer unavailableReplicas = deployment.getStatus().getUnavailableReplicas();
-
-            if (observedGeneration != null
-                    && observedGeneration >= targetGeneration
-                    && replicas != null
-                    && replicas == desiredReplicas
-                    && readyReplicas != null
-                    && readyReplicas == desiredReplicas
-                    && updatedReplicas != null
-                    && updatedReplicas == desiredReplicas
-                    && availableReplicas != null
-                    && availableReplicas == desiredReplicas
-                    && (unavailableReplicas == null || unavailableReplicas == 0)) {
-                return;
-            }
-
-            sleep(Duration.ofSeconds(2));
-        }
-
-        throw new AssertionError("Deployment did not roll out and become ready within timeout");
     }
 
     private static String waitForReadyPodName() {
