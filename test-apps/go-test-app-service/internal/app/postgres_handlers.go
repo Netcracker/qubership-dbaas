@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	pgdbaas "github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/tenant"
 
 	"github.com/netcracker/qubership-dbaas/test-apps/go-test-app-service/internal/postgresmigrations"
 )
@@ -29,87 +31,103 @@ type createPostgresItemRequest struct {
 	Name string `json:"name"`
 }
 
-func (a *App) handlePostgresPing(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
-		return
+// withTenant pins the fixed tenant into the context for the tenant-scoped quadrants (Q3/Q4), so the
+// tenant classifier resolves to a static {scope=tenant, tenantId=acme} that matches the mounted
+// secret. It is a no-op for the service-scoped quadrants.
+func withTenant(ctx context.Context, pinTenant bool) context.Context {
+	if !pinTenant {
+		return ctx
 	}
+	return context.WithValue(ctx, tenant.TenantContextName, tenant.NewTenantContextObject(fixedTenant))
+}
 
-	props, err := a.pgDatabase.FindConnectionProperties(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+func handlePostgresPing(db pgdbaas.Database, pinTenant bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+
+		props, err := db.FindConnectionProperties(withTenant(r.Context(), pinTenant))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), dbPingTimeout)
+		defer cancel()
+
+		conn, err := pgx.Connect(ctx, props.Url)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("connect to postgres: %w", err))
+			return
+		}
+		defer conn.Close(context.Background())
+
+		var result int
+		if err := conn.QueryRow(ctx, "SELECT 1").Scan(&result); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("execute SELECT 1: %w", err))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":   "ok",
+			"url":      sanitizeURL(props.Url),
+			"username": props.Username,
+			"role":     props.Role,
+			"result":   result,
+		})
 	}
+}
 
-	ctx, cancel := context.WithTimeout(r.Context(), dbPingTimeout)
+func handlePostgresConnectionProperties(db pgdbaas.Database, pinTenant bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+
+		props, err := db.FindConnectionProperties(withTenant(r.Context(), pinTenant))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"url":      sanitizeURL(props.Url),
+			"username": props.Username,
+			"role":     props.Role,
+			"roHost":   props.RoHost,
+		})
+	}
+}
+
+func handlePostgresItems(db pgdbaas.Database, pinTenant bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			listPostgresItems(w, r, db, pinTenant)
+		case http.MethodPost:
+			createPostgresItem(w, r, db, pinTenant)
+		case http.MethodDelete:
+			deletePostgresItems(w, r, db, pinTenant)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		}
+	}
+}
+
+func listPostgresItems(w http.ResponseWriter, r *http.Request, db pgdbaas.Database, pinTenant bool) {
+	ctx, cancel := context.WithTimeout(withTenant(r.Context(), pinTenant), dbOperationTimeout)
 	defer cancel()
 
-	conn, err := pgx.Connect(ctx, props.Url)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("connect to postgres: %w", err))
-		return
-	}
-	defer conn.Close(context.Background())
-
-	var result int
-	if err := conn.QueryRow(ctx, "SELECT 1").Scan(&result); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("execute SELECT 1: %w", err))
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":   "ok",
-		"url":      sanitizeURL(props.Url),
-		"username": props.Username,
-		"role":     props.Role,
-		"result":   result,
-	})
-}
-
-func (a *App) handlePostgresConnectionProperties(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
-		return
-	}
-
-	props, err := a.pgDatabase.FindConnectionProperties(r.Context())
+	sqlDB, err := postgresSQLDB(ctx, db)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"url":      sanitizeURL(props.Url),
-		"username": props.Username,
-		"role":     props.Role,
-		"roHost":   props.RoHost,
-	})
-}
-
-func (a *App) handlePostgresItems(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		a.handleListPostgresItems(w, r)
-	case http.MethodPost:
-		a.handleCreatePostgresItem(w, r)
-	case http.MethodDelete:
-		a.handleDeletePostgresItems(w, r)
-	default:
-		writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
-	}
-}
-
-func (a *App) handleListPostgresItems(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), dbOperationTimeout)
-	defer cancel()
-
-	db, err := a.postgresSQLDB(ctx)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	rows, err := db.QueryContext(ctx, fmt.Sprintf("SELECT id, name, created_at FROM %s ORDER BY id", postgresmigrations.ItemsTable))
+	rows, err := sqlDB.QueryContext(ctx, fmt.Sprintf("SELECT id, name, created_at FROM %s ORDER BY id", postgresmigrations.ItemsTable))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("list postgres items: %w", err))
 		return
@@ -133,7 +151,7 @@ func (a *App) handleListPostgresItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items})
 }
 
-func (a *App) handleCreatePostgresItem(w http.ResponseWriter, r *http.Request) {
+func createPostgresItem(w http.ResponseWriter, r *http.Request, db pgdbaas.Database, pinTenant bool) {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	var request createPostgresItemRequest
 	if err := decoder.Decode(&request); err != nil {
@@ -155,17 +173,17 @@ func (a *App) handleCreatePostgresItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), dbOperationTimeout)
+	ctx, cancel := context.WithTimeout(withTenant(r.Context(), pinTenant), dbOperationTimeout)
 	defer cancel()
 
-	db, err := a.postgresSQLDB(ctx)
+	sqlDB, err := postgresSQLDB(ctx, db)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	var item postgresItem
-	err = db.QueryRowContext(
+	err = sqlDB.QueryRowContext(
 		ctx,
 		fmt.Sprintf("INSERT INTO %s (name) VALUES ($1) RETURNING id, name, created_at", postgresmigrations.ItemsTable),
 		name,
@@ -178,17 +196,17 @@ func (a *App) handleCreatePostgresItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"item": item})
 }
 
-func (a *App) handleDeletePostgresItems(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), dbOperationTimeout)
+func deletePostgresItems(w http.ResponseWriter, r *http.Request, db pgdbaas.Database, pinTenant bool) {
+	ctx, cancel := context.WithTimeout(withTenant(r.Context(), pinTenant), dbOperationTimeout)
 	defer cancel()
 
-	db, err := a.postgresSQLDB(ctx)
+	sqlDB, err := postgresSQLDB(ctx, db)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	result, err := db.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", postgresmigrations.ItemsTable))
+	result, err := sqlDB.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", postgresmigrations.ItemsTable))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("delete postgres items: %w", err))
 		return
@@ -202,14 +220,14 @@ func (a *App) handleDeletePostgresItems(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"deleted": deleted})
 }
 
-func (a *App) postgresSQLDB(ctx context.Context) (*sql.DB, error) {
-	client, err := a.pgDatabase.GetPgClient()
+func postgresSQLDB(ctx context.Context, db pgdbaas.Database) (*sql.DB, error) {
+	client, err := db.GetPgClient()
 	if err != nil {
 		return nil, fmt.Errorf("create postgres client: %w", err)
 	}
-	db, err := client.GetSqlDb(ctx)
+	sqlDB, err := client.GetSqlDb(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get postgres datasource: %w", err)
 	}
-	return db, nil
+	return sqlDB, nil
 }

@@ -61,7 +61,7 @@ func TestHandlePostgresConnectionProperties(t *testing.T) {
 
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodGet, "/postgres/connection-properties", nil)
-			(&App{pgDatabase: tc.database}).Handler().ServeHTTP(recorder, request)
+			(&App{service: tc.database}).Handler().ServeHTTP(recorder, request)
 
 			if tc.wantStatus != http.StatusOK {
 				assertErrorResponse(t, recorder, tc.wantStatus)

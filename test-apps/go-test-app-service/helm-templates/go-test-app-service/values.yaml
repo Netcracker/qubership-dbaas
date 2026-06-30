@@ -17,10 +17,37 @@ BASECLIENT_RETRY_MAX_ATTEMPTS: 0
 BASECLIENT_RETRY_DELAY_MS: 10
 
 DB_TYPE: postgresql
-INTERNAL_DATABASE_NAME: go-test-app-service-postgres
-DATABASE_SECRET_CLAIM_NAME: go-test-app-service-postgres-claim
-DATABASE_SECRET_NAME: go-test-app-service-postgres
-DATABASE_SECRET_USER_ROLE: ""
+# Fixed tenant for the tenant-scoped quadrants; the app pins this tenant in the request context so the
+# classifier is a static {scope=tenant, tenantId=acme} that matches the mounted secret.
+TENANT_ID: acme
+# Role for the role-scoped quadrants (Q2/Q4). MUST match the app's adminRole constant ("admin").
+DATABASE_SECRET_USER_ROLE: admin
+
+# Two logical databases: one service-scoped, one tenant-scoped.
+INTERNAL_DATABASES:
+  - name: go-test-app-service-postgres
+    scope: service
+  - name: go-test-app-service-postgres-tenant
+    scope: tenant
+
+# Four mounted secrets — one per (scope x role) quadrant. Each is matched by the app's matching
+# datasource via (classifier, type, userRole):
+#   Q1 service + no role | Q2 service + admin | Q3 tenant + no role | Q4 tenant + admin
+SECRET_CLAIMS:
+  - claimName: go-test-app-service-postgres-claim
+    secretName: go-test-app-service-postgres
+    scope: service
+  - claimName: go-test-app-service-postgres-admin-claim
+    secretName: go-test-app-service-postgres-admin
+    scope: service
+    role: true
+  - claimName: go-test-app-service-postgres-tenant-claim
+    secretName: go-test-app-service-postgres-tenant
+    scope: tenant
+  - claimName: go-test-app-service-postgres-tenant-admin-claim
+    secretName: go-test-app-service-postgres-tenant-admin
+    scope: tenant
+    role: true
 
 
 CPU_REQUEST: 10m

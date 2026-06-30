@@ -27,9 +27,13 @@ spec:
       securityContext:
         fsGroup: 10001
       volumes:
-        - name: mounted-database-secret
+        # One volume per mounted secret — one secret per (scope x role) quadrant. The DBaaS client
+        # reads connectionProperties.json + metadata.json from /etc/secrets/dbaas-secrets/<secretName>.
+        {{- range .Values.SECRET_CLAIMS }}
+        - name: 'secret-{{ .secretName }}'
           secret:
-            secretName: '{{ .Values.DATABASE_SECRET_NAME }}'
+            secretName: '{{ .secretName }}'
+        {{- end }}
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
@@ -54,9 +58,11 @@ spec:
               containerPort: 8080
               protocol: TCP
           volumeMounts:
-            - name: mounted-database-secret
-              mountPath: /etc/secrets/dbaas-secrets/{{ .Values.DATABASE_SECRET_NAME }}
+            {{- range .Values.SECRET_CLAIMS }}
+            - name: 'secret-{{ .secretName }}'
+              mountPath: /etc/secrets/dbaas-secrets/{{ .secretName }}
               readOnly: true
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
