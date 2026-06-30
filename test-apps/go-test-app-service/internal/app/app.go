@@ -8,6 +8,8 @@ import (
 	"github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3/model/rest"
 	pgdbaas "github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4"
 	pgmodel "github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4/model"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/tenant"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 
 	"github.com/netcracker/qubership-dbaas/test-apps/go-test-app-service/internal/postgresmigrations"
 )
@@ -33,6 +35,11 @@ type App struct {
 }
 
 func New() *App {
+	// Register the tenant context provider so the tenant-scoped datasources (Q3/Q4) can resolve
+	// tenantId from the request context (pinned by the tenant endpoints). Without it the tenant
+	// classifier panics in tenant.Of(ctx) — the Go equivalent of the Quarkus/Spring DefaultTenantProvider.
+	ctxmanager.Register([]ctxmanager.ContextProvider{tenant.TenantProvider{}})
+
 	pool := dbaasbase.NewDbaaSPool()
 	pgClient := pgdbaas.NewClient(pool)
 	migrations := postgresmigrations.Migrations()
