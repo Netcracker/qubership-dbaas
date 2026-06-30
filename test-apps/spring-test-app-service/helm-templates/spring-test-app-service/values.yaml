@@ -15,13 +15,9 @@ NODE_SELECTOR_DBAAS_KEY: region
 REGION_DBAAS: database
 
 LOG_LEVEL: info
-# REST fallback target. The mounted secret is consulted first; on a miss the basic-auth
-# RestTemplate flavor resolves the database via this aggregator (the REST-fallback test phase).
+# REST fallback target. The mounted secret is consulted first; the integration test sets this
+# to a bogus host to prove the service keeps working without dbaas-aggregator.
 API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
-# Aggregator basic-auth credentials sent on the REST-fallback path. cluster-dba carries the
-# DB_CLIENT role, so get-or-create succeeds when no secret is mounted.
-DBAAS_API_USERNAME: cluster-dba
-DBAAS_API_PASSWORD: password
 # Caps the JVM heap to a fraction of the container memory limit.
 JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
 

@@ -36,18 +36,6 @@ spec:
             secretName: '{{ .secretName }}'
         {{- end }}
         {{- end }}
-        # Projected service-account token (audience=dbaas) for M2M Bearer auth to dbaas-aggregator
-        # on the REST-fallback path. The dbaasbase client (M2MRestClient) reads it via tokensource
-        # from /var/run/secrets/tokens/dbaas/token. Present in both phases; only used when the
-        # mounted secret is absent (the REST-fallback pass).
-        - name: projected-tokens
-          projected:
-            defaultMode: 292
-            sources:
-              - serviceAccountToken:
-                  path: dbaas/token
-                  audience: dbaas
-                  expirationSeconds: 600
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
@@ -62,13 +50,6 @@ spec:
             - name: LOG_LEVEL
               value: '{{ lower .Values.LOG_LEVEL }}'
             - name: DBAAS_AGENT
-              value: '{{ .Values.DBAAS_AGENT }}'
-            # M2M (Bearer) auth: the dbaasbase client sends the projected SA token (audience=dbaas)
-            # to dbaas-aggregator on the REST-fallback path. In M2M mode the client prefers
-            # api.dbaas.address over dbaas.agent for the aggregator URL, so mirror it here.
-            - name: SECURITY_M2M_KUBERNETES_ENABLED
-              value: 'true'
-            - name: API_DBAAS_ADDRESS
               value: '{{ .Values.DBAAS_AGENT }}'
             - name: BASECLIENT_RETRY_MAX_ATTEMPTS
               value: '{{ .Values.BASECLIENT_RETRY_MAX_ATTEMPTS }}'
@@ -86,9 +67,6 @@ spec:
               readOnly: true
             {{- end }}
             {{- end }}
-            - name: projected-tokens
-              mountPath: /var/run/secrets/tokens
-              readOnly: true
           livenessProbe:
             httpGet:
               path: /health

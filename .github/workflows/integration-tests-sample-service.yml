@@ -25,6 +25,9 @@ jobs:
       QUARKUS_SERVICE_NAME: quarkus-test-app-service
       QUARKUS_IMAGE_REPOSITORY: quarkus-test-app-service
       QUARKUS_IMAGE_TAG: it
+      # Minimal dbaas-agent stand-in used by the REST-fallback pass (test-apps/dbaas-agent-stub).
+      AGENT_STUB_IMAGE_REPOSITORY: dbaas-agent-stub
+      AGENT_STUB_IMAGE_TAG: it
       TEST_NAMESPACE: dbaas
 
     steps:
@@ -131,6 +134,11 @@ jobs:
           docker build -t "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" test-apps/quarkus-test-app-service
           kind load docker-image "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" --name kind
 
+      - name: Build dbaas-agent stub image and load into kind
+        run: |
+          docker build -t "$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG" test-apps/dbaas-agent-stub
+          kind load docker-image "$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG" --name kind
+
       - name: Deploy DBaaS Aggregator, Operator, and PostgreSQL
         working-directory: bootstrap
         run: >
@@ -187,6 +195,17 @@ jobs:
           echo "NamespaceBinding/binding was not registered by dbaas-operator in time"
           exit 1
 
+      # Minimal dbaas-agent stand-in (test-apps/dbaas-agent-stub): injects originService and
+      # authenticates to the aggregator as cluster-dba, so the REST-fallback pass exercises the real
+      # client path without the production agent's tenant-manager / gateway dependencies. Unused in
+      # Pass A (the apps point at a broken URL and resolve from the mount).
+      - name: Deploy dbaas-agent stub
+        run: |
+          sed -e "s/__NAMESPACE__/$TEST_NAMESPACE/g" \
+              -e "s#__IMAGE__#$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG#g" \
+              test-apps/dbaas-agent-stub/deploy.yaml | kubectl apply -f -
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/dbaas-agent --timeout=120s
+
       # ───────────────────────── Pass A — mount proof ─────────────────────────
       # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED. A working
       # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
@@ -216,12 +235,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ──────────────────────── Pass B — REST fallback ────────────────────────
-      # Redeploy all three apps against the WORKING aggregator with the secrets NOT mounted. Each
-      # client misses the mount and must resolve its database through the REST aggregator API, so a
-      # working /postgres* round-trip proves the REST fallback path in every library.
-      - name: "Pass B — deploy sample services (working aggregator + no mounted secrets)"
+      # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted. Each
+      # client misses the mount and must resolve its database over REST through the agent (its native
+      # target), so a working /postgres* round-trip proves the REST fallback path in every library.
+      - name: "Pass B — deploy sample services (working agent + no mounted secrets)"
         run: |
-          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false
+          .github/scripts/deploy-sample-services.sh "http://dbaas-agent.$TEST_NAMESPACE:8080" false
 
       - name: "Pass B — wait for sample services"
         run: |

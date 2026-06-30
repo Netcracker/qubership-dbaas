@@ -55,11 +55,6 @@ spec:
               value: '{{ .Values.LOG_LEVEL }}'
             - name: API_DBAAS_ADDRESS
               value: '{{ .Values.API_DBAAS_ADDRESS }}'
-            # Basic-auth credentials for the REST-fallback path (cluster-dba has the DB_CLIENT role).
-            - name: DBAAS_API_USERNAME
-              value: '{{ .Values.DBAAS_API_USERNAME }}'
-            - name: DBAAS_API_PASSWORD
-              value: '{{ .Values.DBAAS_API_PASSWORD }}'
             - name: JAVA_TOOL_OPTIONS
               value: '{{ .Values.JAVA_TOOL_OPTIONS }}'
           ports:
