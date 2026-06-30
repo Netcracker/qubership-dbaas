@@ -12,6 +12,12 @@ cloud:
     name: ${MICROSERVICE_NAME:spring-test-app-service}
     namespace: ${MICROSERVICE_NAMESPACE:default}
 
+# Role for the role-scoped quadrants (Q2/Q4); must match the userRole on the matching mounted
+# secret (set by DATABASE_SECRET_USER_ROLE in the chart). Q1/Q3 stay role-less (default beans).
+sample:
+  dbaas:
+    user-role: ${DATABASE_SECRET_USER_ROLE:admin}
+
 # REST fallback target + client. Only used on a mounted-secret miss; the integration test
 # deliberately sets the address to a bogus host to prove the mounted secret is the source of
 # truth. We use the basic-auth RestTemplate flavor (a plain RestTemplate, no platform gateway),

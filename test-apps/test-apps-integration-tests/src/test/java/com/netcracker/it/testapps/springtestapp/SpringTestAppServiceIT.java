@@ -51,14 +51,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class SpringTestAppServiceIT {
 
     private static final String SAMPLE_SERVICE_NAME = "spring-test-app-service";
-    private static final String INTERNAL_DATABASE_NAME = "spring-test-app-service-postgres";
-    private static final String DATABASE_SECRET_CLAIM_NAME = "spring-test-app-service-postgres-claim";
-    private static final String DATABASE_SECRET_NAME = "spring-test-app-service-postgres";
     private static final String CONNECTION_PROPERTIES_KEY = "connectionProperties.json";
     private static final String METADATA_KEY = "metadata.json";
     private static final String POSTGRES_TYPE = "postgresql";
+    private static final String TENANT_ID = "acme";
+    private static final String ADMIN_ROLE = "admin";
     private static final int HTTP_PORT = 8080;
     private static final MediaType JSON = MediaType.get("application/json");
+
+    private static final String INTERNAL_DB_SERVICE = "spring-test-app-service-postgres";
+    private static final String INTERNAL_DB_TENANT = "spring-test-app-service-postgres-tenant";
+    private static final String CLAIM_SERVICE = "spring-test-app-service-postgres-claim";
+    private static final String CLAIM_SERVICE_ADMIN = "spring-test-app-service-postgres-admin-claim";
+    private static final String CLAIM_TENANT = "spring-test-app-service-postgres-tenant-claim";
+    private static final String CLAIM_TENANT_ADMIN = "spring-test-app-service-postgres-tenant-admin-claim";
+    private static final String SECRET_SERVICE = "spring-test-app-service-postgres";
+    private static final String SECRET_SERVICE_ADMIN = "spring-test-app-service-postgres-admin";
+    private static final String SECRET_TENANT = "spring-test-app-service-postgres-tenant";
+    private static final String SECRET_TENANT_ADMIN = "spring-test-app-service-postgres-tenant-admin";
 
     private static final CustomResourceDefinitionContext CRD_INTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
@@ -92,13 +102,17 @@ public class SpringTestAppServiceIT {
         namespace = getRequiredPropertyOrEnv("clouds.cloud.namespaces.namespace");
         kubernetesClient = new KubernetesClientBuilder().build();
 
-        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DATABASE_NAME,
-                "Succeeded", "True", "DatabaseProvisioned", "False");
-        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, DATABASE_SECRET_CLAIM_NAME,
-                "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_SERVICE, "Succeeded", "True", "DatabaseProvisioned", "False");
+        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_TENANT, "Succeeded", "True", "DatabaseProvisioned", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE, "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE_ADMIN, "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT, "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT_ADMIN, "Succeeded", "True", "SecretCreated", "False");
 
-        Secret secret = waitForSecret(DATABASE_SECRET_NAME);
-        assertMountedSecretContent(secret);
+        assertSecret(waitForSecret(SECRET_SERVICE), "service", null, null);
+        assertSecret(waitForSecret(SECRET_SERVICE_ADMIN), "service", null, ADMIN_ROLE);
+        assertSecret(waitForSecret(SECRET_TENANT), "tenant", TENANT_ID, null);
+        assertSecret(waitForSecret(SECRET_TENANT_ADMIN), "tenant", TENANT_ID, ADMIN_ROLE);
 
         startPortForward();
     }
@@ -126,27 +140,46 @@ public class SpringTestAppServiceIT {
         }
     }
 
-    /**
-     * Baseline (live aggregator): the Flyway migration runs and DML round-trips through the
-     * datasource the Spring client resolves from the mounted secret.
-     */
-    @Test
-    void testMountedSecretPostgresClientRunsMigrationsAndDml() throws IOException {
-        String itemName = "spring-test-app-e2e-" + UUID.randomUUID();
+    // Each endpoint is backed by a datasource resolved from a distinct mounted secret matched by
+    // (classifier, type, userRole); a successful round-trip proves that quadrant's secret matched.
 
-        executeEventually(new Request.Builder().url(sampleUrl("/postgres/items")).delete().build(), 200);
+    @Test
+    void serviceNoRole_Q1() throws IOException {
+        crudRoundTrip("/postgres");
+    }
+
+    @Test
+    void serviceAdmin_Q2() throws IOException {
+        crudRoundTrip("/postgres-admin");
+    }
+
+    @Test
+    void tenantNoRole_Q3() throws IOException {
+        crudRoundTrip("/postgres-tenant");
+    }
+
+    @Test
+    void tenantAdmin_Q4() throws IOException {
+        crudRoundTrip("/postgres-tenant-admin");
+    }
+
+    private void crudRoundTrip(String basePath) throws IOException {
+        String itemName = "spring-e2e-" + UUID.randomUUID();
+
+        // First call also lazily runs the Flyway migration on the resolved datasource; retry while it warms up.
+        executeEventually(new Request.Builder().url(sampleUrl(basePath + "/items")).delete().build(), 200);
 
         String createdBody = execute(new Request.Builder()
-                .url(sampleUrl("/postgres/items"))
+                .url(sampleUrl(basePath + "/items"))
                 .post(RequestBody.create("{\"name\":\"" + itemName + "\"}", JSON))
                 .build(), 201);
-        assertTrue(createdBody.contains(itemName), "created item response must contain inserted name");
+        assertTrue(createdBody.contains(itemName), basePath + ": created item response must contain inserted name");
 
-        String listBody = execute(new Request.Builder().url(sampleUrl("/postgres/items")).get().build(), 200);
+        String listBody = execute(new Request.Builder().url(sampleUrl(basePath + "/items")).get().build(), 200);
         JsonObject response = GSON.fromJson(listBody, JsonObject.class);
         JsonArray items = response.getAsJsonArray("items");
-        assertNotNull(items, "items response field must be present");
-        assertTrue(containsItemName(items, itemName), "inserted item must be returned by GET /postgres/items");
+        assertNotNull(items, basePath + ": items response field must be present");
+        assertTrue(containsItemName(items, itemName), basePath + ": inserted item must be returned by GET");
     }
 
     /**
@@ -328,7 +361,7 @@ public class SpringTestAppServiceIT {
         return secret;
     }
 
-    private static void assertMountedSecretContent(Secret secret) {
+    private static void assertSecret(Secret secret, String scope, String tenantId, String expectedUserRole) {
         assertNotNull(secret.getData(), "Secret data must not be null");
         assertTrue(secret.getData().containsKey(CONNECTION_PROPERTIES_KEY),
                 "Secret must contain key: " + CONNECTION_PROPERTIES_KEY);
@@ -341,7 +374,15 @@ public class SpringTestAppServiceIT {
         assertNotNull(classifier, "metadata classifier must be present");
         assertEquals(SAMPLE_SERVICE_NAME, classifier.get("microserviceName").getAsString());
         assertEquals(namespace, classifier.get("namespace").getAsString());
-        assertEquals("service", classifier.get("scope").getAsString());
+        assertEquals(scope, classifier.get("scope").getAsString());
+        if (tenantId != null) {
+            assertNotNull(classifier.get("tenantId"), "tenant classifier must carry tenantId");
+            assertEquals(tenantId, classifier.get("tenantId").getAsString());
+        }
+        if (expectedUserRole != null) {
+            assertNotNull(metadata.get("userRole"), "role-scoped secret must carry userRole in metadata");
+            assertEquals(expectedUserRole, metadata.get("userRole").getAsString(), "metadata userRole must match the claim");
+        }
     }
 
     private static JsonObject decodeSecretJson(Secret secret, String key) {
