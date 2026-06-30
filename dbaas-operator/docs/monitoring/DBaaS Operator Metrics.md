@@ -230,9 +230,13 @@ The dashboard is organised into rows that mirror the metric groups above.
 
 **`operation`** (which aggregator call):
 `register_external_database`, `apply_config`, `poll_status`, `get_database_by_classifier`,
-`apply_microservice_balancing_rule`, `cleanup_microservice_balancing_rule`,
+`create_database`, `apply_microservice_balancing_rule`, `cleanup_microservice_balancing_rule`,
 `apply_namespace_balancing_rule`, `delete_namespace_balancing_rule`,
 `apply_permanent_balancing_rule`, `delete_permanent_balancing_rule`.
+
+`create_database` is the get-or-create call (`PUT /api/v3/dbaas/{ns}/databases`) the
+`InternalDatabase` controller issues to eagerly materialize the concrete
+`{scope=tenant, tenantId}` database for a tenant declaration that pins a `tenantId`.
 
 **`result`** (aggregator call outcome — `dbaas_aggregator_requests_total`):
 
