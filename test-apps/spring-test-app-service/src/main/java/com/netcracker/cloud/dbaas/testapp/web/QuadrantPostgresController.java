@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.testapp.web;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
-import com.netcracker.cloud.dbaas.client.config.DbaasPostgresConfiguration;
 import com.netcracker.cloud.dbaas.testapp.config.QuadrantDataSourceConfiguration;
 import com.netcracker.cloud.dbaas.testapp.domain.Item;
 import com.netcracker.cloud.framework.contexts.tenant.TenantContextObject;
@@ -53,7 +52,7 @@ public class QuadrantPostgresController {
 
     public QuadrantPostgresController(
             @Qualifier(QuadrantDataSourceConfiguration.SERVICE_ADMIN_POSTGRES_DATASOURCE) DataSource serviceAdminDs,
-            @Qualifier(DbaasPostgresConfiguration.TENANT_POSTGRES_DATASOURCE) DataSource tenantDs,
+            @Qualifier(QuadrantDataSourceConfiguration.TENANT_POSTGRES_DATASOURCE) DataSource tenantDs,
             @Qualifier(QuadrantDataSourceConfiguration.TENANT_ADMIN_POSTGRES_DATASOURCE) DataSource tenantAdminDs) {
         this.serviceAdmin = new JdbcTemplate(serviceAdminDs);
         this.tenant = new JdbcTemplate(tenantDs);

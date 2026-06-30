@@ -18,21 +18,23 @@ import java.util.List;
 /**
  * Produces the two role-scoped datasources that the dbaas-client's default beans do not cover.
  *
- * <p>The starter creates {@code servicePostgresDatasource}/{@code tenantPostgresDatasource} with the
- * configured runtime user role (empty here), so they only exercise the no-role quadrants. To exercise
- * the role dimension we build datasources with an explicit {@code userRole}, mirroring exactly how the
- * starter builds the defaults ({@code new DbaasPostgresProxyDataSource(pool, classifierBuilder, config)})
- * so they inherit the same global Flyway post-connect migration. The four datasources together cover
- * every (scope × role) quadrant against its own mounted secret:
+ * <p>The starter only auto-creates {@code servicePostgresDatasource} (service, no role — Q1); unlike the
+ * Quarkus extension it does NOT create a tenant datasource by default. We build the other three here,
+ * mirroring exactly how the starter builds its default
+ * ({@code new DbaasPostgresProxyDataSource(pool, classifierBuilder, config)}) so they inherit the same
+ * global Flyway post-connect migration, differing only in scope/userRole. The four datasources together
+ * cover every (scope × role) quadrant against its own mounted secret:
  * <pre>
- *   servicePostgresDatasource  service, no role (Q1)   serviceAdminPostgresDatasource  service, admin (Q2)
- *   tenantPostgresDatasource   tenant,  no role (Q3)   tenantAdminPostgresDatasource   tenant,  admin (Q4)
+ *   servicePostgresDatasource (Q1, from starter)   serviceAdminPostgresDatasource  service, admin (Q2)
+ *   quadrantTenantPostgresDatasource (Q3)          tenantAdminPostgresDatasource   tenant,  admin (Q4)
  * </pre>
  */
 @Configuration
 public class QuadrantDataSourceConfiguration {
 
     public static final String SERVICE_ADMIN_POSTGRES_DATASOURCE = "serviceAdminPostgresDatasource";
+    // Tenant + no role (Q3). The starter has no default tenant datasource, so we build our own.
+    public static final String TENANT_POSTGRES_DATASOURCE = "quadrantTenantPostgresDatasource";
     public static final String TENANT_ADMIN_POSTGRES_DATASOURCE = "tenantAdminPostgresDatasource";
 
     // Role for the role-scoped quadrants (Q2/Q4); MUST match the role on the matching mounted secret.
@@ -53,6 +55,14 @@ public class QuadrantDataSourceConfiguration {
         return new DbaasPostgresProxyDataSource(databasePool,
                 classifierFactory.newServiceClassifierBuilder(),
                 DatabaseConfig.builder().userRole(userRole).build());
+    }
+
+    @Bean(TENANT_POSTGRES_DATASOURCE)
+    public DataSource quadrantTenantPostgresDatasource(DatabasePool databasePool,
+                                                       DbaasClassifierFactory classifierFactory) {
+        return new DbaasPostgresProxyDataSource(databasePool,
+                classifierFactory.newTenantClassifierBuilder(),
+                DatabaseConfig.builder().build());
     }
 
     @Bean(TENANT_ADMIN_POSTGRES_DATASOURCE)
