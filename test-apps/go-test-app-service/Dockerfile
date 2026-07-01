@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -o go-test-app-service .
 
-FROM ghcr.io/netcracker/qubership-core-base:2.3.1@sha256:541d3ace16c310fed889ef0cfb23d62f810dd9879fb4086c0d8a37694b01d364
+FROM ghcr.io/netcracker/qubership-core-base:2.3.3@sha256:1339716127a7d170ba307b89f3a933f5e09c447607c89e16bf8d5a379db4e1f6
 WORKDIR /app
 COPY --chown=10001:0 --chmod=555 --from=builder /app/go-test-app-service /app/go-test-app-service
 USER 10001:10001
