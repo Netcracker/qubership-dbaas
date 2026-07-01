@@ -1,6 +1,6 @@
 module github.com/netcracker/qubership-dbaas/test-apps/go-test-app-service
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
