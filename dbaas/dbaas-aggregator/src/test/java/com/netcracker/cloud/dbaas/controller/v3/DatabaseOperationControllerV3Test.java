@@ -15,10 +15,7 @@ import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-import com.netcracker.cloud.dbaas.service.BlueGreenService;
-import com.netcracker.cloud.dbaas.service.DBaaService;
-import com.netcracker.cloud.dbaas.service.DatabaseRolesService;
-import com.netcracker.cloud.dbaas.service.OperationService;
+import com.netcracker.cloud.dbaas.service.*;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
@@ -57,6 +54,8 @@ class DatabaseOperationControllerV3Test {
     @InjectMock
     DBaaService dBaaService;
     @InjectMock
+    PasswordRotationService passwordRotationService;
+    @InjectMock
     PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
     @InjectMock
     DatabaseRolesService databaseRolesService;
@@ -83,11 +82,11 @@ class DatabaseOperationControllerV3Test {
                 .body("message", is(CORE_DBAAS_4007.getDetail("The request body is empty or database type is not specified")))
                 .body("status", is(String.valueOf(BAD_REQUEST.getStatusCode())))
                 .body("@type", is(TYPE_V1_0));
-        verify(dBaaService, times(0)).changeUserPassword(any(), any(), any());
+        verify(passwordRotationService, times(0)).changeUserPassword(any(), any(), any());
 
         PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(ImmutableMap.of("microserviceName", "test"), "mongodb");
         PasswordChangeResponse response = new PasswordChangeResponse();
-        when(dBaaService.changeUserPassword(eq(passwordChangeRequest), eq(TEST_NAMESPACE), any())).thenReturn(response);
+        when(passwordRotationService.changeUserPassword(eq(passwordChangeRequest), eq(TEST_NAMESPACE), any())).thenReturn(response);
         given().auth().preemptive().basic("dbaas-db-editor-client", "dbaas-db-editor-client")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -95,7 +94,7 @@ class DatabaseOperationControllerV3Test {
                 .when().post("/password-changes")
                 .then()
                 .statusCode(OK.getStatusCode());
-        verify(dBaaService).changeUserPassword(eq(passwordChangeRequest), eq(TEST_NAMESPACE), any());
+        verify(passwordRotationService).changeUserPassword(eq(passwordChangeRequest), eq(TEST_NAMESPACE), any());
     }
 
     @Test

@@ -7,6 +7,8 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -160,13 +162,42 @@ jobs:
 
       - name: Deploy DBaaS
         working-directory: bootstrap
-        run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
+        run: make install CONFIG_FILE=local.mk KUBERNETES_M2M_ENABLED=true OPERATOR_M2M_ENABLED=false PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 
       - name: Wait for postgres-backup-daemon
         run: |
           kubectl rollout status deployment/postgres-backup-daemon \
             -n postgres \
             --timeout=300s
+
+      - name: Dump cluster diagnostics on deploy failure
+        if: failure()
+        run: |
+          set +e
+          echo "::group::All pods (all namespaces)"
+          kubectl get pods -A -o wide
+          echo "::endgroup::"
+          for pair in "dbaas-operator:dbaas" "dbaas-aggregator:dbaas" "postgres-backup-daemon:postgres"; do
+            d="${pair%%:*}"; ns="${pair##*:}"
+            echo "::group::describe deploy/$d ($ns)"
+            kubectl -n "$ns" describe deploy/"$d"
+            echo "::endgroup::"
+            echo "::group::describe pods $d ($ns)"
+            kubectl -n "$ns" describe pod -l "app.kubernetes.io/name=$d"
+            echo "::endgroup::"
+            echo "::group::logs $d ($ns, current)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=300
+            echo "::endgroup::"
+            echo "::group::logs $d ($ns, PREVIOUS/crash)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --previous --tail=300
+            echo "::endgroup::"
+          done
+          echo "::group::Recent events (ns=dbaas)"
+          kubectl -n dbaas get events --sort-by=.lastTimestamp | tail -80
+          echo "::endgroup::"
+          echo "::group::Recent events (ns=postgres)"
+          kubectl -n postgres get events --sort-by=.lastTimestamp | tail -40
+          echo "::endgroup::"
 
       - name: Run tests
         id: tests
@@ -189,6 +220,7 @@ jobs:
           done
 
       - name: Upload Surefire reports
+        id: upload_surefire
         if: always() && steps.collect_reports.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
@@ -197,6 +229,7 @@ jobs:
 
       - name: Collect Fluent Bit logs
         id: collect_fluentbit_logs
+        if: always()
         run: |
           chmod +x .github/scripts/collect-fluentbit-logs.sh && \
           .github/scripts/collect-fluentbit-logs.sh
@@ -211,6 +244,7 @@ jobs:
 
       - name: Collect DBaaS logs
         id: collect_logs
+        if: always()
         run: |
           chmod +x .github/scripts/get-dbaas-logs.sh && \
           .github/scripts/get-dbaas-logs.sh
@@ -222,5 +256,41 @@ jobs:
           name: dbaas-logs
           path: logs/*
 
+      - name: Build test report
+        id: build_report
+        if: always() && steps.tests.outcome != 'skipped'
+        env:
+          ARTIFACTS_DIR: artifacts
+          OUTPUT_FILE: report.md
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: python3 .github/scripts/build-test-report.py
 
+      - name: Email test report
+        if: always() && steps.build_report.outcome == 'success'
+        continue-on-error: true
+        # Pinned to the commit that adds email-action (#782); no release tag includes it yet.
+        uses: Netcracker/qubership-workflow-hub/actions/email-action@f4a2c6f57cfdd620676d0dc7321491b33d7c214b
+        env:
+          EMAIL_SMTP_HOST: ${{ vars.EMAIL_SMTP_HOST }}
+          EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          EMAIL_USERNAME: ${{ vars.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ vars.EMAIL_TO }}
+        with:
+          subject: ${{ steps.build_report.outputs.title }}
+          # convert-markdown only applies to html-body (dawidd6/action-send-mail
+          # renders markdown→HTML for the html part); body stays as the plain-text fallback.
+          body: file://report.md
+          html-body: file://report.md
+          convert-markdown: "true"
 
+      - name: Fail job if any tests failed
+        if: always() && steps.build_report.outputs.status == 'failed'
+        run: |
+          echo "::error::Integration tests failed (${{ steps.build_report.outputs.failed_count }} test(s))"
+          exit 1

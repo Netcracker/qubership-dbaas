@@ -31,5 +31,13 @@
     "roles": [
       "DISCR_TOOL_CLIENT"
     ]
+  }{{- if .Values.DBAAS_OPERATOR_CREDENTIALS_PASSWORD }},
+  "dbaas-operator": {
+    "password": {{ .Values.DBAAS_OPERATOR_CREDENTIALS_PASSWORD | quote }},
+    "roles": [
+      "DB_CLIENT",
+      "CLUSTER_OPERATOR"
+    ]
   }
+  {{- end }}
 }

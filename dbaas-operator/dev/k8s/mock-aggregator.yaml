@@ -67,20 +67,20 @@ data:
         "reason": "Unexpected exception",
         "message": "Unexpected exception"
       },
-      "dd-svc-sync": {
+      "idb-svc-sync": {
         "httpCode": 200
       },
-      "dd-svc-400": {
+      "idb-svc-400": {
         "httpCode": 400,
         "tmfCode": "CORE-DBAAS-4036",
         "reason": "Declarative configuration request validation failed",
         "message": "Declarative configuration validation failed. Unknown dbType."
       },
-      "dd-svc-401": {
+      "idb-svc-401": {
         "httpCode": 401,
         "message": "Requested role is not allowed"
       },
-      "dd-svc-500": {
+      "idb-svc-500": {
         "httpCode": 500,
         "tmfCode": "CORE-DBAAS-2000",
         "reason": "Unexpected exception",
@@ -89,12 +89,69 @@ data:
     }
   poll-rules.json: |
     {
-      "tracking-dd-poll-failed": {
+      "tracking-idb-poll-failed": {
         "status": "FAILED",
         "failReason": "disk quota exceeded on host pg-primary-0"
       },
-      "tracking-dd-poll-terminated": {
+      "tracking-idb-poll-terminated": {
         "status": "TERMINATED"
+      }
+    }
+  # Rotation feed for GET /api/v3/dbaas/databases/changed. A JSON array of databases
+  # whose credentials "changed". The seed (since-less) call reports no history, so the
+  # operator's rotation poller seeds at epoch and replays these entries once — waking
+  # every DatabaseSecretClaim whose (classifier, type) matches. The entry below matches
+  # dev/test-resources/dsc-success.yaml.
+  changed.json: |
+    [
+      {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "namespace": "test-ns",
+        "type": "postgresql",
+        "lastRotatedAt": "2026-06-18T10:00:00Z",
+        "classifier": {
+          "microserviceName": "secret-svc",
+          "scope": "service",
+          "namespace": "test-ns"
+        }
+      },
+      {
+        "id": "22222222-2222-2222-2222-222222222222",
+        "namespace": "test-ns",
+        "type": "postgresql",
+        "lastRotatedAt": "2026-06-18T10:05:00Z",
+        "classifier": {
+          "microserviceName": "extra-svc",
+          "scope": "service",
+          "namespace": "test-ns",
+          "region": "eu"
+        }
+      }
+    ]
+  # Connection properties returned by POST .../databases/get-by-classifier/{type},
+  # keyed by originService (the app.kubernetes.io/name label on the DatabaseSecretClaim).
+  # Edit a password here and restart the deployment to make the next rotation fan-out
+  # (or safety-net re-poll) surface a real SecretRotated; the value is otherwise stable
+  # so a re-fetch is a content-aware no-op (SecretUpToDate).
+  get-by-classifier.json: |
+    {
+      "secret-svc": {
+        "host": "pg.example.com",
+        "port": 5432,
+        "name": "secret_db",
+        "username": "secret_user",
+        "password": "rotate-me-v1",
+        "url": "jdbc:postgresql://pg.example.com:5432/secret_db",
+        "role": "admin"
+      },
+      "extra-svc": {
+        "host": "pg.example.com",
+        "port": 5432,
+        "name": "extra_db",
+        "username": "extra_user",
+        "password": "rotate-me-v1",
+        "url": "jdbc:postgresql://pg.example.com:5432/extra_db",
+        "role": "admin"
       }
     }
 ---
@@ -133,6 +190,10 @@ spec:
               value: /config/apply-rules.json
             - name: MOCK_POLL_RULES_FILE
               value: /config/poll-rules.json
+            - name: MOCK_CHANGED_FILE
+              value: /config/changed.json
+            - name: MOCK_GETBYCLASSIFIER_FILE
+              value: /config/get-by-classifier.json
           volumeMounts:
             - name: rules
               mountPath: /config

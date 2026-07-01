@@ -1,0 +1,13 @@
+# InternalDatabase — synchronous success (HTTP 200)
+# apply-rules.json key: "idb-svc-sync" → httpCode=200 (no trackingId returned)
+# Expected: Phase=Succeeded, Ready=True, DatabaseProvisioned event
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: idb-success-sync
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: idb-svc-sync
+      scope: service
+  type: postgresql

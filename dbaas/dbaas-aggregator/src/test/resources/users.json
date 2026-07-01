@@ -6,6 +6,12 @@
       "DB_CLIENT"
     ]
   },
+  "cluster-operator": {
+    "password": "someDefaultPassword",
+    "roles": [
+      "CLUSTER_OPERATOR"
+    ]
+  },
   "test_only_db_client": {
     "password": "someDefaultPassword",
     "roles": [

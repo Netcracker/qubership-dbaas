@@ -141,9 +141,10 @@
     },
     "READONLY_CONTAINER_FILE_SYSTEM_ENABLED": {
       "$id": "#/properties/READONLY_CONTAINER_FILE_SYSTEM_ENABLED",
-      "$ref": "#/definitions/booleanOrString",
+      "type": "boolean",
       "title": "The READONLY_CONTAINER_FILE_SYSTEM_ENABLED schema",
       "description": "Read-only container file system is enabled",
+      "default": false,
       "examples": [
         false
       ]
@@ -181,6 +182,30 @@
         false
       ]
     },
+    "DBAAS_ROTATION_POLL_INTERVAL": {
+      "$id": "#/properties/DBAAS_ROTATION_POLL_INTERVAL",
+      "type": "string",
+      "title": "The DBAAS_ROTATION_POLL_INTERVAL schema",
+      "description": "Rotation poll period as a Go duration (e.g. 15s, 1m). The leader polls dbaas-aggregator's changed-databases feed at this interval to propagate password rotations. Leave empty to use the operator's built-in default (30s).",
+      "default": "",
+      "examples": [
+        "",
+        "30s",
+        "1m"
+      ]
+    },
+    "DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL": {
+      "$id": "#/properties/DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL",
+      "type": "string",
+      "title": "The DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL schema",
+      "description": "ExternalDatabase resync period as a Go duration (e.g. 30s, 1m). ExternalDatabase has no Secret watch, so a referenced credential Secret change is picked up on this resync. Leave empty to use the operator's built-in default (10m).",
+      "default": "",
+      "examples": [
+        "",
+        "30s",
+        "10m"
+      ]
+    },
     "DBAAS_OPERATOR_ENABLED": {
       "$id": "#/properties/DBAAS_OPERATOR_ENABLED",
       "$ref": "#/definitions/booleanOrString",
@@ -190,6 +215,17 @@
       "examples": [
         false,
         true
+      ]
+    },
+    "KUBERNETES_M2M_ENABLED": {
+      "$id": "#/properties/KUBERNETES_M2M_ENABLED",
+      "type": "boolean",
+      "title": "The KUBERNETES_M2M_ENABLED schema",
+      "description": "Parameter specifies if M2M authentication with Kubernetes service account tokens is enabled",
+      "default": false,
+      "examples": [
+        true,
+        false
       ]
     },
     "LOG_LEVEL": {

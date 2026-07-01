@@ -1,211 +1,68 @@
 # dbaas-operator
 
-`dbaas-operator` integrates Kubernetes with DBaaS by reconciling custom resources that describe database registrations and forwarding them to dbaas-aggregator. Its primary use in the current release is registering externally managed databases so workloads can discover and consume their connection details through the broader DBaaS platform.
+`dbaas-operator` integrates Kubernetes with DBaaS by reconciling a family of custom resources that describe databases, credentials, access policies, and physical-database balancing rules, and driving them through dbaas-aggregator. It lets workloads declare and consume databases the Kubernetes-native way, and keeps `DatabaseSecretClaim` secrets in sync as credentials rotate.
 
-## Description
+> **Full reference:** see **[docs/howto/DBaaS Operator.md](../docs/howto/DBaaS%20Operator.md)** for the complete design, status/condition reference, RBAC, authentication, and credential-rotation details. For a local kind environment see **[dev/README.md](dev/README.md)**.
 
-`dbaas-operator` is a Kubernetes operator that reconciles one public custom resource kind in the first release:
+## Custom Resources
+
+All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` / the Helm chart:
 
 | Kind | Purpose |
 |---|---|
-| `ExternalDatabase` | Registers a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
+| `ExternalDatabase` | Register a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
+| `InternalDatabase` | Provision a new logical database via dbaas-aggregator (asynchronous; polled to completion). |
+| `DatabaseSecretClaim` | Materialize a database's credentials into a Kubernetes `Secret` in the workload namespace, kept in sync as credentials rotate. |
+| `DatabaseAccessPolicy` | Declare per-microservice role grants and apply them to dbaas-aggregator. |
+| `MicroserviceBalancingRule` / `NamespaceBalancingRule` / `PermanentBalancingRule` | Configure physical-database balancing rules in dbaas-aggregator. |
+| `NamespaceBinding` | Claim a namespace for this operator instance (ownership) — gates which CRs the operator reconciles. |
 
----
+## Authentication
 
-Alpha resources (`DatabaseDeclaration`, `DbPolicy`) remain under active development in the repository, but are not installed by `make install` / `make deploy`.
+The operator authenticates to dbaas-aggregator in one of two modes, selected by `KUBERNETES_M2M_ENABLED` and **must match the aggregator's setting**:
 
-## ExternalDatabase
+- `false` (default) — HTTP Basic Auth, using credentials from the chart-created `dbaas-operator-aggregator-credentials` Secret;
+- `true` — a Kubernetes projected service-account token (Bearer / M2M).
 
-### Minimal example (no Secret)
-
-```yaml
-apiVersion: dbaas.netcracker.com/v1alpha1
-kind: ExternalDatabase
-metadata:
-  name: my-postgres
-  namespace: my-ns
-spec:
-  type: postgresql
-  dbName: mydb
-  classifier:
-    namespace: my-ns
-    microserviceName: my-service
-    scope: service
-  connectionProperties:
-    - role: admin
-      extraProperties:
-        host: pg.example.com
-        port: "5432"
-        url: "jdbc:postgresql://pg.example.com:5432/mydb"
-```
-
-### With credentials from a Kubernetes Secret
-
-Use `credentialsSecretRef` to read credentials from a Secret at reconcile time.
-The Secret must exist in the same namespace as the CR.
-
-```yaml
-spec:
-  connectionProperties:
-    - role: admin
-      credentialsSecretRef:
-        name: pg-credentials       # Secret name
-        keys:
-          - key: db-user           # Secret.data key
-            name: username         # aggregator request flat-map key
-          - key: db-pass
-            name: password
-      extraProperties:
-        host: pg.example.com
-        port: "5432"
-```
-
-**Merge priority** (later sources win on key collision):
-1. `extraProperties` — lowest priority
-2. `role` — overrides `extraProperties["role"]`
-3. `credentialsSecretRef.keys` — highest priority; Secret values override matching `extraProperties` keys
-
-**Constraints enforced by the CRD:**
-- `keys` is required when `credentialsSecretRef` is specified; at least one mapping must be present (`MinItems=1`).
-- `keys[*].name` values must be unique within the list (CEL validation).
-
-**Transient vs permanent errors:**
-- Secret not found, key missing, or key value is empty → `BackingOff` (retried automatically; no operator restart needed after fixing the Secret).
-- Aggregator rejects the request (400/403/409/410/422) → `InvalidConfiguration` (permanent until spec is fixed).
-
-### Status phases
-
-| Phase | Meaning |
-|---|---|
-| `Processing` | Controller is actively reconciling |
-| `Succeeded` | Aggregator accepted the registration |
-| `BackingOff` | Transient error; controller will retry with exponential back-off |
-| `InvalidConfiguration` | Permanent failure; spec must be corrected |
+Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](../docs/howto/DBaaS%20Operator.md#configuration-parameters) for the full list.
 
 ## Getting Started
 
-### Local development (kind)
-
-To spin up a full local environment (kind + aggregator-mock + operator) see
-**[dev/README.md](dev/README.md)**.
-
 ### Prerequisites
-- go version v1.26+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+- Go 1.26+
+- Docker
+- kubectl + access to a Kubernetes cluster. The CRDs use CEL validation
+  (`x-kubernetes-validations`), so Kubernetes v1.25+ is required (v1.29+ recommended).
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+### Deployment
 
-```sh
-make docker-build docker-push IMG=<some-registry>/dbaas-operator:tag
-```
+**Production** — the operator ships as part of the Qubership Helm chart under
+[`helm-templates/dbaas-operator/`](helm-templates/dbaas-operator) (`values.yaml` +
+`values.schema.json`), deployed by the platform tooling and gated on
+`DBAAS_OPERATOR_ENABLED`; CRDs are rendered as chart templates. This is the
+supported install path.
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
-
-**Install the public CRD into the cluster:**
-
-```sh
-make install
-```
-
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+**Local / dev-test** — the Kustomize surface under `config/` is for local dev,
+tests, and envtest only (not a production distribution). Build and push the image,
+then install the CRDs and deploy via kustomize:
 
 ```sh
-make deploy IMG=<some-registry>/dbaas-operator:tag
+make docker-build docker-push IMG=<registry>/dbaas-operator:tag
+make install                                    # CRDs only
+make deploy IMG=<registry>/dbaas-operator:tag   # kustomize config/default
 ```
 
-For internal development with alpha APIs enabled:
+For a full local environment (kind + aggregator-mock + operator) and ready-made
+test resources, see **[dev/README.md](dev/README.md)**.
+
+### Uninstall (dev/test)
 
 ```sh
-make install-dev
-make deploy-dev IMG=<some-registry>/dbaas-operator:tag
+make undeploy     # remove the kustomize-deployed controller
+make uninstall    # remove the CRDs
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
-kubectl apply -k config/samples/
-```
-
->**NOTE**: Ensure that the samples has default values to test it out.
-
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
-
-```sh
-kubectl delete -k config/samples/
-```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
-
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/dbaas-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/dbaas-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+Run `make help` to list all targets.
 
 ## License
 

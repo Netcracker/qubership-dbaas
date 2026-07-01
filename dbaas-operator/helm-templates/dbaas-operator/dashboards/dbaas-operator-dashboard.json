@@ -1,0 +1,974 @@
+{
+    "title":  "DBaaS Operator",
+    "uid":  "dbaas-operator",
+    "schemaVersion":  39,
+    "version":  3,
+    "refresh":  "30s",
+    "time":  {
+                 "from":  "now-15m",
+                 "to":  "now"
+             },
+    "timezone":  "browser",
+    "templating":  {
+                       "list":  [
+                                    {
+                                        "current":  {
+                                                        "selected":  false,
+                                                        "text":  "Platform Monitoring Prometheus",
+                                                        "value":  "Platform Monitoring Prometheus"
+                                                    },
+                                        "hide":  0,
+                                        "includeAll":  false,
+                                        "label":  "Cloud",
+                                        "multi":  false,
+                                        "name":  "datasource",
+                                        "options":  [
+
+                                                    ],
+                                        "query":  "prometheus",
+                                        "refresh":  1,
+                                        "regex":  "",
+                                        "skipUrlSync":  false,
+                                        "type":  "datasource"
+                                    }
+                                ]
+                   },
+    "panels":  [
+                   {
+                       "id":  1,
+                       "type":  "row",
+                       "title":  "Credentials & Secret Resolution",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  0
+                                   }
+                   },
+                   {
+                       "id":  2,
+                       "type":  "timeseries",
+                       "title":  "Reconcile Triggers by Source (EDB)",
+                       "description":  "Reconcile invocations for ExternalDatabase by trigger source (spec_change, namespace_binding_change).",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  1
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "spec_change"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "blue",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (trigger) (rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"externaldatabase\"}[1m]))",
+                                           "legendFormat":  "{{trigger}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  4,
+                       "type":  "timeseries",
+                       "title":  "Secret Resolution Errors",
+                       "description":  "Failures reading a credentials Secret. Reasons are actionable: secret_not_found, key_missing, key_empty, forbidden, or secret_read_failed.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  9
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "color":  {
+                                                                          "fixedColor":  "red",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[1m]))",
+                                           "legendFormat":  "{{exported_namespace}} / {{reason}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  5,
+                       "type":  "row",
+                       "title":  "Aggregator Interaction Health",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  17
+                                   }
+                   },
+                   {
+                       "id":  6,
+                       "type":  "timeseries",
+                       "title":  "Aggregator Call Latency (seconds)",
+                       "description":  "P50/P90/P99 latency per controller and operation. Feeds into SLO alerting - if P99 rises, the aggregator is slow.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  18
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "histogram_quantile(0.50, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P50 {{controller}}/{{operation}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.90, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P90 {{controller}}/{{operation}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.99, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P99 {{controller}}/{{operation}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  7,
+                       "type":  "timeseries",
+                       "title":  "Aggregator Call Outcomes (calls/s)",
+                       "description":  "Result breakdown: database_not_found = DatabaseSecretClaim waiting for DB registration, spec_rejection = CR/spec owner, auth_error = operator credentials/RBAC, server_error = aggregator, network_error = connectivity/platform.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  18
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "success"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "green",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "spec_rejection"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "yellow",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "database_not_found"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "blue",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "auth_error"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "orange",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "server_error"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "red",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "network_error"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "purple",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\"}[1m]))",
+                                           "legendFormat":  "{{result}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  8,
+                       "type":  "row",
+                       "title":  "Historical Failure Activity",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  26
+                                   }
+                   },
+                   {
+                       "id":  9,
+                       "type":  "timeseries",
+                       "title":  "Recent Failed Operations by Owner",
+                       "description":  "Historical failed operations by owner bucket. Use the CR Health Overview row for exact current CR state.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  27
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "mode":  "multi",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (controller, result) (increase(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!~\"success|database_not_found\"}[$__range]))",
+                                           "legendFormat":  "aggregator {{controller}} / {{result}}",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                           "expr":  "sum by (exported_namespace, reason) (increase(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[$__range]))",
+                                           "legendFormat":  "secret {{exported_namespace}} / {{reason}}",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  10,
+                       "type":  "timeseries",
+                       "title":  "Sustained Failure Signals",
+                       "description":  "Failure signals that continue over the recent window. This is event-based history; use CR phase and condition panels for exact current stuck CRs.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  27
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "mode":  "multi",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (controller, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!~\"success|database_not_found\"}[15m])) \u003e 0",
+                                           "legendFormat":  "aggregator {{controller}} / {{result}}",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[15m])) \u003e 0",
+                                           "legendFormat":  "secret {{exported_namespace}} / {{reason}}",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  11,
+                       "type":  "timeseries",
+                       "title":  "Async Provisioning Activity",
+                       "description":  "Dashboard-only substitute for async operations in flight. Compares InternalDatabase polling activity with terminal completions.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  35
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "mode":  "multi",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum(rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"internaldatabase\",trigger=\"polling\"}[15m]))",
+                                           "legendFormat":  "polling rate",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                           "expr":  "sum(rate(dbaas_async_operation_duration_seconds_count{namespace=\"#namespace#\"}[15m]))",
+                                           "legendFormat":  "completion rate",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  15,
+                       "type":  "timeseries",
+                       "title":  "Async Provisioning End-to-End Duration (seconds)",
+                       "description":  "How long it takes from HTTP 202 (async accepted) to a terminal state (completed / failed / terminated). This is the user-visible provisioning SLO.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  18,
+                                       "x":  6,
+                                       "y":  44
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "histogram_quantile(0.50, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P50 {{result}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.90, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P90 {{result}}"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.99, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "legendFormat":  "P99 {{result}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  16,
+                       "type":  "timeseries",
+                       "title":  "Async Completion Rate by Outcome",
+                       "description":  "Rate of async operations completing per second, split by result (success / failed / terminated). Terminated means the aggregator cancelled and the operator will resubmit.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  52
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "success"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "green",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "failed"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "red",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             },
+                                                             {
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "terminated"
+                                                                             },
+                                                                 "properties":  [
+                                                                                    {
+                                                                                        "id":  "color",
+                                                                                        "value":  {
+                                                                                                      "fixedColor":  "orange",
+                                                                                                      "mode":  "fixed"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                             }
+                                                         ]
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (result) (rate(dbaas_async_operation_duration_seconds_count{namespace=\"#namespace#\"}[1m]))",
+                                           "legendFormat":  "{{result}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  17,
+                       "type":  "row",
+                       "title":  "Balancing Rules",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  60
+                                   }
+                   },
+                   {
+                       "id":  18,
+                       "type":  "timeseries",
+                       "title":  "Balancing Rule Aggregator Calls",
+                       "description":  "Rate of balancing-rule requests sent by the operator to dbaas-aggregator, split by operation and result.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  61
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "reqps",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (operation, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",controller=\"balancingrule\"}[1m]))",
+                                           "legendFormat":  "{{operation}} / {{result}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  19,
+                       "type":  "row",
+                       "title":  "CR Health Overview",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  69
+                                   }
+                   },
+                   {
+                       "id":  20,
+                       "type":  "timeseries",
+                       "title":  "CRs by Current Phase",
+                       "description":  "Current phase for dbaas operator CRs. This is a current-state gauge, not a reconcile counter.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  70
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                          "expr":  "sum by (kind, phase) (max without (pod, instance) (dbaas_resource_phase{namespace=\"#namespace#\"}))",
+                                           "legendFormat":  "{{kind}} / {{phase}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  21,
+                       "type":  "timeseries",
+                       "title":  "Unready CRs by Reason",
+                       "description":  "Current Ready=False/Unknown conditions by kind and reason. Reasons are intended to route ownership quickly.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  70
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                          "expr":  "sum by (kind, reason) (max without (pod, instance) (dbaas_resource_condition{namespace=\"#namespace#\",condition=\"Ready\",status!=\"True\"}))",
+                                           "legendFormat":  "{{kind}} / {{reason}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  22,
+                       "type":  "timeseries",
+                       "title":  "CRs Waiting for Observed Generation",
+                       "description":  "Shows CRs whose metadata.generation is ahead of status.observedGeneration. This is convergence lag, not elapsed time.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  78
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                          "expr":  "sum by (kind, resource_namespace, name) (max without (pod, instance) (dbaas_resource_observed_generation_lag{namespace=\"#namespace#\"}) > 0)",
+                                           "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  23,
+                       "type":  "timeseries",
+                       "title":  "CR Metrics Collector Health",
+                       "description":  "A value of 0 means the custom CR-state collector failed to list that kind during scrape.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  78
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "min by (kind) (dbaas_resource_collector_success{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{kind}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  24,
+                       "type":  "row",
+                       "title":  "DatabaseSecretClaim Health",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  86
+                                   }
+                   },
+                   {
+                       "id":  25,
+                       "type":  "timeseries",
+                       "title":  "SecretClaim DatabaseNotFound Age",
+                       "description":  "Age of the current DatabaseNotFound streak per DatabaseSecretClaim. Persistent values point to missing DB provisioning or classifier mismatch.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  87
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                          "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_first_not_found_timestamp_seconds{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{resource_namespace}}/{{name}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  26,
+                       "type":  "timeseries",
+                       "title":  "SecretClaim Time Since Last Rotation",
+                       "description":  "Seconds since each DatabaseSecretClaim last applied rotated connection properties.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  87
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "s",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_last_rotation_timestamp_seconds{namespace=\"#namespace#\"})",
+                                           "legendFormat":  "{{resource_namespace}}/{{name}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  27,
+                       "type":  "row",
+                       "title":  "Placement and Namespace Ownership",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  95
+                                   }
+                   },
+                   {
+                       "id":  28,
+                       "type":  "timeseries",
+                       "title":  "Balancing Rule Desired vs Applied Targets",
+                       "description":  "Compares placement intent from spec with the last applied state recorded in status. These counts do not prove referenced physical databases exist or independently read back aggregator state.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  96
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_desired_targets{namespace=\"#namespace#\"}))",
+                                           "legendFormat":  "desired {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
+                                           "refId":  "A"
+                                       },
+                                       {
+                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_applied_targets{namespace=\"#namespace#\"}))",
+                                           "legendFormat":  "applied {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
+                                           "refId":  "B"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  29,
+                       "type":  "timeseries",
+                       "title":  "NamespaceBinding States",
+                       "description":  "Current namespace ownership state from this operator instance's point of view. deleting_with_finalizer means deletion is in progress and the protection finalizer remains; it does not by itself prove blocking resources still exist.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  96
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                          "expr":  "sum by (state) (max without (pod, instance) (dbaas_namespace_binding_state{namespace=\"#namespace#\"}))",
+                                           "legendFormat":  "{{state}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  30,
+                       "type":  "timeseries",
+                       "title":  "Resources Deleting With Finalizers",
+                       "description":  "Current dbaas resources that have deletionTimestamp set. deleting_with_finalizer means cleanup/finalizer removal is still pending.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  104
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                          "expr":  "sum by (kind, resource_namespace, name, state) (max without (pod, instance) (dbaas_resource_deletion_state{namespace=\"#namespace#\"}))",
+                                           "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}} / {{state}}"
+                                       }
+                                   ]
+                   }
+               ]
+}
+

@@ -19,6 +19,7 @@ package client
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // ─── Declarative API ──────────────────────────────────────────────────────────
@@ -96,12 +97,166 @@ type ExternalDatabaseRequest struct {
 	UpdateConnectionProperties bool                `json:"updateConnectionProperties,omitempty"`
 }
 
+// OnMicroserviceRuleRequest is the request item for
+// PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices.
+type OnMicroserviceRuleRequest struct {
+	Type          string               `json:"type"`
+	Rules         []RuleOnMicroservice `json:"rules"`
+	Microservices []string             `json:"microservices"`
+}
+
+// RuleOnMicroservice mirrors dbaas-aggregator's RuleOnMicroservice DTO.
+type RuleOnMicroservice struct {
+	Label string `json:"label"`
+}
+
+// NamespaceBalancingRuleRequest is the request body for
+// PUT /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}.
+type NamespaceBalancingRuleRequest struct {
+	Order *int64                     `json:"order,omitempty"`
+	Type  string                     `json:"type"`
+	Rule  NamespaceBalancingRuleBody `json:"rule"`
+}
+
+// NamespaceBalancingRuleBody mirrors dbaas-aggregator's RuleBody DTO.
+type NamespaceBalancingRuleBody struct {
+	Type   string         `json:"type"`
+	Config map[string]any `json:"config"`
+}
+
+// PermanentBalancingRuleRequest is the request item for
+// PUT /api/v3/dbaas/balancing/rules/permanent.
+type PermanentBalancingRuleRequest struct {
+	DbType             string   `json:"dbType"`
+	PhysicalDatabaseID string   `json:"physicalDatabaseId"`
+	Namespaces         []string `json:"namespaces"`
+}
+
+// PermanentBalancingRuleDeleteRequest is the request item for
+// DELETE /api/v3/dbaas/balancing/rules/permanent.
+type PermanentBalancingRuleDeleteRequest struct {
+	DbType     string   `json:"dbType,omitempty"`
+	Namespaces []string `json:"namespaces"`
+}
+
+// ─── InternalDatabase wire types ──────────────────────────────────────────
+
+// DatabaseDeclarationSpecWire is the wire representation of the spec field
+// in POST /api/declarations/v1/apply for subKind=DatabaseDeclaration.
+// Field names mirror com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration
+// in dbaas-aggregator.
+type DatabaseDeclarationSpecWire struct {
+	// ClassifierConfig wraps the classifier flat map.
+	// Mirrors InternalDatabase.ClassifierConfig (static nested class).
+	ClassifierConfig     ClassifierConfigWire      `json:"classifierConfig"`
+	Type                 string                    `json:"type"`
+	Lazy                 bool                      `json:"lazy,omitempty"`
+	Settings             map[string]string         `json:"settings,omitempty"`
+	NamePrefix           string                    `json:"namePrefix,omitempty"`
+	VersioningConfig     *VersioningConfigWire     `json:"versioningConfig,omitempty"`
+	InitialInstantiation *InitialInstantiationWire `json:"initialInstantiation,omitempty"`
+}
+
+// ClassifierConfigWire mirrors InternalDatabase.ClassifierConfig in dbaas-aggregator:
+//
+//	public static class ClassifierConfig {
+//	    @JsonProperty("classifier")
+//	    private SortedMap<String, Object> classifier;
+//	}
+//
+// The classifier fields (microserviceName, scope, namespace, tenantId, customKeys, …)
+// are flattened into the map. customKeys itself is a nested map[string]any inside it.
+type ClassifierConfigWire struct {
+	Classifier map[string]any `json:"classifier"`
+}
+
+// VersioningConfigWire mirrors InternalDatabase.VersioningConfig in dbaas-aggregator.
+type VersioningConfigWire struct {
+	Approach string `json:"approach,omitempty"`
+}
+
+// InitialInstantiationWire mirrors InternalDatabase.InitialInstantiation in dbaas-aggregator:
+//
+//	public static class InitialInstantiation {
+//	    @JsonProperty("approach")         String approach;
+//	    @JsonProperty("sourceClassifier") SortedMap<String, Object> sourceClassifier;
+//	}
+//
+// sourceClassifier is a flat map with the same shape as ClassifierConfigWire.Classifier.
+type InitialInstantiationWire struct {
+	Approach         string         `json:"approach,omitempty"`
+	SourceClassifier map[string]any `json:"sourceClassifier,omitempty"`
+}
+
+// ─── get-by-classifier ────────────────────────────────────────────────────────
+
+// GetByClassifierRequest is the body for
+// POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}.
+type GetByClassifierRequest struct {
+	Classifier    map[string]any `json:"classifier"`
+	OriginService string         `json:"originService,omitempty"`
+	UserRole      string         `json:"userRole,omitempty"`
+}
+
+// DatabaseResponseSingleCP is the response from GetDatabaseByClassifier.
+// ConnectionProperties keys are dynamic (host, port, username, password, name, url, role, roHost, …).
+//
+// The aggregator returns the full DatabaseResponseV3SingleCP descriptor (id,
+// name, namespace, type, settings, connectionProperties); these fields are
+// surfaced so the operator can mirror them into the Secret's metadata.json for
+// dbaas-client. Note: the aggregator documents Id as best-effort on a
+// by-classifier lookup ("might not be used … for security purpose"), so callers
+// must tolerate an empty Id.
+type DatabaseResponseSingleCP struct {
+	Id                   string         `json:"id,omitempty"`
+	Name                 string         `json:"name,omitempty"`
+	Namespace            string         `json:"namespace,omitempty"`
+	Type                 string         `json:"type,omitempty"`
+	Settings             map[string]any `json:"settings,omitempty"`
+	ConnectionProperties map[string]any `json:"connectionProperties,omitempty"`
+}
+
+// ─── changed-databases (rotation pull) ──────────────────────────────────────────
+
+// ChangedDatabaseRef identifies a database whose credentials changed (password
+// rotation or restore), as returned by GET /api/v3/dbaas/databases/changed. It
+// carries only the identity needed to locate the consuming DatabaseSecretClaim
+// CR(s); connection properties are fetched separately via GetDatabaseByClassifier.
+// Id together with LastRotatedAt forms the keyset cursor the poller advances by.
+type ChangedDatabaseRef struct {
+	Id            string         `json:"id"`
+	Namespace     string         `json:"namespace"`
+	Classifier    map[string]any `json:"classifier"`
+	Type          string         `json:"type"`
+	LastRotatedAt time.Time      `json:"lastRotatedAt"`
+}
+
+// ChangeCursor is the keyset cursor (lastRotatedAt, id) for the changed-databases
+// feed. The composite key makes paging deterministic even when many rows share an
+// identical lastRotatedAt (e.g. a restore stamps one timestamp across a database's
+// registries), so the poller always makes forward progress.
+type ChangeCursor struct {
+	LastRotatedAt time.Time `json:"lastRotatedAt"`
+	Id            string    `json:"id"`
+}
+
+// ChangedDatabasesResponse is the response from GetChangedSince. HighWaterMark is
+// the latest (lastRotatedAt, id) currently known across all databases; it seeds
+// the poll cursor on the first (since-less) call and is nil when nothing has
+// rotated yet. On subsequent calls the cursor is advanced from the returned Items,
+// not from HighWaterMark, so a full page does not skip its tail.
+type ChangedDatabasesResponse struct {
+	Items         []ChangedDatabaseRef `json:"items"`
+	HighWaterMark *ChangeCursor        `json:"highWaterMark"`
+}
+
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.
 type AggregatorError struct {
 	StatusCode int
 	Body       string // raw response body (fallback when TMF parse fails)
+	TmfCode    string // parsed from TmfErrorResponse.code
 	TmfMessage string // parsed from TmfErrorResponse.message, if available
 }
 
@@ -145,4 +300,12 @@ func (e *AggregatorError) IsSpecRejection() bool {
 		return true
 	}
 	return false
+}
+
+// IsDatabaseNotFound returns true only for a 404 that carries TMF error code
+// CORE-DBAAS-4006 (database not yet registered). A bare 404 without a TMF body
+// (blue-green edge case: no active namespace in the domain) returns false and is
+// treated as a generic transient AggregatorError.
+func (e *AggregatorError) IsDatabaseNotFound() bool {
+	return e.StatusCode == http.StatusNotFound && e.TmfCode == "CORE-DBAAS-4006"
 }

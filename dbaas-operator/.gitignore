@@ -6,6 +6,9 @@
 *.dylib
 bin/*
 Dockerfile.cross
+# Stray binary left in the module root by `go build ./dev/...` (the aggregator-mock
+# main package); proper builds go to bin/ or into the Docker image.
+/aggregator-mock
 
 # Test binary, built with `go test -c`
 *.test

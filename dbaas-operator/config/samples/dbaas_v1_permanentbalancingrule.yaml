@@ -1,0 +1,15 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: PermanentBalancingRule
+metadata:
+  name: permanent-balancing-rules
+spec:
+  rules:
+    - dbType: postgresql
+      physicalDatabaseId: postgresql-prod-a
+      namespaces:
+        - payments
+        - orders
+    - dbType: mongodb
+      physicalDatabaseId: mongodb-prod-a
+      namespaces:
+        - notifications

@@ -49,6 +49,8 @@ public class DatabaseOperationControllerV3 {
     @Inject
     DBaaService dBaaService;
     @Inject
+    PasswordRotationService passwordRotationService;
+    @Inject
     DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     @Inject
     BlueGreenService blueGreenService;
@@ -71,7 +73,6 @@ public class DatabaseOperationControllerV3 {
     @Path("/password-changes")
     @POST
     @RolesAllowed(DB_CLIENT)
-    @Transactional
     public Response changeUserPassword(@Parameter(description = "Describes the database and the type of database that needs a password to be changed", required = true)
                                        PasswordChangeRequestV3 passwordChangeRequest,
                                        @Parameter(description = "Project namespace in which the databases are used")
@@ -83,9 +84,9 @@ public class DatabaseOperationControllerV3 {
         }
         PasswordChangeResponse response;
         if (passwordChangeRequest.getUserRole() != null) {
-            response = dBaaService.changeUserPassword(passwordChangeRequest, namespace, passwordChangeRequest.getUserRole());
+            response = passwordRotationService.changeUserPassword(passwordChangeRequest, namespace, passwordChangeRequest.getUserRole());
         } else {
-            response = dBaaService.changeUserPassword(passwordChangeRequest, namespace);
+            response = passwordRotationService.changeUserPassword(passwordChangeRequest, namespace);
         }
 
         log.info("Result of password change request {}", response);

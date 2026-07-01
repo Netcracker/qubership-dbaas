@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,29 +36,29 @@ type BlockingResourceChecker interface {
 type KindChecker[L client.ObjectList] struct {
 	cl      client.Client
 	newList func() L
-	items   func(L) int
 }
 
 // NewKindChecker creates a KindChecker for the given list type.
 //
-//   - newList  returns a fresh, empty list object (e.g. func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
-//   - items    returns the number of items in a populated list (e.g. func(l *dbaasv1.ExternalDatabaseList) int { return len(l.Items) })
-func NewKindChecker[L client.ObjectList](
-	cl client.Client,
-	newList func() L,
-	items func(L) int,
-) *KindChecker[L] {
-	return &KindChecker[L]{cl: cl, newList: newList, items: items}
+//   - newList returns a fresh, empty list object (e.g. func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
+//
+// The item count is obtained generically via meta.LenList, so no per-type
+// counting closure is required.
+func NewKindChecker[L client.ObjectList](cl client.Client, newList func() L) *KindChecker[L] {
+	return &KindChecker[L]{cl: cl, newList: newList}
 }
 
 // HasBlockingResources returns true when at least one object of this kind
 // exists in namespace.
 func (c *KindChecker[L]) HasBlockingResources(ctx context.Context, namespace string) (bool, error) {
 	list := c.newList()
+	log.InfoC(ctx, "Checking blocking resources kind=%T namespace=%s", list, namespace)
 	if err := c.cl.List(ctx, list, client.InNamespace(namespace), client.Limit(1)); err != nil {
 		return false, fmt.Errorf("list %T in namespace %q: %w", list, namespace, err)
 	}
-	return c.items(list) > 0, nil
+	found := apimeta.LenList(list) > 0
+	log.InfoC(ctx, "Checked blocking resources kind=%T namespace=%s found=%v", list, namespace, found)
+	return found, nil
 }
 
 // CompositeChecker aggregates multiple BlockingResourceCheckers with OR
@@ -79,14 +80,17 @@ func (c *CompositeChecker) Add(ch BlockingResourceChecker) {
 // HasBlockingResources returns true as soon as any constituent checker finds a
 // blocking resource, short-circuiting the remaining checks.
 func (c *CompositeChecker) HasBlockingResources(ctx context.Context, namespace string) (bool, error) {
+	log.InfoC(ctx, "Checking blocking resources namespace=%s checkers=%d", namespace, len(c.checkers))
 	for _, ch := range c.checkers {
 		blocking, err := ch.HasBlockingResources(ctx, namespace)
 		if err != nil {
 			return false, err
 		}
 		if blocking {
+			log.InfoC(ctx, "Found blocking resources namespace=%s", namespace)
 			return true, nil
 		}
 	}
+	log.InfoC(ctx, "No blocking resources found namespace=%s", namespace)
 	return false, nil
 }

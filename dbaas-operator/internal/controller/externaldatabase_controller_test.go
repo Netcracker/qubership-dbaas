@@ -31,8 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	config "sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
@@ -139,10 +140,80 @@ var _ = Describe("ExternalDatabase Controller", func() {
 		})
 	})
 
+	Context("buildRequest — customKeys serialization", func() {
+		It("sends customKeys as a nested object, not flattened to top level", func() {
+			// Regression guard: the aggregator stores the classifier verbatim and
+			// reads classifier.customKeys.* as a nested map (canonical dbaas-client
+			// shape). Flattening customKeys to the top level would register the
+			// database under a classifier no consumer can match.
+			spec := baseSpec()
+			spec.Classifier.CustomKeys = map[string]apiextensionsv1.JSON{
+				"logicalDBName": {Raw: []byte(`"configs"`)},
+				"shardCount":    {Raw: []byte(`5`)},
+			}
+			fixture.statusCode = http.StatusOK
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+
+			var sent struct {
+				Classifier map[string]any `json:"classifier"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+
+			// customKeys entries must NOT leak to the top level.
+			Expect(sent.Classifier).NotTo(HaveKey("logicalDBName"))
+			Expect(sent.Classifier).NotTo(HaveKey("shardCount"))
+
+			// They live inside a nested "customKeys" object, preserving JSON types.
+			ck, ok := sent.Classifier["customKeys"].(map[string]any)
+			Expect(ok).To(BeTrue(), "customKeys must be a nested object inside the classifier")
+			Expect(ck).To(HaveKeyWithValue("logicalDBName", "configs"))
+			Expect(ck).To(HaveKeyWithValue("shardCount", float64(5)))
+		})
+
+		It("flattens extraKeys onto the classifier top level (legacy open-classifier shape)", func() {
+			// extraKeys reproduce the legacy model where services placed arbitrary
+			// identity fields directly at the classifier top level (dbaas-client
+			// withProperty/withProperties). They sit alongside the scalars, NOT
+			// nested — both sides must produce the same set for identity to match.
+			spec := baseSpec()
+			spec.Classifier.ExtraKeys = map[string]apiextensionsv1.JSON{
+				"region": {Raw: []byte(`"eu"`)},
+				"legacy": {Raw: []byte(`{"nested":true}`)},
+			}
+			fixture.statusCode = http.StatusOK
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+
+			var sent struct {
+				Classifier map[string]any `json:"classifier"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+
+			// extraKeys land on the top level, preserving JSON types, and never
+			// appear as a nested "extraKeys" object.
+			Expect(sent.Classifier).To(HaveKeyWithValue("region", "eu"))
+			Expect(sent.Classifier).To(HaveKeyWithValue("legacy", map[string]any{"nested": true}))
+			Expect(sent.Classifier).NotTo(HaveKey("extraKeys"))
+		})
+	})
+
 	// ── classifier.namespace validation ──────────────────────────────────────
 
 	Context("classifier.namespace absent — falls back to metadata.namespace", func() {
-		It("uses CR namespace in the aggregator URL and succeeds", func() {
+		It("uses CR namespace in the aggregator URL and request body, and succeeds", func() {
 			spec := baseSpec()
 			spec.Classifier.Namespace = ""
 			fixture.statusCode = http.StatusOK
@@ -155,6 +226,16 @@ var _ = Describe("ExternalDatabase Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fixture.capturedPath).To(Equal("/api/v3/dbaas/" + ns + "/databases/registration/externally_manageable"))
 			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+
+			// The classifier in the request body must also carry the defaulted
+			// namespace — the aggregator's isValidClassifierV3 rejects a classifier
+			// without it, regardless of the namespace embedded in the URL path.
+			Expect(fixture.capturedBody).NotTo(BeEmpty())
+			var sent struct {
+				Classifier map[string]any `json:"classifier"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.Classifier).To(HaveKeyWithValue("namespace", ns))
 		})
 	})
 
@@ -207,6 +288,35 @@ var _ = Describe("ExternalDatabase Controller", func() {
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
 			expectNoRecordedEvent(fixture.recorder.Events)
+		})
+	})
+
+	Context("classifier.extraKeys contains a reserved key", func() {
+		It("sets Phase=InvalidConfiguration, never calls aggregator", func() {
+			spec := baseSpec()
+			spec.Classifier.ExtraKeys = map[string]apiextensionsv1.JSON{
+				"scope":  {Raw: []byte(`"tenant"`)}, // reserved — owned by the typed field
+				"region": {Raw: []byte(`"eu"`)},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1.ExternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			edb, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
+
+			Expect(edb.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			ready := findCondition(edb.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
+			Expect(ready.Message).To(ContainSubstring("extraKeys"))
+			Expect(ready.Message).To(ContainSubstring("scope"))
+
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
 		})
 	})
 
@@ -1024,6 +1134,9 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 			edb2.Name = resourceName + "-2"
 			Expect(k8sClient.Create(ctx, edb1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, edb2)).To(Succeed())
+			DeferCleanup(func() {
+				deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: edb2.Name, Namespace: ns}})
+			})
 
 			ob := &dbaasv1.NamespaceBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBindingName, Namespace: ns},
@@ -1066,10 +1179,14 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 	It("registers the controller with a custom exponential rate limiter", func() {
 		// Create a throw-away manager backed by the same envtest API server.
 		// Metrics and health probes are disabled to avoid port conflicts.
+		// SkipNameValidation avoids "controller already exists" errors when multiple
+		// test suites register the same controller name in the same process.
+		skipValidation := true
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
-			Metrics:                metricsserver.Options{BindAddress: "0"},
+			Metrics:                httpserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
+			Controller:             config.Controller{SkipNameValidation: &skipValidation},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1101,119 +1218,5 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		// After Forget the counter is reset; the next failure starts from base again.
 		rateLimiter.Forget(req)
 		Expect(rateLimiter.When(req)).To(Equal(base))
-	})
-})
-
-var _ = Describe("classifierToFlatMap", func() {
-	jsonVal := func(raw string) apiextensionsv1.JSON {
-		return apiextensionsv1.JSON{Raw: []byte(raw)}
-	}
-
-	It("emits required scalar fields only when customKeys are absent", func() {
-		c := dbaasv1.Classifier{
-			MicroserviceName: "svc",
-			Scope:            "service",
-		}
-		Expect(classifierToFlatMap(c)).To(Equal(map[string]any{
-			"microserviceName": "svc",
-			"scope":            "service",
-		}))
-	})
-
-	It("includes namespace and tenantId when set", func() {
-		c := dbaasv1.Classifier{
-			MicroserviceName: "svc",
-			Scope:            "tenant",
-			Namespace:        "ns",
-			TenantId:         "t-1",
-		}
-		Expect(classifierToFlatMap(c)).To(Equal(map[string]any{
-			"microserviceName": "svc",
-			"scope":            "tenant",
-			"namespace":        "ns",
-			"tenantId":         "t-1",
-		}))
-	})
-
-	It("flattens string customKeys as Go strings", func() {
-		c := dbaasv1.Classifier{
-			MicroserviceName: "svc",
-			Scope:            "service",
-			CustomKeys: map[string]apiextensionsv1.JSON{
-				"logicalDBName": jsonVal(`"configs"`),
-			},
-		}
-		Expect(classifierToFlatMap(c)).To(HaveKeyWithValue("logicalDBName", "configs"))
-	})
-
-	It("preserves native JSON types for non-string customKeys", func() {
-		c := dbaasv1.Classifier{
-			MicroserviceName: "svc",
-			Scope:            "service",
-			CustomKeys: map[string]apiextensionsv1.JSON{
-				"shardCount": jsonVal(`5`),
-				"enabled":    jsonVal(`true`),
-				"tags":       jsonVal(`["a","b"]`),
-				"meta":       jsonVal(`{"region":"us-east","zone":"a"}`),
-			},
-		}
-		out := classifierToFlatMap(c)
-		// json.Unmarshal decodes numbers as float64 by default.
-		Expect(out).To(HaveKeyWithValue("shardCount", float64(5)))
-		Expect(out).To(HaveKeyWithValue("enabled", true))
-		Expect(out).To(HaveKeyWithValue("tags", []any{"a", "b"}))
-		Expect(out).To(HaveKeyWithValue("meta", map[string]any{
-			"region": "us-east",
-			"zone":   "a",
-		}))
-	})
-
-	It("round-trips through JSON encoding without losing fidelity", func() {
-		c := dbaasv1.Classifier{
-			MicroserviceName: "svc",
-			Scope:            "service",
-			CustomKeys: map[string]apiextensionsv1.JSON{
-				"shardCount": jsonVal(`5`),
-				"meta":       jsonVal(`{"region":"us-east"}`),
-			},
-		}
-		encoded, err := json.Marshal(classifierToFlatMap(c))
-		Expect(err).ToNot(HaveOccurred())
-		var roundTripped map[string]any
-		Expect(json.Unmarshal(encoded, &roundTripped)).To(Succeed())
-		Expect(roundTripped["shardCount"]).To(Equal(float64(5)))
-		Expect(roundTripped["meta"]).To(Equal(map[string]any{"region": "us-east"}))
-	})
-
-	It("prefers explicit scalar fields over colliding customKeys", func() {
-		// User-supplied customKeys must not silently overwrite microserviceName,
-		// scope, namespace, or tenantId — these are the identity fields.
-		c := dbaasv1.Classifier{
-			MicroserviceName: "real-svc",
-			Scope:            "service",
-			Namespace:        "real-ns",
-			CustomKeys: map[string]apiextensionsv1.JSON{
-				"microserviceName": jsonVal(`"impostor"`),
-				"namespace":        jsonVal(`"impostor-ns"`),
-				"scope":            jsonVal(`"impostor"`),
-			},
-		}
-		out := classifierToFlatMap(c)
-		Expect(out).To(HaveKeyWithValue("microserviceName", "real-svc"))
-		Expect(out).To(HaveKeyWithValue("namespace", "real-ns"))
-		Expect(out).To(HaveKeyWithValue("scope", "service"))
-	})
-
-	It("treats an empty Raw payload as JSON null", func() {
-		c := dbaasv1.Classifier{
-			MicroserviceName: "svc",
-			Scope:            "service",
-			CustomKeys: map[string]apiextensionsv1.JSON{
-				"empty": {Raw: nil},
-			},
-		}
-		out := classifierToFlatMap(c)
-		Expect(out).To(HaveKey("empty"))
-		Expect(out["empty"]).To(BeNil())
 	})
 })

@@ -87,11 +87,17 @@ func (f *aggregatorSyncFixture) reset() {
 }
 
 func (f *aggregatorSyncFixture) close() {
-	if f.server != nil {
-		f.server.Close()
+	closeServerAndDrain(f.server, f.recorder)
+}
+
+// closeServerAndDrain shuts down a test aggregator server and drains any buffered
+// recorder events. Shared by the per-controller test fixtures' close().
+func closeServerAndDrain(srv *httptest.Server, rec *record.FakeRecorder) {
+	if srv != nil {
+		srv.Close()
 	}
-	if f.recorder != nil {
-		drainRecordedEvents(f.recorder.Events)
+	if rec != nil {
+		drainRecordedEvents(rec.Events)
 	}
 }
 
@@ -101,6 +107,11 @@ func reconcileAndFetchObject[T client.Object](
 	newObj func() T,
 ) (T, reconcile.Result, error) {
 	GinkgoHelper()
+	// Wait for the caching client to reflect the object before calling Reconcile,
+	// so that reconcilers using cacheClient (required for MatchingFields) can find it.
+	Eventually(func() error {
+		return cacheClient.Get(ctx, key, newObj())
+	}).Should(Succeed())
 	result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 	obj := newObj()
 	Expect(k8sClient.Get(ctx, key, obj)).To(Succeed())
@@ -110,7 +121,11 @@ func reconcileAndFetchObject[T client.Object](
 func deleteIfExists(obj client.Object) {
 	err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 	if err == nil {
-		Expect(k8sClient.Delete(ctx, obj)).To(Succeed())
+		if len(obj.GetFinalizers()) > 0 {
+			obj.SetFinalizers(nil)
+			Expect(k8sClient.Update(ctx, obj)).To(Succeed())
+		}
+		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).To(Succeed())
 	}
 }
 

@@ -27,8 +27,10 @@ import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.CONFLICT;
 import static jakarta.ws.rs.core.Response.Status.CREATED;
 import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
+import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 import static jakarta.ws.rs.core.Response.Status.OK;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @QuarkusTest
@@ -77,6 +79,30 @@ class BalancingRulesControllerV3Test {
                 .when().put("/balancing/rules/{ruleName}", TEST_RULE_NAME)
                 .then()
                 .statusCode(CONFLICT.getStatusCode());
+    }
+
+    @Test
+    void testDeleteRule() {
+        when(balancingRulesService.deleteNamespaceRule(TEST_NAMESPACE, TEST_RULE_NAME)).thenReturn(true);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .when().delete("/balancing/rules/{ruleName}", TEST_RULE_NAME)
+                .then()
+                .statusCode(OK.getStatusCode());
+
+        verify(balancingRulesService).deleteNamespaceRule(TEST_NAMESPACE, TEST_RULE_NAME);
+    }
+
+    @Test
+    void testDeleteRuleNotFound() {
+        when(balancingRulesService.deleteNamespaceRule(TEST_NAMESPACE, TEST_RULE_NAME)).thenReturn(false);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .when().delete("/balancing/rules/{ruleName}", TEST_RULE_NAME)
+                .then()
+                .statusCode(NOT_FOUND.getStatusCode());
     }
 
     @Test

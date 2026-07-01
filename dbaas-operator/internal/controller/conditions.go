@@ -38,3 +38,23 @@ const ownershipPollInterval = 30 * time.Second
 // the NamespaceBindingReconciler), and the periodic requeue here guarantees the
 // workload CR will eventually be reconciled even if that watch trigger was lost.
 const ownershipUnboundRetryInterval = 5 * time.Minute
+
+// databaseNotFoundTimeout is the duration after which a DatabaseSecretClaim that has
+// been continuously receiving DatabaseNotFound (404) responses from the aggregator
+// is considered stuck. Polling continues (so the CR can recover if the database
+// eventually appears), but the controller switches to EventReasonDatabaseNotFoundTimeout
+// and stops the per-cycle Warning event spam. Surfacing the timeout as a one-shot
+// Warning gives operators a single, alertable signal.
+const databaseNotFoundTimeout = 10 * time.Minute
+
+// secretRotationSafetyNetInterval is the requeue delay applied after a
+// successful DatabaseSecretClaim reconcile. The rotation poller is the primary
+// trigger for credential updates; this slow periodic re-poll is a
+// safety net that recovers from missed rotation events (operator restart,
+// network partition that outlasts the aggregator's retry budget, or a
+// rotation that slips past the poller's cursor entirely). Each cycle re-fetches the
+// credentials and the content-aware compare suppresses the write when nothing
+// changed, so an idle CR costs one aggregator round-trip per interval and no
+// Secret churn. One hour keeps the aggregator load negligible (≈ #CRs per hour)
+// while bounding the worst-case staleness for a dropped event.
+const secretRotationSafetyNetInterval = 1 * time.Hour
