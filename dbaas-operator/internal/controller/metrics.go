@@ -90,12 +90,12 @@ var dbaasReconcileTriggerTotal = prometheus.NewCounterVec(
 )
 
 // dbaasSecretResolutionErrorsTotal counts failures reading credential Secrets,
-// labelled by error category. A non-zero value means a credential rotation
+// labeled by error category. A non-zero value means a credential rotation
 // left a database without valid credentials - direct service impact.
 var dbaasSecretResolutionErrorsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "dbaas_secret_resolution_errors_total",
-		Help: "Failures reading credential Secrets referenced by ExternalDatabase, scoped to namespaces owned by this operator instance. Labelled by namespace and failure category (secret_not_found, key_missing, key_empty, forbidden, secret_read_failed).",
+		Help: "Failures reading credential Secrets referenced by ExternalDatabase, scoped to namespaces owned by this operator instance. Labeled by namespace and failure category (secret_not_found, key_missing, key_empty, forbidden, secret_read_failed).",
 	},
 	[]string{"namespace", "reason"},
 )
@@ -119,7 +119,7 @@ var dbaasAggregatorRequestDurationSeconds = prometheus.NewHistogramVec(
 var dbaasAggregatorRequestsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "dbaas_aggregator_requests_total",
-		Help: "Total calls to dbaas-aggregator, labelled by controller, operation, and result.",
+		Help: "Total calls to dbaas-aggregator, labeled by controller, operation, and result.",
 	},
 	[]string{"controller", "operation", "result"},
 )

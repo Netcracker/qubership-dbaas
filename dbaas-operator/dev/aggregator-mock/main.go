@@ -87,7 +87,7 @@ import (
 //
 // For 2xx codes TmfCode/Reason/Message are ignored (no error body is returned).
 // For 4xx/5xx codes omitted fields produce empty strings in the JSON output,
-// which faithfully reproduces aggregator behaviour for codes without an ErrorCode.
+// which faithfully reproduces aggregator behavior for codes without an ErrorCode.
 type MockRule struct {
 	HTTPCode int    `json:"httpCode"`
 	TmfCode  string `json:"tmfCode,omitempty"` // e.g. "CORE-DBAAS-4010"
@@ -162,7 +162,7 @@ type ChangedEntry struct {
 
 // dbStore is the mock's in-memory record of databases materialized via the get-or-create
 // call (PUT .../databases). It lets get-by-classifier emulate the real aggregator's
-// lazy-tenant behaviour: a tenant database exists only after it has been created, so a
+// lazy-tenant behavior: a tenant database exists only after it has been created, so a
 // DatabaseSecretClaim for a not-yet-materialized tenant gets a 404 (DatabaseNotFound) —
 // exactly what the operator's pinned-tenant materialization is there to prevent. State is
 // per-process and lost on restart.
@@ -463,7 +463,7 @@ func handleExternalDB(
 
 // handleApply serves POST /api/declarations/v1/apply.
 //
-// Behaviour by subKind (when no rule matches):
+// Behavior by subKind (when no rule matches):
 //   - "DbPolicy"             → 200 COMPLETED (synchronous)
 //   - "DatabaseDeclaration"  → 202 IN_PROGRESS with deterministic trackingId
 //
@@ -488,7 +488,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 			writeTmfError(w, rule)
 			return
 		}
-		// 2xx rule: honour the exact code.
+		// 2xx rule: honor the exact code.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(rule.HTTPCode)
 		writeJSON(w, map[string]any{
@@ -498,7 +498,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 		return
 	}
 
-	// Default behaviour depends on subKind.
+	// Default behavior depends on subKind.
 	if req.SubKind == "DatabaseDeclaration" {
 		// InternalDatabase is always async: return 202 with a deterministic trackingId.
 		trackingID := "tracking-" + msName

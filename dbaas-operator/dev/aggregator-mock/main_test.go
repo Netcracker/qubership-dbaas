@@ -205,7 +205,7 @@ func TestGetByClassifier_TenantRequiresMaterialization(t *testing.T) {
 
 // TestGetByClassifier_ServiceNoMaterializationNeeded asserts the materialization gate is
 // tenant-only: a service classifier resolves with 200 without any prior get-or-create,
-// preserving the behaviour the existing service-scoped dev scenarios depend on.
+// preserving the behavior the existing service-scoped dev scenarios depend on.
 func TestGetByClassifier_ServiceNoMaterializationNeeded(t *testing.T) {
 	h := newTestHandler(http.StatusOK, nil)
 	classifier := map[string]any{
