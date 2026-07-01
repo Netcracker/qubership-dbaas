@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Standalone Quarkus service used by DBaaS integration tests to validate mounted-secret
+      resolution in the Quarkus DBaaS PostgreSQL client path (dbaas-datasource extension). It is the
+      Quarkus counterpart of test-apps/spring-test-app-service and satisfies the same black-box HTTP
+      contract.
+    -->
+    <groupId>com.netcracker.cloud</groupId>
+    <artifactId>quarkus-test-app-service</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
+        <quarkus.platform.version>3.33.1</quarkus.platform.version>
+        <!-- Pin to the unique snapshot published from the throwaway branch (throwaway/quarkus-mounted-secret-publish)
+             so a master rebuild of 10.1.1-SNAPSHOT does NOT overwrite the mounted-secret artifacts.
+             Revert to the released version once the feature lands. -->
+        <dbaas-quarkus.version>10.1.1-mounted-secret-SNAPSHOT</dbaas-quarkus.version>
+        <skipITs>true</skipITs>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>${quarkus.platform.artifact-id}</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- DBaaS Quarkus PostgreSQL datasource: provides the @Named("serviceDataSource") AgroalDataSource,
+             resolved from the mounted secret at /etc/secrets/dbaas-secrets before REST. Brings in
+             quarkus-jdbc-postgresql, agroal and the dbaas Flyway integration. -->
+        <dependency>
+            <groupId>com.netcracker.cloud.quarkus</groupId>
+            <artifactId>dbaas-datasource-postgresql</artifactId>
+            <version>${dbaas-quarkus.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-narayana-jta</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>quarkus-test-app-service</finalName>
+        <plugins>
+            <plugin>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build</goal>
+                            <goal>generate-code</goal>
+                            <goal>generate-code-tests</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- DBaaS Quarkus snapshots are published to GitHub Packages. CI provides credentials via
+         settings.xml; the repository declaration lets Maven discover the artifacts. -->
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/Netcracker/qubership-core-java-libs</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+    </repositories>
+</project>

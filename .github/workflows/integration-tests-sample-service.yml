@@ -1,10 +1,343 @@
-name: Integration tests sample service
+name: Sample Services Integration Tests
 
 on:
+  workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"  # Daily at 02:00 UTC
 
 jobs:
-  stub:
+  sample-services-integration-tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      # Both sample images are built in-job and loaded straight into kind (no registry, no
+      # dependency on a separate publish workflow, and the exact PR code is what gets tested).
+      GO_SERVICE_NAME: go-test-app-service
+      GO_IMAGE_REPOSITORY: go-test-app-service
+      GO_IMAGE_TAG: it
+      SPRING_SERVICE_NAME: spring-test-app-service
+      SPRING_IMAGE_REPOSITORY: spring-test-app-service
+      SPRING_IMAGE_TAG: it
+      QUARKUS_SERVICE_NAME: quarkus-test-app-service
+      QUARKUS_IMAGE_REPOSITORY: quarkus-test-app-service
+      QUARKUS_IMAGE_TAG: it
+      # Minimal dbaas-agent stand-in used by the REST-fallback pass (test-apps/dbaas-agent-stub).
+      AGENT_STUB_IMAGE_REPOSITORY: dbaas-agent-stub
+      AGENT_STUB_IMAGE_TAG: it
+      TEST_NAMESPACE: dbaas
+
     steps:
-      - run: echo "stub"
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Create kind config
+        run: |
+          cat <<EOF_KIND > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+            - role: worker
+              labels:
+                region: database
+            - role: worker
+          EOF_KIND
+
+      - name: Set up Kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: kind
+          config: kind-config.yaml
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+          # Lets Maven pull the dbaas-client snapshot from GitHub Packages when building the
+          # Spring sample image (read:packages on Netcracker/qubership-core-java-libs).
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+
+      - name: Deploy Fluent Bit
+        run: |
+          kubectl apply -f .github/declarations/fluent-bit-logging.yaml
+
+      - name: Create Patroni service values
+        run: |
+          cat <<'EOF_PATRONI' > "$GITHUB_WORKSPACE/patroni-services-values.yaml"
+          postgresPassword: ${POSTGRES_PASSWORD}
+
+          backupDaemon:
+            install: false
+
+          dbaas:
+            install: true
+            aggregator:
+              registrationAddress: http://${DBAAS_SERVICE_NAME}.${DBAAS_NAMESPACE}.svc.cluster.local:8080
+              registrationUsername: cluster-dba
+              registrationPassword: password
+
+          # The patroni-services chart runs Robot Framework integration tests by default
+          # (integration-robot-tests / supplementary-robot-tests). In kind they create+drop a burst of
+          # throwaway databases that overwhelms the single-node Patroni and transiently breaks unrelated
+          # provisioning (the sample-service tenant claims landed in that window). Disable them — this IT
+          # exercises dbaas itself, the patroni self-tests are not needed here.
+          tests:
+            install: false
+          EOF_PATRONI
+
+      - name: Resolve DBaaS image tag
+        run: |
+          SAFE_REF="${GITHUB_REF_NAME//\//-}"
+          if [ "$SAFE_REF" = "main" ]; then
+            IMAGE_TAG=latest
+          else
+            IMAGE_TAG="${SAFE_REF}-snapshot"
+          fi
+          echo "Using DBaaS image tag: $IMAGE_TAG"
+          echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Build go test app image and load into kind
+        run: |
+          docker build -t "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" test-apps/go-test-app-service
+          kind load docker-image "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" --name kind
+
+      - name: Build spring test app image and load into kind
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn --batch-mode --no-transfer-progress -f test-apps/spring-test-app-service/pom.xml package -DskipTests
+          docker build -t "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" test-apps/spring-test-app-service
+          kind load docker-image "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" --name kind
+
+      - name: Build quarkus test app image and load into kind
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn --batch-mode --no-transfer-progress -f test-apps/quarkus-test-app-service/pom.xml package -DskipTests
+          docker build -t "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" test-apps/quarkus-test-app-service
+          kind load docker-image "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" --name kind
+
+      - name: Build dbaas-agent stub image and load into kind
+        run: |
+          docker build -t "$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG" test-apps/dbaas-agent-stub
+          kind load docker-image "$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG" --name kind
+
+      - name: Deploy DBaaS Aggregator, Operator, and PostgreSQL
+        working-directory: bootstrap
+        run: >
+          make install
+          CONFIG_FILE=local.mk
+          KUBERNETES_M2M_ENABLED=true
+          OPERATOR_M2M_ENABLED=false
+          PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
+          REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
+
+      - name: Wait for DBaaS deployments
+        run: |
+          kubectl rollout status deployment/dbaas-aggregator -n "$TEST_NAMESPACE" --timeout=300s
+          kubectl rollout status deployment/dbaas-operator -n "$TEST_NAMESPACE" --timeout=300s
+
+      - name: Wait for PostgreSQL readiness
+        run: |
+          PATRONI_POD="$(kubectl -n postgres get pods -o name | grep '^pod/pg-patroni-' | head -1 | cut -d/ -f2)"
+          if [ -z "$PATRONI_POD" ]; then
+            echo "No pg-patroni pod found in namespace postgres"
+            kubectl -n postgres get pods -o wide
+            kubectl -n postgres get svc
+            exit 1
+          fi
+          echo "Waiting for PostgreSQL pod: $PATRONI_POD"
+          kubectl -n postgres wait --for=condition=Ready pod/"$PATRONI_POD" --timeout=300s
+          for i in {1..60}; do
+            if kubectl -n postgres exec "$PATRONI_POD" -- pg_isready -h pg-patroni.postgres -p 5432; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "PostgreSQL did not accept connections in time"
+          kubectl -n postgres get pods -o wide
+          kubectl -n postgres get svc
+          exit 1
+
+      # NamespaceBinding is per-namespace (one object named "binding"), shared by both sample
+      # services, so it lives in a common location and is applied once. The operator holds no
+      # cluster-wide Secret RBAC, so the namespace also gets a dbaas-operator-secrets Role +
+      # RoleBinding (bound to the operator ServiceAccount) — without it the operator cannot
+      # materialize the DatabaseSecretClaim Secrets the sample services mount.
+      - name: Apply sample service namespace binding and Secret RBAC
+        run: |
+          sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/secret-rbac.yaml | kubectl apply -f -
+          sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/namespacebinding.yaml | kubectl apply -f -
+          for i in {1..60}; do
+            finalizers="$(kubectl -n "$TEST_NAMESPACE" get namespacebinding binding -o jsonpath='{.metadata.finalizers}' || true)"
+            if [[ "$finalizers" == *"platform.dbaas.netcracker.com/binding-protection"* ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "NamespaceBinding/binding was not registered by dbaas-operator in time"
+          exit 1
+
+      # Minimal dbaas-agent stand-in (test-apps/dbaas-agent-stub): injects originService and
+      # authenticates to the aggregator as cluster-dba, so the REST-fallback pass exercises the real
+      # client path without the production agent's tenant-manager / gateway dependencies. Unused in
+      # Pass A (the apps point at a broken URL and resolve from the mount).
+      - name: Deploy dbaas-agent stub
+        run: |
+          sed -e "s/__NAMESPACE__/$TEST_NAMESPACE/g" \
+              -e "s#__IMAGE__#$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG#g" \
+              test-apps/dbaas-agent-stub/deploy.yaml | kubectl apply -f -
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/dbaas-agent --timeout=120s
+
+      # ───────────────────────── Pass A — mount proof ─────────────────────────
+      # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED. A working
+      # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
+      # quadrant tests prove every datasource reads its connection from the mount. Tenant databases are
+      # materialized by the operator (a pinned-tenant InternalDatabase get-or-creates after apply).
+      - name: "Pass A — deploy sample services (broken aggregator + mounted secrets)"
+        run: |
+          chmod +x .github/scripts/deploy-sample-services.sh
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator-unreachable.invalid:8080" true
+
+      - name: "Pass A — wait for sample services"
+        run: |
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
+
+      - name: "Pass A — run integration tests (mount proof)"
+        id: tests_a
+        working-directory: test-apps/test-apps-integration-tests
+        run: >
+          mvn --batch-mode
+          -DskipIT=false
+          -Dclouds.cloud.name=kind
+          -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ──────────────────────── Pass B — REST fallback ────────────────────────
+      # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted. Each
+      # client misses the mount and must resolve its database over REST through the agent (its native
+      # target), so a working /postgres* round-trip proves the REST fallback path in every library.
+      - name: "Pass B — deploy sample services (working agent + no mounted secrets)"
+        run: |
+          .github/scripts/deploy-sample-services.sh "http://dbaas-agent.$TEST_NAMESPACE:8080" false
+
+      - name: "Pass B — wait for sample services"
+        run: |
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
+
+      - name: "Pass B — run integration tests (REST fallback)"
+        id: tests_b
+        working-directory: test-apps/test-apps-integration-tests
+        run: >
+          mvn --batch-mode
+          -DskipIT=false
+          -Dclouds.cloud.name=kind
+          -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sample-services-surefire-reports
+          path: test-apps/test-apps-integration-tests/target/surefire-reports/**
+          if-no-files-found: warn
+
+      - name: Collect Fluent Bit logs
+        id: collect_fluentbit_logs
+        if: always()
+        run: |
+          chmod +x .github/scripts/collect-fluentbit-logs.sh
+          .github/scripts/collect-fluentbit-logs.sh
+
+      - name: Upload Fluent Bit logs
+        if: always() && steps.collect_fluentbit_logs.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sample-services-pod-logs
+          path: fluentbit-logs/**
+          if-no-files-found: warn
+
+      - name: Dump diagnostics on failure
+        # always() so this also runs when the deploy/rollout fails (which skips the tests step);
+        # the body stays quiet on a fully green run.
+        if: always()
+        run: |
+          set +e
+          shopt -s nullglob
+          reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
+          if [ "${#reports[@]}" -gt 0 ] && ! grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
+            echo "All sample-service tests passed; skipping diagnostics."
+            exit 0
+          fi
+          echo "::group::All pods"
+          kubectl get pods -A -o wide
+          echo "::endgroup::"
+          echo "::group::Sample-service pods describe (scheduling / FailedMount events)"
+          for svc in "$GO_SERVICE_NAME" "$SPRING_SERVICE_NAME" "$QUARKUS_SERVICE_NAME"; do
+            kubectl -n "$TEST_NAMESPACE" describe pod -l app.kubernetes.io/name="$svc"
+          done
+          echo "::endgroup::"
+          echo "::group::All InternalDatabase + DatabaseSecretClaim ($TEST_NAMESPACE)"
+          kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o wide
+          kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o yaml
+          echo "::endgroup::"
+          echo "::group::Secrets ($TEST_NAMESPACE)"
+          kubectl -n "$TEST_NAMESPACE" get secret -o name
+          echo "::endgroup::"
+          echo "::group::Physical databases on Patroni + dbaas classifier registry (who created what)"
+          PG_POD="$(kubectl -n postgres get pods -o name | grep '^pod/pg-patroni-' | head -1 | cut -d/ -f2)"
+          echo "patroni pod: $PG_POD"
+          kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -P pager=off -c '\l'" 2>&1
+          echo "--- every dbaas-managed classifier (microserviceName/namespace/scope/tenantId) by creation time ---"
+          kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -d dbaas -P pager=off -c \"select time_db_creation, type, namespace, classifier from classifier order by time_db_creation;\"" 2>&1
+          echo "::endgroup::"
+          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "dbaas-postgres-adapter:postgres"; do
+            d="${pair%%:*}"; ns="${pair##*:}"
+            echo "::group::logs $d ($ns)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=2000 2>&1
+            echo "::endgroup::"
+          done
+          echo "::group::Recent events ($TEST_NAMESPACE + postgres)"
+          kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -150
+          kubectl -n postgres get events --sort-by=.lastTimestamp | tail -100
+          echo "::endgroup::"
+
+      - name: Fail job if sample service tests failed
+        if: always()
+        run: |
+          shopt -s nullglob
+          reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "::error::No Surefire XML reports were generated for sample service integration tests"
+            exit 1
+          fi
+          if grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
+            echo "::error::Sample service integration test failed"
+            exit 1
+          fi
