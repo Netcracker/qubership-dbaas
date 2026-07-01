@@ -23,5 +23,5 @@ spec:
       - '{{ .Values.NAMESPACE }}'
   selector:
     matchLabels:
-      app: '{{ .Values.SERVICE_NAME }}'
+      name: '{{ .Values.SERVICE_NAME }}'
 {{- end }}

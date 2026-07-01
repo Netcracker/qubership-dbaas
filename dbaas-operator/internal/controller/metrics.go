@@ -62,10 +62,11 @@ const (
 	secretReasonForbidden  = "forbidden"
 	secretReasonReadFailed = "secret_read_failed"
 
-	operationRegisterEDB = "register_external_database"
-	operationApplyConfig = "apply_config"
-	operationPollStatus  = "poll_status"
-	operationGetDatabase = "get_database_by_classifier"
+	operationRegisterEDB    = "register_external_database"
+	operationApplyConfig    = "apply_config"
+	operationPollStatus     = "poll_status"
+	operationGetDatabase    = "get_database_by_classifier"
+	operationCreateDatabase = "create_database"
 
 	operationApplyMicroserviceRule   = "apply_microservice_balancing_rule"
 	operationCleanupMicroserviceRule = "cleanup_microservice_balancing_rule"

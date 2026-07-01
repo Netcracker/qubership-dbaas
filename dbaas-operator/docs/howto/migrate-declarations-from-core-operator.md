@@ -120,7 +120,9 @@ own `InternalDatabase` CR.**
 | `declarations[].classifierConfig.classifier{...}` | `spec.classifier{...}` (the `classifierConfig` wrapper is dropped) |
 | label `app.kubernetes.io/name` / `app.kubernetes.io/instance` | `spec.classifier.microserviceName` (**required, immutable**) |
 | `classifier.scope` | `spec.classifier.scope` (**required**) |
-| `classifier.customKeys{...}` | `spec.classifier.customKeys{...}` — unchanged |
+| `classifier.customKeys{...}` | `spec.classifier.customKeys{...}` — unchanged (stays **nested**) |
+| `classifier.tenantId` (scope=tenant only) | `spec.classifier.tenantId` — **optional**, even for `scope: tenant`. If set, the operator additionally materializes the concrete `{scope=tenant, tenantId}` database after the declarative apply |
+| legacy **top-level** classifier identity keys (open classifier) | `spec.classifier.extraKeys{...}` — arbitrary top-level keys go here, **not** `customKeys`; reserved keys `microserviceName`/`scope`/`namespace`/`tenantId`/`customKeys` are not allowed |
 | `declarations[].type` | `spec.type` (**required, immutable**) |
 | `declarations[].versioningConfig.approach` | `spec.versioningConfig.approach` |
 | `declarations[].initialInstantiation.approach` | `spec.initialInstantiation.approach` |
@@ -199,13 +201,28 @@ spec:
 - **`classifier.namespace`.** Optional. If omitted, the aggregator defaults it
   to the CR's `metadata.namespace`. If you set it, it **must equal**
   `metadata.namespace`, otherwise the controller reports `InvalidConfiguration`.
+- **Open-classifier (top-level) keys → `extraKeys`.** A legacy declaration that
+  placed arbitrary identity fields at the classifier's *top level* (the open-classifier
+  model) maps them to `spec.classifier.extraKeys` — a flat map merged onto the top level
+  on the wire, distinct from the nested `customKeys`. The reserved keys
+  `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are rejected with
+  `InvalidConfiguration`. Because these fields are part of the database identity, **every
+  consumer's dbaas-client must emit the same keys/values**, or the database (and its
+  mounted Secret) won't be found.
 - **No more `subKind` / `spec.apiVersion`.** Remove both; they have no place in
   the CRDs. The aggregator still receives them internally (the operator fills
   `kind: DBaaS` / `subKind` on the wire), so you don't need to.
 - **One database per `InternalDatabase`.** There is no `declarations[]` array;
   fan a multi-entry legacy resource out into multiple CRs with distinct names.
+- **Pinned `tenantId` triggers materialization.** The aggregator's declarative apply registers only
+  a tenant-agnostic *template* for a `scope: tenant` InternalDatabase (it drops `tenantId`). When you
+  pin `spec.classifier.tenantId`, the controller additionally get-or-creates the concrete
+  `{scope=tenant, tenantId}` database so a `DatabaseSecretClaim` for that tenant resolves immediately.
+  Omit `tenantId` to declare a template only.
 - **`clone` requires a source.** When `initialInstantiation.approach: clone`,
   `sourceClassifier` is required and `spec.lazy: true` is prohibited.
+- **DatabaseAccessPolicy needs `services` or `policy`.** At least one must be set; otherwise the CR
+  is rejected with `InvalidConfiguration`.
 - **Status & lifecycle.** Each CR now carries its own `status.phase`,
   conditions, and `observedGeneration`; provisioning is asynchronous and the
   controller polls the aggregator. See the runbook for the phase/condition
