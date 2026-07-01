@@ -15,8 +15,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <skipIT>true</skipIT>
         <junit.version>6.0.3</junit.version>
-        <fabric8.version>7.4.0</fabric8.version>
-        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
+        <fabric8.version>7.5.2</fabric8.version>
+        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
 
