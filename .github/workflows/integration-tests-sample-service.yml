@@ -154,6 +154,19 @@ jobs:
           kubectl rollout status deployment/dbaas-aggregator -n "$TEST_NAMESPACE" --timeout=300s
           kubectl rollout status deployment/dbaas-operator -n "$TEST_NAMESPACE" --timeout=300s
 
+      # Phase C authenticates with `dbaas`-audience projected tokens, which the aggregator verifies by
+      # OIDC discovery against the kube-apiserver (/.well-known/openid-configuration + JWKS). Grant the
+      # aggregator ServiceAccount the issuer-discovery role and restart so the verifier re-runs
+      # discovery with the permission. Test-only — the product chart does not ship this binding.
+      - name: Grant aggregator OIDC issuer-discovery (for direct-M2M verification)
+        run: |
+          kubectl create clusterrolebinding dbaas-aggregator-issuer-discovery \
+            --clusterrole=system:service-account-issuer-discovery \
+            --serviceaccount="$TEST_NAMESPACE":dbaas-aggregator \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$TEST_NAMESPACE" rollout restart deployment/dbaas-aggregator
+          kubectl rollout status deployment/dbaas-aggregator -n "$TEST_NAMESPACE" --timeout=300s
+
       - name: Wait for PostgreSQL readiness
         run: |
           PATRONI_POD="$(kubectl -n postgres get pods -o name | grep '^pod/pg-patroni-' | head -1 | cut -d/ -f2)"
@@ -250,6 +263,33 @@ jobs:
 
       - name: "Pass B — run integration tests (REST fallback)"
         id: tests_b
+        working-directory: test-apps/test-apps-integration-tests
+        run: >
+          mvn --batch-mode
+          -DskipIT=false
+          -Dclouds.cloud.name=kind
+          -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─────────────────────── Phase C — direct M2M REST ───────────────────────
+      # Redeploy all three apps pointing DIRECTLY at the real aggregator, no mounted secrets, with a
+      # `dbaas`-audience projected token (M2M_ENABLED=true). Each client authenticates its aggregator
+      # call with its own Kubernetes token (no dbaas-agent), so a working /postgres* round-trip
+      # proves the direct-M2M path in every library.
+      - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
+        run: |
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false true
+
+      - name: "Phase C — wait for sample services"
+        run: |
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
+
+      - name: "Phase C — run integration tests (direct M2M)"
+        id: tests_c
         working-directory: test-apps/test-apps-integration-tests
         run: >
           mvn --batch-mode

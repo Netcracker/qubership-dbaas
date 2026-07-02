@@ -22,6 +22,9 @@ spec:
         app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     spec:
+      # Dedicated ServiceAccount so its projected token identifies this app to the aggregator
+      # (sub = system:serviceaccount:<ns>:spring-test-app-service) in the direct-M2M phase.
+      serviceAccountName: '{{ .Values.SERVICE_NAME }}'
       nodeSelector:
         {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS }}'
       securityContext:
@@ -36,6 +39,18 @@ spec:
           secret:
             secretName: '{{ .secretName }}'
         {{- end }}
+        {{- end }}
+        # Direct-M2M phase: a Kubernetes projected service-account token scoped to the `dbaas`
+        # audience. M2MClientFactory.getDbaasOkHttpClient reads it from /var/run/secrets/tokens/dbaas
+        # and sends it as a Bearer straight to the aggregator (no dbaas-agent).
+        {{- if .Values.M2M_ENABLED }}
+        - name: dbaas-m2m-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: dbaas
+                  expirationSeconds: 3600
+                  path: token
         {{- end }}
         # Writable temp dir so the JVM/Tomcat can run with a read-only root filesystem.
         - name: tmp
@@ -55,6 +70,12 @@ spec:
               value: '{{ .Values.LOG_LEVEL }}'
             - name: API_DBAAS_ADDRESS
               value: '{{ .Values.API_DBAAS_ADDRESS }}'
+            - name: KUBERNETES_M2M_ENABLED
+              value: '{{ .Values.M2M_ENABLED | default false }}'
+            # In the M2M phase, switch the dbaas Spring client from the Basic RestTemplate flavor to
+            # the M2M OkHttp client (getDbaasOkHttpClient). This env overrides application.yaml.
+            - name: DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH
+              value: '{{ not .Values.M2M_ENABLED }}'
             - name: JAVA_TOOL_OPTIONS
               value: '{{ .Values.JAVA_TOOL_OPTIONS }}'
           ports:
@@ -68,6 +89,11 @@ spec:
               mountPath: /etc/secrets/dbaas-secrets/{{ .secretName }}
               readOnly: true
             {{- end }}
+            {{- end }}
+            {{- if .Values.M2M_ENABLED }}
+            - name: dbaas-m2m-token
+              mountPath: /var/run/secrets/tokens/dbaas
+              readOnly: true
             {{- end }}
             - name: tmp
               mountPath: /tmp
