@@ -33,6 +33,20 @@ the database from `/etc/secrets/dbaas-secrets` **before** the agent provider (RE
 test deploys the service with `API_DBAAS_ADDRESS` pointed at an **unreachable** host, so a successful
 insert/list proves the connection came from the mounted secret, not REST.
 
+## Integration test phases
+
+The `Sample Services Integration Tests` workflow deploys this service three times against the same
+black-box contract, toggling how the DBaaS connection is resolved:
+
+- **Pass A — mounted secret**: secrets mounted, `API_DBAAS_ADDRESS` unreachable → a working round-trip
+  can only come from the mount.
+- **Pass B — REST fallback**: no mount, `API_DBAAS_ADDRESS` at the `dbaas-agent` stub → the client
+  resolves each database over REST through the agent (Basic auth).
+- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_ENABLED=true`.
+  A `dbaas`-audience projected token is mounted at `/var/run/secrets/tokens/dbaas/token`; clearing the
+  aggregator basic-auth creds makes `DbaasClientProducer` select the M2M client, which calls the
+  aggregator directly with that token as a Bearer — no dbaas-agent.
+
 The `quarkus_test_app_items` table is created by the dbaas Flyway integration
 (`MigrationService.migrate`) from `classpath:db/migration`, run lazily on the first request.
 `baseline-version=0` lets `V1` apply on top of the (non-empty) dbaas-provisioned schema.
@@ -45,14 +59,16 @@ java -jar target/quarkus-app/quarkus-run.jar
 ```
 
 The build depends on the dbaas Quarkus extension snapshot that carries the mounted-secret feature
-(`com.netcracker.cloud.quarkus:dbaas-datasource-postgresql:10.1.1-SNAPSHOT`), published to GitHub
-Packages.
+(`com.netcracker.cloud.quarkus:dbaas-datasource-postgresql:10.1.3-mounted-secret-SNAPSHOT`), published
+to GitHub Packages.
 
 | Env var | Purpose | Default |
 |---|---|---|
 | `MICROSERVICE_NAME` | dbaas classifier `microserviceName` | `quarkus-test-app-service` |
 | `MICROSERVICE_NAMESPACE` | dbaas classifier `namespace` | `default` |
-| `API_DBAAS_ADDRESS` | REST fallback target (used only on a mounted-secret miss) | `http://dbaas-aggregator:8080` |
+| `API_DBAAS_ADDRESS` | REST target: dbaas-agent (Pass B) or the aggregator directly (Pass C) | `http://dbaas-aggregator:8080` |
+| `KUBERNETES_M2M_ENABLED` | Pass C: call the aggregator directly with a `dbaas`-audience projected token | `false` |
+| `QUARKUS_DBAAS_API_AGGREGATOR_USERNAME` / `_PASSWORD` | cleared in Pass C so the M2M client is selected | `dbaas` / `dbaas` |
 | `LOG_LEVEL` | log level | `INFO` |
 
 Runs on the same digest-pinned Java base image as dbaas-aggregator
