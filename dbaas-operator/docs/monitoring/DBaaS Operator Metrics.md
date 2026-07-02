@@ -146,7 +146,7 @@ Prometheus/VictoriaMetrics data source.
 **To open it:** in Grafana, open the **DBaaS Operator** dashboard (the name may differ per
 installation), select the **datasource**, and set the time range.
 
-The dashboard is organised into rows that mirror the metric groups above.
+The dashboard is organized into rows that mirror the metric groups above.
 
 ### Credentials & Secret Resolution
 

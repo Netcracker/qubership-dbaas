@@ -119,7 +119,7 @@ import "github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 
 All errors from external services must be classified into:
 
-| Category | HTTP codes | Operator behaviour | Phase |
+| Category | HTTP codes | Operator behavior | Phase |
 |---|---|---|---|
 | **Spec rejection** (permanent) | 400, 403, 409, 410, 422 | No retry, wait for spec change | `InvalidConfiguration` |
 | **Auth error** (transient) | 401 | Retry with backoff | `BackingOff` |
@@ -312,7 +312,7 @@ Grafana dashboard (`templates/Dashboard.yaml` +
 `DBAAS_OPERATOR_ENABLED && MONITORING_ENABLED`.
 
 **Reference:** [`docs/monitoring/DBaaS Operator Metrics.md`](docs/monitoring/DBaaS%20Operator%20Metrics.md)
-— the user-facing catalogue of every metric, its labels and label values, the dashboard panels, and
+— the user-facing catalog of every metric, its labels and label values, the dashboard panels, and
 example PromQL.
 
 > **Keep the docs in sync — mandatory.** Any change to the metrics surface MUST be reflected in

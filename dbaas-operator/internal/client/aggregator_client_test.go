@@ -325,7 +325,7 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.RegisterExternalDatabase(ctx, "ns", minimalExtDBRequest())
 	if err == nil {
-		t.Error("expected error on cancelled context, got nil")
+		t.Error("expected error on canceled context, got nil")
 	}
 }
 
@@ -477,7 +477,7 @@ func TestDeleteNamespaceBalancingRule_ContextCancellation(t *testing.T) {
 
 	c := newClient("http://127.0.0.1", staticToken("test-token"))
 	if err := c.DeleteNamespaceBalancingRule(ctx, "payments", "pg-fast"); err == nil {
-		t.Fatal("expected error on cancelled context, got nil")
+		t.Fatal("expected error on canceled context, got nil")
 	}
 }
 

@@ -604,8 +604,8 @@ func isOlderClaimant(a, b *dbaasv1.DatabaseSecretClaim) bool {
 // would otherwise be filtered out and never reconciled.
 //
 // Create and Delete fall through to the embedded predicate.Funcs defaults
-// (both return true), preserving the standard behaviour for new and removed
-// CRs. Only Update is customised.
+// (both return true), preserving the standard behavior for new and removed
+// CRs. Only Update is customized.
 type specOrRotationTriggerPredicate struct{ predicate.Funcs }
 
 func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {

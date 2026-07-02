@@ -173,7 +173,7 @@ func TestWatchCredentials_ReloadsOnFileChange(t *testing.T) {
 // Linux-only: inotify (production platform) generates IN_MOVED_TO → Create
 // for the destination of a rename, which our filter catches as base="..data".
 // macOS kqueue does not generate Create events for symlink creation, so this
-// test is skipped there — cross-platform watcher behaviour is covered by
+// test is skipped there — cross-platform watcher behavior is covered by
 // TestWatchCredentials_ReloadsOnFileChange.
 func TestWatchCredentials_ReloadsOnKubernetesSymlinkSwap(t *testing.T) {
 	if runtime.GOOS != "linux" {
@@ -234,7 +234,7 @@ func TestWatchCredentials_ReloadsOnKubernetesSymlinkSwap(t *testing.T) {
 }
 
 // TestWatchCredentials_StopsOnContextCancel verifies that the watcher goroutine
-// exits cleanly when the context is cancelled.
+// exits cleanly when the context is canceled.
 func TestWatchCredentials_StopsOnContextCancel(t *testing.T) {
 	t.Parallel()
 
