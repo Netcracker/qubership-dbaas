@@ -1,0 +1,4 @@
+name: dbaas-declarative-transform
+version: 1.0.0
+description: Migrate Go, Spring, and Quarkus DBaaS provisioning to InternalDatabase and DatabaseSecretClaim resources.
+author: Netcracker
