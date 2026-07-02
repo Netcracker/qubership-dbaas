@@ -61,6 +61,9 @@ python <skill-directory>/scripts/convert_dbaas_crs.py \
   --namespace '{{ .Values.NAMESPACE }}'
 ```
 
+Use the Helm values above only for chart-local manifests. For plain JSON or non-chart YAML, pass the concrete owning
+service and target namespace through `--service-name` and `--namespace` to avoid emitting Helm expressions.
+
 The script reads JSON with the Python standard library. YAML input requires PyYAML. If PyYAML is unavailable, continue
 manually from [references/mapping.md](references/mapping.md) or use a YAML parser already provided by the environment;
 the converter is optional.
