@@ -50,6 +50,7 @@ jobs:
       docker-config-file: 'docker-go-dev-config.json'
       ref: "refs/tags/v${{ inputs.version }}"
       dry-run: ${{ inputs.dry-run }}
+      go-module-dir: 'dbaas-operator'
     secrets: inherit
 
   cleanup-on-dry-run:
