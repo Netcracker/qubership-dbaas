@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config.security;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import io.quarkus.security.AuthenticationFailedException;
 import io.quarkus.security.identity.IdentityProviderManager;

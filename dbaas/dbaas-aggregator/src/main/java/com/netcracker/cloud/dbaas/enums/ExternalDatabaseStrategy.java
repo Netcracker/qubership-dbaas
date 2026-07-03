@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.enums;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import lombok.Getter;
 

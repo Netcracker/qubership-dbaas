@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine.processes;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.service.processengine.tasks.DeleteBackupTask;
 import com.netcracker.cloud.dbaas.service.processengine.tasks.NewDatabaseTask;

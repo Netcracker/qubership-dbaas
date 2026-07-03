@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -75,8 +76,8 @@ func PatchClaimsForRotation(ctx context.Context, c client.Client, namespace stri
 	for i := range list.Items {
 		ds := &list.Items[i]
 		if patchErr := c.Patch(ctx, ds, client.RawPatch(types.MergePatchType, patchBytes)); patchErr != nil {
-			log.ErrorC(ctx, "Failed to patch rotation-trigger annotation name=%s namespace=%s err=%v",
-				ds.Name, ds.Namespace, patchErr)
+			log.ErrorC(ctx, "%s", logfields.Format("Failed to patch rotation-trigger annotation",
+				"name", ds.Name, "namespace", ds.Namespace, "error", patchErr))
 			continue
 		}
 		patched++

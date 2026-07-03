@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.monitoring.indicators;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;

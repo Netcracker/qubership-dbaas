@@ -1,4 +1,5 @@
 package db.migration.postgresql;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.google.common.base.Strings;
 import com.netcracker.cloud.dbaas.JdbcUtils;

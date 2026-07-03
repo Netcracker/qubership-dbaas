@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.serializer;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializerBase;
 import com.netcracker.cloud.dbaas.service.BlueGreenStatusUtil;

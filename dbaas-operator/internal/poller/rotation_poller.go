@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 )
 
 // DefaultLimit is the page size requested per poll. Excess changes are drained on
@@ -80,7 +81,7 @@ func (p *RotationPoller) Start(ctx context.Context) error {
 	if limit <= 0 {
 		limit = DefaultLimit
 	}
-	log.Infof("Starting rotation poller interval=%v limit=%d", p.Interval, limit)
+	log.Infof("%s", logfields.Format("Starting rotation poller", "interval", p.Interval, "limit", limit))
 
 	// Seed immediately, before the first tick, so the baseline is captured at
 	// ~leadership acquisition — the same point the startup reconcile runs. Any
@@ -111,12 +112,12 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 	if cursor == nil {
 		resp, err := p.Source.GetChangedSince(ctx, nil, 0)
 		if err != nil {
-			log.ErrorC(ctx, "Rotation poller failed to seed cursor (will retry next tick): %v", err)
+			log.ErrorC(ctx, "%s", logfields.Format("Rotation poller failed to seed cursor (will retry next tick)", "error", err))
 			return nil
 		}
 		if resp.HighWaterMark != nil {
-			log.InfoC(ctx, "Rotation poller seeded cursor lastRotatedAt=%v id=%s",
-				resp.HighWaterMark.LastRotatedAt.UTC(), resp.HighWaterMark.Id)
+			log.InfoC(ctx, "%s", logfields.Format("Rotation poller seeded cursor",
+				"lastRotatedAt", resp.HighWaterMark.LastRotatedAt.UTC(), "id", resp.HighWaterMark.Id))
 			return resp.HighWaterMark
 		}
 		c := epochCursor()
@@ -126,7 +127,7 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 
 	resp, err := p.Source.GetChangedSince(ctx, cursor, limit)
 	if err != nil {
-		log.ErrorC(ctx, "Rotation poller request failed (will retry next tick): %v", err)
+		log.ErrorC(ctx, "%s", logfields.Format("Rotation poller request failed (will retry next tick)", "error", err))
 		return cursor
 	}
 
@@ -135,8 +136,8 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 		it := &resp.Items[i]
 		trigger := it.LastRotatedAt.UTC().Format(time.RFC3339Nano)
 		if _, _, perr := PatchClaimsForRotation(ctx, p.Client, it.Namespace, it.Classifier, it.Type, trigger); perr != nil {
-			log.ErrorC(ctx, "Rotation poller failed to fan out namespace=%s type=%s err=%v",
-				it.Namespace, it.Type, perr)
+			log.ErrorC(ctx, "%s", logfields.Format("Rotation poller failed to fan out",
+				"namespace", it.Namespace, "type", it.Type, "error", perr))
 		}
 		// Items are ordered by (lastRotatedAt, id) ascending; advance the cursor
 		// unconditionally so a per-namespace list error (logged above) does not
@@ -144,8 +145,8 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 		advanced = &aggregatorclient.ChangeCursor{LastRotatedAt: it.LastRotatedAt, Id: it.Id}
 	}
 	if len(resp.Items) > 0 {
-		log.InfoC(ctx, "Rotation poller processed changes count=%d cursor=(%v,%s)",
-			len(resp.Items), advanced.LastRotatedAt.UTC(), advanced.Id)
+		log.InfoC(ctx, "%s", logfields.Format("Rotation poller processed changes",
+			"count", len(resp.Items), "lastRotatedAt", advanced.LastRotatedAt.UTC(), "id", advanced.Id))
 	}
 	return advanced
 }

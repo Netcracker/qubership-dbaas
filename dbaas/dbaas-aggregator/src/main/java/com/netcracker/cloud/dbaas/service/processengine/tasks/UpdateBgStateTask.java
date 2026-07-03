@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.service.BlueGreenService;
 import com.netcracker.core.scheduler.po.DataContext;
@@ -24,7 +25,7 @@ public class UpdateBgStateTask extends AbstractDbaaSTask implements Serializable
 
         String operation = (String) context.get("operation");
         if (APPLY_CONFIG_OPERATION.equals(operation)) {
-            log.info("Nothing to change in '{}' task because operation is {}", super.getName(), operation);
+StructuredLog.info(log, "Nothing to change in '' task because operation is", "arg0", super.getName(), "operation", operation);
             return;
         }
 
@@ -40,7 +41,7 @@ public class UpdateBgStateTask extends AbstractDbaaSTask implements Serializable
             blueGreenService.updateWarmupBgNamespace(namespace, version);
         }
 
-        log.debug("Done '{}' task update state = {}", super.getName(), namespace);
+StructuredLog.debug(log, "Done '' task update state =", "state", super.getName(), "namespace", namespace);
     }
 
 }

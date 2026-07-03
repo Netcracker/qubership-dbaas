@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.dbaas.dto.AbstractDatabaseCreateRequest;
@@ -84,7 +85,7 @@ public class AggregatedDatabaseAdministrationService {
     public Response createDatabaseFromRequest(DatabaseCreateRequestV3 createRequest, String namespace,
                                               FunctionProvidePassword<Database, String> password,
                                               String serviceRole, String version, Boolean async) {
-        log.info("Request to get or create {} database in {} with classifier {}", createRequest.getType(), namespace, createRequest.getClassifier());
+        StructuredLog.info(log, "Request to get or create database in with classifier", "arg0", createRequest.getType(), "namespace", namespace, "classifier", createRequest.getClassifier());
         if (createRequest.getType() == null || createRequest.getType().isEmpty()) { // regardless @Notnull it can be Null
             throw new DBCreateValidationException(Source.builder().pointer("/databases").build(), "request parameter 'type' can't be null or empty");
         }
@@ -102,27 +103,25 @@ public class AggregatedDatabaseAdministrationService {
         if (SCOPE_VALUE_TENANT.equals(declarativeClassifier.get(SCOPE))) {
             declarativeClassifier.remove(TENANT_ID);
         }
-        log.debug("version in request= {}", version);
-        log.debug("try to find declaration with classifier = {} and type = {}", declarativeClassifier, createRequest.getType());
+        StructuredLog.debug(log, "version in request=", "version", version);
+        StructuredLog.debug(log, "try to find declaration with classifier = and type =", "declarativeClassifier", declarativeClassifier, "arg1", createRequest.getType());
         Optional<DatabaseDeclarativeConfig> lastDeclarativeConfig = declarativeConfigRepository.
                 findFirstByClassifierAndType(declarativeClassifier, createRequest.getType());
         if (lastDeclarativeConfig.isPresent()) {
-            log.debug("found declaration = {}", lastDeclarativeConfig);
+            StructuredLog.debug(log, "found declaration =", "lastDeclarativeConfig", lastDeclarativeConfig);
             createRequest = new DatabaseCreateRequestV3(lastDeclarativeConfig.get(), createRequest.getOriginService(),
                     createRequest.getUserRole());
             version = evaluateVersion(version, lastDeclarativeConfig.get().getVersioningType(), namespace);
         }
-        log.debug("version after apply declarative config= {}", version);
+        StructuredLog.debug(log, "version after apply declarative config=", "version", version);
 
         final DatabaseRegistry databaseRegistry = createDatabaseRegistryEntity(createRequest, namespace, classifier);
         Database database = createDatabaseEntity(createRequest, databaseRegistry, version);
-        log.info("Request to get or create logical database {} in physical database {}"
-                , database
-                , createRequest.getPhysicalDatabaseId());
+        StructuredLog.info(log, "Request to get or create logical database in physical database", "database", database, "arg1", createRequest.getPhysicalDatabaseId());
         try {
             databaseRegistryDbaasRepository.saveAnyTypeLogDb(databaseRegistry);
         } catch (ConstraintViolationException ex) {
-            log.debug("try to get database={}", databaseRegistry);
+            StructuredLog.debug(log, "try to get database=", "databaseRegistry", databaseRegistry);
             if (AggregatedDatabaseAdministrationUtils.isUniqueViolation(ex)) {
                 //In blue-green we can update only versioned db
                 return updateExistingDatabase(createRequest, password, serviceRole, classifier, bgDomain, version, lastDeclarativeConfig);
@@ -161,7 +160,7 @@ public class AggregatedDatabaseAdministrationService {
     @NotNull
     public Optional<BgDomain> getBgDomain(String namespace) {
         Optional<BgNamespace> bgNamespaceByNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(namespace);
-        log.debug("founded bgNamespace = {}", bgNamespaceByNamespace);
+        StructuredLog.debug(log, "founded bgNamespace =", "bgNamespaceByNamespace", bgNamespaceByNamespace);
         return bgNamespaceByNamespace.map(BgNamespace::getBgDomain);
     }
 
@@ -176,7 +175,7 @@ public class AggregatedDatabaseAdministrationService {
                 filter(ns -> !ns.getNamespace().equals(namespace)
                         && (ACTIVE_STATE.equals(ns.getState()) || CANDIDATE_STATE.equals(ns.getState()))).findFirst();
         if (anotherBgNamespace.isEmpty()) {
-            log.debug("suitable for db sharing namespace in bgDomain = {} is not present ", bgDomain.getNamespaces());
+            StructuredLog.debug(log, "suitable for db sharing namespace in bgDomain = is not present", "namespace", bgDomain.getNamespaces());
             return;
         }
         String anotherNamespace = anotherBgNamespace.get().getNamespace();
@@ -198,8 +197,8 @@ public class AggregatedDatabaseAdministrationService {
             databaseRegistry.setDatabase(sourceDatabase);
             sourceDatabase.getDatabaseRegistry().add(databaseRegistry);
 
-            log.info("save new classifier = {}", databaseRegistry);
-            log.debug("update database = {}", sourceDatabase);
+            StructuredLog.info(log, "save new classifier =", "databaseRegistry", databaseRegistry);
+            StructuredLog.debug(log, "update database =", "sourceDatabase", sourceDatabase);
             databaseRegistryDbaasRepository.saveAnyTypeLogDb(databaseRegistry);
         }
     }
@@ -231,20 +230,22 @@ public class AggregatedDatabaseAdministrationService {
                 }
                 updateDatabase(databaseRegistry, createRequest);
             } catch (WebApplicationException e) {
-                log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
+                StructuredLog.error(log, "Error during update database with classifier and type",
+                        "classifier", classifier, "type", createRequest.getType());
                 return Response.status(e.getResponse().getStatusInfo()).entity(String.format("Updating database failed with error: %s %s, message: %s", e.getResponse().getStatus(), e.getResponse().getStatusInfo().getReasonPhrase(), e.getResponse().getEntity())).build();
             } catch (Exception e) {
-                log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
+                StructuredLog.error(log, "Error during update database with classifier and type",
+                        "classifier", classifier, "type", createRequest.getType());
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Updating database failed with error: " + e.getMessage()).build();
             }
-            log.info("Skip database creation. Requested to create already registered {} database: {}", createRequest.getType(), classifier);
+            StructuredLog.info(log, "Skip database creation. Requested to create already registered database:", "arg0", createRequest.getType(), "classifier", classifier);
             databaseRegistry = dBaaService.detach(databaseRegistry);
             preResponseProcessing(databaseRegistry, password);
             log.info("end of preResponseProcessing");
 
             // database was requested but not created yet
             if (DbState.DatabaseStateStatus.PROCESSING.equals(databaseRegistry.getDatabase().getDbState().getDatabaseState())) {
-                log.debug("Database {} is not created yet", classifier);
+                StructuredLog.debug(log, "Database is not created yet", "classifier", classifier);
                 return Response.accepted(dBaaService.processConnectionPropertiesV3(databaseRegistry, serviceRole)).build();
             }
             return Response.ok(dBaaService.processConnectionPropertiesV3(databaseRegistry, serviceRole)).build();
@@ -301,7 +302,7 @@ public class AggregatedDatabaseAdministrationService {
             DatabaseRegistry responseDatabaseRegistry = createCopyForResponse(databaseRegistry);
             dBaaService.encryptAndSaveDatabaseEntity(databaseRegistry);
             dBaaService.getConnectionPropertiesService().addAdditionalPropToCP(responseDatabaseRegistry);
-            log.info("New database was created {}", responseDatabaseRegistry.getDatabase());
+            StructuredLog.info(log, "New database was created", "arg0", responseDatabaseRegistry.getDatabase());
             return AggregatedDatabaseAdministrationUtils.responseDatabaseCreated(responseDatabaseRegistry,
                     physicalDatabasesService.getByAdapterId(responseDatabaseRegistry.getDatabase().getAdapterId()).getPhysicalDatabaseIdentifier(), serviceRole);
         } catch (Exception e) {
@@ -311,7 +312,7 @@ public class AggregatedDatabaseAdministrationService {
     }
 
     private void rollbackDbCreation(DatabaseRegistry databaseRegistry, Exception e) {
-        log.error("Exception occurred during database creation with classifier = {} and type = '{}'", databaseRegistry.getClassifier(), databaseRegistry.getType(), e);
+        StructuredLog.error(log, "Exception occurred during database creation with classifier = and type = ''", "classifier", databaseRegistry.getClassifier(), "arg1", databaseRegistry.getType());
         log.info("Rollback creation of the database...");
         deletionService.dropRegistrySafe(databaseRegistry, true);
     }
@@ -354,19 +355,19 @@ public class AggregatedDatabaseAdministrationService {
 
         Optional<DatabaseRegistry> databaseRegistryByClassifierAndType = databaseRegistryRepository.
                 findDatabaseRegistryByClassifierAndType(databaseRegistry.getClassifier(), createRequest.getType());
-        log.debug("founded database registry = {} by while creating Database entity", databaseRegistryByClassifierAndType);
+        StructuredLog.debug(log, "founded database registry = by while creating Database entity", "databaseRegistryByClassifierAndType", databaseRegistryByClassifierAndType);
         databaseRegistry.setDatabase(database);
         ArrayList<DatabaseRegistry> databaseRegistries = new ArrayList<>();
         databaseRegistries.add(databaseRegistry);
         database.setDatabaseRegistry(databaseRegistries);
 
-        log.debug("created Database entity= {}", database);
-        log.debug("created Database classifier entity= {}", database.getDatabaseRegistry());
+        StructuredLog.debug(log, "created Database entity=", "database", database);
+        StructuredLog.debug(log, "created Database classifier entity=", "arg0", database.getDatabaseRegistry());
         return database;
     }
 
     private void enrichDatabaseEntity(DatabaseRegistry databaseRegistry, CreatedDatabaseV3 createdDatabase, FunctionProvidePassword<Database, String> password, String role) {
-        log.debug("enrich database = {} by createdDatabase = {}", databaseRegistry, createdDatabase);
+        StructuredLog.debug(log, "enrich database = by createdDatabase =", "databaseRegistry", databaseRegistry, "createdDatabase", createdDatabase);
         databaseRegistry.getDatabase().setAdapterId(createdDatabase.getAdapterId());
         databaseRegistry.getDatabase().setConnectionProperties(Optional.ofNullable(createdDatabase.getConnectionProperties())
                 .orElseThrow(InternalDbEmptyConnectionPropertiesException::new));
@@ -401,7 +402,7 @@ public class AggregatedDatabaseAdministrationService {
             databaseRegistry.getDatabase().setConnectionProperties(List.of(anotherMap));
         }
         dBaaService.getConnectionPropertiesService().addAdditionalPropToCP(databaseRegistry);
-        log.debug("Database connection properties = {}", databaseRegistry.getDatabase().getConnectionProperties());
+        StructuredLog.debug(log, "Database connection properties =", "arg0", databaseRegistry.getDatabase().getConnectionProperties());
         databaseRegistry.getDatabase().getConnectionProperties().forEach(v -> v.put(PASSWORD_FIELD,
                 password.apply(databaseRegistry.getDatabase(), (String) v.get(ROLE))));
     }
@@ -422,17 +423,19 @@ public class AggregatedDatabaseAdministrationService {
                     updateDatabase(databaseRegistry, createRequest);
                 }
             } catch (WebApplicationException e) {
-                log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
+                StructuredLog.error(log, "Error during update database with classifier and type",
+                        "classifier", classifier, "type", createRequest.getType());
                 Response.StatusType statusInfo = e.getResponse().getStatusInfo();
                 return Response.status(statusInfo).entity(String.format("Updating database failed with error: %s %s, message: %s", statusInfo.getStatusCode(), statusInfo.getReasonPhrase(), e.getResponse().getEntity())).build();
             } catch (Exception e) {
-                log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
+                StructuredLog.error(log, "Error during update database with classifier and type",
+                        "classifier", classifier, "type", createRequest.getType());
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Updating database failed with error: " + e.getMessage()).build();
             }
             // We set id in null because we send database id only once when database had been created
             databaseRegistry.setId(null);
             databaseRegistry.getDatabase().setId(null);
-            log.info("Skip database creation. Requested to create already registered {} database: {}", createRequest.getType(), classifier);
+            StructuredLog.info(log, "Skip database creation. Requested to create already registered database:", "arg0", createRequest.getType(), "classifier", classifier);
             if (databaseRegistry.getDatabase().getConnectionProperties() == null) {
                 Map<String, Object> anotherMap = new HashMap<>();
                 anotherMap.put(ROLE, Role.ADMIN.toString());
@@ -443,12 +446,12 @@ public class AggregatedDatabaseAdministrationService {
                     Role.ADMIN.toString()).put(PASSWORD_FIELD, password.apply(databaseRegistry.getDatabase(), Role.ADMIN.toString()));
             // database was requested but not created yet
             if (DbState.DatabaseStateStatus.PROCESSING.equals(databaseRegistry.getDatabase().getDbState().getDatabaseState())) {
-                log.debug("Database {} is not created yet", classifier);
+                StructuredLog.debug(log, "Database is not created yet", "classifier", classifier);
                 return Response.accepted(dBaaService.processConnectionProperties(databaseRegistry)).build();
             }
             return Response.ok(dBaaService.processConnectionProperties(databaseRegistry)).build();
         } else {
-            log.error("Duplicate database of type {} was not found, classifier: {}", createRequest.getType(), classifier, ex);
+            StructuredLog.error(log, "Duplicate database of type was not found, classifier:", "arg0", createRequest.getType(), "classifier", classifier);
             return Response.status(Response.Status.CONFLICT).entity("Already has such database.").build();
         }
     }

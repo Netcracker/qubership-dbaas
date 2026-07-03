@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.security.filters;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientRequestFilter;

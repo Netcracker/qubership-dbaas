@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.HandshakeResponse;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
@@ -28,7 +29,7 @@ public class PhysicalDatabaseRegistrationHandshakeClient {
     public void handshake(String physicalDatabaseId, String adapterAddress, String type, String username, String password, String version)
             throws AdapterUnavailableException, PhysicalDatabaseRegistrationConflictException {
         String adapterUrl = adapterAddress + ADAPTER_PHYSICAL_DATABASE_PATH;
-        log.info("Sending GET request to {} with 'type' = {} and 'version' = {}", adapterUrl, type, version);
+StructuredLog.info(log, "Sending GET request to with 'type' = and 'version' =", "adapterUrl", adapterUrl, "type", type, "version", version);
         HttpResponse<HandshakeResponse> httpResponse = webClient.getAbs(UriTemplate.of(adapterUrl))
                 .setTemplateParam("version", version)
                 .setTemplateParam("type", type)
@@ -40,7 +41,7 @@ public class PhysicalDatabaseRegistrationHandshakeClient {
             throw new AdapterUnavailableException(httpResponse.statusCode());
         }
         HandshakeResponse handshakeResponse = httpResponse.body();
-        log.info("Response body: {}", handshakeResponse);
+StructuredLog.info(log, "Response body:", "handshakeResponse", handshakeResponse);
         String phyDBId = handshakeResponse.getId();
         if (!phyDBId.equals(physicalDatabaseId)) {
             throw new PhysicalDatabaseRegistrationConflictException(String.format("Adapter responded with wrong physical database identifier. " +

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserResponse;
@@ -67,10 +68,10 @@ public class DatabaseUsersControllerV3 {
     @Transactional
     public Response getOrCreateUser(@Parameter(description = "Contains classifier and information about user", required = true)
                                             GetOrCreateUserRequest getOrCreateUserRequest) {
-        log.info("Get request to get or create database user. Request body {}", getOrCreateUserRequest);
+StructuredLog.info(log, "Get request to get or create database user. Request body", "getOrCreateUserRequest", getOrCreateUserRequest);
         DatabaseRegistry foundDb = dBaaService.findDatabaseByClassifierAndType(getOrCreateUserRequest.getClassifier(), getOrCreateUserRequest.getType(), true);
         if (foundDb == null) {
-            log.error("Database with classifier={} is not found.", getOrCreateUserRequest.getClassifier());
+StructuredLog.error(log, "Database with classifier= is not found", "classifier", getOrCreateUserRequest.getClassifier());
             throw new DbNotFoundException(getOrCreateUserRequest.getType(),
                     getOrCreateUserRequest.getClassifier(),
                     Source.builder().pointer("").build());
@@ -86,7 +87,7 @@ public class DatabaseUsersControllerV3 {
                                 getOrCreateUserRequest)).build();
             }
             DatabaseUser existingUser = existingUserOpt.get();
-            log.info("Requested user with logicalUserId = {} is already existed", getOrCreateUserRequest.getLogicalUserId());
+StructuredLog.info(log, "Requested user with logicalUserId = is already existed", "error", getOrCreateUserRequest.getLogicalUserId());
             existingUser.getConnectionProperties().put("logicalUserId", existingUser.getLogicalUserId());
             userService.decryptPassword(existingUser);
             dBaaService.getConnectionPropertiesService().addAdditionalPropToCP(existingUser);
@@ -117,7 +118,7 @@ public class DatabaseUsersControllerV3 {
     @Transactional
     public Response deleteUser(@Parameter(description = "Contains userId or classifier, logicalUserId and type field for user identification.", required = true)
                                        UserOperationRequest deleteUserRequest) {
-        log.info("Get request to delete database user. Request body {}", deleteUserRequest);
+StructuredLog.info(log, "Get request to delete database user. Request body", "deleteUserRequest", deleteUserRequest);
         if (!isUserOperationRequestValid(deleteUserRequest)) {
             log.error("Request body is not valid." +
                     "Delete user request must contains 'userId' field or 'classifier', 'logicalUserId' and 'type' fields.");
@@ -146,7 +147,7 @@ public class DatabaseUsersControllerV3 {
     @Transactional
     public Response rotateUserPassword(@Parameter(description = "Contains userId or classifier, logicalUserId and type field for user identification.", required = true)
                                                UserOperationRequest rotateUserPasswordRequest) {
-        log.info("Get request to rotate password for database user. Request body {}", rotateUserPasswordRequest);
+StructuredLog.info(log, "Get request to rotate password for database user. Request body", "rotateUserPasswordRequest", rotateUserPasswordRequest);
         if (!isUserOperationRequestValid(rotateUserPasswordRequest)) {
             log.error("Request body is not valid." +
                     "Rotate password user request must contains 'userId' field or 'classifier', 'logicalUserId' and 'type' fields.");

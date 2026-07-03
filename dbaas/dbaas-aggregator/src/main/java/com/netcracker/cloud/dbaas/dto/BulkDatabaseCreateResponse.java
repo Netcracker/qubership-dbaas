@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.ws.rs.core.Response;
 import lombok.AllArgsConstructor;

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
@@ -86,26 +87,26 @@ public class AsyncOperations {
     }
 
     private void shutdown(String serviceName, ExecutorService executorService) {
-        log.info("Shutting down '{}' executor", serviceName);
+StructuredLog.info(log, "Shutting down '' executor", "serviceName", serviceName);
         executorService.shutdown();
 
         try {
             if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                log.info("'{}' executor is still not terminated", serviceName);
+StructuredLog.info(log, "'' executor is still not terminated", "serviceName", serviceName);
 
                 executorService.shutdownNow();
 
                 if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                    log.error("'{}' executor was not terminated even after await", serviceName);
+StructuredLog.error(log, "'' executor was not terminated even after await", "serviceName", serviceName);
                 }
             }
         } catch (InterruptedException ex) {
-            log.error("Error happened during shutting down '{}' executor: ", serviceName, ex);
+StructuredLog.error(log, "Error happened during shutting down '' executor:", ex, "serviceName", serviceName);
 
             executorService.shutdownNow();
             Thread.currentThread().interrupt();
         }
 
-        log.info("Finish shutting down '{}' executor", serviceName);
+StructuredLog.info(log, "Finish shutting down '' executor", "serviceName", serviceName);
     }
 }

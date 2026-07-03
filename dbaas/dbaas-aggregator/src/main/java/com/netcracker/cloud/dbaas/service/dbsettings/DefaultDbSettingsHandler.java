@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.dbsettings;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
@@ -54,11 +55,11 @@ public class DefaultDbSettingsHandler implements LogicalDbSettingsHandler {
 
 
         String message = dbaasAdapter.updateSettings(databaseRegistry.getName(), currentSettings, newSettings);
-        log.debug("Message from adapter: {}", message);
+StructuredLog.debug(log, "Message from adapter:", "message", message);
         // update settings in dbaas db
         databaseRegistry.setSettings(newSettings);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveInternalDatabase(databaseRegistry);
-        log.info("Successfully updated settings for db {}, from original settings: {} to new settings: {}. Message from adapter: {}", databaseRegistry.getName(), currentSettings, newSettings, message);
+StructuredLog.info(log, "Successfully updated settings for db, from original settings: to new settings:. Message from adapter:", "database", databaseRegistry.getName(), "currentSettings", currentSettings, "newSettings", newSettings, "message", message);
         return message;
     }
 }

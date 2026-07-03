@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 

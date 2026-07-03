@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;
@@ -46,12 +46,11 @@ public class V1_008__TransformClassifier extends BaseJavaMigration {
                 .collect(Collectors.toList());
         if (!databasesWithInvalidClassifier.isEmpty()) {
             try {
-                log.warn("There are logical databases with incorrect classifiers: \n {}. \n You can find an article about fixing this by path: " +
-                                "dbaas git repository -> docs -> classifier_v3_migration_process.md -> Update existing classifiers",
-                        mapper.writerWithDefaultPrettyPrinter().writeValueAsString(databasesWithInvalidClassifier));
+                StructuredLog.warn(log, "There are logical databases with incorrect classifiers",
+                        "classifiers", mapper.writerWithDefaultPrettyPrinter().writeValueAsString(databasesWithInvalidClassifier));
             } catch (JsonProcessingException e) {
-                log.warn("There are logical databases with incorrect classifiers: {} \n You can find an article about fixing this by path: " +
-                        "dbaas git repository -> docs -> classifier_v3_migration_process.md -> Update existing classifiers", databasesWithInvalidClassifier);
+                StructuredLog.warn(log, "There are logical databases with incorrect classifiers",
+                        "classifiers", databasesWithInvalidClassifier);
             }
         }
         String sqlUpdateDatabase = "UPDATE public.database SET classifier=?, old_classifier=? WHERE id = ?;";

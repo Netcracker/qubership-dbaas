@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.rsql;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.rsql.model.QueryPreparation;
 import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationPart;

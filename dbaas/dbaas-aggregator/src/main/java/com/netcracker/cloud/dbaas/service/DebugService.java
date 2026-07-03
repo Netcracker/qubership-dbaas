@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -230,7 +231,9 @@ public class DebugService {
                 String message = e.getMessage() == null || e.getMessage().isEmpty() ?
                         String.format("Error happened during request to %s for getting databases", adapter.adapterAddress()) :
                         String.format("Error happened during request to %s for getting databases: %s", adapter.adapterAddress(), e.getMessage());
-                log.error(message);
+                StructuredLog.error(log, "Error happened during request to adapter for getting databases", e,
+                        "adapter_address", adapter.adapterAddress(),
+                        "error", e.getMessage());
                 lostDatabases.setErrorMessage(message);
             }
             if (lostDatabases.getDatabases() == null) {
@@ -262,7 +265,9 @@ public class DebugService {
                 String message = e.getMessage() == null || e.getMessage().isEmpty() ?
                         String.format("Error happened during request to %s for getting databases", adapter.adapterAddress()) :
                         String.format("Error happened during request to %s for getting databases: %s", adapter.adapterAddress(), e.getMessage());
-                log.error(message);
+                StructuredLog.error(log, "Error happened during request to adapter for getting databases", e,
+                        "adapter_address", adapter.adapterAddress(),
+                        "error", e.getMessage());
                 ghostDatabasesResponse.setErrorMessage(message);
             }
             if (ghostDatabasesResponse.getDbNames() == null) {
@@ -293,7 +298,9 @@ public class DebugService {
                 String message = e.getMessage() == null || e.getMessage().isEmpty() ?
                         String.format("Error happened during request to %s for getting databases", adapter.adapterAddress()) :
                         String.format("Error happened during request to %s for getting databases: %s", adapter.adapterAddress(), e.getMessage());
-                log.error(message);
+                StructuredLog.error(log, "Error happened during request to adapter for getting databases", e,
+                        "adapter_address", adapter.adapterAddress(),
+                        "error", e.getMessage());
                 physicalDatabaseInfo.setLogicalDbNumber("ERROR");
                 physicalDatabaseInfoList.add(physicalDatabaseInfo);
                 continue;
@@ -315,7 +322,7 @@ public class DebugService {
 
         var namespaces = (List<String>) nativeQuery.getResultList();
 
-        log.info("Loaded all {} registered namespaces", namespaces.size());
+StructuredLog.info(log, "Loaded all registered namespaces", "count", namespaces.size());
 
         return namespaces;
     }

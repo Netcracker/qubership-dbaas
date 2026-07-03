@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.monitoring;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 
 import io.agroal.api.AgroalDataSource;

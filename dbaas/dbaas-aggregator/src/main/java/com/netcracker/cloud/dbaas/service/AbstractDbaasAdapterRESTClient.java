@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
@@ -70,7 +71,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
     @Override
     @TimeMeasure(value = METRIC_NAME, tags = {"operation", "RestoreBackup"}, fieldTags = {"type", "identifier"})
     public RestoreResult restore(String targetNamespace, DatabasesBackup backup, boolean regenerateNames, List<DatabaseRegistry> databases, Map<String, String> prefixMap) {
-        log.info("Start to restore backup of type {} in adapter {} on address {} : {}", type, identifier, adapterAddress, backup);
+StructuredLog.info(log, "Start to restore backup of type in adapter on address:", "type", type, "identifier", identifier, "adapterAddress", adapterAddress, "backup", backup);
         List<ValidationException> errors = new ArrayList<>();
         if (!identifier.equals(backup.getAdapterId())) {
             errors.add(new DBBackupValidationException(Source.builder().pointer("/adapter_id").build(),
@@ -89,7 +90,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
         } else {
             restoreActionTrack = sendOldRestoreRequest(backup, regenerateNames);
         }
-        log.info("Received action track from adapter {}, {} : {}", identifier, adapterAddress, restoreActionTrack);
+StructuredLog.info(log, "Received action track from adapter,:", "identifier", identifier, "adapterAddress", adapterAddress, "restoreActionTrack", restoreActionTrack);
         try {
             return tracker.waitForRestore(backup, restoreActionTrack, this);
         } catch (InteruptedPollingException e) {
@@ -149,7 +150,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
             DatabasesBackup validatedBackup = tracker.validateBackup(action, this);
             return Status.SUCCESS == validatedBackup.getStatus();
         } catch (Exception e) {
-            log.error("Failed to validate local databases backup {} , track id {}", backup.getLocalId(), backup.getTrackId());
+StructuredLog.error(log, "Failed to validate local databases backup, track id", "arg0", backup.getLocalId(), "arg1", backup.getTrackId());
             return false;
         }
     }
@@ -159,7 +160,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
     @Override
     @TimeMeasure(value = METRIC_NAME, tags = {"operation", "BackupDatabase"}, fieldTags = {"type", "identifier"})
     public DatabasesBackup backup(List<String> databases, Boolean allowEviction) throws InteruptedPollingException {
-        log.info("Adapter {} request to collect {} backup from {} with allowEviction {}", identifier, type, adapterAddress, allowEviction);
+StructuredLog.info(log, "Adapter request to collect backup from with allowEviction", "identifier", identifier, "type", type, "adapterAddress", adapterAddress, "allowEviction", allowEviction);
         LinkedMap<String, List<String>> params = new LinkedMap<>();
         params.put("allowEviction", Collections.singletonList(allowEviction.toString()));
 
@@ -191,20 +192,20 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
     @Override
     @TimeMeasure(value = METRIC_NAME, tags = {"operation", "DeleteBackup"}, fieldTags = {"type", "identifier"})
     public DeleteResult delete(DatabasesBackup backupToDelete) {
-        log.info("Start to delete backup of type {} in adapter {} on address {} : {}", type, identifier, adapterAddress, backupToDelete);
+StructuredLog.info(log, "Start to delete backup of type in adapter on address:", "type", type, "identifier", identifier, "adapterAddress", adapterAddress, "backupToDelete", backupToDelete);
         DeleteResult deleteResponse = new DeleteResult();
         deleteResponse.setDatabasesBackup(backupToDelete);
         deleteResponse.setAdapterId(identifier);
         try {
             if (log.isDebugEnabled()) {
-                log.debug("Sending request to {}/api/{}/dbaas/adapter/{}/backups/{}", adapterAddress, supportedVersion, type, backupToDelete.getLocalId());
+StructuredLog.debug(log, "Sending request to /api//dbaas/adapter//backups/", "adapterAddress", adapterAddress, "supportedVersion", supportedVersion, "type", type, "arg3", backupToDelete.getLocalId());
             }
             String response = deleteBackup(backupToDelete.getLocalId());
             deleteResponse.setStatus(Status.SUCCESS);
             deleteResponse.setMessage(response);
-            log.info("Received response from adapter {}, {} : {}", identifier, adapterAddress, deleteResponse);
+StructuredLog.info(log, "Received response from adapter,:", "identifier", identifier, "adapterAddress", adapterAddress, "deleteResponse", deleteResponse);
         } catch (WebApplicationException e) {
-            log.error("Received response from adapter {}, {} : {}", identifier, adapterAddress, e.getMessage());
+StructuredLog.error(log, "Received response from adapter,:", "identifier", identifier, "adapterAddress", adapterAddress, "arg2", e.getMessage());
             if (e.getResponse().getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
                 deleteResponse.setStatus(Status.SUCCESS);
                 deleteResponse.setMessage("Endpoint to delete backup not implemented on adapter yet!");
@@ -214,7 +215,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
             }
         }
         if (log.isDebugEnabled()) {
-            log.debug("Created DeleteResponse from request {}/api/{}/dbaas/adapter/{}/backups/{} is {}", adapterAddress, supportedVersion, type, backupToDelete.getLocalId(), deleteResponse);
+StructuredLog.debug(log, "Created DeleteResponse from request /api//dbaas/adapter//backups/ is", "adapterAddress", adapterAddress, "supportedVersion", supportedVersion, "type", type, "arg3", backupToDelete.getLocalId(), "deleteResponse", deleteResponse);
         }
         return deleteResponse;
     }
@@ -232,7 +233,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
         try {
             status = getHealth();
         } catch (Exception e) {
-            log.error("Failed to get health of adapter of type {}", type, e);
+StructuredLog.error(log, "Failed to get health of adapter of type", e, "type", type);
             return new AdapterHealthStatus(AdapterHealthStatus.HEALTH_CHECK_STATUS_PROBLEM);
         }
         return status;
@@ -250,11 +251,11 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
     public void dropDatabase(DatabaseRegistry databaseRegistry) {
         List<DbResource> resources = databaseRegistry.getDatabase().getResources();
         if (CollectionUtils.isEmpty(resources)) {
-            log.error("Database with classifier {} have empty resources {}", databaseRegistry.getClassifier(), resources);
+StructuredLog.error(log, "Database with classifier have empty resources", "classifier", databaseRegistry.getClassifier(), "resources", resources);
             return;
         }
-        log.info("Call adapter {} of type {} to drop db with classifier {} and resources {}",
-                adapterAddress, type, databaseRegistry.getClassifier(), resources);
+        StructuredLog.info(log, "Call adapter to drop db",
+                "adapter", adapterAddress, "type", type, "classifier", databaseRegistry.getClassifier(), "resources", resources);
         dropDatabase(resources);
     }
 
@@ -262,8 +263,8 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
 
     @Override
     public EnsuredUser ensureUser(String username, String password, String dbName) {
-        log.info("Call adapter {} of type {} to ensure user {} of db {}",
-                adapterAddress, type, username, dbName);
+        StructuredLog.info(log, "Call adapter to ensure user",
+                "adapter", adapterAddress, "type", type, "username", username, "dbName", dbName);
         UserEnsureRequest request = new UserEnsureRequest(dbName, password);
         return ensureUser(username, request);
     }
@@ -272,8 +273,9 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
 
     @Override
     public String updateSettings(String dbName, Map<String, Object> currentSettings, Map<String, Object> newSettings) {
-        log.info("Call adapter {} of type {} to update db '{}' from current settings: {} to new settings: {}",
-                adapterAddress, type, dbName, currentSettings, newSettings);
+        StructuredLog.info(log, "Call adapter to update db settings",
+                "adapter", adapterAddress, "type", type, "dbName", dbName,
+                "currentSettings", currentSettings, "newSettings", newSettings);
         UpdateSettingsAdapterRequest request = new UpdateSettingsAdapterRequest();
         request.setCurrentSettings(currentSettings);
         request.setNewSettings(newSettings);
@@ -282,11 +284,14 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
             return (response != null ? response : "");
         } catch (WebApplicationException e) {
             // failed to update setting on adapter side
-            log.error("Failed to update settings for db {} from settings: {} to new settings: {}, errorStatus: {} {}, errorMessage: {}",
-                    dbName, currentSettings, newSettings, e.getResponse().getStatus(), e.getResponse().getStatusInfo().getReasonPhrase(), e.getResponse().getEntity(), e);
+            StructuredLog.error(log, "Failed to update settings for db on adapter", e,
+                    "dbName", dbName, "currentSettings", currentSettings, "newSettings", newSettings,
+                    "errorStatus", e.getResponse().getStatus(),
+                    "errorReason", e.getResponse().getStatusInfo().getReasonPhrase(),
+                    "errorMessage", e.getResponse().getEntity());
             throw e;
         } catch (Exception e) {
-            log.error("Problem with access to adapter {} ", this, e);
+StructuredLog.error(log, "Problem with access to adapter", e, "this", this);
             throw e;
         }
     }
@@ -295,7 +300,7 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
 
     @Override
     public Set<String> getDatabases() {
-        log.info("Call adapter {} of type {} to get databases", adapterAddress, type);
+StructuredLog.info(log, "Call adapter of type to get databases", "adapterAddress", adapterAddress, "type", type);
         try {
             return doGetDatabases();
         } catch (WebApplicationException e) {

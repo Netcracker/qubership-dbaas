@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.monitoring;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.monitoring.model.DatabaseMonitoringEntryStatus;
 import com.netcracker.cloud.dbaas.service.MonitoringService;

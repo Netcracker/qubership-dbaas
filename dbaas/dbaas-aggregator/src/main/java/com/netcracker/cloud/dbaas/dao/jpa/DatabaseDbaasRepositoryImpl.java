@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
@@ -44,51 +45,49 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
 
     @Override
     public List<Database> findAnyLogDbTypeByNamespace(String namespace) {
-        log.debug("Search all logical databases by namespace={}", namespace);
+StructuredLog.debug(log, "Search all logical databases by namespace=", "namespace", namespace);
         List<Database> databaseList = doGet(() -> databasesRepository.findByNamespace(namespace), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by namespace in Postgre, go to h2 database", ex.getMessage());
+StructuredLog.debug(log, "Catch exception = while trying to find logical database by namespace in Postgre, go to h2 database", "exception", ex.getMessage());
             return h2DatabaseRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
-        log.debug("Was found {} logical database in namespace={}", databaseList.size(), namespace);
+StructuredLog.debug(log, "Was found logical database in namespace=", "count", databaseList.size(), "namespace", namespace);
         return databaseList;
     }
 
     @Override
     public List<Database> findInternalDatabaseByNamespace(String namespace) {
-        log.debug("Search internal logical databases by namespace {}", namespace);
+StructuredLog.debug(log, "Search internal logical databases by namespace", "namespace", namespace);
         List<Database> databases = doGet(() -> databasesRepository.findByNamespace(namespace), ex -> {
-            log.debug("Catch exception = {} while trying to find internal logical database by namespace in Postgre, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception while falling back to h2 database",
+                    "exception", ex.getMessage(), "context", "find internal logical database by namespace in Postgre");
             return h2DatabaseRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         List<Database> databaseList = databases.stream()
                 .filter(database -> !database.isExternallyManageable())
                 .collect(Collectors.toList());
-        log.debug("Was found {} internal logical databases in namespace={}", databaseList.size(), namespace);
+StructuredLog.debug(log, "Was found internal logical databases in namespace=", "count", databaseList.size(), "namespace", namespace);
         return databaseList;
     }
 
     @Override
     public List<Database> findInternalDatabasesByNamespaceAndType(String namespace, String type) {
-        log.debug("Search internal logical database with type={} in namespace={}", type, namespace);
+StructuredLog.debug(log, "Search internal logical database with type= in namespace=", "type", type, "namespace", namespace);
         List<Database> databases = doGet(() -> databasesRepository.findByNamespaceAndType(namespace, type), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by namespace and type in Postgre, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical database by namespace and type in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRepository.findByNamespaceAndType(namespace, type).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
         List<Database> databasesList = databases.stream()
                 .filter(database -> !database.isExternallyManageable())
                 .collect(Collectors.toList());
-        log.debug("Was found {} logical databases in namespace={} with type={}", databasesList.size(), namespace, type);
+StructuredLog.debug(log, "Was found logical databases in namespace= with type=", "count", databasesList.size(), "namespace", namespace, "type", type);
         return databasesList;
     }
 
     @Override
     public List<Database> findDatabasesByAdapterIdAndType(String phydbid, String type, boolean isUseCache) {
-        log.debug("Search logical database with adapterId={} and type={}", phydbid, type);
+StructuredLog.debug(log, "Search logical database with adapterId= and type=", "phydbid", phydbid, "type", type);
         List<Database> databases = doGet(() -> databasesRepository.findByAdapterIdAndType(phydbid, type), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by namespace and type in Postgres, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical database by namespace and type in Postgres, go to h2 database", "error", ex.getMessage());
             if (!isUseCache) {
                 throw new RuntimeException(ex);
             }
@@ -97,71 +96,69 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
         List<Database> databasesList = databases.stream()
                 .filter(database -> !database.isExternallyManageable())
                 .collect(Collectors.toList());
-        log.debug("Was found {} logical databases with adapterId={} and type={}", databasesList.size(), phydbid, type);
+StructuredLog.debug(log, "Was found logical databases with adapterId= and type=", "count", databasesList.size(), "phydbid", phydbid, "type", type);
         return databasesList;
     }
 
     public List<Database> findByDbState_StateAndDbState_PodName(DbState.DatabaseStateStatus state, String podName) {
-        log.debug("Search logical databases with state={} and podName={}", state, podName);
+StructuredLog.debug(log, "Search logical databases with state= and podName=", "state", state, "podName", podName);
         List<Database> databaseList = doGet(() -> databasesRepository.findByDbState_DatabaseStateAndDbState_PodName(state, podName), ex -> {
             log.warn("Catch exception while trying to find logical database by state and podName in Postgresql, go to h2 database", ex);
             return h2DatabaseRepository.findByDbState_StateAndDbState_PodName(state, podName).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
-        log.debug("Was found {} logical database with state={} and podName={}", databaseList.size(), state, podName);
+StructuredLog.debug(log, "Was found logical database with state= and podName=", "count", databaseList.size(), "state", state, "podName", podName);
         return databaseList;
 
     }
 
     public List<Database> findByDbState(DbState.DatabaseStateStatus state) {
-        log.debug("Search logical databases with state={}", state);
+StructuredLog.debug(log, "Search logical databases with state=", "state", state);
         List<Database> databaseList = doGet(() -> databasesRepository.findByDbState_DatabaseState(state), ex -> {
             log.warn("Catch exception while trying to find logical database by state and podName in Postgresql, go to h2 database", ex);
             return h2DatabaseRepository.findByDbState_DatabaseState(state).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
         });
-        log.debug("Was found {} logical database with state={}", databaseList.size(), state);
+StructuredLog.debug(log, "Was found logical database with state=", "count", databaseList.size(), "state", state);
         return databaseList;
     }
 
 
     public void deleteById(UUID databaseId) {
-        log.debug("delete database by id = {}", databaseId);
+StructuredLog.debug(log, "delete database by id =", "databaseId", databaseId);
         synchronized (getMutex()) {
             databasesRepository.deleteById(databaseId);
             h2DatabaseRepository.deleteById(databaseId);
             h2DatabaseRepository.flush();
         }
-        log.debug("database with id = {} was deleted", databaseId);
+StructuredLog.debug(log, "database with id = was deleted", "databaseId", databaseId);
     }
 
 
     @Override
     public Optional<Database> findById(UUID id) {
         return doGet(() -> databasesRepository.findByIdOptional(id), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by id in Postgre, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical database by id in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRepository.findByIdOptional(id).map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity);
         });
     }
 
     @Override
     public List<Database> findExternalDatabasesByNamespace(String namespace) {
-        log.debug("Search external logical database with namespace {}", namespace);
+StructuredLog.debug(log, "Search external logical database with namespace", "namespace", namespace);
         List<Database> databases = doGet(() -> databasesRepository.findByNamespace(namespace),
                 ex -> {
-                    log.debug("Catch exception = {} while trying to find external logical database in Postgre, go to h2 database",
-                            ex.getMessage());
+                    StructuredLog.debug(log, "Catch exception = while trying to find external logical database in Postgre, go to h2 database", "error", ex.getMessage());
                     return h2DatabaseRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
                 });
         List<Database> externalDatabases = databases.stream()
                 .filter(Database::isExternallyManageable).collect(Collectors.toList());
-        log.debug("Was found {} external logical database with namespace {}", externalDatabases.size(), namespace);
+StructuredLog.debug(log, "Was found external logical database with namespace", "count", externalDatabases.size(), "namespace", namespace);
         return externalDatabases;
     }
 
 
     @Override
     public void deleteAll(List<Database> databaseList) {
-        log.info("Deleting databases: {}", databaseList);
+StructuredLog.info(log, "Deleting databases:", "databaseList", databaseList);
         databaseList.forEach(db -> databasesRepository.deleteById(db.getId()));
         databasesRepository.flush();
         synchronized (getMutex()) {
@@ -173,8 +170,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     @Override
     public Optional<Database> findByNameAndAdapterId(String name, String adapterId) {
         return doGet(() -> databasesRepository.findByNameAndAdapterId(name, adapterId), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by id in Postgre, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical database by id in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRepository.findByNameAndAdapterId(name, adapterId).map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity);
         });
     }
@@ -182,8 +178,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     @Override
     public long countByNamespaces(Set<String> namespaces) {
         return doGet(() -> databasesRepository.count("namespace in ?1", namespaces), ex -> {
-            log.debug("Catch exception = {} while trying to count logical databases by namespaces in Postgres, go to h2 database",
-                ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to count logical databases by namespaces in Postgres, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRepository.count("namespace in ?1", namespaces);
         });
     }
@@ -191,8 +186,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     @Override
     public List<Database> findByNamespacesWithOffsetBasedPagination(Set<String> namespaces, int offset, int limit) {
         return doGet(() -> databasesRepository.findByNamespacesWithOffsetBasedPagination(namespaces, offset, limit), ex -> {
-            log.debug("Catch exception = {} while trying to find logical database by namespaces in Postgres, go to h2 database",
-                ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical database by namespaces in Postgres, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRepository.findByNamespacesWithOffsetBasedPagination(namespaces, offset, limit).stream()
                 .map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity)
                 .toList();
@@ -209,11 +203,11 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     }
 
     public void reloadH2Cache(UUID databaseId) {
-        log.debug("reload in h2 database with id= {}", databaseId);
+StructuredLog.debug(log, "reload in h2 database with id=", "databaseId", databaseId);
         Optional<Database> database = databasesRepository.findByIdOptional(databaseId);
         safeDeleteAndFlushDatabase(databaseId);
         database.ifPresent(value -> QuarkusTransaction.requiringNew().run(() -> {
-            log.debug("save in h2 database= {}", value);
+StructuredLog.debug(log, "save in h2 database=", "value", value);
             h2DatabaseRepository.merge(value.asH2Entity());
         }));
     }
@@ -256,7 +250,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
             h2DatabaseRepository.persist(database);
         }
 
-        log.debug("delete in h2 database registry with id= {}", databaseRegistryId);
+StructuredLog.debug(log, "delete in h2 database registry with id=", "databaseRegistryId", databaseRegistryId);
         h2DatabaseRepository.flush();
     }
 }

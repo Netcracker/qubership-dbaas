@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.service.BlueGreenService;
@@ -25,6 +26,6 @@ public class DeleteBackupTask extends AbstractDbaaSTask implements Serializable 
 
         updateState(context, "Deleting backup for DB with target classifier " + cloneDatabaseProcessObject.getConfig().getClassifier());
         blueGreenService.deleteBackup(cloneDatabaseProcessObject.getBackupId());
-        log.debug("Done '{}' task with backupId = {}", super.getName(), cloneDatabaseProcessObject.getBackupId());
+StructuredLog.debug(log, "Done '' task with backupId =", "backupId", super.getName(), "database", cloneDatabaseProcessObject.getBackupId());
     }
 }

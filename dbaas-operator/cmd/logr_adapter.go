@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 )
 
 // logrAdapter bridges controller-runtime's logr.LogSink to the project's
@@ -42,7 +43,7 @@ func (a *logrAdapter) Info(level int, msg string, keysAndValues ...any) {
 func (a *logrAdapter) Error(err error, msg string, keysAndValues ...any) {
 	full := formatMessage(msg, append(a.kvs, keysAndValues...))
 	if err != nil {
-		a.logger.Errorf("%s: %v", full, err)
+		a.logger.Errorf("%s", logfields.Err(full, err))
 	} else {
 		a.logger.Errorf("%s", full)
 	}

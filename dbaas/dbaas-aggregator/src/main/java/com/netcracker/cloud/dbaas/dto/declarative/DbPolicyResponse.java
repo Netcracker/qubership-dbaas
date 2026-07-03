@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.declarative;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.netcracker.cloud.dbaas.dto.conigs.ApplyConfigResponseComponent;

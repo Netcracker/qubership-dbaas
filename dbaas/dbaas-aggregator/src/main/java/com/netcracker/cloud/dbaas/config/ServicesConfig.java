@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.github.kagkarlsson.scheduler.task.Task;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
@@ -49,7 +50,7 @@ public class ServicesConfig {
     @Startup
     @UnlessBuildProperty(name = "dbaas.process-orchestrator.enabled", stringValue = "false", enableIfMissing = true)
     public ProcessOrchestrator processOrchestrator(@Named(PROCESS_ORCHESTRATOR_DATASOURCE) DataSource dataSource, @All List<Task<?>> list) {
-        log.info("Creating PO with tasks: {}", list);
+StructuredLog.info(log, "Creating PO with tasks:", "list", list);
         return new ProcessOrchestrator(dataSource, 10, list);
     }
 

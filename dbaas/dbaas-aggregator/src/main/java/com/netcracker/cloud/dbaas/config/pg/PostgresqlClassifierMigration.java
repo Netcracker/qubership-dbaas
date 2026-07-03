@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config.pg;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.google.common.base.Strings;
 import com.netcracker.cloud.dbaas.JdbcUtils;

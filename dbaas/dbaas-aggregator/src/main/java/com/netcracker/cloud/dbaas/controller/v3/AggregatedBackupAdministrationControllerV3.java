@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.dbaas.dto.NamespaceBackupDTO;
@@ -98,21 +99,21 @@ public class AggregatedBackupAdministrationControllerV3 {
             @Parameter(description = "This parameter specifies namespace for restoring to another project. " +
                     "This parameter is needed if backup and restore projects are different.")
             @QueryParam("targetNamespace") String targetNamespace) {
-        log.info("Request to restore backup {}", backupId);
+StructuredLog.info(log, "Request to restore backup", "backupId", backupId);
         Optional<NamespaceBackup> backupOpt = backupsDbaasRepository.findById(backupId);
         if (backupOpt.isEmpty()) {
-            log.error("Cannot find such backup {}", backupId);
+StructuredLog.error(log, "Cannot find such backup", "backupId", backupId);
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         NamespaceBackup backup = backupOpt.get();
         namespace = !StringUtils.isEmpty(namespace) ? namespace : backup.getNamespace();
-        log.info("Found requested backup {} to restore. The backup has been collected in {}", backup, namespace);
+StructuredLog.info(log, "Found requested backup to restore. The backup has been collected in", "backup", backup, "namespace", namespace);
 
         if (!backup.getNamespace().equals(namespace)) {
             throw new ForbiddenNamespaceException(namespace, backup.getNamespace(), Source.builder().pointer("/namespace").build());
         }
         if (Objects.equals(namespace, targetNamespace)) {
-            log.warn("Request to restore backup with target equals source namespace {}", namespace);
+StructuredLog.warn(log, "Request to restore backup with target equals source namespace", "namespace", namespace);
         }
         if (!backup.canRestore()) {
             throw new DBBackupValidationException(Source.builder().build(),
@@ -123,7 +124,7 @@ public class AggregatedBackupAdministrationControllerV3 {
                     String.format("Failed to validate backup '%s'. Probably it had been removed or failed to be collected", backup.getId()));
         }
         UUID restorationId = UUID.randomUUID();
-        log.info("Restoration identifier generated: {}", restorationId);
+StructuredLog.info(log, "Restoration identifier generated:", "restorationId", restorationId);
         try {
             backupsDbaasRepository.detach(backup);
 
@@ -142,14 +143,14 @@ public class AggregatedBackupAdministrationControllerV3 {
                             BACKUPS + "/" + backupId +
                             "/restorations/" + restorationId);
         } catch (TimeoutException | InterruptedException e) {
-            log.info("Failed to wait for backup restore {}, go to background: {}", backupId, e.getMessage());
+StructuredLog.info(log, "Failed to wait for backup restore, go to background:", "backupId", backupId, "arg1", e.getMessage());
             return tryLocateResponse(restorationId, Response.Status.ACCEPTED, DBAAS_PATH + BACKUPS + "/" + backupId + "/restorations/" + restorationId);
         } catch (ExecutionException e) {
             URI location = null;
             try {
                 location = new URI(DBAAS_PATH + BACKUPS + "/" + backupId + "/restorations/" + restorationId);
             } catch (URISyntaxException se) {
-                log.warn("Failed to build URI, error: {}", se.getMessage());
+StructuredLog.warn(log, "Failed to build URI, error:", "arg0", se.getMessage());
             }
             throw new BackupExecutionException(location, String.format("Backup restore %s execution failed", restorationId), e);
         }
@@ -168,24 +169,24 @@ public class AggregatedBackupAdministrationControllerV3 {
             @PathParam("backupId") UUID backupId,
             @Parameter(description = "Namespace where backup was made", required = true)
             @PathParam(NAMESPACE_PARAMETER) String namespace) {
-        log.info("Request to validate backup {} in {}", backupId, namespace);
+StructuredLog.info(log, "Request to validate backup in", "backupId", backupId, "namespace", namespace);
         Optional<NamespaceBackup> backupOptional = backupsDbaasRepository.findById(backupId);
         if (backupOptional.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pointer("/backupId/validate").build());
         } else {
-            log.info("Found requested backup {} to validate", backupId);
+StructuredLog.info(log, "Found requested backup to validate", "backupId", backupId);
         }
         NamespaceBackup backup = backupOptional.get();
         if (!backup.getNamespace().equals(namespace)) {
             throw new ForbiddenNamespaceException(namespace, backup.getNamespace(), Source.builder().pointer("/namespace").build());
         }
         if (!backup.canRestore()) {
-            log.error("Tried to validate backup which cannot be restored: {}", backup);
+StructuredLog.error(log, "Tried to validate backup which cannot be restored:", "backup", backup);
             throw new DBBackupValidationException(Source.builder().build(),
                     String.format("Cannot restore backup '%s', probably it had been removed or failed to be collected", backup.getId()), 500);
         }
         if (!dbBackupsService.validateBackup(backup)) {
-            log.error("Failed to validate backup: {}", backup);
+StructuredLog.error(log, "Failed to validate backup:", "backup", backup);
             throw new DBBackupValidationException(Source.builder().build(),
                     String.format("Failed to validate backup '%s'. Probably it had been removed or failed to be collected", backup.getId()), 500);
         }
@@ -206,7 +207,7 @@ public class AggregatedBackupAdministrationControllerV3 {
             @PathParam("restorationId") UUID restorationId,
             @Parameter(description = "Namespace where backup was made", required = true)
             @PathParam(NAMESPACE_PARAMETER) String namespace) {
-        log.info("Request to get info on backup {} restoration {} in {}", backupId, restorationId, namespace);
+StructuredLog.info(log, "Request to get info on backup restoration in", "backupId", backupId, "restorationId", restorationId, "namespace", namespace);
         Optional<NamespaceBackup> backupOptional = backupsDbaasRepository.findById(backupId);
         if (backupOptional.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pointer("/backupId").build());
@@ -231,12 +232,12 @@ public class AggregatedBackupAdministrationControllerV3 {
                                          @PathParam("backupId") UUID backupId,
                                          @Parameter(description = "Namespace where backup was made", required = true)
                                          @PathParam(NAMESPACE_PARAMETER) String namespace) {
-        log.info("Request to get info on backup {} in {}", backupId, namespace);
+StructuredLog.info(log, "Request to get info on backup in", "backupId", backupId, "namespace", namespace);
         Optional<NamespaceBackup> backupOptional = backupsDbaasRepository.findById(backupId);
         if (backupOptional.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pointer("/backupId").build());
         } else {
-            log.info("Found requested backup {} to get info", backupId);
+StructuredLog.info(log, "Found requested backup to get info", "backupId", backupId);
         }
         NamespaceBackup backup = backupOptional.get();
         if (!backup.getNamespace().equals(namespace)) {
@@ -258,9 +259,9 @@ public class AggregatedBackupAdministrationControllerV3 {
                                          @PathParam(NAMESPACE_PARAMETER) String namespace,
                                          @Parameter(description = "Identifier of backup process", required = true)
                                          @PathParam("backupId") UUID backupId) {
-        log.info("Request to add info on new backup {} in {}", backupId, namespace);
+StructuredLog.info(log, "Request to add info on new backup in", "backupId", backupId, "namespace", namespace);
         if (!backupDTO.getNamespace().equals(namespace)) {
-            log.warn("Forbid to get info on backup {} from namespace {} using namespace {}", backupId, backupDTO.getNamespace(), namespace);
+StructuredLog.warn(log, "Forbid to get info on backup from namespace using namespace", "backupId", backupId, "namespace", backupDTO.getNamespace(), "namespace", namespace);
             throw new ForbiddenNamespaceException(namespace, backupDTO.getNamespace(), Source.builder().pointer("/namespace").build());
         }
         backupDTO.setId(backupId);
@@ -283,7 +284,7 @@ public class AggregatedBackupAdministrationControllerV3 {
                                              @QueryParam(value = "ignoreNotBackupableDatabases")  @DefaultValue("false") Boolean ignoreNotBackupableDatabases,
                                              @Parameter(description = "Allows to disable eviction on adapters for current backup")
                                              @QueryParam(value = "allowEviction")  @DefaultValue("true") Boolean allowEviction) {
-        log.info("Request to collect backup in {}, ignoreNotBackupableDatabases parameter={} with allowEviction={}", namespace, ignoreNotBackupableDatabases, allowEviction);
+StructuredLog.info(log, "Request to collect backup in, ignoreNotBackupableDatabases parameter= with allowEviction=", "namespace", namespace, "ignoreNotBackupableDatabases", ignoreNotBackupableDatabases, "allowEviction", allowEviction);
         UUID id = UUID.randomUUID();
         try {
             if (!ignoreNotBackupableDatabases) {
@@ -298,13 +299,13 @@ public class AggregatedBackupAdministrationControllerV3 {
                 return dbBackupsService.collectBackup(namespace, id, allowEviction);
             });
             NamespaceBackup backup = futureBackup.get(awaitOperationSeconds, TimeUnit.SECONDS);
-            log.info("Backup have been successfully done. Backup id={}", id);
+StructuredLog.info(log, "Backup have been successfully done. Backup id=", "id", id);
             return tryLocateResponse(backup, Response.Status.CREATED, DBAAS_PATH + "/" + namespace + BACKUPS + "/" + id);
         } catch (TimeoutException | InterruptedException e) {
-            log.info("Failed to wait for backup {}, go to background: {}", id, e.getMessage());
+StructuredLog.info(log, "Failed to wait for backup, go to background:", "id", id, "arg1", e.getMessage());
             return tryLocateResponse(id, Response.Status.ACCEPTED, DBAAS_PATH + "/" + namespace + BACKUPS + "/" + id);
         } catch (ExecutionException e) {
-            log.error("Backup {} execution failed", id, e);
+StructuredLog.error(log, "Backup execution failed", e, "id", id);
             return tryLocateResponse("Some error happened during backup", Response.Status.INTERNAL_SERVER_ERROR, DBAAS_PATH + "/" + namespace + BACKUPS + "/" + id);
         }
     }
@@ -322,7 +323,7 @@ public class AggregatedBackupAdministrationControllerV3 {
                                  @PathParam(NAMESPACE_PARAMETER) String namespace,
                                  @Parameter(description = "Identifier of backup needs to be deleted ", required = true)
                                  @PathParam("backupId") UUID backupId) {
-        log.info("Request to delete backup {} with id {}", namespace, backupId);
+StructuredLog.info(log, "Request to delete backup with id", "namespace", namespace, "backupId", backupId);
         Optional<NamespaceBackup> optionBackupToDelete = backupsDbaasRepository.findById(backupId);
         if (optionBackupToDelete.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pathVariable("backupId").build());
@@ -352,7 +353,7 @@ public class AggregatedBackupAdministrationControllerV3 {
                 message.append(countDB).append(" lbdbs in adapter with id=").append(dbaasAdapter.identifier()).append(" and address=").append(dbaasAdapter.adapterAddress()).append(", ");
             }
             String messageString = message.toString().replaceAll(", $", "");
-            log.info("Backup request does not pass verify operation, some dbaas adapters are not support backup operations. Result validate operation: {}.", messageString);
+StructuredLog.info(log, "Backup request does not pass verify operation, some dbaas adapters are not support backup operations. Result validate operation:", "messageString", messageString);
             throw new DBNotSupportedValidationException(Source.builder().parameter("ignoreNotBackupableDatabases").build(), "Some adapters do not supported backup operation. " +
                     "To skip databases which does not support backup send the same request with parameter \"ignoreNotBackupableDatabases=true\"" + messageString);
         }

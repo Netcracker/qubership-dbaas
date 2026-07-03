@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.annotation.security.PermitAll;
 import jakarta.ws.rs.GET;

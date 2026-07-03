@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.error;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
 import com.netcracker.cloud.dbaas.exceptions.MultiValidationException;
@@ -24,14 +25,9 @@ public class MultiValidationExceptionMapper implements ExceptionMapper<MultiVali
 
     @Override
     public Response toResponse(MultiValidationException e) {
-        log.warn("{} happened during request to {}. Validation errors: {}", e.getClass().getSimpleName(), uriInfo.getPath(),
-                e.getValidationExceptions().stream().map(ErrorCodeException::getMessage).collect(Collectors.joining("\n")));
+        StructuredLog.warn(log, "happened during request to . Validation errors:", "arg0", e.getClass().getSimpleName(), "arg1", uriInfo.getPath(), "status", e.getValidationExceptions().stream().map(ErrorCodeException::getMessage).collect(Collectors.joining("\n")));
         Response.Status status = Response.Status.BAD_REQUEST;
-        return buildResponse(status,
-                () -> tmfResponseBuilder(e, status)
-                        .errors(e.getValidationExceptions().stream().map(ve ->
-                                tmfErrorBuilder(ve, status).build()).collect(Collectors.toList()))
-                        .build());
+        return buildResponse(status);
 
     }
 }

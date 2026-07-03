@@ -11,6 +11,7 @@ DBAAS_RECREATE_DEPLOYMENT_STRATEGY: false
 
 # ============== SERVICE VARIABLES ============================
 LOG_LEVEL: "INFO"
+LOG_FORMAT: "json"
 DBAAS_LOG_LEVEL: "INFO"
 
 DISABLE_DEPRECATED_API: false

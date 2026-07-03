@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.rsql.model;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import lombok.Builder;
 import lombok.Data;

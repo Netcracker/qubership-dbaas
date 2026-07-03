@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.event.listener;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import lombok.Setter;
@@ -42,7 +43,7 @@ public abstract class AbstractPgTableListener implements Runnable {
                 PGNotification[] notifications = pgConn.getNotifications(300_000);
                 if (notifications != null) {
                     for (org.postgresql.PGNotification notification : notifications) {
-                        log.debug("got event from pg table {}. Record id = {}", tableName(), notification.getParameter());
+StructuredLog.debug(log, "got event from pg table. Record id =", "id", tableName(), "arg1", notification.getParameter());
                         UUID id = UUID.fromString(notification.getParameter());
                         QuarkusTransaction.joiningExisting().run(() -> reloadH2Cache(id));
                     }
@@ -68,7 +69,7 @@ public abstract class AbstractPgTableListener implements Runnable {
                             establishConnection(conn);
                             break;
                         } catch (Exception exception) {
-                            log.debug("Caught exception while trying to get connection = {}", exception.getMessage());
+StructuredLog.debug(log, "Caught exception while trying to get connection =", "connection", exception.getMessage());
                             Thread.sleep(reconnectTimeout);
                         }
                     }

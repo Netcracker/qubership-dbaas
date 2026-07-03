@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
@@ -116,7 +117,7 @@ public class DbBackupV2Service {
     public BackupResponse backup(BackupRequest backupRequest, boolean dryRun) {
         backupExistenceCheck(backupRequest.getBackupName());
 
-        log.info("Start backup process with backupRequest {}", backupRequest);
+        StructuredLog.info(log, "Start backup process with backupRequest", "backupRequest", backupRequest);
         Map<Database, List<DatabaseRegistry>> filteredDb = validateAndFilterDatabasesForBackup(
                 getAllDbByFilter(backupRequest.getFilterCriteria()),
                 backupRequest.getIgnoreNotBackupableDatabases(),
@@ -194,7 +195,7 @@ public class DbBackupV2Service {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
 
         if (isBackupRestoreUnsupported(adapter)) {
-            log.error("Adapter {} does not support backup operation", adapterId);
+            StructuredLog.error(log, "Adapter does not support backup operation", "adapterId", adapterId);
             throw new DatabaseBackupRestoreNotSupportedException(
                     String.format("Adapter %s does not support backup operation", adapterId),
                     Source.builder().build());
@@ -245,8 +246,7 @@ public class DbBackupV2Service {
                                         logicalBackup.setStatus(BackupTaskStatus.RETRYABLE_FAIL);
                                     }
                                     logicalBackup.setErrorMessage(extractErrorMessage(throwable));
-                                    log.error("Logical backup failed: logicalBackup={}, error={}",
-                                            logicalBackup.getId(), logicalBackup.getErrorMessage(), throwable);
+                                    StructuredLog.error(log, "Logical backup failed: logicalBackup=, error=", "backup", logicalBackup.getId(), "backup", logicalBackup.getErrorMessage());
                                     return null;
                                 }))
                 .toList();
@@ -272,14 +272,14 @@ public class DbBackupV2Service {
                 LogicalBackupAdapterResponse result = adapter.backupV2(new BackupAdapterRequest(storageName, blobPath, dbNames));
 
                 if (result == null) {
-                    log.error("Empty result from backup operation for adapter: {}, backup: {}", adapterId, backup.getName());
+                    StructuredLog.error(log, "Empty result from backup operation for adapter: , backup:", "adapterId", adapterId, "backup", backup.getName());
                     throw new BackupExecutionException(String.format("Empty result from backup operation for adapter %s", adapterId), new Throwable());
                 }
 
                 return result;
             });
         } catch (Exception e) {
-            log.error("Logical backup startup for adapterId '{}' and backup with name '{}' failed", adapterId, backup.getName());
+            StructuredLog.error(log, "Logical backup startup for adapterId '' and backup with name '' failed", "adapterId", adapterId, "backup", backup.getName());
             throw new BackupExecutionException("Failsafe execution failed", e);
         }
     }
@@ -316,8 +316,7 @@ public class DbBackupV2Service {
         List<Backup> backupsToAggregate = backupRepository.findBackupsToTrack();
 
         if (!backupsToAggregate.isEmpty()) {
-            log.debug("Found backups to aggregate {}",
-                    backupsToAggregate.stream().map(Backup::getName).toList());
+            StructuredLog.debug(log, "Found backups to aggregate", "backup", backupsToAggregate.stream().map(Backup::getName).toList());
         }
 
         backupsToAggregate.forEach(this::trackAndAggregate);
@@ -325,7 +324,7 @@ public class DbBackupV2Service {
 
     protected void trackAndAggregate(Backup backup) {
         if (backup.getAttemptCount() > retryCount) {
-            log.warn("The number of attempts to track backup {} exceeded {}", backup.getName(), retryCount);
+            StructuredLog.warn(log, "The number of attempts to track backup exceeded", "backup", backup.getName(), "retryCount", retryCount);
             backup.setStatus(BackupStatus.FAILED);
             backup.setErrorMessage(String.format("The number of attempts exceeded %s", retryCount));
         } else {
@@ -387,7 +386,7 @@ public class DbBackupV2Service {
         );
 
         if (response == null) {
-            log.error("Operation {} return empty response from adapter={} for logicalBackup={}", TRACK_BACKUP_OPERATION, logicalBackup.getAdapterId(), logicalBackup.getId()); //not obvious from
+            StructuredLog.error(log, "Operation return empty response from adapter= for logicalBackup=", "TRACK_BACKUP_OPERATION", TRACK_BACKUP_OPERATION, "backup", logicalBackup.getAdapterId(), "backup", logicalBackup.getId()); //not obvious from
             throw new BackupExecutionException(
                     String.format("Operation %s return empty response from adapter=%s for logicalBackup=%s", TRACK_BACKUP_OPERATION, logicalBackup.getAdapterId(), logicalBackup.getId()),
                     new Throwable()
@@ -397,7 +396,7 @@ public class DbBackupV2Service {
     }
 
     protected void updateAggregatedStatus(Backup backup) {
-        log.info("Start aggregating for backupName: {}", backup.getName());
+        StructuredLog.info(log, "Start aggregating for backupName:", "backup", backup.getName());
 
         List<LogicalBackup> logicalBackupList = backup.getLogicalBackups();
         Set<BackupTaskStatus> statusSet = new HashSet<>();
@@ -415,7 +414,15 @@ public class DbBackupV2Service {
                 String message = logicalBackup.getLogicalBackupName() != null
                         ? String.format("LogicalBackup %s failed: %s", logicalBackup.getLogicalBackupName(), error)
                         : String.format("LogicalBackup failed in adapter '%s' with error: %s", logicalBackup.getAdapterId(), error);
-                log.warn(message);
+                if (logicalBackup.getLogicalBackupName() != null) {
+                    StructuredLog.warn(log, "Logical backup failed",
+                            "logical_backup_name", logicalBackup.getLogicalBackupName(),
+                            "error", error);
+                } else {
+                    StructuredLog.warn(log, "Logical backup failed in adapter",
+                            "adapter_id", logicalBackup.getAdapterId(),
+                            "error", error);
+                }
                 errorMessages.add(message);
             }
 
@@ -560,7 +567,7 @@ public class DbBackupV2Service {
     }
 
     public void deleteBackup(String backupName, boolean force) {
-        log.info("Starting delete backup={}, force={}", backupName, force);
+        StructuredLog.info(log, "Starting delete backup=, force=", "backupName", backupName, "force", force);
         Backup backup = backupRepository.findByIdOptional(backupName).orElse(null);
         if (backup == null)
             return;
@@ -569,8 +576,7 @@ public class DbBackupV2Service {
         if (status != BackupStatus.COMPLETED &&
                 status != BackupStatus.FAILED &&
                 status != BackupStatus.DELETED) {
-            log.error("Backup has invalid status={}. Only {}, {} or {} backups can be processed.",
-                    status, BackupStatus.COMPLETED, BackupStatus.FAILED, BackupStatus.DELETED);
+            StructuredLog.error(log, "Backup has invalid status=. Only , or backups can be processed", "status", status, "backup", BackupStatus.COMPLETED, "backup", BackupStatus.FAILED, "backup", BackupStatus.DELETED);
             throw new UnprocessableEntityException(
                     backup.getName(),
                     String.format(
@@ -601,7 +607,7 @@ public class DbBackupV2Service {
                         finalizeBackupDeletion(backup, failedAdapters);
                     } else {
                         backup.setStatus(BackupStatus.DELETED);
-                        log.info("Backup {} deleted successfully", backup.getName());
+                        StructuredLog.info(log, "Backup deleted successfully", "backup", backup.getName());
                     }
                     backupRepository.save(backup);
                 }));
@@ -616,8 +622,7 @@ public class DbBackupV2Service {
         RetryPolicy<Object> retryPolicy =
                 buildRetryPolicy(DELETE_BACKUP_OPERATION, LOGICAL_BACKUP, logicalBackup.getId().toString(), adapterId);
 
-        log.info("Backup with adapterId {} has {} databases to delete",
-                adapterId, logicalBackup.getBackupDatabases().size());
+        StructuredLog.info(log, "Backup with adapterId has databases to delete", "adapterId", adapterId, "backup", logicalBackup.getBackupDatabases().size());
 
         return CompletableFuture.runAsync(
                         asyncOperations.wrapWithContext(() ->
@@ -632,8 +637,7 @@ public class DbBackupV2Service {
                     if (is4xxError(throwable))
                         return null;
                     String errorMessage = extractErrorMessage(throwable);
-                    log.error("Delete logicalBackup={} with adapterId={}, errorMsg={}",
-                            logicalBackup.getId(), adapterId, errorMessage);
+                    StructuredLog.error(log, "Delete logicalBackup= with adapterId=, errorMsg=", "backup", logicalBackup.getId(), "adapterId", adapterId, "errorMessage", errorMessage);
                     failedAdapters.put(adapterId, errorMessage);
                     return null;
                 });
@@ -644,7 +648,9 @@ public class DbBackupV2Service {
                 "Not all backups were deleted successfully in backup %s, failed adapters: %s",
                 backup.getName(), failedAdapters
         );
-        log.error(aggregatedError);
+        StructuredLog.error(log, "Not all backups were deleted successfully",
+                "backup_name", backup.getName(),
+                "failed_adapters", failedAdapters);
         backup.setStatus(BackupStatus.FAILED);
         backup.setErrorMessage(aggregatedError);
     }
@@ -652,7 +658,7 @@ public class DbBackupV2Service {
     public RestoreResponse restore(String backupName, RestoreRequest restoreRequest, boolean dryRun, boolean allowParallel) {
         String restoreName = restoreRequest.getRestoreName();
         if (restoreRepository.findByIdOptional(restoreName).isPresent()) {
-            log.error("Restore with name {} already exists", restoreName);
+            StructuredLog.error(log, "Restore with name already exists", "restoreName", restoreName);
             throw new ResourceAlreadyExistsException(restoreName, Source.builder().build());
         }
 
@@ -668,7 +674,7 @@ public class DbBackupV2Service {
             return restoreRepository.save(currRestore);
         }, allowParallel);
 
-        log.info("Start restore {} for backup {}", restoreName, backupName);
+        StructuredLog.info(log, "Start restore for backup", "restoreName", restoreName, "backupName", backupName);
         // DryRun on adapters
         startRestore(restore, true);
         aggregateRestoreStatus(restore);
@@ -768,9 +774,7 @@ public class DbBackupV2Service {
         Map<AdapterBackupKey, List<DatabaseWithClassifiers>> groupedByTypeAndAdapter =
                 groupBackupDatabasesByLogicalBackupNameAndAdapter(enrichedBackupClassifiers);
 
-        log.info("Initializing restore structure: restoreName={}, backupName={}",
-                restoreRequest.getRestoreName(),
-                backup.getName());
+        StructuredLog.info(log, "Initializing restore structure: restoreName=, backupName=", "arg0", restoreRequest.getRestoreName(), "backup", backup.getName());
 
         // Build logicalRestores for each new adapter
         List<LogicalRestore> logicalRestores = groupedByTypeAndAdapter.entrySet().stream()
@@ -782,8 +786,7 @@ public class DbBackupV2Service {
 
                     List<RestoreDatabase> restoreDatabases =
                             createRestoreDatabases(entry.getValue());
-                    log.debug("Initialized restoreDatabase names {}",
-                            restoreDatabases.stream().map(RestoreDatabase::getName).toList());
+                    StructuredLog.debug(log, "Initialized restoreDatabase names", "arg0", restoreDatabases.stream().map(RestoreDatabase::getName).toList());
                     logicalRestore.setRestoreDatabases(restoreDatabases);
                     restoreDatabases.forEach(rd -> rd.setLogicalRestore(logicalRestore));
                     return logicalRestore;
@@ -809,8 +812,7 @@ public class DbBackupV2Service {
                 .mapToInt(lr -> lr.getRestoreDatabases().size())
                 .sum();
 
-        log.info("Restore structure initialized: restoreName={}, logicalRestores={}, restoreDatabases={}, externalDatabases={}",
-                restore.getName(), logicalRestores.size(), totalDatabases, enrichedExternalDbs.size());
+        StructuredLog.info(log, "Restore structure initialized: restoreName=, logicalRestores=, restoreDatabases=, externalDatabases=", "arg0", restore.getName(), "arg1", logicalRestores.size(), "totalDatabases", totalDatabases, "arg3", enrichedExternalDbs.size());
 
         return restore;
     }
@@ -880,7 +882,8 @@ public class DbBackupV2Service {
             String msg = String.format(
                     "Duplicate classifiers detected after mapping. Duplicate classifiers=%s. " +
                             "Ensure all classifiers remain unique after mapping.", duplicateClassifiers);
-            log.error(msg);
+            StructuredLog.error(log, "Duplicate classifiers detected after mapping",
+                    "duplicate_classifiers", duplicateClassifiers);
             throw new IllegalResourceStateException(msg, Source.builder().build());
         }
     }
@@ -897,8 +900,7 @@ public class DbBackupV2Service {
 
         return switch (strategy) {
             case FAIL -> {
-                log.error("External databases not allowed by strategy={}. External db names: [{}]",
-                        ExternalDatabaseStrategy.FAIL, externalNames);
+                StructuredLog.error(log, "External databases not allowed by strategy=. External db names: []", "arg0", ExternalDatabaseStrategy.FAIL, "externalNames", externalNames);
                 throw new DatabaseBackupRestoreNotSupportedException(
                         String.format(
                                 "External databases not allowed by strategy=%s. External db names: [%s]",
@@ -908,8 +910,7 @@ public class DbBackupV2Service {
                 );
             }
             case SKIP -> {
-                log.info("Excluding external databases from restore by strategy={}. External db names: [{}]",
-                        ExternalDatabaseStrategy.SKIP, externalNames);
+                StructuredLog.info(log, "Excluding external databases from restore by strategy=. External db names: []", "arg0", ExternalDatabaseStrategy.SKIP, "externalNames", externalNames);
                 yield List.of();
             }
             case INCLUDE -> {
@@ -934,8 +935,7 @@ public class DbBackupV2Service {
                         .filter(Objects::nonNull)
                         .toList();
 
-                log.info("Including external databases to restore by strategy={}. External db names: [{}]",
-                        ExternalDatabaseStrategy.INCLUDE, extractExternalDbName(restoreExternalDatabases, RestoreExternalDatabase::getName));
+                StructuredLog.info(log, "Including external databases to restore by strategy=. External db names: []", "arg0", ExternalDatabaseStrategy.INCLUDE, "arg1", extractExternalDbName(restoreExternalDatabases, RestoreExternalDatabase::getName));
                 yield restoreExternalDatabases;
             }
         };
@@ -1041,8 +1041,7 @@ public class DbBackupV2Service {
 
     protected void startRestore(Restore restore, boolean dryRun) {
         List<LogicalRestore> logicalRestores = restore.getLogicalRestores();
-        log.info("Starting requesting adapters to restore startup process: restore={}, dryRun={}, logicalRestoreCount={}",
-                restore.getName(), dryRun, logicalRestores.size());
+        StructuredLog.info(log, "Starting requesting adapters to restore startup process: restore=, dryRun=, logicalRestoreCount=", "arg0", restore.getName(), "dryRun", dryRun, "arg2", logicalRestores.size());
         String storageName = restore.getStorageName();
         String blobPath = restore.getBlobPath();
 
@@ -1081,8 +1080,7 @@ public class DbBackupV2Service {
                     }
 
                     logicalRestore.setErrorMessage(extractErrorMessage(throwable));
-                    log.error("Logical restore failed: logicalRestoreId={}, adapterId={}, error={}",
-                            logicalRestore.getId(), logicalRestore.getAdapterId(), logicalRestore.getErrorMessage());
+                    StructuredLog.error(log, "Logical restore failed: logicalRestoreId=, adapterId=, error=", "arg0", logicalRestore.getId(), "adapter", logicalRestore.getAdapterId(), "error", logicalRestore.getErrorMessage());
                     return null;
                 });
     }
@@ -1092,9 +1090,7 @@ public class DbBackupV2Service {
     }
 
     private void refreshLogicalRestoreState(LogicalRestore logicalRestore, LogicalRestoreAdapterResponse response) {
-        log.info("Starting LogicalRestore state update [restoreName={}, logicalRestoreName={}]",
-                logicalRestore.getRestore().getName(),
-                response.getRestoreId());
+        StructuredLog.info(log, "Starting LogicalRestore state update [restoreName=, logicalRestoreName=]", "arg0", logicalRestore.getRestore().getName(), "arg1", response.getRestoreId());
         logicalRestore.setLogicalRestoreName(response.getRestoreId());
         logicalRestore.setStatus(mapper.toRestoreTaskStatus(response.getStatus()));
         logicalRestore.setErrorMessage(response.getErrorMessage());
@@ -1114,8 +1110,7 @@ public class DbBackupV2Service {
                 restoreDatabase.setCreationTime(db.getCreationTime());
                 if (!restoreDatabase.getName().equals(db.getDatabaseName())) {
                     restoreDatabase.setName(db.getDatabaseName());
-                    log.debug("For restore={} restoreDatabase updated: old name={}, new name={}",
-                            logicalRestore.getRestore().getName(), db.getPreviousDatabaseName(), restoreDatabase.getName());
+                    StructuredLog.debug(log, "For restore= restoreDatabase updated: old name=, new name=", "arg0", logicalRestore.getRestore().getName(), "arg1", db.getPreviousDatabaseName(), "arg2", restoreDatabase.getName());
                 }
             } else {
                 List<String> existingDbNames = logicalRestore.getRestoreDatabases().stream()
@@ -1131,8 +1126,7 @@ public class DbBackupV2Service {
                 logicalRestore.setErrorMessage(errorMsg);
             }
         });
-        log.debug("Updated logicalRestore={}, status={}, error message={}",
-                logicalRestore.getLogicalRestoreName(), logicalRestore.getStatus(), logicalRestore.getErrorMessage());
+        StructuredLog.debug(log, "Updated logicalRestore=, status=, error message=", "arg0", logicalRestore.getLogicalRestoreName(), "status", logicalRestore.getStatus(), "error", logicalRestore.getErrorMessage());
     }
 
     private LogicalRestoreAdapterResponse logicalRestore(LogicalRestore logicalRestore,
@@ -1193,7 +1187,7 @@ public class DbBackupV2Service {
         );
 
         if (result == null) {
-            log.error("Empty result from restore operation for adapter {}", logicalRestore.getAdapterId());
+            StructuredLog.error(log, "Empty result from restore operation for adapter", "adapter", logicalRestore.getAdapterId());
             throw new BackupExecutionException(
                     String.format("Empty result from restore operation for adapter %s", logicalRestore.getAdapterId()),
                     new Throwable()
@@ -1212,8 +1206,7 @@ public class DbBackupV2Service {
         List<Restore> restoresToAggregate = restoreRepository.findRestoresToTrack();
 
         if (!restoresToAggregate.isEmpty()) {
-            log.debug("Found restores to aggregate {}",
-                    restoresToAggregate.stream().map(Restore::getName).toList());
+            StructuredLog.debug(log, "Found restores to aggregate", "arg0", restoresToAggregate.stream().map(Restore::getName).toList());
         }
 
         restoresToAggregate.forEach(restore -> {
@@ -1257,8 +1250,7 @@ public class DbBackupV2Service {
         DbaasAdapter adapter = physicalDatabasesService.getAdapterById(adapterId);
         RetryPolicy<Object> retryPolicy = buildRetryPolicy(ENSURE_USER_OPERATION, RESTORE_DATABASE, dbId, adapterId);
 
-        log.info("Start ensuring {} users for database=[{}] via adapter [{}]",
-                users.size(), dbId, adapterId);
+        StructuredLog.info(log, "Start ensuring users for database=[] via adapter []", "arg0", users.size(), "dbId", dbId, "adapterId", adapterId);
 
         return users.stream()
                 .map(user -> {
@@ -1267,12 +1259,11 @@ public class DbBackupV2Service {
                                 .get(() -> {
                                     EnsuredUser ensuredUser = adapter.ensureUser(null, null, dbName, user.getRole());
                                     user.setName(ensuredUser.getName());
-                                    log.info("User ensured for database=[{}], user=[name:{}, connectionProperties:{}]",
-                                            dbId, ensuredUser.getName(), ensuredUser.getConnectionProperties());
+                                    StructuredLog.info(log, "User ensured for database=[], user=[name:, connectionProperties:]", "dbId", dbId, "arg1", ensuredUser.getName(), "arg2", ensuredUser.getConnectionProperties());
                                     return ensuredUser;
                                 });
                     } catch (Exception e) {
-                        log.error("Failed to ensure user in database [{}] with role [{}]", dbId, user.getRole());
+                        StructuredLog.error(log, "Failed to ensure user in database [] with role []", "dbId", dbId, "arg1", user.getRole());
                         throw new BackupExecutionException(
                                 String.format("Failed to ensure user in database [%s] with role [%s]", dbId, user.getRole()), e);
                     }
@@ -1283,7 +1274,7 @@ public class DbBackupV2Service {
 
     protected void trackAndAggregateRestore(Restore restore) {
         if (restore.getAttemptCount() > retryCount) {
-            log.warn("The number of attempts to track restore {} exceeded {}", restore.getName(), retryCount);
+            StructuredLog.warn(log, "The number of attempts to track restore exceeded", "arg0", restore.getName(), "retryCount", retryCount);
             restore.setStatus(RestoreStatus.FAILED);
             restore.setErrorMessage(String.format("The number of attempts exceeded %s", retryCount));
         } else {
@@ -1301,9 +1292,7 @@ public class DbBackupV2Service {
                                 || db.getStatus() == NOT_STARTED
                                 || db.getStatus() == RestoreTaskStatus.RETRYABLE_FAIL
                 ).toList();
-        log.debug("Starting checking status for logical restores: restore={}, logicalRestores={}",
-                restore.getName(),
-                notFinishedLogicalRestores.stream()
+        StructuredLog.debug(log, "Starting checking status for logical restores: restore=, logicalRestores=", "arg0", restore.getName(), "arg1", notFinishedLogicalRestores.stream()
                         .map(LogicalRestore::getId)
                         .toList());
 
@@ -1341,7 +1330,7 @@ public class DbBackupV2Service {
     }
 
     private void aggregateRestoreStatus(Restore restore) {
-        log.info("Start aggregating restore status: restoreName={}", restore.getName());
+        StructuredLog.info(log, "Start aggregating restore status: restoreName=", "arg0", restore.getName());
 
         List<LogicalRestore> logicalRestoreList = restore.getLogicalRestores();
         Set<RestoreTaskStatus> statusSet = new HashSet<>();
@@ -1373,20 +1362,19 @@ public class DbBackupV2Service {
         restore.setTotal(totalDbCount);
         restore.setCompleted(completedDbCount);
         restore.setErrorMessage(String.join("; ", errorMessages));
-        log.info("Aggregated restore status: restoreName={}, status={}, totalDb={}, completed={}, errorMessage={}",
-                restore.getName(), restore.getStatus(), restore.getTotal(), restore.getCompleted(), restore.getErrorMessage());
+        StructuredLog.info(log, "Aggregated restore status: restoreName=, status=, totalDb=, completed=, errorMessage=", "arg0", restore.getName(), "status", restore.getStatus(), "arg2", restore.getTotal(), "arg3", restore.getCompleted(), "error", restore.getErrorMessage());
     }
 
     @Transactional
     protected void createLogicalDatabasesFromRestore(Restore restore,
                                                      Map<String, List<EnsuredUser>> dbNameToEnsuredUsers) {
-        log.info("Start creating logical databases from restore {}", restore.getName());
+        StructuredLog.info(log, "Start creating logical databases from restore", "arg0", restore.getName());
         // Creating LogicalDb based logicalRestores
         restore.getLogicalRestores().forEach(logicalRestore -> {
-            log.info("Processing logicalRestore={}, type={}, adapterId={}", logicalRestore.getLogicalRestoreName(), logicalRestore.getType(), logicalRestore.getAdapterId());
+            StructuredLog.info(log, "Processing logicalRestore=, type=, adapterId=", "arg0", logicalRestore.getLogicalRestoreName(), "arg1", logicalRestore.getType(), "adapter", logicalRestore.getAdapterId());
             logicalRestore.getRestoreDatabases().forEach(restoreDatabase -> {
                 String type = logicalRestore.getType();
-                log.info("Processing restoreDatabase={}", restoreDatabase.getName());
+                StructuredLog.info(log, "Processing restoreDatabase=", "arg0", restoreDatabase.getName());
                 findAndMarkDatabaseAsOrphan(restoreDatabase.getClassifiers(), type);
                 String adapterId = logicalRestore.getAdapterId();
                 String physicalDatabaseId = physicalDatabasesService.getByAdapterId(adapterId).getPhysicalDatabaseIdentifier();
@@ -1409,12 +1397,12 @@ public class DbBackupV2Service {
                 encryption.encryptPassword(newDatabase);
                 newDatabase.setLastRotatedAt(OffsetDateTime.now());
                 databaseRegistryDbaasRepository.saveInternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
-                log.info("Based on restoreDatabase={}, database with id={} created", restoreDatabase.getName(), newDatabase.getId());
+                StructuredLog.info(log, "Based on restoreDatabase=, database with id= created", "arg0", restoreDatabase.getName(), "arg1", newDatabase.getId());
             });
         });
         // Creating LogicalDb based externalDbs
         restore.getExternalDatabases().forEach(externalDatabase -> {
-            log.info("Processing externalDatabase={}, type={}", externalDatabase.getName(), externalDatabase.getType());
+            StructuredLog.info(log, "Processing externalDatabase=, type=", "arg0", externalDatabase.getName(), "arg1", externalDatabase.getType());
             String type = externalDatabase.getType();
             findAndMarkDatabaseAsOrphan(externalDatabase.getClassifiers(), type);
             Database newDatabase = createLogicalDatabase(
@@ -1429,10 +1417,10 @@ public class DbBackupV2Service {
                     null,
                     null);
             databaseRegistryDbaasRepository.saveExternalDatabase(newDatabase.getDatabaseRegistry().getFirst());
-            log.info("Based on externalDb={}, database with id={} created", externalDatabase.getName(), newDatabase.getId());
+            StructuredLog.info(log, "Based on externalDb=, database with id= created", "arg0", externalDatabase.getName(), "arg1", newDatabase.getId());
         });
         restore.setStatus(RestoreStatus.COMPLETED);
-        log.info("Finished initializing logical databases from restore {}", restore.getName());
+        StructuredLog.info(log, "Finished initializing logical databases from restore", "arg0", restore.getName());
     }
 
     protected Set<ClassifierDetails> findSimilarDbByClassifier(List<ClassifierDetails> classifiers, String type) {
@@ -1490,16 +1478,8 @@ public class DbBackupV2Service {
                             .getDatabaseByClassifierAndType(currClassifier, type)
                             .ifPresentOrElse(dbRegistry -> {
                                         deletionService.markDatabaseAsOrphan(dbRegistry);
-                                        log.info(
-                                                "Database marked as orphan: dbId={}, dbType={}, classifier={}",
-                                                dbRegistry.getDatabase().getId(),
-                                                type,
-                                                currClassifier
-                                        );
-                                    }, () -> log.debug("Database not found for classifier: dbType={}, classifierType={}, classifier={}",
-                                            type,
-                                            classifier.getType(),
-                                            currClassifier)
+                                        StructuredLog.info(log, "Database marked as orphan: dbId=, dbType=, classifier=", "arg0", dbRegistry.getDatabase().getId(), "type", type, "currClassifier", currClassifier);
+                                    }, () -> StructuredLog.debug(log, "Database not found for classifier: dbType=, classifierType=, classifier=", "type", type, "classifier", classifier.getType(), "currClassifier", currClassifier)
                             );
                 });
     }
@@ -1554,7 +1534,7 @@ public class DbBackupV2Service {
     }
 
     public void deleteRestore(String restoreName) {
-        log.info("Delete restoration with name = {}", restoreName);
+        StructuredLog.info(log, "Delete restoration with name =", "restoreName", restoreName);
         Restore restore = restoreRepository.findByIdOptional(restoreName)
                 .orElse(null);
 
@@ -1602,7 +1582,7 @@ public class DbBackupV2Service {
 
     private void checkBackupStatusForRestore(String restoreName, BackupStatus status) {
         if (status != BackupStatus.COMPLETED) {
-            log.error("Restore {} can't be processed due to backup status {}", restoreName, status);
+            StructuredLog.error(log, "Restore can't be processed due to backup status", "restoreName", restoreName, "status", status);
             throw new UnprocessableEntityException(
                     restoreName, String.format("Restore can't be processed due to backup status %s", status),
                     Source.builder().build());
@@ -1645,14 +1625,13 @@ public class DbBackupV2Service {
 
             switch (strategy) {
                 case FAIL:
-                    log.error("External databases not allowed for backup by strategy={}: {}", ExternalDatabaseStrategy.FAIL, externalNames);
+                    StructuredLog.error(log, "External databases not allowed for backup by strategy=:", "arg0", ExternalDatabaseStrategy.FAIL, "externalNames", externalNames);
                     throw new DatabaseBackupRestoreNotSupportedException(
                             String.format("External databases not allowed for backup by strategy=%s: %s", ExternalDatabaseStrategy.FAIL, externalNames),
                             Source.builder().parameter("ExternalDatabaseStrategy").build()
                     );
                 case SKIP:
-                    log.info("Excluding external databases from backup by strategy={}: {}",
-                            ExternalDatabaseStrategy.SKIP, externalNames);
+                    StructuredLog.info(log, "Excluding external databases from backup by strategy=:", "arg0", ExternalDatabaseStrategy.SKIP, "externalNames", externalNames);
                     break;
                 case INCLUDE:
                     break;
@@ -1678,9 +1657,9 @@ public class DbBackupV2Service {
                     .collect(Collectors.joining(", "));
 
             if (ignoreNotBackupableDatabases) {
-                log.info("Excluding not backupable databases: {}", dbNames);
+                StructuredLog.info(log, "Excluding not backupable databases:", "dbNames", dbNames);
             } else {
-                log.error("Backup operation unsupported for databases: {}", dbNames);
+                StructuredLog.error(log, "Backup operation unsupported for databases:", "dbNames", dbNames);
                 throw new DatabaseBackupRestoreNotSupportedException(
                         String.format("Backup operation unsupported for databases: %s", dbNames),
                         Source.builder().parameter("ignoreNotBackupableDatabases").build()
@@ -1711,7 +1690,7 @@ public class DbBackupV2Service {
 
     public void deleteAllBackupByBackupNames(Set<String> backupNames) {
         List<Backup> backups = backupRepository.findAllBackupByBackupNames(backupNames);
-        log.info("Found {} backups by {} backupNames", backups.size(), backupNames.size());
+        StructuredLog.info(log, "Found backups by backupNames", "backup", backups.size(), "backup", backupNames.size());
         for (Backup backup : backups) {
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             Map<String, String> failedAdapters = new ConcurrentHashMap<>();
@@ -1723,17 +1702,17 @@ public class DbBackupV2Service {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
                     .whenComplete((res, ex) -> {
                         backupRepository.delete(backup);
-                        log.debug("Backup={} deleted physically", backup.getName());
+                        StructuredLog.debug(log, "Backup= deleted physically", "backup", backup.getName());
                     });
         }
     }
 
     public void deleteAllRestoreByRestoreNames(Set<String> restoreNames) {
         List<Restore> restores = restoreRepository.findAllRestoreByNames(restoreNames);
-        log.info("Found {} restores by {} restoreNames", restores.size(), restoreNames.size());
+        StructuredLog.info(log, "Found restores by restoreNames", "arg0", restores.size(), "arg1", restoreNames.size());
         for (Restore restore : restores) {
             restoreRepository.delete(restore);
-            log.debug("Restore={} deleted physically", restore.getName());
+            StructuredLog.debug(log, "Restore= deleted physically", "arg0", restore.getName());
         }
     }
 
@@ -1756,7 +1735,7 @@ public class DbBackupV2Service {
     }
 
     private void throwBackupAlreadyExistsException(String backupName) {
-        log.error("Backup with name {} already exists", backupName);
+        StructuredLog.error(log, "Backup with name already exists", "backupName", backupName);
         throw new ResourceAlreadyExistsException(backupName, Source.builder().build());
     }
 
@@ -1819,10 +1798,9 @@ public class DbBackupV2Service {
                 .handle(WebApplicationException.class)
                 .withMaxRetries(retryAttempts)
                 .withDelay(retryDelay)
-                .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",
-                        context, extractErrorMessage(e.getLastFailure())))
-                .onRetry(e -> log.info("Retrying {}...", context))
-                .onFailure(e -> log.error("Request limit exceeded for {}", context));
+                .onFailedAttempt(e -> StructuredLog.warn(log, "Attempt failed for :", "context", context, "error", extractErrorMessage(e.getLastFailure())))
+                .onRetry(e -> StructuredLog.info(log, "Retrying", "context", context))
+                .onFailure(e -> StructuredLog.error(log, "Request limit exceeded for", "context", context));
     }
 
     private String extractErrorMessage(Throwable throwable) {

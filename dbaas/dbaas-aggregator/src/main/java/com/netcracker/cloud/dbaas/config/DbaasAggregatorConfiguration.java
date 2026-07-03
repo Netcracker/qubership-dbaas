@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.service.*;

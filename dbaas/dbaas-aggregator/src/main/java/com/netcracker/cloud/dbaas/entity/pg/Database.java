@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.netcracker.cloud.dbaas.dto.ConnectionDescription;

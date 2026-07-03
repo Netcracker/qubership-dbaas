@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.annotation.PreDestroy;
 import com.netcracker.cloud.dbaas.entity.pg.BgTrack;
@@ -42,18 +43,18 @@ public class ProcessService {
         Optional<BgTrack> trackOptional = bgTrackRepository.findByNamespaceAndOperation(namespace, operation);
         if (trackOptional.isPresent() && WARMUP_OPERATION.equals(operation)) { //TODO remove && WARMUP_OPERATION.equals(operation) after bulk declarative implementation
             BgTrack track = trackOptional.get();
-            log.info("Found process in db: {}", track);
+StructuredLog.info(log, "Found process in db:", "track", track);
             ProcessInstanceImpl processInstance = orchestrator.getProcessInstance(track.getId());
             if (processInstance != null &&
                     (TaskState.NOT_STARTED.equals(processInstance.getState()) || TaskState.IN_PROGRESS.equals(processInstance.getState()))) {
-                log.error("Process {} still running", track.getId());
+StructuredLog.error(log, "Process still running", "arg0", track.getId());
                 return processInstance;
             }
         }
 
         log.debug("Call process orchestrator to create new process");
         ProcessInstanceImpl pi = QuarkusTransaction.requiringNew().call(() -> orchestrator.createProcess(definition));
-        log.info("New process id: {}", pi.getId());
+StructuredLog.info(log, "New process id:", "arg0", pi.getId());
         if (WARMUP_OPERATION.equals(operation)) {
             BgTrack track = new BgTrack();
             track.setId(pi.getId());

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
@@ -60,7 +61,7 @@ public class RestoreDatabaseTask extends AbstractDbaaSTask implements Serializab
         Optional<Database> database = blueGreenService.restoreDatabase(configuration, version,
                 cloneDatabaseProcessObject.getBackupId(), cloneDatabaseProcessObject.getRestoreId(), namespaceBackupId, prefixMap);
 
-        log.debug("Done '{}' task with database = {}", super.getName(), database);
+StructuredLog.debug(log, "Done '' task with database =", "database", super.getName(), "database", database);
     }
 
 }

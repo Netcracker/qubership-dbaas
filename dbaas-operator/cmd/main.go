@@ -53,6 +53,8 @@ import (
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logformat"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/poller"
 	// +kubebuilder:scaffold:imports
@@ -75,6 +77,8 @@ func main() {
 	ctxmanager.Register([]ctxmanager.ContextProvider{
 		xrequestid.XRequestIdProvider{},
 	})
+
+	logformat.Init()
 
 	var httpAddr string
 	var enableLeaderElection bool
@@ -114,10 +118,10 @@ func main() {
 	// ── Operator namespace ────────────────────────────────────────────────────
 	cloudNamespace := os.Getenv("CLOUD_NAMESPACE")
 	if cloudNamespace == "" {
-		setupLog.Errorf("CLOUD_NAMESPACE env var is not set — ownership checks will not work correctly")
+		setupLog.Errorf("%s", logfields.Format("CLOUD_NAMESPACE env var is not set — ownership checks will not work correctly"))
 		os.Exit(1)
 	}
-	setupLog.Infof("operator namespace cloud-namespace=%v", cloudNamespace)
+	setupLog.Infof("%s", logfields.Format("operator namespace configured", "cloud-namespace", cloudNamespace))
 
 	// ── dbaas-aggregator client ───────────────────────────────────────────────
 	aggregatorURL := os.Getenv("DBAAS_AGGREGATOR_URL")
@@ -135,7 +139,7 @@ func main() {
 	var credentialWatcher manager.Runnable
 	if m2mEnabled {
 		aggregator = aggregatorclient.NewAggregatorClient(aggregatorURL)
-		setupLog.Infof("dbaas-aggregator client configured url=%v auth=m2m-token", aggregatorURL)
+		setupLog.Infof("%s", logfields.Format("dbaas-aggregator client configured", "url", aggregatorURL, "auth", "m2m-token"))
 	} else {
 		// Basic Auth: read username/password from the mounted operator credentials
 		// Secret (dbaas-operator-aggregator-credentials at securityDir).
@@ -146,11 +150,11 @@ func main() {
 		credentialWatcher = manager.RunnableFunc(func(ctx context.Context) error {
 			return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregator)
 		})
-		setupLog.Infof("dbaas-aggregator client configured url=%v auth=basic username=%v", aggregatorURL, username)
+		setupLog.Infof("%s", logfields.Format("dbaas-aggregator client configured", "url", aggregatorURL, "auth", "basic", "username", username))
 	}
 
 	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
-	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)
+	setupLog.Infof("%s", logfields.Format("Kubernetes event recording configured", "enabled", eventsEnabled))
 
 	setupLog.Info("watching all namespaces (cluster-scoped)")
 
@@ -208,7 +212,7 @@ func main() {
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
-		setupLog.Errorf("Failed to start manager: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to start manager", "error", err))
 		os.Exit(1)
 	}
 
@@ -217,13 +221,13 @@ func main() {
 			backoffBaseDelay, backoffMaxDelay,
 		),
 	}
-	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
+	setupLog.Infof("%s", logfields.Format("backoff configured", "base", backoffBaseDelay, "max", backoffMaxDelay))
 
 	// ── Ownership resolver ────────────────────────────────────────────────────
 	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
 	controller.RegisterResourceMetrics(mgr.GetClient(), ownershipResolver, cloudNamespace)
 	if err := mgr.Add(&ownershipWarmupRunnable{resolver: ownershipResolver}); err != nil {
-		setupLog.Errorf("Failed to register ownership warmup runnable: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to register ownership warmup runnable", "error", err))
 		os.Exit(1)
 	}
 
@@ -253,7 +257,7 @@ func main() {
 		Ownership:   ownershipResolver,
 		Checker:     blockingChecker,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to create controller", "controller", "NamespaceBinding", "error", err))
 		os.Exit(1)
 	}
 
@@ -271,11 +275,11 @@ func main() {
 		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
 			externalDatabaseReconciler.ResyncInterval = d
 		} else {
-			setupLog.Infof("Ignoring invalid DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL=%q, using default", v)
+			setupLog.Infof("%s", logfields.Format("Ignoring invalid DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL, using default", "value", v))
 		}
 	}
 	if err := externalDatabaseReconciler.SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to create controller", "controller", "ExternalDatabase", "error", err))
 		os.Exit(1)
 	}
 
@@ -286,7 +290,7 @@ func main() {
 		Recorder:   recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to create controller", "controller", "DatabaseAccessPolicy", "error", err))
 		os.Exit(1)
 	}
 
@@ -297,7 +301,7 @@ func main() {
 		Recorder:   recorderFor(mgr, "internaldatabase", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to create controller", "controller", "InternalDatabase", "error", err))
 		os.Exit(1)
 	}
 
@@ -309,7 +313,7 @@ func main() {
 		Ownership:   ownershipResolver,
 		MyNamespace: cloudNamespace,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to create controller", "controller", "BalancingRule", "error", err))
 		os.Exit(1)
 	}
 
@@ -320,18 +324,18 @@ func main() {
 		Recorder:   recorderFor(mgr, "databasesecretclaim", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=DatabaseSecretClaim: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to create controller", "controller", "DatabaseSecretClaim", "error", err))
 		os.Exit(1)
 	}
 
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Errorf("Failed to set up health check: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to set up health check", "error", err))
 		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Errorf("Failed to set up ready check: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to set up ready check", "error", err))
 		os.Exit(1)
 	}
 
@@ -348,7 +352,7 @@ func main() {
 		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
 			pollInterval = d
 		} else {
-			setupLog.Infof("Ignoring invalid DBAAS_ROTATION_POLL_INTERVAL=%q, using default %v", v, pollInterval)
+			setupLog.Infof("%s", logfields.Format("Ignoring invalid DBAAS_ROTATION_POLL_INTERVAL, using default", "value", v, "default", pollInterval))
 		}
 	}
 	if err := mgr.Add(&poller.RotationPoller{
@@ -357,16 +361,16 @@ func main() {
 		Interval: pollInterval,
 		Limit:    poller.DefaultLimit,
 	}); err != nil {
-		setupLog.Errorf("Failed to register rotation poller: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to register rotation poller", "error", err))
 		os.Exit(1)
 	}
-	setupLog.Infof("Rotation poller registered interval=%v", pollInterval)
+	setupLog.Infof("%s", logfields.Format("Rotation poller registered", "interval", pollInterval))
 
 	// In Basic Auth mode, reload the aggregator credentials when the mounted
 	// Secret is updated, so a password rotation is picked up without a restart.
 	if credentialWatcher != nil {
 		if err := mgr.Add(credentialWatcher); err != nil {
-			setupLog.Errorf("Failed to register credential watcher: %v", err)
+			setupLog.Errorf("%s", logfields.Format("Failed to register credential watcher", "error", err))
 			os.Exit(1)
 		}
 		setupLog.Info("Credential watcher registered (basic-auth mode)")
@@ -374,7 +378,7 @@ func main() {
 
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Errorf("Failed to run manager: %v", err)
+		setupLog.Errorf("%s", logfields.Format("Failed to run manager", "error", err))
 		os.Exit(1)
 	}
 }
@@ -392,7 +396,7 @@ func (r *ownershipWarmupRunnable) NeedLeaderElection() bool { return false }
 func (r *ownershipWarmupRunnable) Start(ctx context.Context) error {
 	if err := r.resolver.WarmupOwnershipCache(ctx); err != nil {
 		// Non-fatal: the resolver falls back to per-namespace API calls.
-		setupLog.Infof("Ownership cache warmup failed (non-fatal, will fall back to live lookups): %v", err)
+		setupLog.Infof("%s", logfields.Format("Ownership cache warmup failed (non-fatal, will fall back to live lookups)", "error", err))
 	}
 	return nil
 }

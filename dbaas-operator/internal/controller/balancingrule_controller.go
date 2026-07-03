@@ -53,6 +53,7 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
@@ -153,14 +154,14 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 	err = r.Aggregator.ApplyMicroserviceBalancingRules(ctx, rule.Namespace, microserviceRequestsFromSpec(rule.Spec.Rules))
 	recordAggregatorCall(controllerBR, operationApplyMicroserviceRule, aggStart, err)
 	if err != nil {
-		log.ErrorC(ctx, "failed to apply MicroserviceBalancingRule to dbaas-aggregator: %v", err)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to apply MicroserviceBalancingRule to dbaas-aggregator", "error", err))
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
 
 	markSucceeded(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, EventReasonBalancingRuleApplied)
 	rule.Status.AppliedRules = appliedMicroserviceRulesFromSpec(rule.Spec.Rules)
-	log.InfoC(ctx, "MicroserviceBalancingRule applied to dbaas-aggregator namespace=%s name=%s rules=%d requestId=%s",
-		rule.Namespace, rule.Name, len(rule.Spec.Rules), requestID)
+	log.InfoC(ctx, "%s", logfields.Format("MicroserviceBalancingRule applied to dbaas-aggregator",
+		"namespace", rule.Namespace, "name", rule.Name, "rules", len(rule.Spec.Rules), "requestId", requestID))
 	r.Recorder.Eventf(rule, corev1.EventTypeNormal, EventReasonBalancingRuleApplied,
 		"microservice balancing rules applied to dbaas-aggregator (rules=%d, requestId=%s)",
 		len(rule.Spec.Rules), requestID)
@@ -259,7 +260,7 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		recordAggregatorCall(controllerBR, operationApplyNamespaceRule, aggStart, err)
 		if err != nil {
 			syncAppliedStatus()
-			log.ErrorC(ctx, "failed to apply NamespaceBalancingRule to dbaas-aggregator: %v", err)
+			log.ErrorC(ctx, "%s", logfields.Format("failed to apply NamespaceBalancingRule to dbaas-aggregator", "error", err))
 			return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 		}
 		if _, ok := applied[item.Name]; !ok {
@@ -271,8 +272,8 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 
 	markSucceeded(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, EventReasonBalancingRuleApplied)
 	syncAppliedStatus()
-	log.InfoC(ctx, "NamespaceBalancingRule applied to dbaas-aggregator namespace=%s name=%s rules=%d requestId=%s",
-		rule.Namespace, rule.Name, len(rule.Spec.Rules), requestID)
+	log.InfoC(ctx, "%s", logfields.Format("NamespaceBalancingRule applied to dbaas-aggregator",
+		"namespace", rule.Namespace, "name", rule.Name, "rules", len(rule.Spec.Rules), "requestId", requestID))
 	r.Recorder.Eventf(rule, corev1.EventTypeNormal, EventReasonBalancingRuleApplied,
 		"namespace balancing rules applied to dbaas-aggregator (rules=%d, requestId=%s)",
 		len(rule.Spec.Rules), requestID)
@@ -328,14 +329,14 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	err := r.Aggregator.ApplyPermanentBalancingRules(ctx, permanentRequestsFromSpec(rule.Spec.Rules))
 	recordAggregatorCall(controllerBR, operationApplyPermanentRule, aggStart, err)
 	if err != nil {
-		log.ErrorC(ctx, "failed to apply PermanentBalancingRule to dbaas-aggregator: %v", err)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to apply PermanentBalancingRule to dbaas-aggregator", "error", err))
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
 
 	markSucceeded(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, EventReasonBalancingRuleApplied)
 	rule.Status.AppliedRules = appliedPermanentRulesFromSpec(rule.Spec.Rules)
-	log.InfoC(ctx, "PermanentBalancingRule applied to dbaas-aggregator namespace=%s name=%s rules=%d requestId=%s",
-		rule.Namespace, rule.Name, len(rule.Spec.Rules), requestID)
+	log.InfoC(ctx, "%s", logfields.Format("PermanentBalancingRule applied to dbaas-aggregator",
+		"namespace", rule.Namespace, "name", rule.Name, "rules", len(rule.Spec.Rules), "requestId", requestID))
 	r.Recorder.Eventf(rule, corev1.EventTypeNormal, EventReasonBalancingRuleApplied,
 		"permanent balancing rules applied to dbaas-aggregator (rules=%d, requestId=%s)",
 		len(rule.Spec.Rules), requestID)

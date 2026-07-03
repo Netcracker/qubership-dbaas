@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.adapter;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.role.PolicyRole;
 import com.netcracker.cloud.dbaas.dto.role.ServiceRole;

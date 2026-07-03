@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.repositories.pg.jpa;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.Restore;
 import com.netcracker.cloud.dbaas.enums.RestoreStatus;

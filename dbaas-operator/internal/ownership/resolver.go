@@ -50,6 +50,7 @@ import (
 
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -200,6 +201,6 @@ func (r *OwnershipResolver) WarmupOwnershipCache(ctx context.Context) error {
 		r.cache[ob.Namespace] = state
 	}
 	r.mu.Unlock()
-	log.InfoC(ctx, "ownership cache warmed up with %d bindings", len(list.Items))
+	log.InfoC(ctx, "%s", logfields.Format("ownership cache warmed up", "bindings", len(list.Items)))
 	return nil
 }

@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.client.ClientResponseContext;
@@ -37,12 +38,18 @@ public class DbaasAdapterRestClientLoggingFilter implements ClientRequestFilter,
                         bodyStr = objectMapper.writeValueAsString(entity);
                     }
 
-                    log.debug("Request: {} {}, auth: {}, body: {}", requestContext.getMethod(), requestContext.getUri(), authScheme, bodyStr);
+                    StructuredLog.debug(log, "Adapter REST request",
+                            "method", requestContext.getMethod(), "uri", requestContext.getUri(),
+                            "auth", authScheme, "body", bodyStr);
                 } catch (Exception ex) {
-                    log.debug("Request: {} {}, auth: {}, body: error during parsing body: {}", requestContext.getMethod(), requestContext.getUri(), authScheme, ex.getMessage());
+                    StructuredLog.debug(log, "Adapter REST request body parse failed",
+                            "method", requestContext.getMethod(), "uri", requestContext.getUri(),
+                            "auth", authScheme, "error", ex.getMessage());
                 }
             } else {
-                log.debug("Request: {} {}, auth: {}, body: empty", requestContext.getMethod(), requestContext.getUri(), authScheme);
+                StructuredLog.debug(log, "Adapter REST request",
+                        "method", requestContext.getMethod(), "uri", requestContext.getUri(),
+                        "auth", authScheme, "body", "empty");
             }
         }
     }
@@ -57,18 +64,19 @@ public class DbaasAdapterRestClientLoggingFilter implements ClientRequestFilter,
 
                     responseContext.setEntityStream(IOUtils.toInputStream(bodyStr, StandardCharsets.UTF_8));
 
-                    log.debug("Response: [{} {}] {} {}, body: {}", responseContext.getStatus(), responseContext.getStatusInfo(),
-                        requestContext.getMethod(), requestContext.getUri(), bodyStr
-                    );
+                    StructuredLog.debug(log, "Adapter REST response",
+                            "status", responseContext.getStatus(), "statusInfo", responseContext.getStatusInfo(),
+                            "method", requestContext.getMethod(), "uri", requestContext.getUri(), "body", bodyStr);
                 } catch (Exception ex) {
-                    log.debug("Response: [{} {}] {} {}, body: error during parsing body: {}", responseContext.getStatus(), responseContext.getStatusInfo(),
-                        requestContext.getMethod(), requestContext.getUri(), ex.getMessage()
-                    );
+                    StructuredLog.debug(log, "Adapter REST response body parse failed",
+                            "status", responseContext.getStatus(), "statusInfo", responseContext.getStatusInfo(),
+                            "method", requestContext.getMethod(), "uri", requestContext.getUri(),
+                            "error", ex.getMessage());
                 }
             } else {
-                log.debug("Response: [{} {}] {} {}, body: empty", responseContext.getStatus(), responseContext.getStatusInfo(),
-                    requestContext.getMethod(), requestContext.getUri()
-                );
+                StructuredLog.debug(log, "Adapter REST response",
+                        "status", responseContext.getStatus(), "statusInfo", responseContext.getStatusInfo(),
+                        "method", requestContext.getMethod(), "uri", requestContext.getUri(), "body", "empty");
             }
         }
     }

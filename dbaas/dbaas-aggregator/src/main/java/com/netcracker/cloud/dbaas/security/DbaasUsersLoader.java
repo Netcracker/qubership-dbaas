@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.security;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,7 +26,7 @@ public class DbaasUsersLoader {
                        H2DbaasUserRepository usersRepository,
                        @ConfigProperty(name = "dbaas.security.users.configuration.location") String usersConfigurationLocation) throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
-        log.info("Start user loading from {}...", usersConfigurationLocation);
+StructuredLog.info(log, "Start user loading from", "usersConfigurationLocation", usersConfigurationLocation);
         InputStream usersStream = getClass().getResourceAsStream(usersConfigurationLocation);
         if (usersStream == null) {
             usersStream = FileUtils.openInputStream(FileUtils.getFile(usersConfigurationLocation));
@@ -40,6 +41,6 @@ public class DbaasUsersLoader {
             usersRepository.persist(dbaasUser);
         });
         usersStream.close();
-        log.info("{} users loaded", userConfiguration.size());
+StructuredLog.info(log, "users loaded", "count", userConfiguration.size());
     }
 }

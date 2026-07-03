@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.dto.backupV2;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

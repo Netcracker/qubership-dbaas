@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 public class Const {
     public static final String

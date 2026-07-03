@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.exceptions.NotExistingConnectionPropertiesException;
@@ -34,7 +35,7 @@ public class ConnectionPropertiesUtils {
         if (properties == null) {
             return Optional.empty();
         }
-        log.debug("get connectionProperties from {}", toStringWithMaskedPassword(properties));
+StructuredLog.debug(log, "get connectionProperties from", "arg0", toStringWithMaskedPassword(properties));
         return properties.stream().filter(v -> v.containsKey(ROLE) &&
                 (role.equalsIgnoreCase((String) v.get(ROLE)))).findFirst();
     }
@@ -55,12 +56,12 @@ public class ConnectionPropertiesUtils {
 
     public static List<Map<String, Object>> replaceConnectionProperties(String role, List<Map<String, Object>> properties, Map<String, Object> newProperty) {
         if (!checkRoleExistence(role, properties)) {
-            log.debug("properties={} doesn't contain role={}", toStringWithMaskedPassword(properties), role);
+StructuredLog.debug(log, "properties= doesn't contain role=", "properties", toStringWithMaskedPassword(properties), "role", role);
             throw new NoSuchElementException("Property with role=" + role + " is not exist");
         }
 
         if (!checkRoleExistence(role, Collections.singletonList(newProperty))) {
-            log.debug("newProperty={} doesn't contain role={}", newProperty, role);
+StructuredLog.debug(log, "newProperty= doesn't contain role=", "newProperty", newProperty, "role", role);
             throw new NoSuchElementException("Property with role=" + role + " is not exist");
         }
 

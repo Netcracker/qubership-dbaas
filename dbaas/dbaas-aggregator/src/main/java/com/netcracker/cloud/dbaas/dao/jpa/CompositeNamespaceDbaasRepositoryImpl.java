@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespace;
 import com.netcracker.cloud.dbaas.repositories.dbaas.CompositeNamespaceDbaasRepository;

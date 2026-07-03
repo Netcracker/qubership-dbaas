@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config.h2;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import io.quarkus.runtime.StartupEvent;
 import jakarta.annotation.PreDestroy;
@@ -27,7 +28,7 @@ public class H2Configuration {
         String h2ConsolePort = System.getProperty("h2.console.port");
         if (StringUtils.isNotEmpty(h2ConsolePort) && webServe == null) {
             webServe = Server.createWebServer("-web", "-webAllowOthers", "-webPort", h2ConsolePort).start();
-            log.info("h2 console enabled and is available by {} port", h2ConsolePort);
+StructuredLog.info(log, "h2 console enabled and is available by port", "h2ConsolePort", h2ConsolePort);
         }
     }
 

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
@@ -70,7 +71,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     public Response getDatabasesByName(@PathParam("dbname") String dbname,
                                        @QueryParam(NAMESPACE_PARAMETER) String namespace,
                                        @QueryParam("withDecryptedPassword") @DefaultValue("false") Boolean withDecryptedPassword) {
-        log.info("Get databases with name {}. Query params: namespace {}, withDecryptedPassword {}", dbname, namespace, withDecryptedPassword);
+StructuredLog.info(log, "Get databases with name. Query params: namespace, withDecryptedPassword", "dbname", dbname, "namespace", namespace, "withDecryptedPassword", withDecryptedPassword);
         List<DatabaseRegistry> bdRegistries = databaseRegistryDbaasRepository.findAnyLogDbTypeByNameAndOptionalParams(dbname, namespace);
         if (withDecryptedPassword) {
             bdRegistries.forEach(dbRegistry -> dBaaService.decryptPassword(dbRegistry.getDatabase()));
@@ -126,7 +127,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
             throw new BadRequestException("Query parameter 'namespaces' must be not empty list of strings");
         }
 
-        log.info("Received request to drop all logical databases in {} namespaces {}", namespaces.size(), namespaces);
+StructuredLog.info(log, "Received request to drop all logical databases in namespaces", "count", namespaces.size(), "namespaces", namespaces);
 
         assertNotProdMode();
 
@@ -134,7 +135,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
 
         if (logicalDatabasesAmount == 0) {
 
-            log.info("Namespaces {} are empty, dropping is not needed", namespaces);
+StructuredLog.info(log, "Namespaces are empty, dropping is not needed", "namespaces", namespaces);
 
             return Response.ok(String.format("All %s namespaces %s do not contain any logical databases", namespaces.size(), namespaces)).build();
         }
@@ -158,7 +159,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     @RolesAllowed(NAMESPACE_CLEANER)
     public Response getMarkedForDropDatabases(@Parameter(description = "List of namespaces by which marked for drop databases is needed to return", required = true)
                                               List<String> namespaces) {
-        log.info("Receive request to get marked for drop databases in '{}' namespaces", namespaces);
+StructuredLog.info(log, "Receive request to get marked for drop databases in '' namespaces", "namespaces", namespaces);
         if (CollectionUtils.isEmpty(namespaces)) {
             throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043,
                     ErrorCodes.CORE_DBAAS_4043.getDetail("Should be at least one namespace specified"),
@@ -185,8 +186,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     @DELETE
     @RolesAllowed(NAMESPACE_CLEANER)
     public Response cleanupMarkedForDropDatabases(CleanupMarkedForDropRequest request) {
-        log.info("Receive request to cleanup marked for drop databases in '{}' namespaces with delete={} and force={}",
-                request.getNamespaces(), request.getDelete(), request.getForce());
+        StructuredLog.info(log, "Receive request to cleanup marked for drop databases in '' namespaces with delete= and force=", "namespace", request.getNamespaces(), "arg1", request.getDelete(), "count", request.getForce());
         if (CollectionUtils.isEmpty(request.getNamespaces())) {
             throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4043,
                     ErrorCodes.CORE_DBAAS_4043.getDetail("Should be at least one namespace specified"),
@@ -198,7 +198,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
         List<DatabaseResponseV3ListCP> response = markedForDropRegistries.stream()
                 .map(dbr -> new DatabaseResponseV3ListCP(dbr, dbr.getPhysicalDatabaseId())).toList();
         if (request.getDelete()) {
-            log.info("{} databases are going to be deleted", markedForDropRegistries.size());
+StructuredLog.info(log, "databases are going to be deleted", "count", markedForDropRegistries.size());
             namespaces.forEach(namespace -> deletionService.cleanupMarkedForDropRegistriesAsync(namespace, request.getForce()));
             return Response.accepted(response).build();
         } else {
@@ -211,47 +211,6 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
                     "given cursor, ordered by change time, plus the current high-water mark. Consumed by the dbaas-operator " +
                     "rotation poller. Cluster-scoped: requires the CLUSTER_OPERATOR role.")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Changed databases and the current high-water mark", content = @Content(schema = @Schema(implementation = ChangedDatabasesResponse.class))),
-            @APIResponse(responseCode = "400", description = "Invalid 'since' or 'limit' parameter", content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
-            @APIResponse(responseCode = "401", description = "Authentication is required and has failed or has not been provided", content = @Content(schema = @Schema(implementation = String.class)))
-    })
-    @Path("/changed")
-    @GET
-    @RolesAllowed(CLUSTER_OPERATOR)
-    @Transactional
-    public Response getChangedDatabases(@Parameter(description = "Return databases changed strictly after this ISO-8601 timestamp (keyset cursor, paired with sinceId). Omit on the first call to receive only the current high-water mark.")
-                                        @QueryParam("sinceTs") String sinceTs,
-                                        @Parameter(description = "Registry id component of the keyset cursor (tie-breaker for rows sharing sinceTs). Defaults to the zero UUID when omitted.")
-                                        @QueryParam("sinceId") String sinceId,
-                                        @Parameter(description = "Maximum number of databases to return (1..1000).")
-                                        @QueryParam("limit") @DefaultValue("500") int limit) {
-        log.debug("Received request to get changed databases: sinceTs={}, sinceId={}, limit={}", sinceTs, sinceId, limit);
-        if (limit < 1 || limit > 1000) {
-            throw new BadRequestException("Query parameter 'limit' must be between 1 and 1000");
-        }
-        ChangedDatabasesCursor highWaterMark = databaseRegistryDbaasRepository.latestChange()
-                .map(r -> new ChangedDatabasesCursor(r.getDatabase().getLastRotatedAt(), r.getId().toString()))
-                .orElse(null);
-        if (sinceTs == null || sinceTs.isBlank()) {
-            // Seed call: hand the operator the current high-water mark without replaying history.
-            return Response.ok(new ChangedDatabasesResponse(List.of(), highWaterMark)).build();
-        }
-        OffsetDateTime ts;
-        try {
-            ts = OffsetDateTime.parse(sinceTs);
-        } catch (DateTimeParseException e) {
-            throw new BadRequestException("Query parameter 'sinceTs' must be an ISO-8601 timestamp");
-        }
-        UUID id;
-        try {
-            id = (sinceId == null || sinceId.isBlank()) ? new UUID(0L, 0L) : UUID.fromString(sinceId);
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("Query parameter 'sinceId' must be a UUID");
-        }
-        List<ChangedDatabaseResponse> items = databaseRegistryDbaasRepository.findChangedSince(ts, id, limit).stream()
-                .map(ChangedDatabaseResponse::new)
-                .toList();
-        log.debug("Returned {} changed databases since ({}, {})", items.size(), ts, id);
-        return Response.ok(new ChangedDatabasesResponse(items, highWaterMark)).build();
+            @APIResponse(responseCode = "200", description = "Changed databases and the current high-water mark", content = @Content(schema = @Schema(implementation = ChangedDatabasesResponse.class))));
     }
 }

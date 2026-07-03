@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.shared;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;

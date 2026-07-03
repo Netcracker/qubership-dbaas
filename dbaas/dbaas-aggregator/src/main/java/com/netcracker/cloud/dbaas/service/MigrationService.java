@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -36,7 +37,7 @@ public class MigrationService {
 
     public RegisterDatabaseResponseBuilder registerDatabases(List<RegisterDatabaseRequestV3> databasesToRegister,
                                                              API_VERSION version, Boolean isUserCreation) {
-        log.info("Start database migration, register {} databases", databasesToRegister.size());
+        StructuredLog.info(log, "Start database migration, register databases", "arg0", databasesToRegister.size());
         RegisterDatabaseResponseBuilder responseBuilder = new RegisterDatabaseResponseBuilder();
 
         final List<RegisterDatabaseRequestV3> withAdapterId = Lists.newArrayList();
@@ -55,19 +56,19 @@ public class MigrationService {
             if (StringUtils.isBlank(physicalDatabaseId) && StringUtils.isNotBlank(request.getDbHost())) {
                 physicalDatabaseId = findPhysicalDbIdByDbHostAndDbName(request.getDbHost(), request.getName());
                 request.setPhysicalDatabaseId(physicalDatabaseId);
-                log.info("Using physical database with id={} for databases registration", physicalDatabaseId);
+                StructuredLog.info(log, "Using physical database with id= for databases registration", "physicalDatabaseId", physicalDatabaseId);
             }
             if (!StringUtils.isEmpty(adapterId) && !StringUtils.isEmpty(physicalDatabaseId)) {
-                log.info("Should validate request {}", request);
+                StructuredLog.info(log, "Should validate request", "request", request);
                 toValidate.add(request);
             } else if (!StringUtils.isEmpty(adapterId)) {
-                log.info("Request with only adapterId: {}", request);
+                StructuredLog.info(log, "Request with only adapterId:", "request", request);
                 withAdapterId.add(request);
             } else if (!StringUtils.isEmpty(physicalDatabaseId)) {
-                log.info("Request with only physicalDatabaseId: {}", request);
+                StructuredLog.info(log, "Request with only physicalDatabaseId:", "request", request);
                 withPhydbId.add(request);
             } else {
-                log.info("Request without adapterId and physicalDatabaseIdentifier: {}", request);
+                StructuredLog.info(log, "Request without adapterId and physicalDatabaseIdentifier:", "request", request);
                 withoutAdapterId.add(request);
             }
         });
@@ -110,7 +111,7 @@ public class MigrationService {
     private String findPhysicalDbIdByDbHostAndDbName(String dbHost, String dbName) {
         String adapterNamespace = dbHost.substring(dbHost.indexOf('.') + 1);
         List<PhysicalDatabase> physicalDatabaseByAdapterHost = physicalDatabasesService.getPhysicalDatabaseByAdapterHost(adapterNamespace);
-        log.info("Found {} physical databases with address={}", physicalDatabaseByAdapterHost.size(), dbHost);
+        StructuredLog.info(log, "Found physical databases with address=", "adapter", physicalDatabaseByAdapterHost.size(), "dbHost", dbHost);
         if (physicalDatabaseByAdapterHost.isEmpty()) {
             throw new UnregisteredPhysicalDatabaseException(String.format("Physical database with host=%s is not registered", dbHost));
         } else if (physicalDatabaseByAdapterHost.size() == 1) {
@@ -120,7 +121,7 @@ public class MigrationService {
                 if (isPhysicalDbContainsDbName(pd, dbName)) {
                     return pd.getPhysicalDatabaseIdentifier();
                 }
-                log.debug("Physical database with id={} doesn't contain logical database with name={}", pd.getPhysicalDatabaseIdentifier(), dbName);
+                StructuredLog.debug(log, "Physical database with id= doesn't contain logical database with name=", "arg0", pd.getPhysicalDatabaseIdentifier(), "dbName", dbName);
             }
             throw new DbNotFoundException(String.format("Could not find logical database %s in physical database with adapter address %s", dbName, dbHost), Source.builder().build());
         }
@@ -152,10 +153,10 @@ public class MigrationService {
     private Optional<Collection<String>> getRegisteredDatabases(DbaasAdapter dbaasAdapter) {
         Collection<String> databases;
         try {
-            log.info("Get all database from dbaas adapter with identifier {}", dbaasAdapter.identifier());
+            StructuredLog.info(log, "Get all database from dbaas adapter with identifier", "adapter", dbaasAdapter.identifier());
             databases = dbaasAdapter.getDatabases();
         } catch (WebApplicationException e) {
-            log.error("Request to adapter {} was not processed with code {}", dbaasAdapter, e.getResponse().getStatus());
+            StructuredLog.error(log, "Request to adapter was not processed with code", "dbaasAdapter", dbaasAdapter, "arg1", e.getResponse().getStatus());
             return Optional.empty();
         }
         return Optional.ofNullable(databases);
@@ -181,11 +182,10 @@ public class MigrationService {
 
         String dbName = requestsWithAdapterId.getName();
         try {
-            log.info("Register database {} in adapter with id {} and physical id {}", dbName, requestsWithAdapterId.getAdapterId(), requestsWithAdapterId.getPhysicalDatabaseId());
+            StructuredLog.info(log, "Register database in adapter with id and physical id", "dbName", dbName, "adapter", requestsWithAdapterId.getAdapterId(), "adapter", requestsWithAdapterId.getPhysicalDatabaseId());
             Optional<Collection<String>> dbsInAdapter = databasesPerAdapter.get(requestsWithAdapterId.getAdapterId());
             if (dbsInAdapter.isEmpty() || !dbsInAdapter.get().contains(dbName)) {
-                log.info("Database {} is not found at specified adapter databases collection, maybe old " +
-                        "version of adapter is used", dbName);
+                StructuredLog.info(log, "Database is not found at specified adapter databases collection, maybe old " + "version of adapter is used", "dbName", dbName);
                 if (dbsInAdapter.isPresent()) {
                     log.error("Validation is enabled, db cannot be registered as it absents in adapter databases list");
                     responseBuilder.addFailedDb(dbName, requestsWithAdapterId.getType());
@@ -231,7 +231,7 @@ public class MigrationService {
                 responseBuilder.addFailedDb(dbName, requestsWithAdapterId.getType());
                 responseBuilder.addFailureReason(dbName, requestsWithAdapterId.getType(), "No password for not " +
                         "database not existing in dbaas");
-                log.error("Got db {} without password and this db doesn't exist in the database of DBAAS", requestsWithAdapterId);
+                StructuredLog.error(log, "Got db without password and this db doesn't exist in the database of DBAAS", "requestsWithAdapterId", requestsWithAdapterId);
                 return;
             }
 
@@ -247,8 +247,7 @@ public class MigrationService {
             defineDuplicateStatus(responseBuilder, requestsWithAdapterId);
         } catch (Exception ex) {
             responseBuilder.addFailedDb(dbName, requestsWithAdapterId.getType());
-            log.error("Failed to register database {} during migration with classifier {}, " +
-                    "skip migration for this database.", dbName, requestsWithAdapterId.getClassifier(), ex);
+            StructuredLog.error(log, "Failed to register database during migration with classifier , " + "skip migration for this database", "dbName", dbName, "classifier", requestsWithAdapterId.getClassifier());
         }
     }
 
@@ -296,14 +295,14 @@ public class MigrationService {
                                                                  List<RegisterDatabaseRequestV3> toValidate) {
         List<RegisterDatabaseRequestV3> withAdapterId = new ArrayList<>(toValidate.size());
         for (RegisterDatabaseRequestV3 request : toValidate) {
-            log.debug("Validating request {}", request);
+            StructuredLog.debug(log, "Validating request", "request", request);
             String physicalDatabaseId = request.getPhysicalDatabaseId();
             PhysicalDatabase physicalDatabase =
                     physicalDatabasesService.getByPhysicalDatabaseIdentifier(physicalDatabaseId);
             String adapterId = request.getAdapterId();
             if (physicalDatabase == null ||
                     !physicalDatabase.getAdapter().getAdapterId().equalsIgnoreCase(adapterId)) {
-                log.error("Validation failed for phydbid = {} and adapterId = {}", physicalDatabaseId, adapterId);
+                StructuredLog.error(log, "Validation failed for phydbid = and adapterId =", "physicalDatabaseId", physicalDatabaseId, "adapterId", adapterId);
                 String dbName = request.getName();
                 String dbType = request.getType();
                 responseBuilder.addFailedDb(dbName, dbType);
@@ -328,11 +327,11 @@ public class MigrationService {
                                                                List<RegisterDatabaseRequestV3> withAdapterId) {
         List<RegisterDatabaseRequestV3> validatedRequests = new ArrayList<>(withAdapterId.size());
         for (RegisterDatabaseRequestV3 request : withAdapterId) {
-            log.debug("Validating request {}", request);
+            StructuredLog.debug(log, "Validating request", "request", request);
             try {
                 DbaasAdapter adapter = physicalDatabasesService.getAdapterById(request.getAdapterId());
                 if (adapter == null) {
-                    log.error("Couldn't find registered adapter with id {}", request.getAdapterId());
+                    StructuredLog.error(log, "Couldn't find registered adapter with id", "adapter", request.getAdapterId());
                     String dbName = request.getName();
                     String dbType = request.getType();
                     responseBuilder.addFailedDb(dbName, dbType);
@@ -342,7 +341,7 @@ public class MigrationService {
                     validatedRequests.add(request);
                 }
             } catch (UnregisteredPhysicalDatabaseException e) {
-                log.error("Couldn't find registered adapter with id {}!", request.getAdapterId(), e);
+                StructuredLog.error(log, "Couldn't find registered adapter with id !", "adapter", request.getAdapterId());
                 String dbName = request.getName();
                 String dbType = request.getType();
                 responseBuilder.addFailedDb(dbName, dbType);
@@ -364,12 +363,12 @@ public class MigrationService {
                                                                                       List<RegisterDatabaseRequestV3> withPhydbId) {
         List<RegisterDatabaseRequestV3> withAdapterId = new ArrayList<>(withPhydbId.size());
         for (RegisterDatabaseRequestV3 request : withPhydbId) {
-            log.debug("Processing request {}", request);
+            StructuredLog.debug(log, "Processing request", "request", request);
             String physicalDatabaseId = request.getPhysicalDatabaseId();
             PhysicalDatabase physicalDatabase =
                     physicalDatabasesService.getByPhysicalDatabaseIdentifier(physicalDatabaseId);
             if (physicalDatabase == null) {
-                log.error("Could not find physical database with id = {}", physicalDatabaseId);
+                StructuredLog.error(log, "Could not find physical database with id =", "physicalDatabaseId", physicalDatabaseId);
                 String dbName = request.getName();
                 String dbType = request.getType();
                 responseBuilder.addFailedDb(dbName, dbType);
@@ -378,7 +377,7 @@ public class MigrationService {
                 continue;
             }
             String adapterId = physicalDatabase.getAdapter().getAdapterId();
-            log.info("Found physical database {}, adapterId = {}", physicalDatabase, adapterId);
+            StructuredLog.info(log, "Found physical database , adapterId =", "physicalDatabase", physicalDatabase, "adapterId", adapterId);
             request.setAdapterId(adapterId);
             withAdapterId.add(request);
         }
@@ -389,16 +388,12 @@ public class MigrationService {
         DatabaseRegistry existingDatabase = dBaaService.findDatabaseByClassifierAndType(reg.getClassifier(), reg.getType(), false);
         if (Objects.equals(existingDatabase.getDatabase().getName(), reg.getName())) {
             response.addMigratedDb(dBaaService.processConnectionPropertiesV3(existingDatabase));
-            log.info("Got full duplicate with name {} and classifier {} and type {}, skip migration for this database.",
-                    existingDatabase.getDatabase().getName(), reg.getClassifier(), reg.getType());
+            StructuredLog.info(log, "Got full duplicate with name and classifier and type , skip migration for this database", "arg0", existingDatabase.getDatabase().getName(), "classifier", reg.getClassifier(), "type", reg.getType());
         } else {
             response.addConflictedDb(reg.getName(), reg.getType());
             response.addFailureReason(reg.getName(), reg.getType(), "duplicate database with different " +
                     "parameters already registered");
-            log.error("Got duplicate while database migration for classifier {}, and type {} " +
-                            "and with different name - expected {} but got {}. " +
-                            "Skip migration for this database.", reg.getClassifier(), reg.getType(), reg.getName(),
-                    existingDatabase.getDatabase().getName());
+            StructuredLog.error(log, "Got duplicate while database migration for classifier , and type " + "and with different name - expected but got . " + "Skip migration for this database", "classifier", reg.getClassifier(), "type", reg.getType(), "arg2", reg.getName(), "arg3", existingDatabase.getDatabase().getName());
         }
     }
 
@@ -426,20 +421,19 @@ public class MigrationService {
                 }
             });
             if (potentialAdapters.isEmpty()) {
-                log.error("Failed to register database {}, couldn't find it in any physical database of type {}", request.getName(), request.getType());
+                StructuredLog.error(log, "Failed to register database , couldn't find it in any physical database of type", "arg0", request.getName(), "arg1", request.getType());
                 responseBuilder.addFailedDb(request.getName(), request.getType());
                 responseBuilder.addFailureReason(request.getName(), request.getType(), "Database " +
                         request.getName() + " cannot be found in any of physical databases " + "of type " +
                         request.getType());
             } else if (potentialAdapters.size() == 1) {
                 String adapterId = potentialAdapters.get(0);
-                log.debug("Resolved adapterId {} for request {}", adapterId, request);
+                StructuredLog.debug(log, "Resolved adapterId for request", "adapterId", adapterId, "request", request);
                 request.setAdapterId(adapterId);
                 request.setPhysicalDatabaseId(physicalDatabasesService.getByAdapterId(adapterId).getPhysicalDatabaseIdentifier());
                 resolvedRequests.add(request);
             } else {
-                log.error("Cannot resolve database {} as {} potential candidates are found",
-                        dbName, potentialAdapters.size());
+                StructuredLog.error(log, "Cannot resolve database as potential candidates are found", "dbName", dbName, "adapter", potentialAdapters.size());
                 String dbType = request.getType();
                 responseBuilder.addConflictedDb(dbName, dbType);
                 responseBuilder.addFailureReason(dbName, dbType, "Cannot resolve adapter uniquely for " +

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.repositories.queries;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;

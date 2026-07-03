@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.exceptions;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.core.error.runtime.ErrorCodeException;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;

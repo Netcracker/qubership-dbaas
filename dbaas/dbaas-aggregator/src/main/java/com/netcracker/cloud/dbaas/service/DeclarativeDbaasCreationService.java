@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
@@ -154,16 +155,15 @@ public class DeclarativeDbaasCreationService {
             sourceClassifier = databaseDeclaration.getInitialInstantiation().getSourceClassifier();
         }
         if (!targetClassifier.containsKey(MICROSERVICE_NAME) || !targetClassifier.containsKey(SCOPE)) {
-            log.error("Target classifier={} doesn't contain mandatory fields as 'microserviceName' and 'scope'", targetClassifier);
+StructuredLog.error(log, "Target classifier= doesn't contain mandatory fields as 'microserviceName' and 'scope'", "targetClassifier", targetClassifier);
             throw new DeclarativeConfigurationValidationException("Target classifier doesn't contain mandatory fields as 'microserviceName' and 'scope'");
         }
         if (sourceClassifier != null && (!sourceClassifier.containsKey(MICROSERVICE_NAME) || !sourceClassifier.containsKey(SCOPE))) {
-            log.error("Source classifier={} doesn't contain mandatory fields as 'microserviceName' and 'scope'", targetClassifier);
+StructuredLog.error(log, "Source classifier= doesn't contain mandatory fields as 'microserviceName' and 'scope'", "targetClassifier", targetClassifier);
             throw new DeclarativeConfigurationValidationException("Source classifier doesn't contain mandatory fields as 'microserviceName' and 'scope'");
         }
         if (!targetClassifier.get(MICROSERVICE_NAME).equals(serviceName) || (sourceClassifier != null && !sourceClassifier.get(MICROSERVICE_NAME).equals(serviceName))) {
-            log.error("Target classifier={} or source classifier={} contains microserviceName which is different from service name in path = {}",
-                    targetClassifier, sourceClassifier, serviceName);
+            StructuredLog.error(log, "Target classifier= or source classifier= contains microserviceName which is different from service name in path =", "targetClassifier", targetClassifier, "sourceClassifier", sourceClassifier, "namespace", serviceName);
             throw new DeclarativeConfigurationValidationException("Target classifier or source classifier contains service name which is different from serviceName in request");
         }
     }
@@ -180,7 +180,7 @@ public class DeclarativeDbaasCreationService {
 
 
     private DatabaseDeclarativeConfig saveDeclarativeConfiguration(DatabaseDeclarativeConfig databaseConfig) {
-        log.info("database config = {}", databaseConfig);
+StructuredLog.info(log, "database config =", "databaseConfig", databaseConfig);
         declarativeConfigRepository.persist(databaseConfig);
         return databaseConfig;
     }

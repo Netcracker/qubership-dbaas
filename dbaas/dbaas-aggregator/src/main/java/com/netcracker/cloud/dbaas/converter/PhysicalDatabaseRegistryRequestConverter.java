@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.converter;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

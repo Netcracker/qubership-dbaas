@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
@@ -81,8 +82,8 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// reconcilers know the namespace is Foreign / not theirs) but must not touch
 	// the finalizer or emit events — that is the owning instance's responsibility.
 	if nb.Spec.OperatorNamespace != r.MyNamespace {
-		log.InfoC(ctx, "NamespaceBinding %s/%s belongs to operatorNamespace=%s (mine=%s) — skipping mutations",
-			nb.Namespace, nb.Name, nb.Spec.OperatorNamespace, r.MyNamespace)
+		log.InfoC(ctx, "%s", logfields.Format("NamespaceBinding belongs to foreign operatorNamespace — skipping mutations",
+			"namespace", nb.Namespace, "name", nb.Name, "operatorNamespace", nb.Spec.OperatorNamespace, "mine", r.MyNamespace))
 		return ctrl.Result{}, nil
 	}
 
@@ -95,12 +96,14 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 		blocking, err := r.Checker.HasBlockingResources(ctx, nb.Namespace)
 		if err != nil {
-			log.ErrorC(ctx, "checking blocking resources for NamespaceBinding %s/%s: %v", nb.Namespace, nb.Name, err)
+			log.ErrorC(ctx, "%s", logfields.Format("checking blocking resources for NamespaceBinding",
+				"namespace", nb.Namespace, "name", nb.Name, "error", err))
 			return ctrl.Result{}, err
 		}
 
 		if blocking {
-			log.InfoC(ctx, "NamespaceBinding %s/%s blocked by dbaas resources — deletion deferred", nb.Namespace, nb.Name)
+			log.InfoC(ctx, "%s", logfields.Format("NamespaceBinding blocked by dbaas resources — deletion deferred",
+				"namespace", nb.Namespace, "name", nb.Name))
 			r.Recorder.Eventf(nb, corev1.EventTypeWarning, EventReasonBindingBlocked,
 				"deletion deferred: namespace still contains dbaas workload resources (requestId=%s)", requestID)
 			return ctrl.Result{}, nil
@@ -113,7 +116,8 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, err
 		}
 		r.Ownership.Forget(nb.Namespace)
-		log.InfoC(ctx, "NamespaceBinding %s/%s finalizer removed, deletion unblocked", nb.Namespace, nb.Name)
+		log.InfoC(ctx, "%s", logfields.Format("NamespaceBinding finalizer removed, deletion unblocked",
+			"namespace", nb.Namespace, "name", nb.Name))
 		return ctrl.Result{}, nil
 	}
 
@@ -124,7 +128,8 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if err := r.Patch(ctx, nb, patch); err != nil {
 			return ctrl.Result{}, err
 		}
-		log.InfoC(ctx, "NamespaceBinding %s/%s registered operatorNamespace=%s", nb.Namespace, nb.Name, nb.Spec.OperatorNamespace)
+		log.InfoC(ctx, "%s", logfields.Format("NamespaceBinding registered",
+			"namespace", nb.Namespace, "name", nb.Name, "operatorNamespace", nb.Spec.OperatorNamespace))
 		r.Recorder.Eventf(nb, corev1.EventTypeNormal, EventReasonBindingRegistered,
 			"namespace %s bound to operatorNamespace %s (requestId=%s)", nb.Namespace, nb.Spec.OperatorNamespace, requestID)
 	}

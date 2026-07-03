@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.userrestore;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;

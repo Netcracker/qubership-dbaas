@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.repositories.h2;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;

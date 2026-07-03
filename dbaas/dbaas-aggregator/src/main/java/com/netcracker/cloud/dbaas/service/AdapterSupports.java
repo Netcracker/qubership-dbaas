@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import jakarta.ws.rs.WebApplicationException;
@@ -84,7 +85,7 @@ public class AdapterSupports {
     }
 
     private Map<String, Boolean> supports(Map<String, Boolean> defaults) {
-        log.debug("Get supports adapter by url={}/api/{}/dbaas/adapter/{}/supports", client.adapterAddress(), supportedVersion, client.type());
+StructuredLog.debug(log, "Get supports adapter by url=/api//dbaas/adapter//supports", "adapter", client.adapterAddress(), "supportedVersion", supportedVersion, "type", client.type());
         try {
             Map<String, Boolean> supports = client.sendSupportsRequest();
             return Optional.ofNullable(supports)
@@ -99,7 +100,7 @@ public class AdapterSupports {
                     ).orElse(defaults);
         } catch (WebApplicationException e) {
             if (e.getResponse().getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
-                log.debug("Request to {}/api/{}/dbaas/adapter/{}/supports returned 404, assume defaults: {}", client.adapterAddress(), supportedVersion, client.type(), defaults);
+StructuredLog.debug(log, "Request to /api//dbaas/adapter//supports returned 404, assume defaults:", "adapter", client.adapterAddress(), "supportedVersion", supportedVersion, "type", client.type(), "defaults", defaults);
                 return defaults;
             } else {
                 throw e;

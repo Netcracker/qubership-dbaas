@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.composite;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeNamespace;
@@ -69,7 +70,7 @@ public class CompositeNamespaceService {
 
     @Transactional
     public void deleteCompositeStructure(String baseline) {
-        log.info("Deleting composite structure by baseline {}", baseline);
+StructuredLog.info(log, "Deleting composite structure by baseline", "baseline", baseline);
         compositeNamespaceDbaasRepository.deleteByBaseline(baseline);
     }
 
@@ -78,7 +79,7 @@ public class CompositeNamespaceService {
         if (isBaseline(namespace)) {
             deleteCompositeStructure(namespace);
         } else {
-            log.info("Deleting composite structure by namespace {}", namespace);
+StructuredLog.info(log, "Deleting composite structure by namespace", "namespace", namespace);
             compositeNamespaceDbaasRepository.deleteByNamespace(namespace);
         }
     }

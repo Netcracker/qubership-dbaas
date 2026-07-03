@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.Source;
@@ -67,7 +68,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
                                   @Parameter(description = "This parameter specifies namespace for restoring to another project. " +
                                           "This parameter is needed to use if backup and restore projects are different.")
                                   @QueryParam("targetNamespace") String targetNamespace) {
-        log.info("Request to restore backup without namespace. Backup has id = {} ", backupId);
+StructuredLog.info(log, "Request to restore backup without namespace. Backup has id =", "backupId", backupId);
         return backupAdministrationControllerV3.restoreBackupInNamespace(null, backupId, targetNamespace);
     }
 
@@ -82,7 +83,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
                                                       @PathParam("backupId") UUID backupId,
                                                       @Parameter(description = "Identifier of restore process", required = true)
                                                       @PathParam("restorationId") UUID restorationId) {
-        log.info("Request to get info on backup {} restoration {}", backupId, restorationId);
+StructuredLog.info(log, "Request to get info on backup restoration", "backupId", backupId, "restorationId", restorationId);
         Optional<NamespaceBackup> backup = backupsDbaasRepository.findById(backupId);
         if (backup.isEmpty()) {
             throw new BackupNotFoundException(backupId, Source.builder().pathVariable("backupId").build());
@@ -141,7 +142,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
             throw new BadRequestException("Query parameter 'namespaces' must be not empty list of strings");
         }
 
-        log.info("Received request to drop all namespace backups in {} namespaces {}", namespaces.size(), namespaces);
+StructuredLog.info(log, "Received request to drop all namespace backups in namespaces", "count", namespaces.size(), "namespaces", namespaces);
 
         assertNotProdMode();
 
@@ -149,7 +150,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
 
         if (namespaceBackupsAmount == 0) {
 
-            log.info("Namespaces {} are empty, dropping is not needed", namespaces);
+StructuredLog.info(log, "Namespaces are empty, dropping is not needed", "namespaces", namespaces);
 
             return Response.ok(String.format("All %s namespaces %s do not contain any namespace backups", namespaces.size(), namespaces)).build();
         }

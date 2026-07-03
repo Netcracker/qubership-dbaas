@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config.pg;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.Dependent;

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.LinkDatabasesRequest;
 import com.netcracker.cloud.dbaas.dto.v3.UpdateHostRequest;
@@ -46,7 +47,7 @@ public class OperationService {
 
     @Transactional
     public DatabaseRegistry changeHost(UpdateHostRequest updateHostRequest) {
-        log.info("start to update host of logical database with classifier {} and type {}. Update request {}", updateHostRequest.getClassifier(), updateHostRequest.getType(), updateHostRequest);
+StructuredLog.info(log, "start to update host of logical database with classifier and type. Update request", "classifier", updateHostRequest.getClassifier(), "type", updateHostRequest.getType(), "updateHostRequest", updateHostRequest);
         DatabaseRegistry database = dBaaService.findDatabaseByClassifierAndType(updateHostRequest.getClassifier(), updateHostRequest.getType(), true);
         if (database == null) {
             throw new NotFoundException("Can't find logical database with such classifier and type");
@@ -56,7 +57,7 @@ public class OperationService {
 
         Database oldDb = findExistingOrphanFor(database, adapterByPhysDbId);
         if (oldDb != null) {
-            log.info("Found existing suitable orphan: {}", oldDb);
+StructuredLog.info(log, "Found existing suitable orphan:", "oldDb", oldDb);
             List<String> newUsers = database.getResources().stream()
                     .filter(dbResource -> dbResource.getKind().equals("user"))
                     .map(AbstractDbResource::getName)
@@ -66,7 +67,7 @@ public class OperationService {
                             && !newUsers.contains(dbResource.getName()))
                     .toList();
             if (!oldUnusedUsers.isEmpty()) {
-                log.info("Drop old unused users: {}", oldUnusedUsers);
+StructuredLog.info(log, "Drop old unused users:", "oldUnusedUsers", oldUnusedUsers);
                 adapterByPhysDbId.deleteUser(oldUnusedUsers);
             }
             log.debug("Delete orphan logical DB from registry");
@@ -77,11 +78,11 @@ public class OperationService {
         }
 
         if (updateHostRequest.getMakeCopy()) {
-            log.info("make a copy of logical db {}", updateHostRequest.getClassifier());
+StructuredLog.info(log, "make a copy of logical db", "classifier", updateHostRequest.getClassifier());
             copyDatabase = dBaaService.makeCopy(database);
         }
         String originHost = (String) database.getConnectionProperties().getFirst().get("host");
-        log.info("original host {}", originHost);
+StructuredLog.info(log, "original host", "originHost", originHost);
         if (originHost == null || originHost.isEmpty()) {
             throw new RuntimeException("can't find origin host");
         }
@@ -95,7 +96,7 @@ public class OperationService {
             deletionService.markDatabaseAsOrphan(database);
         }
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(copyDatabase);
-        log.debug("changed database record {}", copyDatabase);
+StructuredLog.debug(log, "changed database record", "copyDatabase", copyDatabase);
         return copyDatabase;
     }
 

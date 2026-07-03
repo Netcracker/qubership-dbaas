@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.monitoring;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.monitoring.indicators.AdaptersAccessIndicator;
 import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse;
@@ -40,18 +41,18 @@ public class AdapterHealthCheck {
         log.debug("Health check started");
         final List<DbaasAdapter> adapters = physicalDatabasesService.getAllAdapters();
         HealthCheckResponseBuilder adapterHealthBuilder = HealthCheckResponse.builder().name(ADAPTERS_HEALTH_CHECK_NAME).up();
-        log.debug("Adapters list: {}", adapters);
+StructuredLog.debug(log, "Adapters list:", "adapters", adapters);
         for (DbaasAdapter adapter : adapters) {
             if (Boolean.TRUE.equals(adapter.isDisabled())) {
-                log.debug("Adapter with id {} is disabled", adapter.identifier());
+StructuredLog.debug(log, "Adapter with id is disabled", "adapter", adapter.identifier());
                 continue;
             }
             AdapterHealthStatus health = adapter.getAdapterHealth();
-            log.debug("check {} adapter {}", adapter.type(), adapter.identifier());
+StructuredLog.debug(log, "check adapter", "adapter", adapter.type(), "adapter", adapter.identifier());
             Supplier<Number> adapterStatusConverter = () -> convertAdapterStatus(health.getStatus());
             Gauge.builder("dbaas.adapter.health", adapterStatusConverter).tags("identifier", adapter.identifier(), "type", adapter.type()).register(meterRegistry);
             if (!HEALTH_CHECK_STATUS_UP.equals(health.getStatus())) {
-                log.warn("{} {} has problem. Status: {}", adapter.type(), adapter.identifier(), health.getStatus());
+StructuredLog.warn(log, "has problem. Status:", "adapter", adapter.type(), "adapter", adapter.identifier(), "status", health.getStatus());
                 adapterHealthBuilder.problem()
                         .details("details " + adapter.identifier(), adapter.type() + " adapter has problem.");
             }

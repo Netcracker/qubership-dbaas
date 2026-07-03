@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.backupV2;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.utils.validation.group.BackupGroup;
 import jakarta.validation.Valid;

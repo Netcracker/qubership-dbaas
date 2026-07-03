@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.dto.OnMicroserviceRuleRequest;
@@ -130,7 +131,7 @@ public class BalancingRulesControllerV3 {
                             "created in the same namespace where they have been created.",
                     required = true)
             @PathParam(NAMESPACE_PARAMETER) String namespace) {
-        log.info("Received request on create per microservices physical rule. Request body {} and namespace {}", onMicroserviceRuleRequest, namespace);
+StructuredLog.info(log, "Received request on create per microservices physical rule. Request body and namespace", "onMicroserviceRuleRequest", onMicroserviceRuleRequest, "namespace", namespace);
         List<PerMicroserviceRule> rules = balancingRulesService.addRuleOnMicroservice(onMicroserviceRuleRequest, namespace);
         return Response.status(Response.Status.CREATED).entity(rules).build();
     }
@@ -152,7 +153,7 @@ public class BalancingRulesControllerV3 {
             required = true)
         @PathParam(NAMESPACE_PARAMETER) String namespace) {
 
-        log.info("Received request to get on microservice physical  database balancing rules. Namespace {}", namespace);
+StructuredLog.info(log, "Received request to get on microservice physical database balancing rules. Namespace", "namespace", namespace);
         var onMicroserviceBalancingRules = balancingRulesService.getOnMicroserviceBalancingRules(namespace);
         return Response.ok(onMicroserviceBalancingRules).build();
     }
@@ -179,7 +180,7 @@ public class BalancingRulesControllerV3 {
                             "created in the same namespace where they have been created.",
                     required = true)
             @PathParam(NAMESPACE_PARAMETER) String namespace) {
-        log.info("Received request to validate microservices physical rule. Request body {} and namespace {}", onMicroserviceRuleRequest, namespace);
+StructuredLog.info(log, "Received request to validate microservices physical rule. Request body and namespace", "onMicroserviceRuleRequest", onMicroserviceRuleRequest, "namespace", namespace);
         ValidateRulesResponse response;
         try {
             response = balancingRulesService.validateMicroservicesRules(onMicroserviceRuleRequest, namespace);

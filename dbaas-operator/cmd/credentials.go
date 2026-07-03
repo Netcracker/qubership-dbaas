@@ -25,6 +25,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 )
 
 // securityDir is the fixed mount path of the dbaas-security-configuration-secret
@@ -72,11 +73,11 @@ func readCredentials(dir string) (username, password string, err error) {
 func loadAggregatorCredentials(log logging.Logger, dir string) (username, password string) {
 	username, password, err := readCredentials(dir)
 	if err != nil {
-		log.Errorf("failed to load aggregator credentials from %s — mount the "+
-			"dbaas-security-configuration-secret (Basic Auth mode): %v", dir, err)
+		log.Errorf("%s", logfields.Format("failed to load aggregator credentials — mount the dbaas-security-configuration-secret (Basic Auth mode)",
+			"dir", dir, "error", err))
 		os.Exit(1)
 	}
-	log.Infof("loaded aggregator credentials username=%v", username)
+	log.Infof("%s", logfields.Format("loaded aggregator credentials", "username", username))
 	return username, password
 }
 
@@ -94,25 +95,25 @@ func loadAggregatorCredentials(log logging.Logger, dir string) (username, passwo
 func watchCredentials(ctx context.Context, log logging.Logger, dir string, client credentialsSetter) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Errorf("failed to create fsnotify watcher — credential auto-reload disabled: %v", err)
+		log.Errorf("%s", logfields.Format("failed to create fsnotify watcher — credential auto-reload disabled", "error", err))
 		return nil
 	}
 	defer func() { _ = watcher.Close() }()
 
 	if err := watcher.Add(dir); err != nil {
-		log.Errorf("failed to watch security dir — credential auto-reload disabled dir=%v: %v", dir, err)
+		log.Errorf("%s", logfields.Format("failed to watch security dir — credential auto-reload disabled", "dir", dir, "error", err))
 		return nil
 	}
-	log.Infof("credential watcher started dir=%v", dir)
+	log.Infof("%s", logfields.Format("credential watcher started", "dir", dir))
 
 	reload := func(trigger string) {
 		username, password, err := readCredentials(dir)
 		if err != nil {
-			log.Errorf("failed to reload aggregator credentials: %v", err)
+			log.Errorf("%s", logfields.Format("failed to reload aggregator credentials", "error", err))
 			return
 		}
 		client.SetCredentials(username, password)
-		log.Infof("aggregator credentials reloaded trigger=%v username=%v", trigger, username)
+		log.Infof("%s", logfields.Format("aggregator credentials reloaded", "trigger", trigger, "username", username))
 	}
 
 	for {
@@ -131,14 +132,14 @@ func watchCredentials(ctx context.Context, log logging.Logger, dir string, clien
 				continue
 			}
 			if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) {
-				log.Infof("credential file changed event=%v", event.String())
+				log.Infof("%s", logfields.Format("credential file changed", "event", event.String()))
 				reload(event.String())
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return nil
 			}
-			log.Errorf("fsnotify watcher error: %v", err)
+			log.Errorf("%s", logfields.Format("fsnotify watcher error", "error", err))
 		}
 	}
 }

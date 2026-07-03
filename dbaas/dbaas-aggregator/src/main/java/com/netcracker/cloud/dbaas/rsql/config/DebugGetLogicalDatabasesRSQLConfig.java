@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.rsql.config;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.rsql.QueryPreparationConstants;
 import com.netcracker.cloud.dbaas.rsql.model.QueryPreparationOverrideConfig;

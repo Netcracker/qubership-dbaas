@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -96,10 +97,10 @@ public class InstructionService {
 
 
     public Instruction findPortion(String instructionId) throws JsonProcessingException {
-        log.info("finding instruction for instruction id = {}", instructionId);
+StructuredLog.info(log, "finding instruction for instruction id =", "instructionId", instructionId);
         Optional<PhysicalDatabaseInstruction> physicalDatabaseInstruction = physicalDatabaseInstructionRepository
                 .findByIdOptional(UUID.fromString(instructionId));
-        log.info("Got instruction with all roles by id with id = {}", physicalDatabaseInstruction);
+StructuredLog.info(log, "Got instruction with all roles by id with id =", "physicalDatabaseInstruction", physicalDatabaseInstruction);
         if (physicalDatabaseInstruction.isPresent()) {
             List<AdditionalRoles> additionalRolesList = convertStringToList(physicalDatabaseInstruction.get().getContext());
             if (!additionalRolesList.isEmpty()) {
@@ -107,13 +108,13 @@ public class InstructionService {
                 for (int i = 0; i < additionalRolesList.size() && i < PORTION_SIZE; i++) {
                     listWithPortion.add(additionalRolesList.get(i));
                 }
-                log.info("Find next connectionProperties portion in instruction with id = {}", physicalDatabaseInstruction.get().getId());
+StructuredLog.info(log, "Find next connectionProperties portion in instruction with id =", "database", physicalDatabaseInstruction.get().getId());
                 return new Instruction(physicalDatabaseInstruction.get().getId().toString(), listWithPortion);
             }
-            log.info("No more connectionProperties portions in instruction with id = {}", physicalDatabaseInstruction.get().getId());
+StructuredLog.info(log, "No more connectionProperties portions in instruction with id =", "database", physicalDatabaseInstruction.get().getId());
             return null;
         }
-        log.info("No instruction found with id = {}", instructionId);
+StructuredLog.info(log, "No instruction found with id =", "instructionId", instructionId);
         return null;
     }
 
@@ -130,7 +131,7 @@ public class InstructionService {
             instruction.setId(String.valueOf(physicalDatabaseInstruction.get().getId()));
             instruction.setAdditionalRoles(convertStringToList(physicalDatabaseInstruction.get().getContext()));
         } else {
-            log.info("No instruction found from  PhysicalDatabaseInstruction with id = {}", instruction.getId());
+StructuredLog.info(log, "No instruction found from PhysicalDatabaseInstruction with id =", "id", instruction.getId());
         }
         return instruction;
     }
@@ -142,11 +143,11 @@ public class InstructionService {
     }
 
     public void completeMigrationProcedure(String phydbid, String instructionId, Instruction currentInstruction) {
-        log.info("Saving supported roles in physical database with id = {}", phydbid);
+StructuredLog.info(log, "Saving supported roles in physical database with id =", "phydbid", phydbid);
         Optional<PhysicalDatabaseInstruction> physicalDatabaseInstruction = physicalDatabaseInstructionRepository.findByIdOptional(UUID.fromString(instructionId));
         if (physicalDatabaseInstruction.isPresent()) {
             physicalDatabasesService.savePhysicalDatabaseWithRoles(phydbid, physicalDatabaseInstruction.get().getPhysicalDbRegRequest());
-            log.info("Removing instruction after saving roles by id = {}", currentInstruction.getId());
+StructuredLog.info(log, "Removing instruction after saving roles by id =", "id", currentInstruction.getId());
             deleteInstruction(currentInstruction.getId());
         }
     }
@@ -175,10 +176,10 @@ public class InstructionService {
     public void deleteInstruction(String instructionId) {
         Optional<PhysicalDatabaseInstruction> physicalDatabaseInstruction = physicalDatabaseInstructionRepository.findByIdOptional(UUID.fromString(instructionId));
         if (physicalDatabaseInstruction.isPresent()) {
-            log.info("Deleting instruction data from physicalDatabaseInstruction = {}", instructionId);
+StructuredLog.info(log, "Deleting instruction data from physicalDatabaseInstruction =", "instructionId", instructionId);
             physicalDatabaseInstructionRepository.deleteById(physicalDatabaseInstruction.get().getId());
         } else {
-            log.info("no instruction found in physicalDatabaseInstruction with id = {}", instructionId);
+StructuredLog.info(log, "no instruction found in physicalDatabaseInstruction with id =", "instructionId", instructionId);
         }
     }
 

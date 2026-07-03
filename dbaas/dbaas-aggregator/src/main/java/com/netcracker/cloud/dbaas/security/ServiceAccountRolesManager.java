@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.security;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -27,7 +28,7 @@ public class ServiceAccountRolesManager {
 
     void onStart(@Observes StartupEvent ev, @ConfigProperty(name = "dbaas.security.k8s.service.account.roles.path") String rolesConfigPath) {
         try {
-            log.info("Start kubernetes service account roles loading from {}", rolesConfigPath);
+StructuredLog.info(log, "Start kubernetes service account roles loading from", "rolesConfigPath", rolesConfigPath);
             ObjectMapper yamlReader = new ObjectMapper(new YAMLFactory());
 
             InputStream rolesStream = getClass().getResourceAsStream(rolesConfigPath);

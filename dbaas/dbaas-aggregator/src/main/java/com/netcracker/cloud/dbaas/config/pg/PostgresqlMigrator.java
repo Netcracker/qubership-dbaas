@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config.pg;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,7 +39,7 @@ public class PostgresqlMigrator {
                             "or " +
                             "(classifier ->> 'scope' = 'service') " +
                             ") and classifier ? 'namespace' and classifier ? 'microserviceName');");
-            log.info("Found {} incorrect databases registered in dbaas", rowDatabases.size());
+StructuredLog.info(log, "Found incorrect databases registered in dbaas", "count", rowDatabases.size());
             for (Map row : rowDatabases) {
                 Database database = new Database();
                 database.setId(UUID.fromString(row.get("id").toString()));
@@ -48,9 +49,9 @@ public class PostgresqlMigrator {
                     if (row.get(OLD_CLASSIFIER) != null) {
                         database.setOldClassifier(mapper.readValue(row.get(OLD_CLASSIFIER).toString(), TreeMap.class));
                     }
-                    log.error("Incorrect database with id={}, migrated classifier={} and old classifier={}", database.getId(), classifier, database.getOldClassifier());
+StructuredLog.error(log, "Incorrect database with id=, migrated classifier= and old classifier=", "database", database.getId(), "classifier", classifier, "classifier", database.getOldClassifier());
                 } catch (JsonProcessingException e) {
-                    log.error("Incorrect database with id={}, can't parse classifier", database.getId());
+StructuredLog.error(log, "Incorrect database with id=, can't parse classifier", "database", database.getId());
                 }
             }
             if (!rowDatabases.isEmpty()) {

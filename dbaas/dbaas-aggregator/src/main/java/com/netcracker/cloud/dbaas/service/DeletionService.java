@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.DatabaseType;
 import com.netcracker.cloud.dbaas.entity.pg.*;
@@ -79,7 +80,7 @@ public class DeletionService {
 
     @Transactional
     public List<DatabaseRegistry> markRegistriesForDrop(String namespace, List<DatabaseRegistry> registries) {
-        log.info("Mark {} registries for drop in '{}' namespace", registries.size(), namespace);
+        StructuredLog.info(log, "Mark registries for drop in '' namespace", "arg0", registries.size(), "namespace", namespace);
         registries.forEach(this::markRegistryForDropWithoutTransaction);
         return logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(registries);
     }
@@ -112,7 +113,7 @@ public class DeletionService {
 
     @Transactional
     public void markDatabasesAsOrphan(List<DatabaseRegistry> registries) {
-        log.info("Mark {} databases as orphan", registries.size());
+        StructuredLog.info(log, "Mark databases as orphan", "arg0", registries.size());
         registries.forEach(this::markDatabaseAsOrphanWithoutTransaction);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(registries);
     }
@@ -127,7 +128,7 @@ public class DeletionService {
         try {
             dropRegistry(databaseRegistry.getId(), force);
         } catch (Exception ex) {
-            log.error("Error happened during dropping registry {}", databaseRegistry.getId(), ex);
+            StructuredLog.error(log, "Error happened during dropping registry", "arg0", databaseRegistry.getId());
             registerDeletionError(ex, databaseRegistry);
             return false;
         }
@@ -145,38 +146,37 @@ public class DeletionService {
                 .map(databaseRegistry -> dropRegistrySafe(databaseRegistry, force))
                 .filter(Boolean::booleanValue)
                 .count();
-        log.info("Successfully dropped {} of {} databases in {}", droppedCount, registriesForDrop.size(), namespace);
+        StructuredLog.info(log, "Successfully dropped of databases in", "droppedCount", droppedCount, "arg1", registriesForDrop.size(), "namespace", namespace);
         return droppedCount;
     }
 
     private void dropRegistry(UUID registryId, boolean force) {
         Optional<DatabaseRegistry> optionalRegistry = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findDatabaseRegistryById(registryId);
         if (optionalRegistry.isEmpty()) {
-            log.warn("Registry with id {} does not exist, no deletion performed", registryId);
+            StructuredLog.warn(log, "Registry with id does not exist, no deletion performed", "registryId", registryId);
             return;
         }
 
         DatabaseRegistry databaseRegistry = optionalRegistry.get();
-        log.info("Drop registry {} in '{}' namespace with classifier '{}' and type '{}'",
-                databaseRegistry.getId(), databaseRegistry.getNamespace(), databaseRegistry.getClassifier(), databaseRegistry.getType());
+        StructuredLog.info(log, "Drop registry in '' namespace with classifier '' and type ''", "arg0", databaseRegistry.getId(), "namespace", databaseRegistry.getNamespace(), "classifier", databaseRegistry.getClassifier(), "type", databaseRegistry.getType());
 
         if (databaseRegistry.getDatabase().getDatabaseRegistry().size() == 1) {
             Database database = databaseRegistry.getDatabase();
-            log.info("Drop logical database with name '{}' along with registry {}", DBaaService.getDatabaseName(database), registryId);
+            StructuredLog.info(log, "Drop logical database with name '' along with registry", "arg0", DBaaService.getDatabaseName(database), "registryId", registryId);
             try {
                 dropDatabaseInAdapter(databaseRegistry);
             } catch (Exception e) {
                 if (!force) {
                     throw e;
                 } else {
-                    log.warn("Ignored error during dropping database with name '{}' in the respective physical adapter", DBaaService.getDatabaseName(database), e);
+                    StructuredLog.warn(log, "Ignored error during dropping database with name '' in the respective physical adapter", "arg0", DBaaService.getDatabaseName(database));
                 }
             }
             encryption.deletePassword(database);
-            log.info("Successfully dropped logical database with name '{}'", DBaaService.getDatabaseName(database));
+            StructuredLog.info(log, "Successfully dropped logical database with name ''", "arg0", DBaaService.getDatabaseName(database));
         }
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().delete(databaseRegistry);
-        log.info("Successfully dropped registry {}", registryId);
+        StructuredLog.info(log, "Successfully dropped registry", "registryId", registryId);
     }
 
     private void dropDatabaseInAdapter(DatabaseRegistry databaseRegistry) {
@@ -223,14 +223,14 @@ public class DeletionService {
 
     @Transactional
     public void cleanupNamespaceResources(String namespace, boolean removeRules) {
-        log.info("Remove declarative configs in {} namespace", namespace);
+        StructuredLog.info(log, "Remove declarative configs in namespace", "namespace", namespace);
         declarativeConfigRepository.deleteByNamespace(namespace);
         if (removeRules) {
-            log.info("Remove balancing rules in {} namespace", namespace);
+            StructuredLog.info(log, "Remove balancing rules in namespace", "namespace", namespace);
             balancingRulesService.removeRulesByNamespace(namespace);
             balancingRulesService.removePerMicroserviceRulesByNamespace(namespace);
         }
-        log.info("Remove database roles in {} namespace", namespace);
+        StructuredLog.info(log, "Remove database roles in namespace", "namespace", namespace);
         databaseRolesService.removeDatabaseRole(namespace);
     }
 
@@ -278,7 +278,7 @@ public class DeletionService {
         if (!opensearchDBs.isEmpty()) {
             // Some OpenSearch DBs cas have a not unique prefix, which will prevent creation of a new OpenSearch DB with the same prefix.
             // So, we are removing OpenSearch DBs synchronously to not fail the next DB creation with the same prefix.
-            log.info("There is {} OpenSearch logical DBs, start synchronous dropping", opensearchDBs.size());
+            StructuredLog.info(log, "There is OpenSearch logical DBs, start synchronous dropping", "arg0", opensearchDBs.size());
             markedForDropRegistries = markedForDropRegistries.stream().filter(Predicate.not(opensearchDBs::contains)).toList();
             dropRegistriesSafe(namespace, opensearchDBs);
         }
@@ -287,16 +287,16 @@ public class DeletionService {
     }
 
     private void dropRegistriesAsync(String namespace, List<DatabaseRegistry> registriesForDrop, boolean force) {
-        log.info("Schedule async databases dropping in {} namespace", namespace);
+        StructuredLog.info(log, "Schedule async databases dropping in namespace", "namespace", namespace);
         asyncOperations.getCleanupExecutor().submit(asyncOperations.wrapWithContext(() -> {
-            log.info("Start async databases dropping in {}", namespace);
+            StructuredLog.info(log, "Start async databases dropping in", "namespace", namespace);
             dropRegistriesSafe(namespace, registriesForDrop, force);
-            log.info("Async databases dropping finished for {}", namespace);
+            StructuredLog.info(log, "Async databases dropping finished for", "namespace", namespace);
         }));
     }
 
     public void cleanupAllLogicalDatabasesInNamespacesByPortionsAsync(@NotEmpty Set<String> namespaces) {
-        log.info("Scheduling async deletion of logical databases in namespaces {}", namespaces);
+        StructuredLog.info(log, "Scheduling async deletion of logical databases in namespaces", "namespaces", namespaces);
         asyncOperations.getCleanupExecutor().submit(asyncOperations.wrapWithContext(() -> {
             cleanupAllLogicalDatabasesInNamespacesByPortions(namespaces);
         }));
@@ -307,7 +307,7 @@ public class DeletionService {
         var allSkippedDeletedLogicalDatabaseIdsAmount = 0;
         var allFailedDeletedLogicalDatabaseIdsAmount = 0;
 
-        log.info("Started deletion of all logical databases in {} namespaces {}", namespaces.size(), namespaces);
+        StructuredLog.info(log, "Started deletion of all logical databases in namespaces", "namespace", namespaces.size(), "namespaces", namespaces);
         namespaces.forEach(this::markNamespaceRegistriesForDrop);
 
         var portionNumber = 0;
@@ -325,25 +325,22 @@ public class DeletionService {
                         .map(Database::getId)
                         .toList();
 
-                log.info("Started deletion of {} logical databases by portion with number {}, logical databases ids {}",
-                        logicalDatabasesIds.size(), portionNumber, logicalDatabasesIds
-                );
+                StructuredLog.info(log, "Started deletion of logical databases by portion with number , logical databases ids", "arg0", logicalDatabasesIds.size(), "portionNumber", portionNumber, "logicalDatabasesIds", logicalDatabasesIds);
 
                 var failedDeleteLogicalDatabases = new ArrayList<Database>();
 
                 for (var logicalDatabase : logicalDatabases) {
                     var logicalDatabaseId = logicalDatabase.getId();
-                    log.info("Started deletion of logical database with id {}", logicalDatabaseId);
+                    StructuredLog.info(log, "Started deletion of logical database with id", "logicalDatabaseId", logicalDatabaseId);
                     List<DatabaseRegistry> registriesForDrop = ListUtils.emptyIfNull(logicalDatabase.getDatabaseRegistry());
 
                     long dropped = dropRegistriesSafe("some namespaces", registriesForDrop);
 
                     if (dropped != registriesForDrop.size()) {
                         failedDeleteLogicalDatabases.add(logicalDatabase);
-                        log.error("Only {} of {} registries was deleted for logical database with id {}",
-                                dropped, registriesForDrop.size(), logicalDatabaseId);
+                        StructuredLog.error(log, "Only of registries was deleted for logical database with id", "dropped", dropped, "arg1", registriesForDrop.size(), "logicalDatabaseId", logicalDatabaseId);
                     } else {
-                        log.info("Finished deletion of logical database with id {}", logicalDatabaseId);
+                        StructuredLog.info(log, "Finished deletion of logical database with id", "logicalDatabaseId", logicalDatabaseId);
                     }
                 }
 
@@ -359,30 +356,18 @@ public class DeletionService {
                 allSuccessfullyDeletedLogicalDatabaseIdsAmount += successfullyDeletedLogicalDatabasesIds.size();
                 allFailedDeletedLogicalDatabaseIdsAmount += failedDeleteLogicalDatabasesIds.size();
 
-                log.info("""
-                                Finished deletion of {} logical databases by portion with number {}, successfully deleted {} logical databases with ids {}, \
-                                failed deleted {} ones with ids {}""",
-
-                        logicalDatabasesIds.size(), portionNumber, successfullyDeletedLogicalDatabasesIds.size(),
-                        successfullyDeletedLogicalDatabasesIds, failedDeleteLogicalDatabasesIds.size(), failedDeleteLogicalDatabasesIds
-                );
+                StructuredLog.info(log, """ Finished deletion of logical databases by portion with number , successfully deleted logical databases with ids , \ failed deleted ones with ids """, "arg0", logicalDatabasesIds.size(), "portionNumber", portionNumber, "arg2", successfullyDeletedLogicalDatabasesIds.size(), "successfullyDeletedLogicalDatabasesIds", successfullyDeletedLogicalDatabasesIds, "arg4", failedDeleteLogicalDatabasesIds.size(), "failedDeleteLogicalDatabasesIds", failedDeleteLogicalDatabasesIds);
             }
         } while (CollectionUtils.isNotEmpty(logicalDatabases));
 
         var allLogicalDatabasesAmount = allSuccessfullyDeletedLogicalDatabaseIdsAmount
                 + allSkippedDeletedLogicalDatabaseIdsAmount + allFailedDeletedLogicalDatabaseIdsAmount;
 
-        log.info("""
-                        Finished deletion of all {} logical databases in {} namespaces {}, successfully deleted {} logical databases, \
-                        skipped deletion of {} ones, failed deleted {} ones""",
-
-                allLogicalDatabasesAmount, namespaces.size(), namespaces, allSuccessfullyDeletedLogicalDatabaseIdsAmount,
-                allSkippedDeletedLogicalDatabaseIdsAmount, allFailedDeletedLogicalDatabaseIdsAmount
-        );
+        StructuredLog.info(log, """ Finished deletion of all logical databases in namespaces , successfully deleted logical databases, \ skipped deletion of ones, failed deleted ones""", "allLogicalDatabasesAmount", allLogicalDatabasesAmount, "namespace", namespaces.size(), "namespaces", namespaces, "allSuccessfullyDeletedLogicalDatabaseIdsAmount", allSuccessfullyDeletedLogicalDatabaseIdsAmount, "allSkippedDeletedLogicalDatabaseIdsAmount", allSkippedDeletedLogicalDatabaseIdsAmount, "allFailedDeletedLogicalDatabaseIdsAmount", allFailedDeletedLogicalDatabaseIdsAmount);
     }
 
     private void registerDeletionError(Exception ex, DatabaseRegistry databaseRegistry) {
-        log.warn("Register deletion error: '{}' of database {} with classifier {}", ex.getMessage(), DBaaService.getDatabaseName(databaseRegistry.getDatabase()), databaseRegistry.getClassifier());
+        StructuredLog.warn(log, "Register deletion error: '' of database with classifier", "error", ex.getMessage(), "arg1", DBaaService.getDatabaseName(databaseRegistry.getDatabase()), "classifier", databaseRegistry.getClassifier());
         try {
             int status = 0;
             if (ex instanceof WebApplicationException) {

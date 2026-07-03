@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.monitoring.annotation;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.enterprise.util.Nonbinding;
 import jakarta.interceptor.InterceptorBinding;

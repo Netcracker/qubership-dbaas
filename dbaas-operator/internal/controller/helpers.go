@@ -27,6 +27,7 @@ import (
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -94,12 +95,13 @@ func enqueueForBindingList[L client.ObjectList](
 	ctx context.Context, c client.Client, list L, namespace string, stamp func(client.Object),
 ) []ctrl.Request {
 	if err := c.List(ctx, list, client.InNamespace(namespace)); err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: list %T in %s: %v", list, namespace, err)
+		log.ErrorC(ctx, "%s", logfields.Format("enqueueForBinding: list resources",
+			"kind", list, "namespace", namespace, "error", err))
 		return nil
 	}
 	objs, err := apimeta.ExtractList(list)
 	if err != nil {
-		log.ErrorC(ctx, "enqueueForBinding: extract %T items: %v", list, err)
+		log.ErrorC(ctx, "%s", logfields.Format("enqueueForBinding: extract items", "kind", list, "error", err))
 		return nil
 	}
 	reqs := make([]ctrl.Request, 0, len(objs))
@@ -121,7 +123,7 @@ func enqueueForBindingList[L client.ObjectList](
 func requestIDFromContext(ctx context.Context) string {
 	xrid, err := xrequestid.Of(ctx)
 	if err != nil {
-		log.ErrorC(ctx, "failed to retrieve request ID from context: %v", err)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to retrieve request ID from context", "error", err))
 		panic(fmt.Sprintf("requestIDFromContext: context not initialized, error: %v", err))
 	}
 	return xrid.GetRequestId()
@@ -159,13 +161,16 @@ func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, 
 	}
 	switch resolver.GetState(namespace) {
 	case ownership.Unknown:
-		log.InfoC(ctx, "no NamespaceBinding for %s %s/%s yet, will retry in %s", kind, namespace, name, ownershipPollInterval)
+		log.InfoC(ctx, "%s", logfields.Format("no NamespaceBinding yet, will retry",
+			"kind", kind, "namespace", namespace, "name", name, "retryAfter", ownershipPollInterval))
 		return false, ctrl.Result{RequeueAfter: ownershipPollInterval}, nil
 	case ownership.Unbound:
-		log.InfoC(ctx, "namespace %s unbound for %s %s, will retry in %s", namespace, kind, name, ownershipUnboundRetryInterval)
+		log.InfoC(ctx, "%s", logfields.Format("namespace unbound, will retry",
+			"namespace", namespace, "kind", kind, "name", name, "retryAfter", ownershipUnboundRetryInterval))
 		return false, ctrl.Result{RequeueAfter: ownershipUnboundRetryInterval}, nil
 	default:
-		log.InfoC(ctx, "skipping %s %s/%s: namespace not owned by this operator", kind, namespace, name)
+		log.InfoC(ctx, "%s", logfields.Format("skipping resource: namespace not owned by this operator",
+			"kind", kind, "namespace", namespace, "name", name))
 		return false, ctrl.Result{}, nil
 	}
 }
@@ -243,7 +248,7 @@ func invalidSpec[P ~string](
 	obj runtime.Object,
 	msg string,
 ) (ctrl.Result, error) {
-	log.InfoC(ctx, "invalid spec reason=%v", msg)
+	log.InfoC(ctx, "%s", logfields.Format("invalid spec", "reason", msg))
 	markPermanentFailure(phase, conditions, generation, EventReasonInvalidSpec, msg)
 	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
 	return ctrl.Result{}, nil
@@ -331,7 +336,7 @@ func patchStatusOnExit[T interface {
 	}
 
 	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
-		log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
+		log.ErrorC(ctx, "%s", logfields.Format("patch status", "objectType", objectType, "error", patchErr))
 		*retErr = errors.Join(*retErr, patchErr)
 	}
 }

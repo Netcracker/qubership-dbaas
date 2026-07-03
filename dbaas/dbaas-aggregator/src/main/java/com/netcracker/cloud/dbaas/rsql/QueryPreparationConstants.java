@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.rsql;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import java.util.Map;
 import java.util.Set;

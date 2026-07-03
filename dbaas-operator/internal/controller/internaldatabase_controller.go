@@ -43,6 +43,7 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
@@ -117,8 +118,8 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// stale trackingId and start fresh.
 	if dd.Status.TrackingID != "" &&
 		dd.Status.PendingOperationGeneration != dd.Generation {
-		log.InfoC(ctx, "spec changed while polling, clearing stale trackingId pendingGen=%v currentGen=%v trackingId=%v",
-			dd.Status.PendingOperationGeneration, dd.Generation, dd.Status.TrackingID)
+		log.InfoC(ctx, "%s", logfields.Format("spec changed while polling, clearing stale trackingId",
+			"pendingGen", dd.Status.PendingOperationGeneration, "currentGen", dd.Generation, "trackingId", dd.Status.TrackingID))
 		dd.Status.TrackingID = ""
 		dd.Status.PendingOperationGeneration = 0
 		r.clearAsyncStart(key)
@@ -154,13 +155,13 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 	resp, err := r.Aggregator.ApplyConfig(ctx, payload)
 	recordAggregatorCall(controllerIDB, operationApplyConfig, aggStart, err)
 	if err != nil {
-		log.ErrorC(ctx, "failed to apply InternalDatabase to dbaas-aggregator: %v", err)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to apply InternalDatabase to dbaas-aggregator", "error", err))
 		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
 	}
 
 	if resp.TrackingID != "" {
 		// HTTP 202 Accepted — async operation started.
-		log.InfoC(ctx, "database provisioning started asynchronously. trackingId = %v, microserviceName = %v", resp.TrackingID, dd.Spec.Classifier.MicroserviceName)
+		log.InfoC(ctx, "%s", logfields.Format("database provisioning started asynchronously", "trackingId", resp.TrackingID, "microserviceName", dd.Spec.Classifier.MicroserviceName))
 		ddKey := dd.Namespace + "/" + dd.Name
 		r.asyncStartMu.Lock()
 		if r.asyncStartTimes == nil {
@@ -176,9 +177,9 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 	}
 
 	// HTTP 200 OK — synchronous completion.
-	log.InfoC(ctx, "database provisioned synchronously. microserviceName = %v", dd.Spec.Classifier.MicroserviceName)
+	log.InfoC(ctx, "%s", logfields.Format("database provisioned synchronously", "microserviceName", dd.Spec.Classifier.MicroserviceName))
 	if err := r.materializeTenantDatabaseIfPinned(ctx, dd); err != nil {
-		log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to materialize pinned tenant database", "error", err))
 		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
 	}
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
@@ -193,7 +194,7 @@ func (r *InternalDatabaseReconciler) reconcilePoll(ctx context.Context, dd *dbaa
 	requestID := requestIDFromContext(ctx)
 
 	trackingID := dd.Status.TrackingID
-	log.DebugC(ctx, "polling operation status trackingId=%v", trackingID)
+	log.DebugC(ctx, "%s", logfields.Format("polling operation status", "trackingId", trackingID))
 
 	dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
 	dd.Status.LastRequestID = requestID
@@ -242,8 +243,8 @@ func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx conte
 		Type:          dd.Spec.Type,
 		OriginService: dd.Spec.Classifier.MicroserviceName,
 	}
-	log.InfoC(ctx, "materializing pinned tenant database tenantId=%v microserviceName=%v",
-		dd.Spec.Classifier.TenantId, dd.Spec.Classifier.MicroserviceName)
+	log.InfoC(ctx, "%s", logfields.Format("materializing pinned tenant database",
+		"tenantId", dd.Spec.Classifier.TenantId, "microserviceName", dd.Spec.Classifier.MicroserviceName))
 	start := time.Now()
 	err := r.Aggregator.CreateDatabase(ctx, dd.Namespace, req)
 	recordAggregatorCall(controllerIDB, operationCreateDatabase, start, err)
@@ -446,7 +447,7 @@ func (r *InternalDatabaseReconciler) handlePollError(
 		if aggErr.StatusCode == http.StatusNotFound {
 			// 404 — trackingId expired or never existed; clear it so the next
 			// reconcile re-submits the operation.
-			log.InfoC(ctx, "trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
+			log.InfoC(ctx, "%s", logfields.Format("trackingId not found, will re-submit on next reconcile", "trackingId", trackingID))
 			r.clearAsyncStart(dd.Namespace + "/" + dd.Name)
 			clearPendingOperation(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
@@ -478,12 +479,12 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 ) (ctrl.Result, error) {
 	switch resp.Status {
 	case aggregatorclient.TaskStateCompleted:
-		log.InfoC(ctx, "database provisioned. trackingId = %v, microserviceName = %v",
-			trackingID, dd.Spec.Classifier.MicroserviceName)
+		log.InfoC(ctx, "%s", logfields.Format("database provisioned",
+			"trackingId", trackingID, "microserviceName", dd.Spec.Classifier.MicroserviceName))
 		clearPendingOperation(dd)
 		r.observeAsyncCompletion(dd, resultSuccess)
 		if err := r.materializeTenantDatabaseIfPinned(ctx, dd); err != nil {
-			log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
+			log.ErrorC(ctx, "%s", logfields.Format("failed to materialize pinned tenant database", "error", err))
 			return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
 		}
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
@@ -494,8 +495,8 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 
 	case aggregatorclient.TaskStateFailed:
 		reason := pollFailureReason(resp)
-		log.InfoC(ctx, "database provisioning failed trackingId=%v status=%v reason=%v",
-			trackingID, resp.Status, reason)
+		log.InfoC(ctx, "%s", logfields.Format("database provisioning failed",
+			"trackingId", trackingID, "status", resp.Status, "reason", reason))
 		clearPendingOperation(dd)
 		r.observeAsyncCompletion(dd, asyncResultFailed)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
@@ -509,7 +510,7 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		// explicit admin call to POST /operation/{id}/terminate). This is NOT a spec
 		// error — the same payload can succeed when resubmitted.
 		// Clear the stale trackingID so the next reconcile enters the SUBMIT branch.
-		log.InfoC(ctx, "provisioning was terminated, clearing trackingId for resubmit trackingId=%v", trackingID)
+		log.InfoC(ctx, "%s", logfields.Format("provisioning was terminated, clearing trackingId for resubmit", "trackingId", trackingID))
 		clearPendingOperation(dd)
 		r.observeAsyncCompletion(dd, asyncResultTerminated)
 		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
@@ -519,7 +520,7 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 
 	default: // IN_PROGRESS, NOT_STARTED — keep polling
-		log.DebugC(ctx, "provisioning still in progress status=%v trackingId=%v", resp.Status, trackingID)
+		log.DebugC(ctx, "%s", logfields.Format("provisioning still in progress", "status", resp.Status, "trackingId", trackingID))
 		if msg := pollProgressMessage(resp); msg != "" {
 			setCondition(&dd.Status.Conditions, dd.Generation,
 				conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted, msg)

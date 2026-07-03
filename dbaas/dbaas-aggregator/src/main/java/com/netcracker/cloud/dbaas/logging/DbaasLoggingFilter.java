@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.logging;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import io.quarkus.logging.LoggingFilter;
 

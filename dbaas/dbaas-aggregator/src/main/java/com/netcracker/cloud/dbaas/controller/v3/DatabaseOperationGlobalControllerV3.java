@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
@@ -60,10 +61,10 @@ public class DatabaseOperationGlobalControllerV3 {
     @RolesAllowed(DB_CLIENT)
     public Response updateHost(@Parameter(description = "List of request objects", required = true)
                                List<UpdateHostRequest> updateHostRequests) {
-        log.info("Received request to change physical db host of logical db {}", updateHostRequests);
+StructuredLog.info(log, "Received request to change physical db host of logical db", "updateHostRequests", updateHostRequests);
         Response response = validateRequest(updateHostRequests);
         if (response != null) {
-            log.error("request is invalid {}", response);
+StructuredLog.error(log, "request is invalid", "response", response);
             return response;
         }
         List<DatabaseRegistry> databaseRegistries = operationService.changeHost(updateHostRequests);

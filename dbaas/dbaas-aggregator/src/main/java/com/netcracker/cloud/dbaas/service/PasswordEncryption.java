@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
@@ -196,7 +197,7 @@ public class PasswordEncryption {
                     if (cp != null && cp.containsKey(encryptedFieldName(parameter))) {
                         String encryptedData = (String) cp.get(encryptedFieldName(parameter));
                         DataEncryption encryption = encryptionServiceProvider.getEncryptionService(encryptedData);
-                        log.info("Delete encrypted data for database {}", database.getName());
+StructuredLog.info(log, "Delete encrypted data for database", "database", database.getName());
                         encryption.remove(encryptedData);
                         cp.remove(encryptedFieldName(parameter));
                     }
@@ -224,7 +225,7 @@ public class PasswordEncryption {
                             if (cp.containsKey(encryptedFieldName(parameter))) {
                                 String encryptedData = (String) cp.get(encryptedFieldName(parameter));
                                 DataEncryption encryption = encryptionServiceProvider.getEncryptionService(encryptedData);
-                                log.info("Delete encrypted data for database {}", name);
+StructuredLog.info(log, "Delete encrypted data for database", "name", name);
                                 encryption.remove(encryptedData);
                                 cp.remove(encryptedFieldName(parameter));
                             }
@@ -234,7 +235,7 @@ public class PasswordEncryption {
     public void deletePassword(PhysicalDatabase database) {
         HttpBasicCredentials adapterHttpBasicCredentials = database.getAdapter().getHttpBasicCredentials();
         DataEncryption encryption = encryptionServiceProvider.getEncryptionService(adapterHttpBasicCredentials.getPassword());
-        log.info("Delete encrypted data for physical database {}", database.getPhysicalDatabaseIdentifier());
+StructuredLog.info(log, "Delete encrypted data for physical database", "database", database.getPhysicalDatabaseIdentifier());
         encryption.remove(adapterHttpBasicCredentials.getPassword());
     }
 

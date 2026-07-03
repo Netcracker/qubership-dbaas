@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.utils.validation;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.backupV2.Filter;
 import jakarta.validation.ConstraintValidator;

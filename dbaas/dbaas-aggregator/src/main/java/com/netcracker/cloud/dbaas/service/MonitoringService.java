@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.connections.handlers.ConnectionHandlerFactory;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
@@ -33,7 +34,7 @@ public class MonitoringService {
         List<DbaasAdapter> allAdapters = physicalDatabasesService.getAllAdapters();
         Map<String, String> adapterStatusMap = new HashMap<>();
         for (DbaasAdapter adapter : allAdapters) {
-            log.debug("Adapter identifier = {} to collect health status", adapter.identifier());
+StructuredLog.debug(log, "Adapter identifier = to collect health status", "adapter", adapter.identifier());
             if (Boolean.TRUE.equals(adapter.isDisabled())) {
                 adapterStatusMap.put(adapter.identifier(), AdapterHealthStatus.HEALTH_CHECK_STATUS_UNKNOWN);
                 continue;
@@ -113,7 +114,7 @@ public class MonitoringService {
                 .sorted()
                 .collect(Collectors.toList());
 
-        log.info("In Dbaas: Registered - {}, Ghost - {}, Lost - {} databases", registered.size(), ghost.size(), lost.size());
+StructuredLog.info(log, "In Dbaas: Registered -, Ghost -, Lost - databases", "count", registered.size(), "count", ghost.size(), "count", lost.size());
         List<DatabasesInfoSegment> perAdapters = new ArrayList<>();
 
         for (Map.Entry<String, Collection<DatabaseInfo>> entry : perAdapterReal.entrySet()) {
@@ -155,22 +156,11 @@ public class MonitoringService {
                 .filter(db -> !registeredInAdapter.containsKey(db.getName()))
                 .sorted()
                 .collect(Collectors.toList());
-        log.info("In Dbaas {} adapter: Registered - {}, Ghost - {}, Lost - {} databases", adapterType,
-                registeredInAdapter.size(), ghost.size(), lost.size());
+        StructuredLog.info(log, "In Dbaas adapter: Registered - , Ghost - , Lost - databases", "adapterType", adapterType, "count", registeredInAdapter.size(), "count", ghost.size(), "count", lost.size());
 
         lost.forEach(db -> registeredInAdapter.remove(db.getName()));
 
         return new DatabasesInfoSegment(
-                adapterType,
-                adapterReal,
-                new DatabasesRegistrationInfo(registeredInAdapter.values(), lost, ghost),
-                markedForDrop);
-    }
-
-    private Optional<DbaasAdapter> getAdapter(String adapterId) {
-        return physicalDatabasesService.getAllAdapters()
-                .stream()
-                .filter(dbaasAdapter -> dbaasAdapter.identifier().equals(adapterId))
-                .findFirst();
+                adapterType);
     }
 }

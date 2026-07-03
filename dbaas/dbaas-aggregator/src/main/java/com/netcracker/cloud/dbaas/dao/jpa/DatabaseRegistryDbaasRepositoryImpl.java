@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.backupV2.Filter;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
@@ -58,12 +59,12 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     }
 
     public List<DatabaseRegistry> findAnyLogDbRegistryTypeByNamespace(String namespace) {
-        log.debug("Search all logical databases registry by namespace={}", namespace);
+        StructuredLog.debug(log, "Search all logical databases registry by namespace=", "namespace", namespace);
         List<DatabaseRegistry> databaseList = doGet(() -> databaseRegistryRepository.findByNamespace(namespace), ex -> {
-            log.debug("Catch exception = {} while trying to find logical databases Registry by namespace in Postgre, go to h2 database", ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical databases Registry by namespace in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRegistryRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity).toList();
         });
-        log.debug("Was found {} logical database registry in namespace={}", databaseList.size(), namespace);
+        StructuredLog.debug(log, "Was found logical database registry in namespace=", "arg0", databaseList.size(), "namespace", namespace);
         return databaseList;
     }
 
@@ -81,7 +82,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
 
     @Override
     public List<DatabaseRegistry> findAnyLogDbTypeByNameAndOptionalParams(String name, @Nullable String namespace) {
-        log.debug("Search all logical databases by namespace={} and name={}", namespace, name);
+        StructuredLog.debug(log, "Search all logical databases by namespace= and name=", "namespace", namespace, "name", name);
         List<DatabaseRegistry> databaseList;
         if (StringUtils.isNotBlank(namespace)) {
             List<DatabaseRegistry> databaseRegistries = findAnyLogDbRegistryTypeByNamespace(namespace);
@@ -90,32 +91,31 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
                     .toList();
         } else {
             databaseList = doGet(() -> databasesRepository.findAnyLogDbTypeByName(name), ex -> {
-                log.debug("Catch exception = {} while trying to find logical database by namespace in Postgre, go to h2 database", ex.getMessage());
+                StructuredLog.debug(log, "Catch exception = while trying to find logical database by namespace in Postgre, go to h2 database", "error", ex.getMessage());
                 return h2DatabaseRepository.findAnyLogDbTypeByName(name).stream().map(com.netcracker.cloud.dbaas.entity.h2.Database::asPgEntity).toList();
             }).stream().map(Database::getDatabaseRegistry).flatMap(List::stream).toList();
         }
-        log.debug("Was found {} logical database in namespace={} with name={}", databaseList.size(), namespace, name);
+        StructuredLog.debug(log, "Was found logical database in namespace= with name=", "arg0", databaseList.size(), "namespace", namespace, "name", name);
         return databaseList;
     }
 
     @Override
     public List<DatabaseRegistry> findInternalDatabaseRegistryByNamespace(String namespace) {
-        log.debug("Search internal logical databaseRegistries by namespace {}", namespace);
+        StructuredLog.debug(log, "Search internal logical databaseRegistries by namespace", "namespace", namespace);
         List<DatabaseRegistry> databaseRegistries = doGet(() -> databaseRegistryRepository.findByNamespace(namespace), ex -> {
-            log.debug("Catch exception = {} while trying to find internal logical database by namespace in Postgre, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find internal logical database by namespace in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRegistryRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity).toList();
         });
         List<DatabaseRegistry> databaseRegistriesList = databaseRegistries.stream()
                 .filter(database -> !database.getDatabase().isExternallyManageable())
                 .collect(Collectors.toList());
-        log.debug("Was found {} internal logical databaseRegistries in namespace={}", databaseRegistriesList.size(), namespace);
+        StructuredLog.debug(log, "Was found internal logical databaseRegistries in namespace=", "arg0", databaseRegistriesList.size(), "namespace", namespace);
         return databaseRegistriesList;
     }
 
     @Override
     public DatabaseRegistry saveExternalDatabase(DatabaseRegistry databaseRegistry) {
-        log.debug("Save external manageable logical database with classifier {} and type={}", databaseRegistry.getClassifier(), databaseRegistry.getType());
+        StructuredLog.debug(log, "Save external manageable logical database with classifier and type=", "classifier", databaseRegistry.getClassifier(), "arg1", databaseRegistry.getType());
         return save(databaseRegistry);
     }
 
@@ -130,13 +130,13 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         if (StringUtils.isBlank(databaseRegistry.getPhysicalDatabaseId())) {
             throw new RuntimeException(String.format("Unable to save database %s, because physicalDbId=%s is null or empty", databaseRegistry.getName(), databaseRegistry.getPhysicalDatabaseId()));
         }
-        log.debug("Save internal logical database with classifier {} and type {}", databaseRegistry.getClassifier(), databaseRegistry.getType());
+        StructuredLog.debug(log, "Save internal logical database with classifier and type", "classifier", databaseRegistry.getClassifier(), "arg1", databaseRegistry.getType());
         return save(databaseRegistry);
     }
 
     @Override
     public DatabaseRegistry saveAnyTypeLogDb(DatabaseRegistry databaseRegistry) {
-        log.debug("Save logical database with classifier {} and type {}", databaseRegistry.getClassifier(), databaseRegistry.getType());
+        StructuredLog.debug(log, "Save logical database with classifier and type", "classifier", databaseRegistry.getClassifier(), "arg1", databaseRegistry.getType());
         return save(databaseRegistry);
     }
 
@@ -158,7 +158,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     @Override
     public void delete(DatabaseRegistry databaseRegistry) {
         UUID databaseRegistryId = databaseRegistry.getId();
-        log.debug("Delete database registry with id={}", databaseRegistryId);
+        StructuredLog.debug(log, "Delete database registry with id=", "databaseRegistryId", databaseRegistryId);
         synchronized (getMutex()) {
             deleteDatabase(databaseRegistryId);
             Failsafe.with(H2_DELETE_RETRY_POLICY).run(() -> safeDeleteAndFlushDatabaseRegistry(databaseRegistryId));
@@ -195,72 +195,68 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         for (DatabaseRegistry databaseRegistry : databaseRegistries) {
             try {
                 delete(databaseRegistry);
-                log.info("External database registry in {} with classifier {} was dropped", namespace, databaseRegistry.getClassifier());
+                StructuredLog.info(log, "External database registry in with classifier was dropped", "namespace", namespace, "classifier", databaseRegistry.getClassifier());
                 count++;
             } catch (Exception ex) {
-                log.error("Error happened during dropping external database registry id {}, with message {}", databaseRegistry.getId(), ex.getMessage(), ex);
+                StructuredLog.error(log, "Error happened during dropping external database registry id , with message", "arg0", databaseRegistry.getId(), "error", ex.getMessage());
             }
         }
 
-        log.info("Was successfully dropped {} external logical databases in namespace={}", count, namespace);
+        StructuredLog.info(log, "Was successfully dropped external logical databases in namespace=", "count", count, "namespace", namespace);
     }
 
 
     @Override
     public Optional<DatabaseRegistry> findDatabaseRegistryById(UUID id) {
         return doGet(() -> databaseRegistryRepository.findByIdOptional(id), ex -> {
-            log.debug("Catch exception = {} while trying to find database registry by id in Postgresql, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find database registry by id in Postgresql, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRegistryRepository.findByIdOptional(id).map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity);
         });
     }
 
     @Override
     public List<DatabaseRegistry> findExternalDatabaseRegistryByNamespace(String namespace) {
-        log.debug("Search external logical database registries with namespace {}", namespace);
+        StructuredLog.debug(log, "Search external logical database registries with namespace", "namespace", namespace);
         List<DatabaseRegistry> databaseRegistries = doGet(() -> databaseRegistryRepository.findByNamespace(namespace),
                 ex -> {
-                    log.debug("Catch exception = {} while trying to find external logical database in Postgre, go to h2 database",
-                            ex.getMessage());
+                    StructuredLog.debug(log, "Catch exception = while trying to find external logical database in Postgre, go to h2 database", "error", ex.getMessage());
                     return h2DatabaseRegistryRepository.findByNamespace(namespace).stream().map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity).toList();
                 });
         List<DatabaseRegistry> externalDatabases = databaseRegistries.stream()
                 .filter(db -> db.getDatabase().isExternallyManageable()).collect(Collectors.toList());
-        log.debug("Was found {} external logical database with namespace {}", externalDatabases.size(), namespace);
+        StructuredLog.debug(log, "Was found external logical database with namespace", "arg0", externalDatabases.size(), "namespace", namespace);
         return externalDatabases;
     }
 
     @Override
     public List<DatabaseRegistry> findAllInternalDatabases() {
         List<DatabaseRegistry> databases = doGet(() -> databaseRegistryRepository.listAll(), ex -> {
-            log.debug("Catch exception = {} while trying to find internal logical databases in Postgre, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find internal logical databases in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRegistryRepository.listAll().stream().map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity).toList();
         });
         List<DatabaseRegistry> databaseList = databases.stream()
                 .filter(database -> !database.isExternallyManageable())
                 .collect(Collectors.toList());
 
-        log.debug("Was found {} all internal logical databases", databaseList.size());
+        StructuredLog.debug(log, "Was found all internal logical databases", "arg0", databaseList.size());
         return databaseList;
     }
 
     @Override
     public List<DatabaseRegistry> findAllDatabaseRegistersAnyLogType() {
         List<DatabaseRegistry> databases = doGet(() -> databaseRegistryRepository.listAll(), ex -> {
-            log.debug("Catch exception = {} while trying to find all logical databases in postgresql, go to h2 database",
-                    ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find all logical databases in postgresql, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRegistryRepository.listAll().stream().map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity).toList();
 
         });
-        log.debug("Was found {} database any logical type", databases.size());
+        StructuredLog.debug(log, "Was found database any logical type", "arg0", databases.size());
         return databases;
     }
 
     @Override
     public List<DatabaseRegistry> findAllDatabasesAnyLogTypeFromCache() {
         List<DatabaseRegistry> databaseRegistries = h2DatabaseRegistryRepository.listAll().stream().map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity).toList();
-        log.debug("Was found {} database any logical type", databaseRegistries.size());
+        StructuredLog.debug(log, "Was found database any logical type", "arg0", databaseRegistries.size());
         return databaseRegistries;
     }
 
@@ -272,7 +268,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     @Override
     public Optional<DatabaseRegistry> getDatabaseByClassifierAndType(Map<String, Object> classifier, String type) {
         return doGet(() -> databaseRegistryRepository.findDatabaseRegistryByClassifierAndType(new TreeMap<>(classifier), type), ex -> {
-            log.debug("Catch exception = {} while trying to find logical databases by classifier and type in Postgre, go to h2 database", ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical databases by classifier and type in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRegistryRepository.findDatabaseRegistryByClassifierAndType(new TreeMap<>(classifier), type).map(com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry::asPgEntity);
         });
     }
@@ -280,17 +276,17 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     @Override
     public DatabaseRegistry getDatabaseByOldClassifierAndType(Map<String, Object> classifier, String type) {
         return doGet(() -> databasesRepository.findByOldClassifierAndType(new TreeMap<>(classifier), type).getDatabaseRegistry().get(0), ex -> {
-            log.debug("Catch exception = {} while trying to find logical databases by classifier and type in Postgre, go to h2 database", ex.getMessage());
+            StructuredLog.debug(log, "Catch exception = while trying to find logical databases by classifier and type in Postgre, go to h2 database", "error", ex.getMessage());
             return h2DatabaseRepository.findByOldClassifierAndType(new TreeMap<>(classifier), type).map(db -> db.getDatabaseRegistry().get(0).asPgEntity()).orElse(null);
         });
     }
 
     public void reloadDatabaseRegistryH2Cache(UUID databaseRegistryId) {
-        log.debug("reload in h2 databaseRegistry with id= {}", databaseRegistryId);
+        StructuredLog.debug(log, "reload in h2 databaseRegistry with id=", "databaseRegistryId", databaseRegistryId);
         Optional<DatabaseRegistry> databaseRegistry = databaseRegistryRepository.findByIdOptional(databaseRegistryId);
         safeDeleteAndFlushDatabaseRegistry(databaseRegistryId);
         databaseRegistry.ifPresent(value -> QuarkusTransaction.requiringNew().run(() -> {
-            log.debug("save in h2 databaseRegistry= {}", value);
+            StructuredLog.debug(log, "save in h2 databaseRegistry=", "value", value);
             h2DatabaseRepository.findByIdOptional(value.getDatabase().getId()).ifPresentOrElse(
                     db -> {
                         db.getDatabaseRegistry().add(value.asH2Entity(db));
@@ -299,7 +295,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
                     () -> h2DatabaseRepository.merge(value.getDatabase().asH2Entity())
             );
         }));
-        log.info("finished reload in databaseregistry with id = {}", databaseRegistryId);
+        StructuredLog.info(log, "finished reload in databaseregistry with id =", "databaseRegistryId", databaseRegistryId);
     }
 
     public List<DatabaseRegistry> findAllVersionedDatabaseRegistries(String namespace) {
@@ -310,7 +306,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         if (databaseRegistry.getConnectionProperties() != null) {
             databaseRegistry.getConnectionProperties().stream().filter(cp -> cp.containsKey(ROLE)).forEach(cp -> cp.put(ROLE, ((String) cp.get(ROLE)).toLowerCase()));
         }
-        log.debug("save classifier = {}", databaseRegistry);
+        StructuredLog.debug(log, "save classifier =", "databaseRegistry", databaseRegistry);
         synchronized (getMutex()) {
             Database savedDatabase = databaseRegistry.getDatabase();
             if (databaseRegistry.getId() == null) {
@@ -322,7 +318,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
             }
             Optional<DatabaseRegistry> savedDatabaseRegistry = savedDatabase.getDatabaseRegistry().stream()
                     .filter(v -> v.getClassifier().equals(databaseRegistry.getClassifier())).findFirst();
-            log.debug("saved classifier = {}", savedDatabaseRegistry);
+            StructuredLog.debug(log, "saved classifier =", "savedDatabaseRegistry", savedDatabaseRegistry);
             return savedDatabaseRegistry.orElseThrow();
         }
     }
@@ -354,7 +350,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
             h2DatabaseRepository.persist(database);
         }
 
-        log.debug("delete in h2 database registry with id= {}", databaseRegistryId);
+        StructuredLog.debug(log, "delete in h2 database registry with id=", "databaseRegistryId", databaseRegistryId);
         h2DatabaseRepository.flush();
     }
 

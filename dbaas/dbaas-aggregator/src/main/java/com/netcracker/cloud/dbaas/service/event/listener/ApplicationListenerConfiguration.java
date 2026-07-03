@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.event.listener;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;

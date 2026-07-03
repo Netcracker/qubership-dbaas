@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dao.jpa;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
@@ -33,16 +34,16 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
 
     public Stream<PhysicalDatabase> findByType(String type) {
         List<PhysicalDatabase> databaseList = doGet(() -> physicalDatabasesRepository.findByType(type), ex -> {
-            log.warn("Catch exception = {} while trying to find physical databases by type in Postgre, go to h2 database", ex.getMessage());
+StructuredLog.warn(log, "Catch exception = while trying to find physical databases by type in Postgre, go to h2 database", "exception", ex.getMessage());
             return h2PhysicalDatabaseRepository.findByType(type).stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
-        log.debug("founded by type={} physical databases = {}", type, databaseList);
+StructuredLog.debug(log, "founded by type= physical databases =", "type", type, "databaseList", databaseList);
         return databaseList.stream();
     }
 
     public PhysicalDatabase findByPhysicalDatabaseIdentifier(String physicalDatabaseIdentifier) {
         return doGet(() -> physicalDatabasesRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseIdentifier), ex -> {
-            log.warn("Catch exception = {} while trying to find physical databases by identifier in Postgre, go to h2 database", ex.getMessage());
+StructuredLog.warn(log, "Catch exception = while trying to find physical databases by identifier in Postgre, go to h2 database", "exception", ex.getMessage());
             return h2PhysicalDatabaseRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseIdentifier).map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
         });
     }
@@ -60,7 +61,7 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
 
     public PhysicalDatabase findByAdapterAddress(String adapterAddress) {
         return doGet(() -> physicalDatabasesRepository.findByAdapterAddress(adapterAddress), ex -> {
-            log.warn("Catch exception = {} while trying to find physical databases by adapter address in Postgre, go to h2 database", ex.getMessage());
+StructuredLog.warn(log, "Catch exception = while trying to find physical databases by adapter address in Postgre, go to h2 database", "exception", ex.getMessage());
 
             return h2PhysicalDatabaseRepository.findByAdapterAddress(adapterAddress).map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
         });
@@ -68,21 +69,21 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
 
     public List<PhysicalDatabase> findByAdapterHost(String adapterHost) {
         return doGet(() -> physicalDatabasesRepository.findByAdapterAddressHost(adapterHost), ex -> {
-            log.warn("Catch exception = {} while trying to find physical databases by adapter host in Postgres, go to h2 database", ex.getMessage());
+StructuredLog.warn(log, "Catch exception = while trying to find physical databases by adapter host in Postgres, go to h2 database", "exception", ex.getMessage());
             return h2PhysicalDatabaseRepository.findByAdapterAddressHost(adapterHost).stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
     }
 
     public List<PhysicalDatabase> findAll() {
         return doGet(() -> physicalDatabasesRepository.listAll(), ex -> {
-            log.warn("Catch exception = {} while trying to find all physical databases in Postgre, go to h2 database", ex.getMessage());
+StructuredLog.warn(log, "Catch exception = while trying to find all physical databases in Postgre, go to h2 database", "exception", ex.getMessage());
             return h2PhysicalDatabaseRepository.listAll().stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
     }
 
     public PhysicalDatabase findByAdapterId(String adapterId) {
         return doGet(() -> physicalDatabasesRepository.findByAdapterId(adapterId), ex -> {
-            log.warn("Catch exception = {} while trying to find physical database by adapterId in Postgre, go to h2 database", ex.getMessage());
+StructuredLog.warn(log, "Catch exception = while trying to find physical database by adapterId in Postgre, go to h2 database", "exception", ex.getMessage());
             return h2PhysicalDatabaseRepository.findByAdapterId(adapterId).map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).orElse(null);
         });
     }
@@ -90,7 +91,7 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
     @Override
     public Optional<PhysicalDatabase> findGlobalByType(String type) {
         List<PhysicalDatabase> globals = doGet(() -> physicalDatabasesRepository.findByTypeAndGlobal(type, true), ex -> {
-            log.warn("Catch exception = {} while trying to find physical database by type in Postgre, go to h2 database", ex.getMessage());
+StructuredLog.warn(log, "Catch exception = while trying to find physical database by type in Postgre, go to h2 database", "exception", ex.getMessage());
             return h2PhysicalDatabaseRepository.findByTypeAndGlobal(type, true).stream().map(com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase::asPgEntity).toList();
         });
         return globals == null || globals.isEmpty()
@@ -119,15 +120,15 @@ public class PhysicalDatabaseDbaasRepositoryImpl implements PhysicalDatabaseDbaa
     }
 
     public void reloadH2Cache(String id) {
-        log.debug("reload in h2 physical database with id = {}", id);
+StructuredLog.debug(log, "reload in h2 physical database with id =", "id", id);
         Optional<PhysicalDatabase> database = physicalDatabasesRepository.findByIdOptional(id);
         if (h2PhysicalDatabaseRepository.existsById(id)) {
-            log.debug("delete in h2 physical database with id = {}", id);
+StructuredLog.debug(log, "delete in h2 physical database with id =", "id", id);
             h2PhysicalDatabaseRepository.deleteById(id);
             h2PhysicalDatabaseRepository.flush();
         }
         database.ifPresent(value -> {
-            log.debug("save in h2 physical database = {}", value);
+StructuredLog.debug(log, "save in h2 physical database =", "value", value);
             h2PhysicalDatabaseRepository.merge(value.asH2Entity());
         });
         h2PhysicalDatabaseRepository.flush();

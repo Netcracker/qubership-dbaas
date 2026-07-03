@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.rsql;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

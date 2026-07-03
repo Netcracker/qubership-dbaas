@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.monitoring.indicators.AggregatedHealthResponse;
 import com.netcracker.cloud.dbaas.service.HealthService;

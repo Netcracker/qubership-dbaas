@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.bluegreen.NewDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
@@ -33,6 +34,6 @@ public class NewDatabaseTask extends AbstractDbaaSTask implements Serializable {
 
         updateState(context, "Creating new DB with classifier " + configuration.getClassifier());
         blueGreenService.createOrUpdateDatabaseWarmup(configuration, version);
-        log.debug("Done '{}' task with classifier = {}", super.getName(), configuration.getClassifier());
+StructuredLog.debug(log, "Done '' task with classifier =", "classifier", super.getName(), "classifier", configuration.getClassifier());
     }
 }

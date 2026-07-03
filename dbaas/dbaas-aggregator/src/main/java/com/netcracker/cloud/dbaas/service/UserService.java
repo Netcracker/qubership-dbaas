@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.Source;
@@ -88,7 +89,7 @@ public class UserService {
     public RestoreUsersResponse restoreUsers(RestoreUsersRequest request) {
         Optional<DatabaseRegistry> databaseOptional = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(request.getClassifier(), request.getType());
         if (databaseOptional.isEmpty()) {
-            log.error("Database with classifier={} is not found.", request.getClassifier());
+StructuredLog.error(log, "Database with classifier= is not found", "classifier", request.getClassifier());
             throw new DbNotFoundException(request.getType(), request.getClassifier(), Source.builder().pointer("").build());
         }
         DatabaseRegistry database = databaseOptional.get();
@@ -148,7 +149,7 @@ public class UserService {
             return databaseUsers.stream()
                     .filter(u -> u.getLogicalUserId().equals(request.getLogicalUserId())).findFirst();
         }
-        log.error("Database with classifier={} is not found.", request.getClassifier());
+StructuredLog.error(log, "Database with classifier= is not found", "classifier", request.getClassifier());
         throw new DbNotFoundException(request.getType(),
                 request.getClassifier(),
                 Source.builder().pointer("").build());
@@ -183,7 +184,7 @@ public class UserService {
                 .findFirst()
                 .orElse(null);
         if (resource == null) {
-            log.error("Resources for user with 'userId'={} is not found", user.getUserId());
+StructuredLog.error(log, "Resources for user with 'userId'= is not found", "arg0", user.getUserId());
             return false;
         }
         boolean isUserDeleted = adapter.deleteUser(Collections.singletonList(resource));

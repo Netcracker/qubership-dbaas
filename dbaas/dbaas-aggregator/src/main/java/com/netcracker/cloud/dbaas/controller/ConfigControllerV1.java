@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -75,7 +76,7 @@ public class ConfigControllerV1 {
     @POST
     @Path("/apply")
     public Response applyConfigs(String request) {
-        log.info("Request {}", request);
+StructuredLog.info(log, "Request", "request", request);
         DeclarativePayload declarativePayload = parseAndValidateRequest(request);
 
         DeclarativeResponse declarativeResponse = new DeclarativeResponse();
@@ -98,7 +99,7 @@ public class ConfigControllerV1 {
         } else {
             response = Response.ok(declarativeResponse).build();
         }
-        log.info("Response {}", response);
+StructuredLog.info(log, "Response", "response", response);
         return response;
     }
 
@@ -128,7 +129,7 @@ public class ConfigControllerV1 {
             }
             return declarativePayload;
         } catch (Exception e) {
-            log.error("Error during parsing declarative configuration: {}", e.getMessage());
+StructuredLog.error(log, "Error during parsing declarative configuration:", "arg0", e.getMessage());
             throw new DeclarativeConfigurationValidationException(e.getMessage());
         }
     }
@@ -193,7 +194,7 @@ public class ConfigControllerV1 {
     @Transactional
     public Response terminateOperation(@Parameter(description = "Id to track operation", required = true)
                                        @PathParam("trackingId") String trackingId) {
-        log.info("Received request to terminate operation with id = {}", trackingId);
+StructuredLog.info(log, "Received request to terminate operation with id =", "trackingId", trackingId);
         ProcessInstanceImpl process = processService.getProcess(trackingId);
         if (process == null) {
             throw new TrackingIdNotFoundException(trackingId);

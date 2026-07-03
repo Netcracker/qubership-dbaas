@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
@@ -54,7 +55,7 @@ public class DebugControllerV3 extends AbstractController {
     @GET
     @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM})
     public Response getDumpOfDbaasDatabaseInformation(@HeaderParam(HttpHeaders.ACCEPT) String acceptHeaderValue) {
-        log.info("Received request to get dump of DbaaS database information. Accept header with value: {}", acceptHeaderValue);
+StructuredLog.info(log, "Received request to get dump of DbaaS database information. Accept header with value:", "acceptHeaderValue", acceptHeaderValue);
 
         var dump = debugService.loadDumpV3();
 
@@ -132,7 +133,7 @@ public class DebugControllerV3 extends AbstractController {
             @Parameter(description = "This parameter specifies custom RESTful Service Query Language (RSQL) query to apply filtering.")
             @QueryParam("filter") String filterQueryParamValue) {
         try {
-            log.info("Received request to Debug Get Logical Databases. Accept filter query parameter with value: {}", filterQueryParamValue);
+StructuredLog.info(log, "Received request to Debug Get Logical Databases. Accept filter query parameter with value:", "filterQueryParamValue", filterQueryParamValue);
 
             var searchResponse = debugService.findDebugLogicalDatabases(filterQueryParamValue);
 

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;

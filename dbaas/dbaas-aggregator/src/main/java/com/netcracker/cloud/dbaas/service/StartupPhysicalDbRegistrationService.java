@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
@@ -38,7 +39,7 @@ public class StartupPhysicalDbRegistrationService {
         try {
             return physicalDatabasesRepository.findByAdapterAddress(adapterAddress) == null;
         } catch (Exception e) {
-            log.warn("Exception while searching for adapter {} in database:", adapterAddress, e);
+StructuredLog.warn(log, "Exception while searching for adapter in database:", e, "adapterAddress", adapterAddress);
             return true;
         }
     }
@@ -48,28 +49,28 @@ public class StartupPhysicalDbRegistrationService {
                 .build(DbaasAdapterRestClientV2.class)) {
             Response response = restClientV2.forceRegistration();
             if (response.getStatus() == Response.Status.ACCEPTED.getStatusCode()) {
-                log.info("Adapter {} was successfully notified about dbaas-aggregator startup via v2.", adapterAddress);
+StructuredLog.info(log, "Adapter was successfully notified about dbaas-aggregator startup via v2", "adapterAddress", adapterAddress);
                 return;
             } else if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
-                log.debug("V2 forceRegistration endpoint not found for the adapter{}, utilising v1 instead.", adapterAddress);
+StructuredLog.debug(log, "V2 forceRegistration endpoint not found for the adapter, utilising v1 instead", "adapterAddress", adapterAddress);
             } else {
-                log.warn("Unexpected response {} from adapter {} via v2!", response, adapterAddress);
+StructuredLog.warn(log, "Unexpected response from adapter via v2!", "response", response, "adapterAddress", adapterAddress);
                 return;
             }
         } catch (Exception e) {
-            log.warn("Couldn't notify adapter {} via v2, error:", adapterAddress, e);
+StructuredLog.warn(log, "Couldn't notify adapter via v2, error:", e, "adapterAddress", adapterAddress);
         }
 
         try (DbaasAdapterRestClient restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
                 .build(DbaasAdapterRestClient.class)) {
             Response response = restClient.forceRegistration();   
             if (response.getStatus() == Response.Status.ACCEPTED.getStatusCode()) {
-                log.info("Adapter {} was successfully notified about dbaas-aggregator startup.", adapterAddress);
+StructuredLog.info(log, "Adapter was successfully notified about dbaas-aggregator startup", "adapterAddress", adapterAddress);
             } else {
-                log.warn("Unexpected response {} from adapter {}!", response, adapterAddress);
+StructuredLog.warn(log, "Unexpected response from adapter !", "response", response, "adapterAddress", adapterAddress);
             }
         } catch (Exception e) {
-            log.warn("Couldn't notify adapter {}, error: ", adapterAddress, e);
+StructuredLog.warn(log, "Couldn't notify adapter, error:", e, "adapterAddress", adapterAddress);
         }
     }
 }

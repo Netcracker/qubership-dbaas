@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.connections.handlers;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.DatabaseType;
 

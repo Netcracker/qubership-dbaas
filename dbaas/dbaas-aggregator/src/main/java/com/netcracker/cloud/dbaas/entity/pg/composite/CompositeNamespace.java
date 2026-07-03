@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg.composite;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

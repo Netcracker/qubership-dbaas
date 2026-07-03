@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.backup.NamespaceBackupDeletion;
 import com.netcracker.cloud.dbaas.dto.backup.Status;
@@ -108,7 +109,7 @@ public class BlueGreenService {
                 .orElseThrow(() -> new BgRequestValidationException("Can't find active namespace for namespace"));
         String activeNamespace = activeBgNamespace.getNamespace();
         String candidateNamespace = requestedCandidateNamespace.getNamespace();
-        log.info("Current BG domain state: namespace1={}, namespace2={}", activeNamespace, candidateNamespace);
+StructuredLog.info(log, "Current BG domain state: namespace1=, namespace2=", "activeNamespace", activeNamespace, "candidateNamespace", candidateNamespace);
         if (CANDIDATE_STATE.equals(idleBgNamespace.getState()) && ACTIVE_STATE.equals(activeBgNamespace.getState())) {
             return null;
         }
@@ -123,7 +124,7 @@ public class BlueGreenService {
         if (trackOptional.isPresent()) {
             ProcessInstanceImpl process = processService.getProcess(trackOptional.get().getId());
             if (process != null) {
-                log.info("Found existing process for warmup operation in {} namespace: id={}", candidateNamespace, process.getId());
+StructuredLog.info(log, "Found existing process for warmup operation in namespace: id=", "candidateNamespace", candidateNamespace, "arg1", process.getId());
                 TaskState state = process.getState();
                 if (TaskState.IN_PROGRESS.equals(state) || TaskState.NOT_STARTED.equals(state)) {
                     log.warn("Old process is in progress, there is no need to create a new one");
@@ -157,7 +158,7 @@ public class BlueGreenService {
             }
             DatabaseExistence allDatabaseExists = databaseConfigurationCreationService.isAllDatabaseExists(newConfiguration, activeNamespace);
             if (allDatabaseExists.isExist() && allDatabaseExists.isActual()) {
-                log.debug("all databases with configuration = {} are exists", newConfiguration);
+StructuredLog.debug(log, "all databases with configuration = are exists", "newConfiguration", newConfiguration);
                 continue;
             }
             configsToCreateDatabase.add(new DatabaseToDeclarativeCreation(newConfiguration, false,
@@ -175,19 +176,19 @@ public class BlueGreenService {
     }
 
     private void shareStaticDatabases(String activeNamespace, String candidateNamespace) {
-        log.debug("Share static databases from {} to {} namespace", activeNamespace, candidateNamespace);
+StructuredLog.debug(log, "Share static databases from to namespace", "activeNamespace", activeNamespace, "candidateNamespace", candidateNamespace);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(activeNamespace)
                 .stream().filter(dbr -> dbr.getBgVersion() == null && !DeletionService.isMarkedForDrop(dbr))
                 .forEach(staticDatabaseRegistry -> dBaaService.shareDbToNamespace(staticDatabaseRegistry, candidateNamespace));
     }
 
     private BgNamespace updateBgNamespace(BgNamespace bgNamespace, String newState, String version) {
-        log.info("Updating {} BG namespace. Current state: {}", bgNamespace.getNamespace(), bgNamespace);
+StructuredLog.info(log, "Updating BG namespace. Current state:", "namespace", bgNamespace.getNamespace(), "bgNamespace", bgNamespace);
         bgNamespace.setState(newState);
         bgNamespace.setVersion(version);
         bgNamespace.setUpdateTime(new Date());
         bgNamespaceRepository.persist(bgNamespace);
-        log.info("New state: {}", bgNamespace);
+StructuredLog.info(log, "New state:", "bgNamespace", bgNamespace);
         return bgNamespace;
     }
 
@@ -314,12 +315,12 @@ public class BlueGreenService {
                         Role.ADMIN.toString(), version),
                 r -> r == null || !Response.Status.Family.SUCCESSFUL.equals(r.getStatusInfo().getFamily()),
                 ex -> {
-                    log.error("Cannot create database with classifier = {}", databaseConfig.getClassifier());
+StructuredLog.error(log, "Cannot create database with classifier =", "classifier", databaseConfig.getClassifier());
                     throw new RuntimeException("Cannot create database: " + ex.getMessage(), ex);
                 }
         );
         if (response == null) {
-            log.error("Cannot create database with classifier = {}", databaseConfig.getClassifier());
+StructuredLog.error(log, "Cannot create database with classifier =", "classifier", databaseConfig.getClassifier());
             throw new RuntimeException("Cannot create database: empty response");
         }
         return Response.status(response.getStatusInfo()).build();
@@ -329,7 +330,7 @@ public class BlueGreenService {
         return executeWithRetry(() -> backupsService.collectBackupSingleDatabase(namespace, backupId, true, databaseId),
                 b -> (b == null || NamespaceBackup.Status.FAIL.equals(b.getStatus())),
                 ex -> {
-                    log.error("Cannot do database backup with id = {}", databaseId);
+StructuredLog.error(log, "Cannot do database backup with id =", "databaseId", databaseId);
                     throw new RuntimeException("Cannot do database backup");
                 });
     }
@@ -341,7 +342,7 @@ public class BlueGreenService {
                 },
                 b -> (b == null || Status.FAIL.equals(b.getStatus())),
                 ex -> {
-                    log.error("Cannot do backup deletion with id = {}", namespaceBackupId);
+StructuredLog.error(log, "Cannot do backup deletion with id =", "namespaceBackupId", namespaceBackupId);
                     throw new RuntimeException("Cannot do backup deletion");
                 });
     }
@@ -358,8 +359,8 @@ public class BlueGreenService {
                         return backupsService.restore(backup, restorationId, databaseDeclarativeConfig.getNamespace(),
                                 true, version, databaseDeclarativeConfig.getClassifier(), prefixMap);
                     } catch (NamespaceRestorationFailedException e) {
-                        log.error("database with classifier = {} failed restoration with exception = {}",
-                                databaseDeclarativeConfig.getClassifier(), e.getMessage());
+                        StructuredLog.error(log, "database failed restoration",
+                                "classifier", databaseDeclarativeConfig.getClassifier(), "error", e.getMessage());
                         throw new RuntimeException(e);
                     }
                 },
@@ -369,7 +370,7 @@ public class BlueGreenService {
                     try {
                         location = new URI(DBAAS_PATH + "/backups/" + backupId + "/restorations/" + restorationId);
                     } catch (URISyntaxException se) {
-                        log.warn("Failed to build URI, error: {}", se.getMessage());
+StructuredLog.warn(log, "Failed to build URI, error:", "arg0", se.getMessage());
                     }
                     throw new BackupExecutionException(location, String.format("Backup restore %s execution failed", restorationId), ex);
                 });
@@ -393,10 +394,10 @@ public class BlueGreenService {
                     actionResult = action.get();
                 }
             } catch (Throwable e) {
-                log.warn("Some exception happened = {}, during execution with retry", e.getMessage(), e);
+StructuredLog.warn(log, "Some exception happened =, during execution with retry", e, "happened", e.getMessage());
                 ex = e;
             } finally {
-                log.debug("action result = {}", actionResult);
+StructuredLog.debug(log, "action result =", "actionResult", actionResult);
                 if (!Thread.currentThread().isInterrupted()) {
                     if (ex != null || actionResult == null || condition.test(actionResult)) {
                         try {
@@ -407,7 +408,7 @@ public class BlueGreenService {
                     }
                 }
                 counter++;
-                log.debug("counter = {}", counter);
+StructuredLog.debug(log, "counter =", "counter", counter);
             }
             if (ex != null && ex.getClass().equals(InteruptedPollingException.class)) {
                 log.info("Task was terminated");
@@ -443,7 +444,7 @@ public class BlueGreenService {
                             .getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(namespace)
                             .stream().filter(Predicate.not(DeletionService::isMarkedForDrop)).toList();
                     if (!namespaceDatabaseRegistries.isEmpty()) {
-                        log.error("namespace = {} still have databases", namespace);
+StructuredLog.error(log, "namespace = still have databases", "namespace", namespace);
                         throw new BgNamespaceNotEmptyException("namespace = " + namespace + " still have databases");
                     }
                 });
@@ -490,7 +491,7 @@ public class BlueGreenService {
         originBgNamespace.setVersion(bgStateRequest.getBGState().getOriginNamespace().getVersion());
         originBgNamespace.setUpdateTime(bgStateRequest.getBGState().getUpdateTime());
         bgNamespaceRepository.persist(originBgNamespace);
-        log.info("New BG state for {} namespace: {}", originBgNamespace.getNamespace(), originBgNamespace);
+StructuredLog.info(log, "New BG state for namespace:", "namespace", originBgNamespace.getNamespace(), "originBgNamespace", originBgNamespace);
 
         Optional<BgNamespace> optionalPeerBgNamespace = bgNamespaceRepository.findBgNamespaceByNamespace(bgStateRequest.getBGState().getPeerNamespace().getName());
         BgNamespace peerBgNamespace = optionalPeerBgNamespace.orElseThrow();
@@ -498,7 +499,7 @@ public class BlueGreenService {
         peerBgNamespace.setVersion(bgStateRequest.getBGState().getPeerNamespace().getVersion());
         peerBgNamespace.setUpdateTime(bgStateRequest.getBGState().getUpdateTime());
         bgNamespaceRepository.persist(peerBgNamespace);
-        log.info("New BG state for {} namespace: {}", peerBgNamespace.getNamespace(), peerBgNamespace);
+StructuredLog.info(log, "New BG state for namespace:", "namespace", peerBgNamespace.getNamespace(), "peerBgNamespace", peerBgNamespace);
 
         return orphanDatabasesCount;
     }
@@ -507,11 +508,11 @@ public class BlueGreenService {
     public int commitDatabasesByNamespace(String namespace) {
         declarativeDbaasCreationService.deleteDeclarativeConfigurationByNamespace(namespace);
 
-        log.debug("mark versioned databases for drop in namespace = {}", namespace);
+StructuredLog.debug(log, "mark versioned databases for drop in namespace =", "namespace", namespace);
         List<DatabaseRegistry> versionedDatabases = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllVersionedDatabaseRegistries(namespace);
         deletionService.markDatabasesAsOrphan(versionedDatabases);
 
-        log.debug("mark obsolete transactional databases for drop in namespace = {}", namespace);
+StructuredLog.debug(log, "mark obsolete transactional databases for drop in namespace =", "namespace", namespace);
         List<DatabaseRegistry> transactionalDatabases = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllTransactionalDatabaseRegistries(namespace)
                 .stream().filter(trDb -> trDb.getDatabaseRegistry().size() == 1).toList();
         deletionService.markDatabasesAsOrphan(transactionalDatabases);
@@ -566,7 +567,7 @@ public class BlueGreenService {
         Optional<BgNamespace> foundedPeerBgNamespaceOptional = bgNamespaceRepository.findBgNamespaceByNamespace(bgRequestedPeerNamespace.getName());
         BgNamespace foundedOriginBgNamespace = foundedOriginBgNamespaceOptional.orElseThrow();
         BgNamespace foundedPeerBgNamespace = foundedPeerBgNamespaceOptional.orElseThrow();
-        log.info("Current domain state: namespace1={}, namespace2={}", foundedOriginBgNamespace, foundedPeerBgNamespace);
+StructuredLog.info(log, "Current domain state: namespace1=, namespace2=", "foundedOriginBgNamespace", foundedOriginBgNamespace, "foundedPeerBgNamespace", foundedPeerBgNamespace);
 
         String firstState = foundedOriginBgNamespace.getState();
         String secondState = foundedPeerBgNamespace.getState();
@@ -577,17 +578,17 @@ public class BlueGreenService {
 
         foundedOriginBgNamespace.setState(bgRequestedOriginNamespace.getState());
         bgNamespaceRepository.persist(foundedOriginBgNamespace);
-        log.info("New BG state for {} namespace: {}", foundedOriginBgNamespace.getNamespace(), foundedOriginBgNamespace);
+StructuredLog.info(log, "New BG state for namespace:", "namespace", foundedOriginBgNamespace.getNamespace(), "foundedOriginBgNamespace", foundedOriginBgNamespace);
 
         foundedPeerBgNamespace.setState(bgRequestedPeerNamespace.getState());
         bgNamespaceRepository.persist(foundedPeerBgNamespace);
-        log.info("New BG state for {} namespace: {}", foundedPeerBgNamespace.getNamespace(), foundedPeerBgNamespace);
+StructuredLog.info(log, "New BG state for namespace:", "namespace", foundedPeerBgNamespace.getNamespace(), "foundedPeerBgNamespace", foundedPeerBgNamespace);
     }
 
     public List<DatabaseRegistry> dropOrphanDatabases(List<String> namespaces, Boolean delete) {
         List<DatabaseRegistry> orphanDatabases = deletionService.getOrphanRegistries(namespaces);
         if (delete) {
-            log.info("{} databases are going to be deleted", orphanDatabases.size());
+StructuredLog.info(log, "databases are going to be deleted", "count", orphanDatabases.size());
             namespaces.forEach(deletionService::cleanupOrphanRegistriesAsync);
         }
         return orphanDatabases;

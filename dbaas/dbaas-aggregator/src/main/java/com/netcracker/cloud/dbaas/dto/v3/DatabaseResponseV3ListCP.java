@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.netcracker.cloud.dbaas.entity.pg.Database;

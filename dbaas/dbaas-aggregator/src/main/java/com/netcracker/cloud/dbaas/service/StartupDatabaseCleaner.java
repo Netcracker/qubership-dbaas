@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
@@ -34,7 +35,7 @@ public class StartupDatabaseCleaner {
 
     @Transactional
     public void cleanProcessingDatabases() {
-        log.info("Starting cleanup of the stale PROCESSING databases. Current pod name: {}", dbaaSHelper.getPodName());
+StructuredLog.info(log, "Starting cleanup of the stale PROCESSING databases. Current pod name:", "arg0", dbaaSHelper.getPodName());
         List<Database> dbsToCleanup = databasesRepository.findByDbState_StateAndDbState_PodName(PROCESSING, dbaaSHelper.getPodName())
                 .stream()
                 .filter(db -> !db.isMarkedForDrop())
@@ -42,7 +43,7 @@ public class StartupDatabaseCleaner {
         if (dbsToCleanup.isEmpty()) {
             log.info("No stale PROCESSING databases found");
         } else {
-            log.info("Cleaning up stale PROCESSING databases: {}, pod name {}", dbsToCleanup, dbaaSHelper.getPodName());
+StructuredLog.info(log, "Cleaning up stale PROCESSING databases:, pod name", "dbsToCleanup", dbsToCleanup, "arg1", dbaaSHelper.getPodName());
             if (dbaaSHelper.isProductionMode()) {
                 log.info("DbaaS in production mode. Marking PROCESSING databases as dropped");
                 Map<String, List<DatabaseRegistry>> namespaceDbs = new HashMap<>();

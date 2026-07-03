@@ -17,6 +17,7 @@ restrictedEnvironment: false
 
 # ============== SERVICE VARIABLES ============================
 LOG_LEVEL: "info"
+LOG_FORMAT: "json"
 K8S_EVENTS_ENABLED: false
 LEADER_ELECT: true
 # Rotation poll period as a Go duration (e.g. 15s, 1m). Leave empty to use the

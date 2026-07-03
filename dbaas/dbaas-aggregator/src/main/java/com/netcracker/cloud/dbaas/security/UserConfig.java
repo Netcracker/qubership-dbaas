@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.security;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import lombok.Data;
 

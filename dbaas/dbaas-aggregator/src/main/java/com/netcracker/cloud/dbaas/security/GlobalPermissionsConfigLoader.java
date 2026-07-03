@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.security;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,7 +25,7 @@ public class GlobalPermissionsConfigLoader {
 
     void loadGlobalPermissionsConfig(@Observes StartupEvent event,
                                      @ConfigProperty(name = "dbaas.global-permissions.configuration.location") String location) throws IOException {
-        log.info("Start global permissions configuration loading from {}...", location);
+StructuredLog.info(log, "Start global permissions configuration loading from", "location", location);
         InputStream configStream = getClass().getResourceAsStream(location);
         if (configStream == null) {
             configStream = FileUtils.openInputStream(FileUtils.getFile(location));
@@ -32,6 +33,6 @@ public class GlobalPermissionsConfigLoader {
         globalPermissionConfiguration = new ObjectMapper().readValue(configStream, new TypeReference<>() {
         });
         configStream.close();
-        log.info("{} global permissions loaded", globalPermissionConfiguration.size());
+StructuredLog.info(log, "global permissions loaded", "count", globalPermissionConfiguration.size());
     }
 }

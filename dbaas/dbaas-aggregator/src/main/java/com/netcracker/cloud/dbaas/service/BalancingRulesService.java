@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.OnMicroserviceRuleRequest;
 import com.netcracker.cloud.dbaas.dto.RuleOnMicroservice;
@@ -57,23 +58,23 @@ public class BalancingRulesService {
         String physicalDatabaseIdentifier = getPhysicalDatabaseIdentifier(ruleRequest);
         PerNamespaceRule storedRule = balancingRulesDbaasRepository.findByName(ruleName);
         if (storedRule != null) {
-            log.info("Updating rule {}", ruleName);
+StructuredLog.info(log, "Updating rule", "ruleName", ruleName);
             if (requestOrder != null) {
                 storedRule.setOrder(requestOrder);
             }
             storedRule.setPhysicalDatabaseIdentifier(physicalDatabaseIdentifier);
-            log.info("Rule was updated: {}", storedRule);
+StructuredLog.info(log, "Rule was updated:", "storedRule", storedRule);
             balancingRulesDbaasRepository.save(storedRule);
             return true;
         }
         log.info("New rule creation");
         Long order = requestOrder != null ? requestOrder : computeOrder(namespace, ruleRequest.getType());
-        log.info("Order of new rule: {}", order);
+StructuredLog.info(log, "Order of new rule:", "order", order);
         PerNamespaceRule newRule = new PerNamespaceRule(ruleName, order, ruleRequest.getType(),
                 namespace, physicalDatabaseIdentifier, RuleType.NAMESPACE);
-        log.info("Created rule: {}", newRule);
+StructuredLog.info(log, "Created rule:", "newRule", newRule);
         PerNamespaceRule savedRule = balancingRulesDbaasRepository.save(newRule);
-        log.info("Rule was saved: {}", savedRule);
+StructuredLog.info(log, "Rule was saved:", "savedRule", savedRule);
         return false;
     }
 
@@ -84,18 +85,18 @@ public class BalancingRulesService {
             for (String namespace : rule.getNamespaces()) {
                 PerNamespaceRule ruleToRegister = balancingRulesDbaasRepository.findPerNamespaceRuleByNamespaceAndDatabaseTypeAndRuleType(namespace, rule.getDbType(), RuleType.PERMANENT);
                 if (ruleToRegister != null && isRuleAlreadyRegistered(ruleToRegister, namespace, rule)) {
-                    log.info("Rule = {} is already registered", ruleToRegister);
+StructuredLog.info(log, "Rule = is already registered", "ruleToRegister", ruleToRegister);
                     continue;
                 }
                 if (ruleToRegister == null) {
                     long ruleOrder = 0L;
                     ruleToRegister = new PerNamespaceRule(UUID.randomUUID().toString(), ruleOrder, rule.getDbType(),
                             namespace, rule.getPhysicalDatabaseId(), RuleType.PERMANENT);
-                    log.info("New rule was added: {}", ruleToRegister);
+StructuredLog.info(log, "New rule was added:", "ruleToRegister", ruleToRegister);
                 } else {
                     ruleToRegister.setNamespace(namespace);
                     ruleToRegister.setPhysicalDatabaseIdentifier(rule.getPhysicalDatabaseId());
-                    log.info("Rule was updated: {}", ruleToRegister);
+StructuredLog.info(log, "Rule was updated:", "ruleToRegister", ruleToRegister);
                 }
 
                 balancingRulesDbaasRepository.save(ruleToRegister);
@@ -122,13 +123,12 @@ public class BalancingRulesService {
     }
 
     public List<PerMicroserviceRule> getOnMicroserviceBalancingRules(String namespace) {
-        log.debug("Start to get on microservice physical database balancing rules for namespace: {}", namespace);
+StructuredLog.debug(log, "Start to get on microservice physical database balancing rules for namespace:", "namespace", namespace);
 
         var onMicroserviceBalancingRules = balancingRulesDbaasRepository.findPerMicroserviceByNamespace(namespace);
 
-        log.debug("Finish to get {} on microservice physical database balancing rules for namespace {}",
-            onMicroserviceBalancingRules.size(), namespace
-        );
+        StructuredLog.debug(log, "Finish to get microservice physical database balancing rules for namespace",
+                "count", onMicroserviceBalancingRules.size(), "namespace", namespace);
         return onMicroserviceBalancingRules;
     }
 
@@ -149,7 +149,7 @@ public class BalancingRulesService {
             }
 
             List<PerMicroserviceRule> existedRules = existingRulesPerTypeMap.get(request.getType());
-            log.debug("start check on {}", request);
+StructuredLog.debug(log, "start check on", "request", request);
             for (String microservice : request.getMicroservices()) {
                 Optional<PerMicroserviceRule> specificRuleToMicroservice = Optional.empty();
                 if (existedRules != null) {
@@ -184,19 +184,19 @@ public class BalancingRulesService {
         Optional<PerMicroserviceRule> ruleToApply =
                 rules.stream().max(Comparator.comparingLong(PerMicroserviceRule::getGeneration));
         if (ruleToApply.isEmpty()) {
-            log.warn("Rule in namespace={} with microservice={} and databaseType={} not found", namespace, microservice, databaseType);
+StructuredLog.warn(log, "Rule in namespace= with microservice= and databaseType= not found", "namespace", namespace, "microservice", microservice, "databaseType", databaseType);
             return null;
         }
         if (ruleToApply.get().getRules() == null || ruleToApply.get().getRules().isEmpty()) {
-            log.warn("Rule in namespace={} with microservice={} and databaseType={} is empty", namespace, microservice, databaseType);
+StructuredLog.warn(log, "Rule in namespace= with microservice= and databaseType= is empty", "namespace", namespace, "microservice", microservice, "databaseType", databaseType);
             return null;
         }
         if (ruleToApply.get().getRules().get(0).getLabel() == null || ruleToApply.get().getRules().get(0).getLabel().isEmpty()) {
-            log.warn("Rule in namespace={} with microservice={} and databaseType={} has no labels", namespace, microservice, databaseType);
+StructuredLog.warn(log, "Rule in namespace= with microservice= and databaseType= has no labels", "namespace", namespace, "microservice", microservice, "databaseType", databaseType);
             return null;
         }
         if (databaseType.equalsIgnoreCase(ruleToApply.get().getType())) {
-            log.info("Rule for namespace {}, microservice {} and database type {} : {}", namespace, microservice, databaseType, ruleToApply);
+StructuredLog.info(log, "Rule for namespace, microservice and database type:", "namespace", namespace, "microservice", microservice, "databaseType", databaseType, "ruleToApply", ruleToApply);
             String label = ruleToApply.get().getRules().get(0).getLabel();
             return getCheckPhysicalDatabaseByLabel(label, databaseType);
         } else {
@@ -210,7 +210,7 @@ public class BalancingRulesService {
         if (physicalDatabase == null) {
             physicalDatabase = getGlobalPhysicalDatabaseIdentifier(databaseType);
             if (physicalDatabase == null) {
-                log.warn("Default physical databases are disabled and no dedicated rules found for namespace {} and database type {}", namespace, databaseType);
+StructuredLog.warn(log, "Default physical databases are disabled and no dedicated rules found for namespace and database type", "namespace", namespace, "databaseType", databaseType);
             }
         }
         return physicalDatabase;
@@ -224,7 +224,7 @@ public class BalancingRulesService {
         }
 
         if (physicalDatabase == null) {
-            log.error("Unable to determine physical database from rules for microservice '{}' in namespace '{}'", microserviceName, namespace);
+StructuredLog.error(log, "Unable to determine physical database from rules for microservice '' in namespace ''", "microserviceName", microserviceName, "namespace", namespace);
             throw new NoBalancingRuleException(ErrorCodes.CORE_DBAAS_4033, ErrorCodes.CORE_DBAAS_4033.getDetail(microserviceName, namespace));
         }
         return physicalDatabase;
@@ -237,10 +237,10 @@ public class BalancingRulesService {
         if (ruleToApply.isEmpty()) {
             ruleToApply = Optional.ofNullable(balancingRulesDbaasRepository.findPerNamespaceRuleByNamespaceAndDatabaseTypeAndRuleType(namespace, databaseType, RuleType.PERMANENT));
         }
-        log.info("Rule for namespace {} and database type {} with max order: {}", namespace, databaseType, ruleToApply);
+StructuredLog.info(log, "Rule for namespace and database type with max order:", "namespace", namespace, "databaseType", databaseType, "ruleToApply", ruleToApply);
         if (ruleToApply.isPresent()) {
             String physicalDatabaseIdentifier = ruleToApply.get().getPhysicalDatabaseIdentifier();
-            log.info("Physical database identifier: {}", physicalDatabaseIdentifier);
+StructuredLog.info(log, "Physical database identifier:", "physicalDatabaseIdentifier", physicalDatabaseIdentifier);
             PhysicalDatabase physicalDatabase = physicalDatabasesService.getByPhysicalDatabaseIdentifier(physicalDatabaseIdentifier);
             if (physicalDatabase == null) {
                 throw new UnregisteredPhysicalDatabaseException("Identifier: " + physicalDatabaseIdentifier);
@@ -254,7 +254,7 @@ public class BalancingRulesService {
     @Transactional
     public void removeRulesByNamespace(String namespace) {
         List<PerNamespaceRule> namespaceRules = balancingRulesDbaasRepository.findByNamespace(namespace);
-        log.info("Removing per namespace rules: {}", namespaceRules);
+StructuredLog.info(log, "Removing per namespace rules:", "namespaceRules", namespaceRules);
         balancingRulesDbaasRepository.deleteAll(namespaceRules);
     }
 
@@ -264,10 +264,10 @@ public class BalancingRulesService {
         if (namespaceRule == null ||
                 namespaceRule.getRuleType() != RuleType.NAMESPACE ||
                 !namespace.equals(namespaceRule.getNamespace())) {
-            log.info("Per namespace rule {} was not found in namespace {}", ruleName, namespace);
+StructuredLog.info(log, "Per namespace rule was not found in namespace", "ruleName", ruleName, "namespace", namespace);
             return false;
         }
-        log.info("Removing per namespace rule: {}", namespaceRule);
+StructuredLog.info(log, "Removing per namespace rule:", "namespaceRule", namespaceRule);
         balancingRulesDbaasRepository.delete(namespaceRule);
         return true;
     }
@@ -276,7 +276,7 @@ public class BalancingRulesService {
     @Transactional
     public void removePerMicroserviceRulesByNamespace(String namespace) {
         List<PerMicroserviceRule> namespaceRules = balancingRulesDbaasRepository.findPerMicroserviceByNamespace(namespace);
-        log.info("Removing per microservice rules: {}", namespaceRules);
+StructuredLog.info(log, "Removing per microservice rules:", "namespaceRules", namespaceRules);
         balancingRulesDbaasRepository.deleteAllPerMicroserviceRules(namespaceRules);
     }
 
@@ -286,7 +286,7 @@ public class BalancingRulesService {
         try {
             mapLabelToPhysDb = mapLabelsToPhysicalDatabases(onMicroserviceRulesRequest, namespace);
         } catch (InvalidMicroserviceRuleSizeException | OnMicroserviceBalancingRuleException e) {
-            log.error("Validation of rules on microservices has failed because of: {}", e.getMessage());
+StructuredLog.error(log, "Validation of rules on microservices has failed because of:", "arg0", e.getMessage());
             throw e;
         }
         Map<String, String> defaults = collectDefaultDatabases();
@@ -327,7 +327,7 @@ public class BalancingRulesService {
 
     private Map<String, List<PerMicroserviceRule>> getSavedRulesPerDbMicroservice(String namespace) {
         List<PerMicroserviceRule> rules = balancingRulesDbaasRepository.findPerMicroserviceByNamespaceWithMaxGeneration(namespace);
-        log.debug("rules were found {}", rules);
+StructuredLog.debug(log, "rules were found", "rules", rules);
         return rules.stream().collect(Collectors.groupingBy(PerMicroserviceRule::getType));
     }
 
@@ -340,12 +340,12 @@ public class BalancingRulesService {
         if (defaultPhysicalDatabasesDisabled) {
             return null;
         } else {
-            log.info("Looking for global database of {} type", databaseType);
+StructuredLog.info(log, "Looking for global database of type", "databaseType", databaseType);
             PhysicalDatabase defaultPhysical = physicalDatabasesService.balanceByType(databaseType);
             if (defaultPhysical == null) {
                 throw new UnregisteredPhysicalDatabaseException("DB type: " + databaseType);
             }
-            log.info("Default physical database determined: {}", defaultPhysical);
+StructuredLog.info(log, "Default physical database determined:", "defaultPhysical", defaultPhysical);
             return defaultPhysical;
         }
     }
@@ -374,7 +374,7 @@ public class BalancingRulesService {
 
     PhysicalDatabase getCheckPhysicalDatabaseByLabel(String requestLabels, String type) {
 
-        log.info("Try to find physical database with label: {}", requestLabels);
+StructuredLog.info(log, "Try to find physical database with label:", "requestLabels", requestLabels);
 
         String[] labelArray = parsePerMicroserviceRequestLabel(requestLabels);
 
@@ -410,7 +410,7 @@ public class BalancingRulesService {
     }
 
     public List<PerNamespaceRule> copyNamespaceRule(String sourceNamespace, String targetNamespace) {
-        log.info("Copy namespace rules from namespace {} to {}", sourceNamespace, targetNamespace);
+StructuredLog.info(log, "Copy namespace rules from namespace to", "sourceNamespace", sourceNamespace, "targetNamespace", targetNamespace);
         List<PerNamespaceRule> namespaceRules =
                 balancingRulesDbaasRepository.findAllRulesByNamespace(sourceNamespace).stream().map(rule -> {
                     PerNamespaceRule perNamespaceRule = new PerNamespaceRule(rule);
@@ -418,12 +418,12 @@ public class BalancingRulesService {
                     perNamespaceRule.setName(rule.getName() + "_" + UUID.randomUUID());
                     return perNamespaceRule;
                 }).collect(Collectors.toList());
-        log.debug("Copied namespaceRules = {}", namespaceRules);
+StructuredLog.debug(log, "Copied namespaceRules =", "namespaceRules", namespaceRules);
         return balancingRulesDbaasRepository.saveAllNamespaceRules(namespaceRules);
     }
 
     public List<PerMicroserviceRule> copyMicroserviceRule(String sourceNamespace, String targetNamespace) {
-        log.info("Copy microservice rules from namespace {} to {}", sourceNamespace, targetNamespace);
+StructuredLog.info(log, "Copy microservice rules from namespace to", "sourceNamespace", sourceNamespace, "targetNamespace", targetNamespace);
 
         int maxGeneration = -1;
         List<PerMicroserviceRule> rulesToSave = new ArrayList<>();

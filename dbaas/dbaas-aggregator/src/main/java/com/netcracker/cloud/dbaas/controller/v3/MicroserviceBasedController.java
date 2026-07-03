@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.adapter.AccessGrantsResponse;
 import com.netcracker.cloud.dbaas.dto.v3.ErrorMessage;
@@ -51,7 +52,7 @@ public class MicroserviceBasedController {
                                     @PathParam(NAMESPACE_PARAMETER) String namespace,
                                     @Parameter(description = "Microservice name")
                                     @PathParam("serviceName") String serviceName) {
-        log.info("Receive request to get actual access grants on service={} in namespace={}", serviceName, namespace);
+StructuredLog.info(log, "Receive request to get actual access grants on service= in namespace=", "serviceName", serviceName, "namespace", namespace);
         Optional<DatabaseRole> databaseRoleOpt = databaseRolesService.getAccessGrants(namespace, serviceName);
         if (databaseRoleOpt.isPresent()) {
             DatabaseRole databaseRole = databaseRoleOpt.get();
@@ -60,7 +61,7 @@ public class MicroserviceBasedController {
                     databaseRole.getDisableGlobalPermissions());
             return Response.ok(accessGrantsResponse).build();
         }
-        log.debug("Access grants for service's databases was not founded. Namespace = {}, serviceName = {}.", namespace, serviceName);
+StructuredLog.debug(log, "Access grants for service's databases was not founded. Namespace =, serviceName =", "namespace", namespace, "serviceName", serviceName);
         return Response.status(Response.Status.NOT_FOUND).entity(new ErrorMessage(
                 String.format("Access grants for service's databases was not founded. Namespace = %s, serviceName = %s.",
                         namespace,

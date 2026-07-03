@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.JdbcUtils;
 import lombok.*;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 import lombok.extern.slf4j.Slf4j;
 
 import org.flywaydb.core.api.migration.BaseJavaMigration;
@@ -95,7 +96,7 @@ public class V1_013__RepairConnectionProperties extends BaseJavaMigration {
         try {
             jsonbClassifier.setValue(mapper.writeValueAsString(migratedV3Classifier));
         } catch (JsonProcessingException e) {
-            log.warn(e.getMessage());
+            StructuredLog.warn(log, "Failed to serialize migrated classifier", "error", e.getMessage());
             return true;
         }
         PreparedStatement ps = connection.prepareStatement("SELECT count(*) FROM public.database where classifier = ? and type = ?;");
@@ -116,7 +117,7 @@ public class V1_013__RepairConnectionProperties extends BaseJavaMigration {
             jsonbClassifier.setValue(mapper.writeValueAsString(classifier));
             jsonbClassifier2.setValue(mapper.writeValueAsString(oldClassifier));
         } catch (JsonProcessingException e) {
-            log.warn(e.getMessage());
+            StructuredLog.warn(log, "Failed to serialize migrated classifier", "error", e.getMessage());
             return true;
         }
 

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
@@ -59,7 +60,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @Transactional
     public Response warmup(@Parameter(description = "target namespace to warmup version to warmup", required = true)
                            BgStateRequest bgStateRequest) {
-        log.info("Received request to warmup: {}", bgStateRequest);
+StructuredLog.info(log, "Received request to warmup:", "bgStateRequest", bgStateRequest);
         if (!isValidBgStateRequest(bgStateRequest.getBGState())) {
             throw new BgRequestValidationException("Origin namespace or peer namespace in not present");
         }
@@ -90,7 +91,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @Transactional
     public Response promote(@Parameter(description = "Blue-Green state to promote", required = true)
                             BgStateRequest bgStateRequest) {
-        log.info("Received request to promote: {}", bgStateRequest);
+StructuredLog.info(log, "Received request to promote:", "bgStateRequest", bgStateRequest);
         blueGreenService.promote(bgStateRequest);
         BlueGreenResponse blueGreenResponse = new BlueGreenResponse();
         blueGreenResponse.setMessage("promote was done");
@@ -111,7 +112,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @Transactional
     public Response rollback(@Parameter(description = "Blue-Green state to rollback", required = true)
                              BgStateRequest bgStateRequest) {
-        log.info("Received request to rollback: {}", bgStateRequest);
+StructuredLog.info(log, "Received request to rollback:", "bgStateRequest", bgStateRequest);
         blueGreenService.rollback(bgStateRequest);
         BlueGreenResponse blueGreenResponse = new BlueGreenResponse();
         blueGreenResponse.setMessage("rollback was done");
@@ -131,13 +132,13 @@ public class BlueGreenControllerV1 extends AbstractController {
     @GET
     public Response getOperationStatus(@Parameter(description = "Id to track operation", required = true)
                                        @PathParam("trackingId") String trackingId) {
-        log.info("Received request to return operation status with id = {}", trackingId);
+StructuredLog.info(log, "Received request to return operation status with id =", "trackingId", trackingId);
         ProcessInstanceImpl process = processService.getProcess(trackingId);
         OperationStatusResponse operationStatusResponse = new OperationStatusResponse();
         operationStatusResponse.setMessage(getProcessMessage(process));
         operationStatusResponse.setStatus(process.getState());
         operationStatusResponse.setOperationDetails(getOperationDetails(process));
-        log.info("Operation status: {}, {}", operationStatusResponse.getStatus(), operationStatusResponse.getMessage());
+StructuredLog.info(log, "Operation status:", "status", operationStatusResponse.getStatus(), "status", operationStatusResponse.getMessage());
 
         return Response.ok(operationStatusResponse).build();
     }
@@ -155,14 +156,14 @@ public class BlueGreenControllerV1 extends AbstractController {
     @Transactional
     public Response terminateOperaion(@Parameter(description = "Id to track operation", required = true)
                                       @PathParam("trackingId") String trackingId) {
-        log.info("Received request to terminate operation with id = {}", trackingId);
+StructuredLog.info(log, "Received request to terminate operation with id =", "trackingId", trackingId);
         processService.terminateProcess(trackingId);
         ProcessInstanceImpl process = processService.getProcess(trackingId);
         OperationStatusResponse operationStatusResponse = new OperationStatusResponse();
         operationStatusResponse.setMessage(getProcessMessage(process));
         operationStatusResponse.setStatus(process.getState());
         operationStatusResponse.setOperationDetails(getOperationDetails(process));
-        log.info("Process successfully terminated: {} {}", operationStatusResponse.getStatus(), operationStatusResponse.getMessage());
+StructuredLog.info(log, "Process successfully terminated:", "status", operationStatusResponse.getStatus(), "status", operationStatusResponse.getMessage());
         return Response.ok(operationStatusResponse).build();
     }
 
@@ -219,7 +220,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @POST
     @Transactional
     public Response initBgDomain(BgStateRequest bgStateRequest) {
-        log.info("Receive request to init bg domain: {}", bgStateRequest);
+StructuredLog.info(log, "Receive request to init bg domain:", "bgStateRequest", bgStateRequest);
         blueGreenService.initBgDomain(bgStateRequest);
         log.info("Domain successfully created");
         return Response.ok(new BlueGreenResponse("Success init domain")).build();
@@ -238,7 +239,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @POST
     @Transactional
     public Response commit(BgStateRequest bgStateRequest) {
-        log.info("Receive request to commit: {}", bgStateRequest);
+StructuredLog.info(log, "Receive request to commit:", "bgStateRequest", bgStateRequest);
         BgStateRequest.BGStateNamespace bgRequestNamespace1 = bgStateRequest.getBGState().getOriginNamespace();
         BgStateRequest.BGStateNamespace bgRequestNamespace2 = bgStateRequest.getBGState().getPeerNamespace();
         if (!(bgRequestNamespace1.getState().equals(ACTIVE_STATE) && bgRequestNamespace2.getState().equals(IDLE_STATE) ||
@@ -252,7 +253,7 @@ public class BlueGreenControllerV1 extends AbstractController {
         }
         Optional<BgNamespace> optionalBgNamespace1 = domain.getNamespaces().stream().filter(v -> v.getNamespace().equals(bgRequestNamespace1.getName())).findFirst();
         Optional<BgNamespace> optionalBgNamespace2 = domain.getNamespaces().stream().filter(v -> v.getNamespace().equals(bgRequestNamespace2.getName())).findFirst();
-        log.info("Current domain state: {}, namespace1={}, namespace2={}", domain, optionalBgNamespace1, optionalBgNamespace2);
+StructuredLog.info(log, "Current domain state:, namespace1=, namespace2=", "domain", domain, "optionalBgNamespace1", optionalBgNamespace1, "optionalBgNamespace2", optionalBgNamespace2);
         if (optionalBgNamespace1.isEmpty() || optionalBgNamespace2.isEmpty()) {
             throw new BgRequestValidationException("The requested namespaces are missing from the domain");
         }
@@ -268,7 +269,7 @@ public class BlueGreenControllerV1 extends AbstractController {
         }
 
         int markedDatabasesAsOrphan = blueGreenService.commit(bgStateRequest);
-        log.info("Commit operation successfully finished, {} databases are marked as Orphan", markedDatabasesAsOrphan);
+StructuredLog.info(log, "Commit operation successfully finished, databases are marked as Orphan", "markedDatabasesAsOrphan", markedDatabasesAsOrphan);
         return Response.ok(new BlueGreenResponse(markedDatabasesAsOrphan + " databases are marked as Orphan")).build();
     }
 
@@ -284,7 +285,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @POST
     public Response getOrphans(@Parameter(description = "List of namespaces in blue-green state by which orhan databases is needed to return", required = true)
                                List<String> namespaces) {
-        log.info("Receive request to get orphan databases in {}", namespaces);
+StructuredLog.info(log, "Receive request to get orphan databases in", "namespaces", namespaces);
         if (CollectionUtils.isEmpty(namespaces)) {
             throw new BgRequestValidationException("Should be at least one namespace");
         }
@@ -309,7 +310,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @DELETE
     @Transactional
     public Response cleanupOrphans(DeleteOrphansRequest request) {
-        log.info("Receive request to drop orphan databases in {}", request.getNamespaces());
+StructuredLog.info(log, "Receive request to drop orphan databases in", "namespace", request.getNamespaces());
         if (CollectionUtils.isEmpty(request.getNamespaces())) {
             throw new BgRequestValidationException("Should be at least one namespace");
         }
@@ -341,7 +342,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @Path("/get-domains/{namespace}")
     @GET
     public Response getBgDomain(@PathParam("namespace") String namespace) {
-        log.info("Receive request to get BG domain for {} namespace", namespace);
+StructuredLog.info(log, "Receive request to get BG domain for namespace", "namespace", namespace);
         return Response.ok(new BgDomainForGet(blueGreenService.getDomain(namespace))).build();
     }
 
@@ -373,7 +374,7 @@ public class BlueGreenControllerV1 extends AbstractController {
     @DELETE
     @Transactional
     public Response destroyBgDomain(BgNamespaceRequest bgNamespaceRequest) {
-        log.info("receive request to destroy BG domain: {}", bgNamespaceRequest);
+StructuredLog.info(log, "receive request to destroy BG domain:", "bgNamespaceRequest", bgNamespaceRequest);
         assertNotProdMode();
         Set<String> listOfNamespaces = new HashSet<>(
                 Set.of(bgNamespaceRequest.getOriginNamespace(), bgNamespaceRequest.getPeerNamespace()));

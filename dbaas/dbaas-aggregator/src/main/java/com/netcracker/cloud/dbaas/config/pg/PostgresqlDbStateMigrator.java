@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config.pg;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.JdbcUtils;
 import com.netcracker.cloud.dbaas.entity.pg.DbState;
@@ -36,7 +37,7 @@ public class PostgresqlDbStateMigrator {
         try (Connection connection = dataSource.getConnection()) {
             List<Map<String, Object>> rowDatabases = JdbcUtils.queryForList(connection,
                     "SELECT id, state FROM database_state_info where database_state is null and state in ('0', '1', '2', '3', '4, 5');");
-            log.info("Found {} with databases state", rowDatabases.size());
+StructuredLog.info(log, "Found with databases state", "count", rowDatabases.size());
             if (rowDatabases.isEmpty()) {
                 return;
             }
@@ -45,7 +46,7 @@ public class PostgresqlDbStateMigrator {
             PreparedStatement ps = connection.prepareStatement(sqlUpdate);
             for (Map<String, Object> row : rowDatabases) {
                 String state = (String) row.get("state");
-                log.debug("valuesMap = {}", valuesMap.get(state).name());
+StructuredLog.debug(log, "valuesMap =", "valuesMap", valuesMap.get(state).name());
                 ps.setObject(1, valuesMap.get(state).name());
                 ps.setObject(2, row.get("id"));
                 ps.addBatch();

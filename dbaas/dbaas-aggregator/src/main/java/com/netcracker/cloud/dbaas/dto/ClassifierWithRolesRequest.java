@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.v3.UserRolesServices;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;

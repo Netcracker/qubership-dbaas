@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 
 import com.netcracker.cloud.dbaas.dto.*;
@@ -51,8 +52,7 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     @Override
     @TimeMeasure(value = METRIC_NAME, tags = {"operation", "CreateDatabase"}, fieldTags = {"type", "identifier"})
     public CreatedDatabaseV3 createDatabaseV3(AbstractDatabaseCreateRequest databaseCreateRequest, String microserviceName) {
-        log.info("Adapter {} request to {} of type {} to create db with classifier {}",
-                identifier(), adapterAddress(), type(), databaseCreateRequest.getClassifier());
+        StructuredLog.info(log, "Adapter request to of type to create db with classifier", "arg0", identifier(), "adapter", adapterAddress(), "type", type(), "classifier", databaseCreateRequest.getClassifier());
         AdapterDatabaseCreateRequest adapterRequest = new AdapterDatabaseCreateRequest();
         Map<String, Object> metadata = buildMetadata(databaseCreateRequest.getClassifier());
         adapterRequest.setMetadata(metadata);
@@ -70,8 +70,7 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
 
     @Override
     public EnsuredUser ensureUser(String username, String password, String dbName, String role) {
-        log.info("Call adapter {} of type {} to ensure user {} of db {}",
-                adapterAddress(), type(), username, dbName);
+        StructuredLog.info(log, "Call adapter of type to ensure user of db", "adapter", adapterAddress(), "type", type(), "username", username, "dbName", dbName);
         UserEnsureRequestV3 request = new UserEnsureRequestV3(dbName, password, role);
         return username == null ? restClient.ensureUser(type(), request) : restClient.ensureUser(type(), username, request);
     }
@@ -80,21 +79,18 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
     public Response.StatusType restorePasswords(Map<String, Object> settings, List<Map<String, Object>> connectionProperties) {
         RestorePasswordsAdapterRequest request = new RestorePasswordsAdapterRequest(settings, connectionProperties);
         Response response = restClient.restorePassword(type(), request);
-        log.info("Received status code={} and body={} from adapter with id={} and type={} on passwords restoration request",
-                response.getStatus(), response.getEntity(), identifier(), type());
+        StructuredLog.info(log, "Received status code= and body= from adapter with id= and type= on passwords restoration request", "status", response.getStatus(), "arg1", response.getEntity(), "arg2", identifier(), "type", type());
         return response.getStatusInfo();
     }
 
     public EnsuredUser createUser(String dbName, String password, String role, String usernamePrefix) {
-        log.info("Call adapter {} of type {} to get or create user of db {}",
-                adapterAddress(), type(), dbName);
+        StructuredLog.info(log, "Call adapter of type to get or create user of db", "adapter", adapterAddress(), "type", type(), "dbName", dbName);
         GetOrCreateUserAdapterRequest request = new GetOrCreateUserAdapterRequest(dbName, role, usernamePrefix);
         return restClient.createUser(type(), request);
     }
 
     public boolean deleteUser(List<DbResource> resources) {
-        log.info("Call adapter {} of type {} to delete user",
-                adapterAddress(), type());
+        StructuredLog.info(log, "Call adapter of type to delete user", "adapter", adapterAddress(), "type", type());
         try (Response response = restClient.dropResources(type(), resources)) {
             return Response.Status.Family.SUCCESSFUL.equals(response.getStatusInfo().getFamily());
         }
@@ -168,15 +164,13 @@ public class DbaasAdapterRESTClientV2 extends AbstractDbaasAdapterRESTClient imp
 
     @Override
     public void changeMetaData(String dbName, Map<String, Object> metadata) {
-        log.info("Call adapter {} of type {} to update {} metadata {}",
-                adapterAddress(), type(), dbName, metadata);
+        StructuredLog.info(log, "Call adapter of type to update metadata", "adapter", adapterAddress(), "type", type(), "dbName", dbName, "metadata", metadata);
         restClient.changeMetaData(type(), dbName, metadata);
     }
 
     @Override
     public Map<String, DescribedDatabase> describeDatabases(Collection<String> databases) {
-        log.info("Call adapter {} of type {} to describe {} databases",
-                adapterAddress(), type(), databases.size());
+        StructuredLog.info(log, "Call adapter of type to describe databases", "adapter", adapterAddress(), "type", type(), "arg2", databases.size());
         return restClient.describeDatabases(type(), true, true, databases);
     }
 

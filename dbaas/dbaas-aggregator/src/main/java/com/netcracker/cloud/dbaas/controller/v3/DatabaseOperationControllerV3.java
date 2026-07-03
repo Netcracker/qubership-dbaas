@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3;
@@ -76,7 +77,7 @@ public class DatabaseOperationControllerV3 {
                                        PasswordChangeRequestV3 passwordChangeRequest,
                                        @Parameter(description = "Project namespace in which the databases are used")
                                        @PathParam(NAMESPACE_PARAMETER) String namespace) {
-        log.info("Received request on changed password with request body {} and namespace {}", passwordChangeRequest, namespace);
+StructuredLog.info(log, "Received request on changed password with request body and namespace", "passwordChangeRequest", passwordChangeRequest, "namespace", namespace);
         if (passwordChangeRequest == null || StringUtils.isEmpty(passwordChangeRequest.getType())) {
             throw new PasswordChangeValidationException("The request body is empty or database type is not specified", Source.builder()
                     .pointer(passwordChangeRequest == null ? "/" : "/type").build());
@@ -88,7 +89,7 @@ public class DatabaseOperationControllerV3 {
             response = passwordRotationService.changeUserPassword(passwordChangeRequest, namespace);
         }
 
-        log.info("Result of password change request {}", response);
+StructuredLog.info(log, "Result of password change request", "response", response);
         return Response.ok(response).build();
     }
 
@@ -115,7 +116,7 @@ public class DatabaseOperationControllerV3 {
                                               "and classifier of created logical database. " +
                                               "The list of created databases can be found by 'List of all databases' API", required = true)
                                       List<RecreateDatabaseRequest> recreateDatabasesRequests) {
-        log.info("Get request to recreate existing databases. Request body {}", recreateDatabasesRequests);
+StructuredLog.info(log, "Get request to recreate existing databases. Request body", "recreateDatabasesRequests", recreateDatabasesRequests);
         // request validation
         if (blueGreenService.getBgDomainContains(namespace).isPresent()) {
             log.info("recreate operation is prohibited in blue-green");
@@ -131,14 +132,16 @@ public class DatabaseOperationControllerV3 {
             try {
                 Optional<DatabaseRegistry> existedDbRegisty = getDatabase(namespace, recreateDbRequest);
                 DatabaseRegistry newDb = dBaaService.recreateDatabase(existedDbRegisty.orElseThrow(), recreateDbRequest.getPhysicalDatabaseId());
-                log.info("logical database with classifier {} and type {} was successfully recreated in physiacalDb id {}",
-                        recreateDbRequest.getClassifier(), recreateDbRequest.getType(), recreateDbRequest.getPhysicalDatabaseId());
+                StructuredLog.info(log, "logical database recreated successfully",
+                        "classifier", recreateDbRequest.getClassifier(), "type", recreateDbRequest.getType(),
+                        "physicalDbId", recreateDbRequest.getPhysicalDatabaseId());
                 DatabaseResponse newDbResponse = new DatabaseResponse(newDb.getDatabaseRegistry().get(0));// Here we can call get(0) beacuse recreate available only with 1 classifier
                 newDbResponse.setClassifier(newDb.getClassifier());
                 response.dbRecreated(recreateDbRequest.getClassifier(), recreateDbRequest.getType(), newDbResponse);
             } catch (Exception ex) {
-                log.error("Logical database with classifier {} and type {} can't be recreated in physical db {}. Error: {}", recreateDbRequest.getClassifier(),
-                        recreateDbRequest.getType(), recreateDbRequest.getPhysicalDatabaseId(), ex.getMessage());
+                StructuredLog.error(log, "Logical database can't be recreated in physical db",
+                        "classifier", recreateDbRequest.getClassifier(), "type", recreateDbRequest.getType(),
+                        "physicalDbId", recreateDbRequest.getPhysicalDatabaseId(), "error", ex.getMessage());
                 response.dbNotRecreated(recreateDbRequest.getClassifier(), recreateDbRequest.getType(), ex.getMessage());
             }
         }
@@ -168,8 +171,9 @@ public class DatabaseOperationControllerV3 {
                                      @PathParam("type") String type,
                                      @Parameter(description = "Contains primary and target classifier", required = true)
                                      UpdateClassifierRequestV3 updateClassifierRequest) {
-        log.info("Get request on update database classifier from {} to {} with type={} and namespace={}", updateClassifierRequest.getFrom(),
-                updateClassifierRequest.getTo(), type, namespace);
+        StructuredLog.info(log, "Get request on update database classifier",
+                "from", updateClassifierRequest.getFrom(), "to", updateClassifierRequest.getTo(),
+                "type", type, "namespace", namespace);
         List<ValidationException> errors = new ArrayList<>();
         if (MapUtils.isEmpty(updateClassifierRequest.getFrom())) {
             errors.add(new InvalidClassifierException("Classifier 'from' cannot be empty", updateClassifierRequest.getFrom(),
@@ -228,7 +232,7 @@ public class DatabaseOperationControllerV3 {
         DatabaseResponseV3 response = new DatabaseResponseV3ListCP(updatedDatabase.getDatabaseRegistry().stream()
                 .filter(dbr -> dbr.getClassifier().equals(updateClassifierRequest.getTo())).findFirst().orElseThrow(),
                 physicalDatabaseDbaasRepository.findByAdapterId(updatedDatabase.getAdapterId()).getPhysicalDatabaseIdentifier());
-        log.info("Database classifier was successfully updated. Database: {}", response);
+StructuredLog.info(log, "Database classifier was successfully updated. Database:", "response", response);
         return Response.ok(response).build();
     }
 
@@ -253,16 +257,16 @@ public class DatabaseOperationControllerV3 {
                                                @Parameter(description = "Contains classifier and new connection properties", required = true)
                                                UpdateConnectionPropertiesRequest updateConnectionPropertiesRequest) {
 
-        log.info("Get request on update connection properties for database with type={} and classifier={} and namespace={}",
-                type, updateConnectionPropertiesRequest.getClassifier(), namespace);
+        StructuredLog.info(log, "Get request on update connection properties for database",
+                "type", type, "classifier", updateConnectionPropertiesRequest.getClassifier(), "namespace", namespace);
         List<ValidationException> errors = new ArrayList<>();
         if (isUpdateConnectionRequestBodyValid(updateConnectionPropertiesRequest)) {
-            log.error("Database classifier or new connection properties must not be empty: {}", updateConnectionPropertiesRequest);
+StructuredLog.error(log, "Database classifier or new connection properties must not be empty:", "updateConnectionPropertiesRequest", updateConnectionPropertiesRequest);
             errors.add(new InvalidUpdateConnectionPropertiesRequestException("Database classifier or new connection properties must not be empty",
                     Source.builder().build()));
         }
         if (!updateConnectionPropertiesRequest.getConnectionProperties().containsKey(ROLE)) {
-            log.error("New connection properties must contain key 'role': {}", updateConnectionPropertiesRequest);
+StructuredLog.error(log, "New connection properties must contain key 'role':", "updateConnectionPropertiesRequest", updateConnectionPropertiesRequest);
             errors.add(new InvalidUpdateConnectionPropertiesRequestException("New connection properties must contain key 'role'",
                     Source.builder().build()));
         }
@@ -280,12 +284,12 @@ public class DatabaseOperationControllerV3 {
         }
         DatabaseRegistry foundDb = dBaaService.findDatabaseByClassifierAndType(updateConnectionPropertiesRequest.getClassifier(), type, true);
         if (foundDb == null) {
-            log.error("Database with classifier={} is not found.", updateConnectionPropertiesRequest.getClassifier());
+StructuredLog.error(log, "Database with classifier= is not found", "classifier", updateConnectionPropertiesRequest.getClassifier());
             throw new DbNotFoundException(type, updateConnectionPropertiesRequest.getClassifier(), Source.builder().pointer("/classifier").build());
         }
         String roleFromRequest = (String) updateConnectionPropertiesRequest.getConnectionProperties().get(ROLE);
         if (!isDatabaseContainsConnectionPropertiesForRole(roleFromRequest, foundDb.getDatabase().getConnectionProperties())) {
-            log.error("Database with classifier={} does not contain connection properties for role={}.", updateConnectionPropertiesRequest.getClassifier(), roleFromRequest);
+StructuredLog.error(log, "Database with classifier= does not contain connection properties for role=", "classifier", updateConnectionPropertiesRequest.getClassifier(), "roleFromRequest", roleFromRequest);
             throw new NotExistingConnectionPropertiesException(roleFromRequest);
         }
         Optional<DatabaseRegistry> updatedDatabaseRegistry = Optional.ofNullable(dBaaService.updateDatabaseConnectionProperties(updateConnectionPropertiesRequest, type));
@@ -310,11 +314,12 @@ public class DatabaseOperationControllerV3 {
                                   @Parameter(description = "Request body must contain list of microservice names to link " +
                                                             "and target namespace, to which databases for these microservices will be linked.", required = true)
                                   LinkDatabasesRequest linkDatabasesRequest) {
-        log.info("Get request on link databases for microservices={} from namespace={} to namespace={}",
-                linkDatabasesRequest.getServiceNames(), namespace, linkDatabasesRequest.getTargetNamespace());
+        StructuredLog.info(log, "Get request on link databases",
+                "microservices", linkDatabasesRequest.getServiceNames(), "fromNamespace", namespace,
+                "toNamespace", linkDatabasesRequest.getTargetNamespace());
         List<ValidationException> errors = new ArrayList<>();
         if (!isLinkDatabasesRequestBodyValid(linkDatabasesRequest)) {
-            log.error("Service names and target namespace must not be empty: {}", linkDatabasesRequest);
+StructuredLog.error(log, "Service names and target namespace must not be empty:", "linkDatabasesRequest", linkDatabasesRequest);
             errors.add(new InvalidLinkDatabasesRequestException("Service names and target namespace must not be empty",
                     Source.builder().build()));
         }
@@ -325,7 +330,7 @@ public class DatabaseOperationControllerV3 {
         List<DatabaseResponseV3ListCP> response = linkedRegistries.stream()
                 .map(dbr -> dBaaService.processConnectionPropertiesV3(dbr))
                 .toList();
-        log.info("{} databases were successfully linked to {} namespace.", linkedRegistries.size(), linkDatabasesRequest.getTargetNamespace());
+StructuredLog.info(log, "databases were successfully linked to namespace", "count", linkedRegistries.size(), "namespace", linkDatabasesRequest.getTargetNamespace());
         return Response.ok(response).build();
     }
 

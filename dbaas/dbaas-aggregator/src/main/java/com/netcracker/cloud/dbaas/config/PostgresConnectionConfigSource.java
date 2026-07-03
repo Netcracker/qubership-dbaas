@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.JdbcUtils;
 import org.eclipse.microprofile.config.spi.ConfigSource;

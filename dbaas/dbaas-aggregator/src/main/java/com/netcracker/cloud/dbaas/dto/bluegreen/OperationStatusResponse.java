@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.bluegreen;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;

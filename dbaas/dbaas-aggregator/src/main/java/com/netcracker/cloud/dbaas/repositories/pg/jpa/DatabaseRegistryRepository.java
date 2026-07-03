@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.repositories.pg.jpa;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.backupV2.DatabaseKind;
 import com.netcracker.cloud.dbaas.dto.backupV2.Filter;

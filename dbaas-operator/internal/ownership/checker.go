@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -52,12 +53,12 @@ func NewKindChecker[L client.ObjectList](cl client.Client, newList func() L) *Ki
 // exists in namespace.
 func (c *KindChecker[L]) HasBlockingResources(ctx context.Context, namespace string) (bool, error) {
 	list := c.newList()
-	log.InfoC(ctx, "Checking blocking resources kind=%T namespace=%s", list, namespace)
+	log.InfoC(ctx, "%s", logfields.Format("Checking blocking resources", "kind", list, "namespace", namespace))
 	if err := c.cl.List(ctx, list, client.InNamespace(namespace), client.Limit(1)); err != nil {
 		return false, fmt.Errorf("list %T in namespace %q: %w", list, namespace, err)
 	}
 	found := apimeta.LenList(list) > 0
-	log.InfoC(ctx, "Checked blocking resources kind=%T namespace=%s found=%v", list, namespace, found)
+	log.InfoC(ctx, "%s", logfields.Format("Checked blocking resources", "kind", list, "namespace", namespace, "found", found))
 	return found, nil
 }
 
@@ -80,17 +81,17 @@ func (c *CompositeChecker) Add(ch BlockingResourceChecker) {
 // HasBlockingResources returns true as soon as any constituent checker finds a
 // blocking resource, short-circuiting the remaining checks.
 func (c *CompositeChecker) HasBlockingResources(ctx context.Context, namespace string) (bool, error) {
-	log.InfoC(ctx, "Checking blocking resources namespace=%s checkers=%d", namespace, len(c.checkers))
+	log.InfoC(ctx, "%s", logfields.Format("Checking blocking resources", "namespace", namespace, "checkers", len(c.checkers)))
 	for _, ch := range c.checkers {
 		blocking, err := ch.HasBlockingResources(ctx, namespace)
 		if err != nil {
 			return false, err
 		}
 		if blocking {
-			log.InfoC(ctx, "Found blocking resources namespace=%s", namespace)
+			log.InfoC(ctx, "%s", logfields.Format("Found blocking resources", "namespace", namespace))
 			return true, nil
 		}
 	}
-	log.InfoC(ctx, "No blocking resources found namespace=%s", namespace)
+	log.InfoC(ctx, "%s", logfields.Format("No blocking resources found", "namespace", namespace))
 	return false, nil
 }

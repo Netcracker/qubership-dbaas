@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistrationResponseDTOV3;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.composite;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
@@ -52,7 +53,7 @@ public class CompositeController {
     @POST
     @Transactional
     public Response saveOrUpdateComposite(CompositeStructureDto compositeRequest) {
-        log.info("Received request to save or update composite {}", compositeRequest);
+StructuredLog.info(log, "Received request to save or update composite", "compositeRequest", compositeRequest);
         if (StringUtils.isBlank(compositeRequest.getId())) {
             throw new NamespaceCompositeValidationException(Source.builder().pointer("/id").build(), "id field can't be empty");
         }
@@ -103,7 +104,7 @@ public class CompositeController {
     @GET
     @Path("/{compositeId}")
     public Response getCompositeById(@PathParam("compositeId") String compositeId) {
-        log.info("Received request to get composite with id {}", compositeId);
+StructuredLog.info(log, "Received request to get composite with id", "compositeId", compositeId);
         Optional<CompositeStructure> composite = compositeService.getCompositeStructure(compositeId);
         if (composite.isEmpty()) {
             return getNotFoundTmfErrorResponse(compositeId);
@@ -134,7 +135,7 @@ public class CompositeController {
     @Path("/{compositeId}/delete")
     @Transactional
     public Response deleteCompositeById(@PathParam("compositeId") String compositeId) {
-        log.info("Received request to delete composite with id {}", compositeId);
+StructuredLog.info(log, "Received request to delete composite with id", "compositeId", compositeId);
         Optional<CompositeStructure> compositeStructure = compositeService.getCompositeStructure(compositeId);
         if (compositeStructure.isEmpty()) {
             return getNotFoundTmfErrorResponse(compositeId);

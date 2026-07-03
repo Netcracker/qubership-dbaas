@@ -37,6 +37,7 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
@@ -112,11 +113,11 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	_, aggErr := r.Aggregator.ApplyConfig(ctx, payload)
 	recordAggregatorCall(controllerDAP, operationApplyConfig, aggStart, aggErr)
 	if aggErr != nil {
-		log.ErrorC(ctx, "failed to apply DatabaseAccessPolicy to dbaas-aggregator: %v", aggErr)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to apply DatabaseAccessPolicy to dbaas-aggregator", "error", aggErr))
 		return handleAggregatorError(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, aggErr, requestID)
 	}
 
-	log.InfoC(ctx, "DatabaseAccessPolicy applied successfully microserviceName=%v", dp.Spec.MicroserviceName)
+	log.InfoC(ctx, "%s", logfields.Format("DatabaseAccessPolicy applied successfully", "microserviceName", dp.Spec.MicroserviceName))
 	markSucceeded(&dp.Status.Phase, &dp.Status.Conditions, dp.Generation, EventReasonPolicyApplied)
 	r.Recorder.Eventf(dp, corev1.EventTypeNormal, EventReasonPolicyApplied,
 		"policy applied to dbaas-aggregator (microserviceName=%s, requestId=%s)",

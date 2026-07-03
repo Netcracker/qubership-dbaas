@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.migration;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
 import jakarta.ws.rs.core.Response;

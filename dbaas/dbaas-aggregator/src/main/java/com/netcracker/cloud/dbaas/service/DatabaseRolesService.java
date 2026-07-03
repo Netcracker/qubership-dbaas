@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.conigs.RolesRegistration;
 import com.netcracker.cloud.dbaas.dto.v3.UserRolesServices;
@@ -35,7 +36,7 @@ public class DatabaseRolesService {
     }
 
     public List<DatabaseRole> copyDatabaseRole(String sourceNamespace, String targetNamespace) {
-        log.info("Copy database roles from namespace {} to {}", sourceNamespace, targetNamespace);
+StructuredLog.info(log, "Copy database roles from namespace to", "sourceNamespace", sourceNamespace, "targetNamespace", targetNamespace);
         List<DatabaseRole> databaseRoles =
                 databaseRolesDbaasRepository.findAllByNamespaceOrderedByTimeCreation(sourceNamespace).stream().map(role -> {
                     DatabaseRole databaseRole = new DatabaseRole(role);

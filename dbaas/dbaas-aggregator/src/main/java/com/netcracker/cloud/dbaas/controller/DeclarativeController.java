@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,14 +65,14 @@ public class DeclarativeController {
                                         @PathParam("serviceName") String serviceName,
                                         String declarativeDatabaseRequest) {
 
-        log.info("REQUEST {}", declarativeDatabaseRequest);
+StructuredLog.info(log, "REQUEST", "declarativeDatabaseRequest", declarativeDatabaseRequest);
         DeclarativeCompositeRequestDTO compositeRequestDTO = parseIncomingRequest(declarativeDatabaseRequest);
 
         DeclarativeCreationResponse declarativeCreationResponse = new DeclarativeCreationResponse();
 
         RolesRegistrationRequest rolesRequest = compositeRequestDTO.getRolesRegistrationRequest();
         if (rolesRequest != null && (rolesRequest.getServices() != null || rolesRequest.getPolicy() != null)) {
-            log.info("Receive request to register role on service={} in namespace={} with body={}", serviceName, namespace, rolesRequest);
+StructuredLog.info(log, "Receive request to register role on service= in namespace= with body=", "serviceName", serviceName, "namespace", namespace, "rolesRequest", rolesRequest);
             databaseRolesService.saveRequestedRoles(namespace, serviceName, rolesRequest);
             DbPolicyResponse dbPolicyResponse = new DbPolicyResponse("requestedPolicies registered", "created");
             declarativeCreationResponse.setDbPolicy(dbPolicyResponse);
@@ -79,7 +80,7 @@ public class DeclarativeController {
         }
         DeclarativeDatabaseCreationRequest dbCreationRequest = compositeRequestDTO.getDatabaseCreationRequest();
         if (dbCreationRequest != null && (dbCreationRequest.getDeclarations() != null && !dbCreationRequest.getDeclarations().isEmpty())) {
-            log.info("Receive request to start databases config processing on service={} in namespace={} with body={}", serviceName, namespace, dbCreationRequest);
+StructuredLog.info(log, "Receive request to start databases config processing on service= in namespace= with body=", "serviceName", serviceName, "namespace", namespace, "dbCreationRequest", dbCreationRequest);
             ArrayList<AbstractDatabaseProcessObject> processObjects = dbaasCreationService.saveDeclarativeDatabase(namespace, serviceName, dbCreationRequest.getDeclarations());
             ProcessInstanceImpl processInstance = dbaasCreationService.startProcessInstance(namespace, processObjects);
             log.info("Declarative databases creation config were processed successfully");
@@ -161,7 +162,7 @@ public class DeclarativeController {
                 processJsonForNode(parsedJsonTree, compositeRequestDTO);
             }
         } catch (IOException | IllegalArgumentException e) {
-            log.error("Error during parsing JSON declarative configuration: {}", e.getMessage());
+StructuredLog.error(log, "Error during parsing JSON declarative configuration:", "arg0", e.getMessage());
             throw new DeclarativeConfigurationValidationException(e.getMessage());
         }
 

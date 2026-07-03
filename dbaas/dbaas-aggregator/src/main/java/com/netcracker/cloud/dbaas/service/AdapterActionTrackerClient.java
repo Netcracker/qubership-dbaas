@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.backup.Status;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
@@ -51,7 +52,7 @@ public class AdapterActionTrackerClient {
                                         final AbstractDbaasAdapterRESTClient adapter) throws InteruptedPollingException {
         try {
             startTrack.setAdapterId(adapter.identifier());
-            log.info("Start waiting for {}: {}", startTrack.getAction(), startTrack);
+            StructuredLog.info(log, "Start waiting for :", "arg0", startTrack.getAction(), "startTrack", startTrack);
             TrackedAction activeTrack = startTrack;
             startTrack.setWhenStarted(new Date());
             updateRepository(startTrack);
@@ -59,8 +60,7 @@ public class AdapterActionTrackerClient {
             int pollWith = actionTrackPollingPeriodBaseMs;
             int pollNumber = 0;
             while (activeTrack.getStatus() != Status.SUCCESS && pollNumber < actionTrackPollingLimitationTimes) {
-                log.info("Poll tracked action {} {}: {} of {} with period {}", action, startTrack.getTrackLog(),
-                        pollNumber, actionTrackPollingLimitationTimes, pollWith);
+                StructuredLog.info(log, "Poll tracked action : of with period", "action", action, "arg1", startTrack.getTrackLog(), "pollNumber", pollNumber, "actionTrackPollingLimitationTimes", actionTrackPollingLimitationTimes, "pollWith", pollWith);
                 pollNumber++;
                 Thread.sleep(pollWith);
                 pollWith += 1000; // wait longer with every retry
@@ -70,7 +70,7 @@ public class AdapterActionTrackerClient {
                 activeTrack.setAdapterId(adapter.identifier());
                 updateRepository(activeTrack);
                 if (Status.FAIL == activeTrack.getStatus()) {
-                    log.error("Action {} just failed: {}", activeTrack.getAction(), activeTrack);
+                    StructuredLog.error(log, "Action just failed:", "arg0", activeTrack.getAction(), "activeTrack", activeTrack);
                     return null;
                 }
                 if (Thread.currentThread().isInterrupted()) {
@@ -78,16 +78,16 @@ public class AdapterActionTrackerClient {
                 }
             }
             if (Status.PROCEEDING == activeTrack.getStatus()) {
-                log.error("Action {} has been to long to wait for", actionTrackPollingLimitationTimes);
+                StructuredLog.error(log, "Action has been to long to wait for", "actionTrackPollingLimitationTimes", actionTrackPollingLimitationTimes);
                 if (pollNumber >= actionTrackPollingLimitationTimes) {
-                    log.error("Action {} has been to long to wait for, limitation {} has been reached", action, actionTrackPollingLimitationTimes);
+                    StructuredLog.error(log, "Action has been to long to wait for, limitation has been reached", "action", action, "actionTrackPollingLimitationTimes", actionTrackPollingLimitationTimes);
                 }
                 return null;
             }
             cleanActions();
             return activeTrack;
         } catch (InterruptedException e) {
-            log.error("Thread for action {} tracking interrupted {}", startTrack.getAction(), startTrack, e);
+            StructuredLog.error(log, "Thread for action tracking interrupted", "arg0", startTrack.getAction(), "startTrack", startTrack);
             throw new InteruptedPollingException(e.getMessage());
         }
     }
@@ -115,7 +115,7 @@ public class AdapterActionTrackerClient {
             try {
                 actionTrackDbaasRepository.save(actionTrack);
             } catch (Exception ex) {
-                log.warn("Failed to update tracking action {}, skip save", actionTrack, ex);
+                StructuredLog.warn(log, "Failed to update tracking action , skip save", "actionTrack", actionTrack);
             }
         }
     }
@@ -143,14 +143,13 @@ public class AdapterActionTrackerClient {
                     backup.setStatus(successful.getStatus());
                     return backup;
                 } else {
-                    log.error("Failed to get successful backup track {} from adapter {}, assume backup failed",
-                            adapterBackupAction.getTrackLog(), adapter.identifier());
+                    StructuredLog.error(log, "Failed to get successful backup track from adapter , assume backup failed", "backup", adapterBackupAction.getTrackLog(), "adapter", adapter.identifier());
                     DatabasesBackup backup = new DatabasesBackup();
                     backup.setStatus(Status.FAIL);
                     return backup;
                 }
             } catch (Exception e) {
-                log.error("Failed to construct databases backup from {}", successful);
+                StructuredLog.error(log, "Failed to construct databases backup from", "successful", successful);
                 DatabasesBackup backup = new DatabasesBackup();
                 backup.setStatus(Status.FAIL);
                 return backup;
@@ -158,8 +157,7 @@ public class AdapterActionTrackerClient {
         } catch (InteruptedPollingException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Failed to get successful backup track {} from adapter {} on action {}",
-                    adapterBackupAction.getTrackLog(), adapter.identifier(), adapterBackupAction, e);
+            StructuredLog.error(log, "Failed to get successful backup track from adapter on action", "backup", adapterBackupAction.getTrackLog(), "adapter", adapter.identifier(), "adapterBackupAction", adapterBackupAction);
             DatabasesBackup backup = new DatabasesBackup();
             backup.setStatus(Status.FAIL);
             return backup;
@@ -175,14 +173,13 @@ public class AdapterActionTrackerClient {
                 backup.setStatus(tracked.getStatus());
                 return backup;
             } else {
-                log.error("Failed to get successful backup track {} from adapter {}, assume backup failed",
-                        adapterBackupAction.getTrackLog(), adapter.identifier());
+                StructuredLog.error(log, "Failed to get successful backup track from adapter , assume backup failed", "backup", adapterBackupAction.getTrackLog(), "adapter", adapter.identifier());
                 DatabasesBackup backup = new DatabasesBackup();
                 backup.setStatus(Status.FAIL);
                 return backup;
             }
         } catch (Exception e) {
-            log.error("Failed to construct databases backup from {}", tracked);
+            StructuredLog.error(log, "Failed to construct databases backup from", "tracked", tracked);
             DatabasesBackup backup = new DatabasesBackup();
             backup.setStatus(Status.FAIL);
             return backup;
@@ -203,12 +200,12 @@ public class AdapterActionTrackerClient {
                     result.setStatus(Status.SUCCESS);
                     return result;
                 } else {
-                    log.error("Failed to get successful restore track from adapter {}", adapter.identifier());
+                    StructuredLog.error(log, "Failed to get successful restore track from adapter", "adapter", adapter.identifier());
                     result.setStatus(Status.FAIL);
                     return result;
                 }
             } catch (Exception e) {
-                log.error("Failed to construct restore result from {}", successful);
+                StructuredLog.error(log, "Failed to construct restore result from", "successful", successful);
                 RestoreResult result = new RestoreResult(adapter.identifier());
                 result.setStatus(Status.FAIL);
                 return result;
@@ -216,9 +213,7 @@ public class AdapterActionTrackerClient {
         } catch (InteruptedPollingException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Failed to get successful restore track from adapter {} on action {}",
-                    adapter.identifier(),
-                    adapterBackupAction, e);
+            StructuredLog.error(log, "Failed to get successful restore track from adapter on action", "adapter", adapter.identifier(), "adapterBackupAction", adapterBackupAction);
             RestoreResult result = new RestoreResult(adapter.identifier());
             result.setStatus(Status.FAIL);
             return result;

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
@@ -69,7 +70,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                              @Parameter(description = "Parameters for registering physical database.", required = true)
                              PhysicalDatabaseRegistryRequestV3 parameters)
             throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException, JsonProcessingException {
-        log.debug("Starting registration of new adapter: {}, {}, {}", type, phydbid, parameters);
+StructuredLog.debug(log, "Starting registration of new adapter:", "type", type, "phydbid", phydbid, "parameters", parameters);
         validateRequest(parameters);
         Optional<PhysicalDatabase> foundDatabase = physicalDatabasesService.foundPhysicalDatabase(phydbid, type, parameters);
         if (foundDatabase.isPresent()) {
@@ -85,17 +86,17 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                         if (existingInstruction == null) {
                             log.info("Database with set instruction does not exist, new one should be created");
                             Instruction instruction = instructionService.buildInstructionForAdditionalRoles(logicalDatabases);
-                            log.info("Sending instruction for create users for roles = {}", parameters.getMetadata().getSupportedRoles());
+StructuredLog.info(log, "Sending instruction for create users for roles =", "roles", parameters.getMetadata().getSupportedRoles());
                             return Response.accepted(instructionService.saveInstruction(physicalDatabase, instruction, parameters)).build();
                         } else {
                             Instruction instruction = instructionService.findPortion(String.valueOf(existingInstruction.getId()));
                             if (instruction == null) {
                                 log.warn("Instruction is null, Creating new instruction");
                                 Instruction instructionCreated = recreateInstruction(existingInstruction, logicalDatabases);
-                                log.info("Sending new instruction for create users for roles = {}", parameters.getMetadata().getSupportedRoles());
+StructuredLog.info(log, "Sending new instruction for create users for roles =", "roles", parameters.getMetadata().getSupportedRoles());
                                 return Response.accepted().entity(instructionService.saveInstruction(physicalDatabase, instructionCreated, parameters)).build();
                             }
-                            log.info("Got instruction with portion = {}", instruction);
+StructuredLog.info(log, "Got instruction with portion =", "instruction", instruction);
                             return Response.accepted(Map.of("instruction", instruction)).build();
                         }
                     }
@@ -104,7 +105,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                 }
             }
             if (physicalDatabasesService.isDbActual(parameters, physicalDatabase)) {
-                log.info("Adapter '{}' update is not required", physicalDatabase.getPhysicalDatabaseIdentifier());
+StructuredLog.info(log, "Adapter '' update is not required", "database", physicalDatabase.getPhysicalDatabaseIdentifier());
             } else {
                 physicalDatabasesService.writeChanges(phydbid, parameters, physicalDatabase);
             }
@@ -169,9 +170,9 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                                 InstructionRequestV3 parameters)
             throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException, JsonProcessingException {
         Instruction currentInstruction = instructionService.findInstructionById(instructionid);
-        log.info("current instruction = {}", currentInstruction);
+StructuredLog.info(log, "current instruction =", "currentInstruction", currentInstruction);
         if (currentInstruction == null) {
-            log.error("Instruction with Id = {} not found", instructionid);
+StructuredLog.error(log, "Instruction with Id = not found", "instructionid", instructionid);
             return Response.status(NOT_FOUND).entity(String.format("Instruction with Id = %s not found", instructionid)).build();
         }
         if (parameters.getSuccess() != null) {
@@ -196,7 +197,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         }
         List<AdditionalRoles> response = instructionService.findNextAdditionalRoles(instructionid);
         if (response == null) {
-            log.info("All logical databases processed in instruction with id = {}", instructionid);
+StructuredLog.info(log, "All logical databases processed in instruction with id =", "instructionid", instructionid);
             instructionService.completeMigrationProcedure(phydbid, instructionid, currentInstruction);
             return Response.ok().build();
         }
@@ -246,24 +247,28 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         PhysicalDatabase databaseForDeletion = physicalDatabasesService.getByPhysicalDatabaseIdentifier(phydbid);
         if (databaseForDeletion == null) {
             String msg = String.format("No physical database of %s type with phydbid %s is registered", type, phydbid);
-            log.error(msg);
+            StructuredLog.error(log, "No physical database is registered",
+                    "type", type, "phydbid", phydbid);
             return Response.status(NOT_FOUND).entity(msg).build();
         }
         if (!type.equals(databaseForDeletion.getType())) {
             String msg = String.format("Requested type %s does not match actual type %s of found physical database", type, databaseForDeletion.getType());
-            log.error(msg);
+            StructuredLog.error(log, "Requested type does not match actual type of found physical database",
+                    "requested_type", type, "actual_type", databaseForDeletion.getType());
             return Response.status(BAD_REQUEST).entity(msg).build();
         }
         List<PhysicalDatabase> registeredDatabasesSameType = physicalDatabasesService.getRegisteredDatabases(type);
         if (databaseForDeletion.isGlobal() && registeredDatabasesSameType.size() > 1) {
             String msg = String.format("Can't delete physical db %s because it's global. Please move the global flag to another physical database before deletion", phydbid);
-            log.error(msg);
+            StructuredLog.error(log, "Cannot delete global physical database while others of same type exist",
+                    "phydbid", phydbid);
             return Response.status(NOT_ACCEPTABLE).entity(msg).build();
         }
         boolean isConnectedDbsExist = physicalDatabasesService.checkContainsConnectedLogicalDb(databaseForDeletion);
         if (isConnectedDbsExist) {
             String msg = String.format("Can't delete db %s. Connected logical databases still exist", phydbid);
-            log.error(msg);
+            StructuredLog.error(log, "Cannot delete physical database with connected logical databases",
+                    "phydbid", phydbid);
             return Response.status(NOT_ACCEPTABLE).entity(msg).build();
         }
         physicalDatabasesService.dropDatabase(databaseForDeletion);

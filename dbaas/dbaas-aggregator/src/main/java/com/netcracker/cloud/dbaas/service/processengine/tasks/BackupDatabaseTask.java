@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
@@ -54,6 +55,6 @@ public class BackupDatabaseTask extends AbstractDbaaSTask implements Serializabl
         String sourceNamespace = cloneDatabaseProcessObject.getSourceNamespace();
         UUID backupId = cloneDatabaseProcessObject.getBackupId();
         blueGreenService.createDatabaseBackup(backupId, sourceNamespace, sourceDatabaseId);
-        log.debug("Done '{}' task with databaseId = {}", super.getName(), sourceDatabaseId);
+StructuredLog.debug(log, "Done '' task with databaseId =", "databaseId", super.getName(), "sourceDatabaseId", sourceDatabaseId);
     }
 }

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.dto.v3.PermanentPerNamespaceRuleDTO;

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.error;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.exceptions.BackupExecutionException;
 import jakarta.ws.rs.core.Context;

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg.backupV2;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.enums.ClassifierType;
 import lombok.AllArgsConstructor;

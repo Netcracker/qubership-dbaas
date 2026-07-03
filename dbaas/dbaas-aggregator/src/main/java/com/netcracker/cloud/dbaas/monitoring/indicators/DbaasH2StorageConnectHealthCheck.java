@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.monitoring.indicators;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
 import com.netcracker.cloud.dbaas.repositories.h2.H2DbaasUserRepository;

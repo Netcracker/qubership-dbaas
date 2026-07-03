@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service.processengine.tasks;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.github.kagkarlsson.scheduler.task.ExecutionContext;
 import com.github.kagkarlsson.scheduler.task.TaskInstance;
@@ -26,7 +27,7 @@ public abstract class AbstractDbaaSTask extends AbstractProcessTask implements S
         try {
             updateState(dataContext, "Initialization");
             ContextManager.set(X_REQUEST_ID, new XRequestIdContextObject((String) dataContext.get(X_REQUEST_ID)));
-            log.debug("Start '{}' task", super.getName());
+StructuredLog.debug(log, "Start '' task", "arg0", super.getName());
             executeTask(dataContext);
             updateState(dataContext, "Done");
         } catch (Throwable e) {

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto.declarative;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import jakarta.annotation.Nullable;

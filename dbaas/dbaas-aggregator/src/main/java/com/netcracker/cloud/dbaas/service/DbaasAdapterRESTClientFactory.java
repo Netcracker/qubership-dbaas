@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;

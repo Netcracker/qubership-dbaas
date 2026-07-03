@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
@@ -122,12 +123,12 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
         }
 
         String supportedRole = getSupportedRole(createRequest, namespace);
-        log.debug("requested role={} to create database", supportedRole);
+StructuredLog.debug(log, "requested role= to create database", "supportedRole", supportedRole);
         Response responseEntity = aggregatedDatabaseAdministrationService.createDatabaseFromRequest(createRequest,
                 namespace,
                 (database, role) -> dBaaService.providePasswordFor(database, role),
                 supportedRole, null, async);
-        log.info("New database was created {}", responseEntity);
+StructuredLog.info(log, "New database was created", "responseEntity", responseEntity);
         return responseEntity;
     }
 
@@ -201,7 +202,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                     @PathParam(NAMESPACE_PARAMETER) String namespace,
                                     @Parameter(description = "Parameter for adding database resources to response", required = true)
                                     @QueryParam("withResources") @DefaultValue("false") Boolean withResources) {
-        log.info("Get all databases in {}", namespace);
+StructuredLog.info(log, "Get all databases in", "namespace", namespace);
         List<DatabaseResponseV3ListCP> response = responseHelper.toDatabaseResponse(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(namespace), withResources);
         return Response.ok(response).build();
     }
@@ -243,9 +244,9 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                     classifierRequest.getOriginService());
         }
 
-        log.debug("Get by classifier {}", classifierRequest.getClassifier());
+StructuredLog.debug(log, "Get by classifier", "classifier", classifierRequest.getClassifier());
         DatabaseRegistry databaseRegistry = dBaaService.findDatabaseByClassifierAndType(classifierRequest.getClassifier(), type, false);
-        log.info("Get by classifier {} database {}", classifierRequest.getClassifier(), databaseRegistry);
+StructuredLog.info(log, "Get by classifier database", "classifier", classifierRequest.getClassifier(), "databaseRegistry", databaseRegistry);
         if (databaseRegistry == null) {
             throw new DbNotFoundException(type, classifierRequest.getClassifier(), Source.builder().build());
         } else {
@@ -304,7 +305,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                         ExternalDatabaseRequestV3 externalDatabaseRequest,
                                         @Parameter(description = "Namespace with which new database will be connected", required = true)
                                         @PathParam(NAMESPACE_PARAMETER) String namespace) {
-        log.info("Get request on adding external database with classifier {} and type {} in namespace {}", externalDatabaseRequest.getClassifier(), externalDatabaseRequest.getType(), namespace);
+StructuredLog.info(log, "Get request on adding external database with classifier and type in namespace", "classifier", externalDatabaseRequest.getClassifier(), "database", externalDatabaseRequest.getType(), "namespace", namespace);
         if (!isClassifierCorrect(externalDatabaseRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, externalDatabaseRequest.getClassifier())) {
             throw InvalidClassifierException.withDefaultMsg(externalDatabaseRequest.getClassifier());
         }
@@ -325,7 +326,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                         " but is not externally managed",
                                 existingDatabaseRegistry.getClassifier(), existingDatabaseRegistry.getType(), existingDatabaseRegistry.getNamespace()));
             }
-            log.info("Skip creation. External logical database with classifier {} and type {} already exists", databaseRegistry.getClassifier(), databaseRegistry.getType());
+StructuredLog.info(log, "Skip creation. External logical database with classifier and type already exists", "classifier", databaseRegistry.getClassifier(), "database", databaseRegistry.getType());
             if (!updateConnectionProperties) {
                 final DatabaseResponseV3ListCP processedDb = dBaaService.processConnectionPropertiesV3(existingDatabaseRegistry);
                 return Response.ok(new ExternalDatabaseResponseV3(processedDb)).build();
@@ -356,12 +357,12 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                                 @PathParam(NAMESPACE_PARAMETER) String namespace,
                                                 @Parameter(description = "Boolean value to remove or not to remove rules of namespace. ", required = false)
                                                 @QueryParam("deleteRules") Boolean deleteRules) {
-        log.info("Received request to drop all databases in {} namespace with deleteRules {}", namespace, deleteRules);
+StructuredLog.info(log, "Received request to drop all databases in namespace with deleteRules", "namespace", namespace, "deleteRules", deleteRules);
         Optional<BgDomain> domain = blueGreenService.getBgDomainContains(namespace);
         if (domain.isPresent()) {
             Optional<BgNamespace> idleNamespace = domain.get().getNamespaces().stream().filter(o -> IDLE_STATE.equals(o.getState())).findFirst();
             idleNamespace.ifPresent(bgNamespace -> {
-                        log.info("Dropping BG namespace with idle status: {}", bgNamespace.getNamespace());
+StructuredLog.info(log, "Dropping BG namespace with idle status:", "namespace", bgNamespace.getNamespace());
                         cleanupNamespace(bgNamespace.getNamespace(), deleteRules);
                     }
             );
@@ -401,7 +402,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                     classifierRequest.getClassifier().get(MICROSERVICE_NAME).toString(),
                     classifierRequest.getOriginService());
         }
-        log.info("Drop database with classifier={} in namespace={}", classifierRequest.getClassifier(), namespace);
+StructuredLog.info(log, "Drop database with classifier= in namespace=", "classifier", classifierRequest.getClassifier(), "namespace", namespace);
         Optional<DatabaseRegistry> databaseRegistryOptional = databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifierRequest.getClassifier(), type);
         if (databaseRegistryOptional.isPresent()) {
             DatabaseRegistry databaseRegistry = databaseRegistryOptional.get();
@@ -413,7 +414,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
             if (!dropped) {
                 throw new RuntimeException("Database deletion failed. Check DBaaS Aggregator logs for details.");
             }
-            log.info("Database in namespace={} with classifier={} is dropped", namespace, databaseRegistry.getClassifier());
+StructuredLog.info(log, "Database in namespace= with classifier= is dropped", "namespace", namespace, "classifier", databaseRegistry.getClassifier());
         }
         //should return ok if db not found
         return Response.ok().build();
@@ -425,7 +426,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
             rolesServices.setOriginService(JwtUtils.getServiceAccountName(principal));
         }
         if (rolesServices.getOriginService() == null || rolesServices.getOriginService().isEmpty()) {
-            log.error("Request body={} must contain originService", rolesServices);
+StructuredLog.error(log, "Request body= must contain originService", "rolesServices", rolesServices);
             throw new InvalidOriginServiceException();
         }
     }
@@ -457,7 +458,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
         boolean namespaceInComposite = compositeNamespaceService.isNamespaceInComposite(namespace);
 
         if (!namespaceInComposite && deletionService.checkNamespaceAlreadyDropped(namespace)) {
-            log.info("Namespace {} is empty, dropping is not needed", namespace);
+StructuredLog.info(log, "Namespace is empty, dropping is not needed", "namespace", namespace);
             return Response.ok(String.format("namespace %s doesn't contain any databases and namespace specific resources", namespace)).build();
         }
         assertNotProdMode();

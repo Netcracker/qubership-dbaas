@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.bluegreen.AbstractDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
@@ -40,7 +41,7 @@ public class DatabaseConfigurationCreationService {
 
     public ProcessInstanceImpl createProcessInstance(List<AbstractDatabaseProcessObject> processObjects, String operation,
                                                      String namespace, @Nullable String version) {
-        log.debug("Process creation started for {} in namespace {}", operation, namespace);
+StructuredLog.debug(log, "Process creation started for in namespace", "operation", operation, "namespace", namespace);
         ProcessInstanceImpl process = processService.createProcess(new AllDatabasesCreationProcess(processObjects, namespace, operation, version), namespace, operation);
         log.debug("Process creation finished");
         return process;
@@ -172,7 +173,7 @@ public class DatabaseConfigurationCreationService {
         if (Boolean.TRUE.equals(newConfiguration.getLazy())) {
             throw new RuntimeException("versioned database not supported in lazy mode");
         }
-        log.info("source classifier to clone= {}", sourceClassifier);
+StructuredLog.info(log, "source classifier to clone=", "sourceClassifier", sourceClassifier);
         List<SortedMap<String, Object>> classifiersToClone;
         String namespace = (String) sourceClassifier.get(NAMESPACE);
         if (SCOPE_VALUE_SERVICE.equals(sourceClassifier.get(SCOPE))) {

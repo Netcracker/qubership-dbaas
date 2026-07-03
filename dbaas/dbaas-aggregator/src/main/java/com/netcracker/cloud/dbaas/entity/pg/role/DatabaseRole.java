@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg.role;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.converter.ListPolicyRole;
 import com.netcracker.cloud.dbaas.converter.ListServiceRole;

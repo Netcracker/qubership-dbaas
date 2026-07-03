@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.utils;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import io.smallrye.jwt.auth.principal.DefaultJWTCallerPrincipal;
 import jakarta.json.JsonObject;

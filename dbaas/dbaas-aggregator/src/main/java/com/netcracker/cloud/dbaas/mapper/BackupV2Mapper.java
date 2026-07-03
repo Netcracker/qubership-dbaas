@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.mapper;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.backupV2.*;

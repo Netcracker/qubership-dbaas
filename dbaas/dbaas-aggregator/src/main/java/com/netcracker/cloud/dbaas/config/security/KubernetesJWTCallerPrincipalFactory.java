@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.config.security;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesTokenVerificationException;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesTokenVerifier;

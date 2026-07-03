@@ -144,6 +144,12 @@ spec:
                     value: '{{ .Values.DISABLE_DEPRECATED_API }}'
                 -   name: DBAAS_LOG_LEVEL
                     value: '{{ .Values.DBAAS_LOG_LEVEL }}'
+                -   name: LOG_FORMAT
+                    value: '{{ .Values.LOG_FORMAT | default "json" }}'
+              {{- if eq (lower (.Values.LOG_FORMAT | default "json")) "text" }}
+                -   name: QUARKUS_PROFILE
+                    value: 'text'
+              {{- end }}
               {{- if .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT }}
                 -   name: DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT
                     value: '{{ .Values.DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT }}'

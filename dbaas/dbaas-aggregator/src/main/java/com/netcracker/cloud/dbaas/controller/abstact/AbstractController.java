@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.abstact;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
 import com.netcracker.cloud.dbaas.service.DbaaSHelper;

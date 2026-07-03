@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.utils;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;

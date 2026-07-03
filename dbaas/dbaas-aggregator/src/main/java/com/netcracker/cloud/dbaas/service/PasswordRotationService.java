@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.PasswordChangeResponse;
@@ -76,7 +77,7 @@ public class PasswordRotationService {
                         Source.builder().pointer("/classifier").build());
             }
             Optional<DatabaseRegistry> databaseRegistry;
-            log.info("Password will be changed from one database with classifier {} and type {}", passwordChangeRequest.getClassifier(), passwordChangeRequest.getType());
+StructuredLog.info(log, "Password will be changed from one database with classifier and type", "classifier", passwordChangeRequest.getClassifier(), "type", passwordChangeRequest.getType());
             databaseRegistry = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().getDatabaseByClassifierAndType(passwordChangeRequest.getClassifier(), dbType);
             if (databaseRegistry.isPresent()) {
                 databasesForChangePassword.add(databaseRegistry.get());
@@ -87,13 +88,13 @@ public class PasswordRotationService {
                     .filter(databaseRegistry -> databaseRegistry.getType().equals(dbType))
                     .filter(Predicate.not(DeletionService::isMarkedForDrop))
                     .collect(Collectors.toList());
-            log.info("The password will be change from {} databases which are located in {} namespace and have {} database type", databasesForChangePassword.size(), namespace, dbType);
-            log.debug("List of databases {}", databasesForChangePassword);
+StructuredLog.info(log, "The password will be change from databases which are located in namespace and have database type", "count", databasesForChangePassword.size(), "namespace", namespace, "dbType", dbType);
+StructuredLog.debug(log, "List of databases", "databasesForChangePassword", databasesForChangePassword);
         }
         Map<DbaasAdapter, Boolean> adaptersAndUserSupportedMap;
         try {
             adaptersAndUserSupportedMap = getAdaptersAndUserSupportedMap(databasesForChangePassword);
-            log.debug("Map of adapters and user support opportunities {}", adaptersAndUserSupportedMap);
+StructuredLog.debug(log, "Map of adapters and user support opportunities", "adaptersAndUserSupportedMap", adaptersAndUserSupportedMap);
         } catch (Exception e) {
             throw new UnknownErrorCodeException(e);
         }
@@ -115,8 +116,7 @@ public class PasswordRotationService {
     }
 
     PasswordChangeResponse performChangePassword(List<DatabaseRegistry> databasesForChangePassword, @Nullable String role) {
-        log.info("Change password {}",
-                role == null ? "for whole database roles" : "for role=" + role);
+        StructuredLog.info(log, "Change password", "classifier", role == null ? "for whole database roles" : "for role=" + role);
         PasswordChangeResponse response = new PasswordChangeResponse();
         long count = databasesForChangePassword.stream().map(databaseRegistry -> {
             Database database = databaseRegistry.getDatabase();
@@ -135,7 +135,7 @@ public class PasswordRotationService {
                     EnsuredUser ensuredUser;
                     ensuredUser = dBaaService.recreateUsers(adapter, (String) cp.get("username"), dbName, password, (String) cp.get(ROLE));
 
-                    log.info("Get resources {}", ensuredUser.getConnectionProperties());
+StructuredLog.info(log, "Get resources", "arg0", ensuredUser.getConnectionProperties());
                     encryption.deletePassword(database, (String) cp.get(ROLE));
                     List<Map<String, Object>> replaceConnectionProperties = ConnectionPropertiesUtils.replaceConnectionProperties((String) cp.get(ROLE), database.getConnectionProperties(), ensuredUser.getConnectionProperties());
                     database.setConnectionProperties(replaceConnectionProperties);
@@ -146,11 +146,11 @@ public class PasswordRotationService {
                     response.putSuccessEntity(databaseRegistry.getClassifier(), new HashMap<>(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), (String) cp.get(ROLE))));
                     encryption.encryptPassword(database, (String) cp.get(ROLE));
 
-                    log.info("The password was changed successfully from database with classifier {} and type {} and role {}", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE));
+StructuredLog.info(log, "The password was changed successfully from database with classifier and type and role", "classifier", databaseRegistry.getClassifier(), "database", databaseRegistry.getType(), "arg2", (String) cp.get(ROLE));
                     sum += 1L;
                 } catch (WebApplicationException e) {
                     response.putFailedEntity(databaseRegistry.getClassifier(), e.getMessage());
-                    log.error("Faled during change password from database with classifier {} and type {} and role {}. Error: ", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE), e);
+StructuredLog.error(log, "Faled during change password from database with classifier and type and role. Error:", e, "classifier", databaseRegistry.getClassifier(), "database", databaseRegistry.getType(), "arg2", (String) cp.get(ROLE));
                     if (e.getResponse().getStatus() > response.getFailedHttpStatus()) {
                         response.setFailedHttpStatus(e.getResponse().getStatus());
                     }
@@ -161,26 +161,6 @@ public class PasswordRotationService {
             }
             return sum;
         }).mapToLong(Long::valueOf).sum();
-        log.info("From {} databases was changed password", count);
-        return response;
-    }
-
-    List<DbResource> getMergedResources(List<DbResource> previous, List<DbResource> current) {
-        Collector<DbResource, ?, Map<Pair<String, String>, DbResource>> collector =
-                Collectors.toMap(dbr -> Pair.of(dbr.getKind(), dbr.getName()), dbr -> dbr, (first, duplicate) -> first);
-        Map<Pair<String, String>, DbResource> previousMap = previous != null ? previous.stream().collect(collector) : Collections.emptyMap();
-        Map<Pair<String, String>, DbResource> currentMap = current != null ? current.stream().collect(collector) : Collections.emptyMap();
-        return Stream.concat(previousMap.keySet().stream(), currentMap.keySet().stream()).distinct()
-                .map(kindAndName -> currentMap.getOrDefault(kindAndName, previousMap.get(kindAndName))).collect(Collectors.toList());
-    }
-
-    private Map<DbaasAdapter, Boolean> getAdaptersAndUserSupportedMap(List<DatabaseRegistry> databases) {
-        return databases
-                .stream()
-                .map(dbRegistry -> dBaaService.getAdapter(dbRegistry.getDatabase().getAdapterId()).orElseThrow(() ->
-                        new UnregisteredPhysicalDatabaseException("Adapter identifier: " + dbRegistry.getAdapterId())
-                ))
-                .distinct()
-                .collect(Collectors.toMap(adapter -> adapter, DbaasAdapter::isUsersSupported));
+StructuredLog.info(log);
     }
 }

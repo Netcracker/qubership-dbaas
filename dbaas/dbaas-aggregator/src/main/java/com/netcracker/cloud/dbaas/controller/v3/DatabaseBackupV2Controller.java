@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
@@ -74,7 +75,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     @POST
     public Response initiateBackup(@RequestBody(description = "Backup request") @Valid BackupRequest backupRequest,
                                    @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        log.info("Request to start backup with backup request {}, with dryRun mode {}", backupRequest, dryRun);
+        StructuredLog.info(log, "Request to start backup with backup request , with dryRun mode", "backupRequest", backupRequest, "dryRun", dryRun);
         BackupResponse response = dbBackupV2Service.backup(backupRequest, dryRun);
         BackupStatus status = response.getStatus();
         if (status == BackupStatus.COMPLETED || status == BackupStatus.FAILED)
@@ -100,7 +101,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response getBackup(@Parameter(description = "Unique name of the backup", required = true)
                               @PathParam("backupName")
                               @NotBlank String backupName) {
-        log.info("Request to get backup {}", backupName);
+        StructuredLog.info(log, "Request to get backup", "backupName", backupName);
         return Response.ok(dbBackupV2Service.getBackup(backupName)).build();
     }
 
@@ -122,7 +123,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response deleteBackup(@Parameter(description = "Unique name of the backup", required = true)
                                  @PathParam("backupName") @NotBlank String backupName,
                                  @QueryParam("force") @DefaultValue("false") boolean force) {
-        log.info("Request to delete backup {} with flag force {}", backupName, force);
+        StructuredLog.info(log, "Request to delete backup with flag force", "backupName", backupName, "force", force);
         dbBackupV2Service.deleteBackup(backupName, force);
         if (force)
             return Response.accepted().build();
@@ -147,7 +148,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response getBackupStatus(@Parameter(description = "Unique name of the backup", required = true)
                                     @PathParam("backupName")
                                     @NotBlank String backupName) {
-        log.info("Request to get backup status {}", backupName);
+        StructuredLog.info(log, "Request to get backup status", "backupName", backupName);
         return Response.ok(dbBackupV2Service.getCurrentStatus(backupName)).build();
     }
 
@@ -183,7 +184,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response getBackupMetadata(@Parameter(description = "Unique name of the backup", required = true)
                                       @PathParam("backupName")
                                       @NotBlank String backupName) {
-        log.info("Request to get backup metadata {}", backupName);
+        StructuredLog.info(log, "Request to get backup metadata", "backupName", backupName);
         BackupResponse response = dbBackupV2Service.getBackupMetadata(backupName);
         String digestHeader = DigestUtil.calculateDigest(response);
         return Response.ok(response)
@@ -219,8 +220,8 @@ public class DatabaseBackupV2Controller extends AbstractController {
             @HeaderParam("Digest") @NotNull String digestHeader,
             @RequestBody(description = "Backup metadata") @Valid BackupResponse backupResponse
     ) {
-        log.info("Request to upload backup metadata {}", backupResponse);
-        log.debug("Backup digest {}", digestHeader);
+        StructuredLog.info(log, "Request to upload backup metadata", "backupResponse", backupResponse);
+        StructuredLog.debug(log, "Backup digest", "digestHeader", digestHeader);
         String calculatedDigest = DigestUtil.calculateDigest(backupResponse);
         if (!calculatedDigest.equals(digestHeader))
             throw new IntegrityViolationException(
@@ -257,7 +258,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
                                   @RequestBody(description = "Restore request")
                                   @Valid RestoreRequest restoreRequest,
                                   @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        log.info("Request to restore backup {}, restore request {}, dryRun mode {}", backupName, restoreRequest, dryRun);
+        StructuredLog.info(log, "Request to restore backup , restore request , dryRun mode", "backupName", backupName, "restoreRequest", restoreRequest, "dryRun", dryRun);
         return restore(backupName, restoreRequest, dryRun, false);
     }
 
@@ -273,8 +274,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
                                                @RequestBody(description = "Restore request")
                                                @Valid RestoreRequest restoreRequest,
                                                @QueryParam("dryRun") @DefaultValue("false") boolean dryRun) {
-        log.info("Request to restore backup with parallel execution allowed," +
-                " backup name {}, restore request {}, dryRun mode {}", backupName, restoreRequest, dryRun);
+        StructuredLog.info(log, "Request to restore backup with parallel execution allowed," + " backup name , restore request , dryRun mode", "backupName", backupName, "restoreRequest", restoreRequest, "dryRun", dryRun);
         assertNotProdMode();
         return restore(backupName, restoreRequest, dryRun, true);
     }
@@ -305,7 +305,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response getRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                @PathParam("restoreName")
                                @NotBlank String restoreName) {
-        log.info("Request to get restore {}", restoreName);
+        StructuredLog.info(log, "Request to get restore", "restoreName", restoreName);
         return Response.ok(dbBackupV2Service.getRestore(restoreName)).build();
     }
 
@@ -324,7 +324,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response deleteRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                   @PathParam("restoreName")
                                   @NotBlank String restoreName) {
-        log.info("Request to delete restore {}", restoreName);
+        StructuredLog.info(log, "Request to delete restore", "restoreName", restoreName);
         dbBackupV2Service.deleteRestore(restoreName);
         return Response.noContent().build();
     }
@@ -345,7 +345,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response getRestoreStatus(@Parameter(description = "Unique name of the restore operation", required = true)
                                      @PathParam("restoreName")
                                      @NotBlank String restoreName) {
-        log.info("Request to get restore status {}", restoreName);
+        StructuredLog.info(log, "Request to get restore status", "restoreName", restoreName);
         return Response.ok(dbBackupV2Service.getRestoreStatus(restoreName)).build();
     }
 
@@ -369,7 +369,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response retryRestore(@Parameter(description = "Unique name of the restore operation", required = true)
                                  @PathParam("restoreName")
                                  @NotBlank String restoreName) {
-        log.info("Request to retry restore {}", restoreName);
+        StructuredLog.info(log, "Request to retry restore", "restoreName", restoreName);
         return Response.accepted(dbBackupV2Service.retryRestore(restoreName, false)).build();
     }
 
@@ -383,7 +383,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     public Response retryRestoreAllowParallel(@Parameter(description = "Unique name of the restore operation", required = true)
                                               @PathParam("restoreName")
                                               @NotBlank String restoreName) {
-        log.info("Request to retry restore with parallel execution alllowed, restore name {}", restoreName);
+        StructuredLog.info(log, "Request to retry restore with parallel execution alllowed, restore name", "restoreName", restoreName);
         assertNotProdMode();
         return Response.accepted(dbBackupV2Service.retryRestore(restoreName, true)).build();
     }
@@ -398,7 +398,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
                                        @PathParam("backupName")
                                        @NotBlank String backupName
     ) {
-        log.info("Request to delete backup from db, backup name {}", backupName);
+        StructuredLog.info(log, "Request to delete backup from db, backup name", "backupName", backupName);
         assertNotProdMode();
         dbBackupV2Service.deleteBackupFromDb(backupName);
         return Response.noContent().build();
@@ -412,7 +412,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     @Path("/backup/deleteAll")
     public Response deleteAllBackupByNames(@QueryParam("backupNames")
                                            @NotNull @Separator(",") Set<String> backupNames) {
-        log.info("Request to delete backups by names={}", backupNames);
+        StructuredLog.info(log, "Request to delete backups by names=", "backupNames", backupNames);
         if (dbaaSHelper.isProductionMode()) {
             throw new ForbiddenDeleteOperationException();
         }
@@ -428,7 +428,7 @@ public class DatabaseBackupV2Controller extends AbstractController {
     @Path("/restore/deleteAll")
     public Response deleteAllRestoreByNames(@QueryParam("restoreNames")
                                             @NotNull @Separator(",") Set<String> restoreNames) {
-        log.info("Request to delete restore by names={}", restoreNames);
+        StructuredLog.info(log, "Request to delete restore by names=", "restoreNames", restoreNames);
         if (dbaaSHelper.isProductionMode()) {
             throw new ForbiddenDeleteOperationException();
         }

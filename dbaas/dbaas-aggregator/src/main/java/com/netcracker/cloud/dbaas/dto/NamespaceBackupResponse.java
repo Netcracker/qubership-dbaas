@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.dto;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.converter.ListConverter;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;

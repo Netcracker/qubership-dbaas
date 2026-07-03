@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.h2;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import jakarta.persistence.*;
 import lombok.Data;

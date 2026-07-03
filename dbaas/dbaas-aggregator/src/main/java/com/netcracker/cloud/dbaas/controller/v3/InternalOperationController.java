@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.controller.v3;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.dto.v3.RestorePasswordRequest;
@@ -50,7 +51,7 @@ public class InternalOperationController {
     @Transactional
     public Response restoreUsers(@Parameter(description = "Parameters for password restoration process.", required = true)
                                  RestorePasswordRequest request) {
-        log.info("Got request to restore passwords in physical db {} of {} type", request.getPhysicalDbId(), request.getType());
+StructuredLog.info(log, "Got request to restore passwords in physical db of type", "arg0", request.getPhysicalDbId(), "type", request.getType());
         DbaasAdapter adapter = physicalDatabasesService.getAdapterByPhysDbId(request.getPhysicalDbId());
         List<Database> databases = physicalDatabasesService.getDatabasesByPhysDbAndType(request.getPhysicalDbId(), request.getType());
         List<Map<String, Object>> connectionProperties = databases.stream()
@@ -58,7 +59,7 @@ public class InternalOperationController {
                 .map(Database::getConnectionProperties)
                 .flatMap(List::stream)
                 .collect(Collectors.toList());
-        log.debug("Found {} users which require password restoration", connectionProperties.size());
+StructuredLog.debug(log, "Found users which require password restoration", "count", connectionProperties.size());
         Response.StatusType responseStatus = adapter.restorePasswords(request.getSettings(), connectionProperties);
         return Response.status(responseStatus).build();
     }

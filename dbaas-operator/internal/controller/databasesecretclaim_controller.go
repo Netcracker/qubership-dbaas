@@ -50,6 +50,7 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
@@ -155,7 +156,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 	// in the adapter or role registry — and requeue. The user's spec is still valid.
 	if len(dbResp.ConnectionProperties) == 0 {
 		msg := fmt.Sprintf("aggregator returned empty connectionProperties for type=%s", s.Spec.Type)
-		log.InfoC(ctx, "empty connectionProperties name=%s type=%s requestId=%s", s.Name, s.Spec.Type, requestID)
+		log.InfoC(ctx, "%s", logfields.Format("empty connectionProperties", "name", s.Name, "type", s.Spec.Type, "requestId", requestID))
 		markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 			EventReasonEmptyConnectionProperties, msg)
 		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonEmptyConnectionProperties,
@@ -336,7 +337,7 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 ) (ctrl.Result, error) {
 	// No-op fast path: already in the desired state.
 	if secretUpToDate(s, existing, secretData) {
-		log.InfoC(ctx, "DatabaseSecretClaim already up-to-date, skipping Secret write name=%s secretName=%s", s.Name, s.Spec.SecretName)
+		log.InfoC(ctx, "%s", logfields.Format("DatabaseSecretClaim already up-to-date, skipping Secret write", "name", s.Name, "secretName", s.Spec.SecretName))
 		// Steady state: report the SecretUpToDate Ready reason, emit no event, and
 		// do not advance LastRotatedAt — nothing actually changed. Using a neutral
 		// reason (rather than reusing SecretCreated) keeps the Ready reason accurate
@@ -397,8 +398,8 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 	// rewrites the Secret once but is not a rotation, so it must not advance the
 	// rotation timestamp nor report SecretRotated.
 	if !credentialsChanged {
-		log.InfoC(ctx, "DatabaseSecretClaim Secret updated without credential change (metadata/label backfill) name=%s secretName=%s",
-			s.Name, s.Spec.SecretName)
+		log.InfoC(ctx, "%s", logfields.Format("DatabaseSecretClaim Secret updated without credential change (metadata/label backfill)",
+			"name", s.Name, "secretName", s.Spec.SecretName))
 		markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, ReasonSecretUpToDate)
 		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
@@ -433,7 +434,7 @@ func secretUpToDate(s *dbaasv1.DatabaseSecretClaim, existing *corev1.Secret, des
 // (content changed). eventFormat must be a printf-style format string with two
 // placeholders: the secret name and the request ID.
 func (r *DatabaseSecretClaimReconciler) markSecretSucceeded(s *dbaasv1.DatabaseSecretClaim, requestID, reason, eventFormat string) {
-	log.Infof("DatabaseSecretClaim reconciled successfully name=%s secretName=%s reason=%s", s.Name, s.Spec.SecretName, reason)
+	log.Infof("%s", logfields.Format("DatabaseSecretClaim reconciled successfully", "name", s.Name, "secretName", s.Spec.SecretName, "reason", reason))
 	markSucceeded(&s.Status.Phase, &s.Status.Conditions, s.Generation, reason)
 	r.Recorder.Eventf(s, corev1.EventTypeNormal, reason, eventFormat, s.Spec.SecretName, requestID)
 }
@@ -455,7 +456,7 @@ func (r *DatabaseSecretClaimReconciler) ownerConflict(s *dbaasv1.DatabaseSecretC
 
 // markSecretConflict sets InvalidConfiguration/SecretConflict and stops reconciliation.
 func (r *DatabaseSecretClaimReconciler) markSecretConflict(ctx context.Context, s *dbaasv1.DatabaseSecretClaim, msg string) (ctrl.Result, error) {
-	log.InfoC(ctx, "SecretConflict name=%s reason=%s", s.Name, msg)
+	log.InfoC(ctx, "%s", logfields.Format("SecretConflict", "name", s.Name, "reason", msg))
 	markPermanentFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretConflict, msg)
 	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonSecretConflict, "%s", msg)
 	return ctrl.Result{}, nil
@@ -502,8 +503,8 @@ func (r *DatabaseSecretClaimReconciler) handleAggregatorErr(
 		// database can still unstick the CR.
 		ready := meta.FindStatusCondition(s.Status.Conditions, conditionTypeReady)
 		if ready == nil || ready.Reason != EventReasonDatabaseNotFoundTimeout {
-			log.InfoC(ctx, "DatabaseNotFound timeout exceeded name=%s elapsed=%s requestId=%s",
-				s.Name, elapsed.Round(time.Second), requestID)
+			log.InfoC(ctx, "%s", logfields.Format("DatabaseNotFound timeout exceeded",
+				"name", s.Name, "elapsed", elapsed.Round(time.Second), "requestId", requestID))
 			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotFoundTimeout,
 				"database not found in dbaas-aggregator for %s; polling continues but operator action may be required (requestId=%s)",
 				elapsed.Round(time.Second), requestID)
@@ -688,7 +689,8 @@ func (r *DatabaseSecretClaimReconciler) enqueueSiblingsBySecretName(ctx context.
 		client.InNamespace(ds.Namespace),
 		client.MatchingFields{secretNameIndex: ds.Spec.SecretName},
 	); err != nil {
-		log.ErrorC(ctx, "enqueueSiblingsBySecretName: list DatabaseSecretClaims in %s: %v", ds.Namespace, err)
+		log.ErrorC(ctx, "%s", logfields.Format("enqueueSiblingsBySecretName: list DatabaseSecretClaims",
+			"namespace", ds.Namespace, "error", err))
 		return nil
 	}
 	reqs := make([]reconcile.Request, 0, len(list.Items))

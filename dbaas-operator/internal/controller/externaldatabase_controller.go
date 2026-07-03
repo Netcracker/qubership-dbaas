@@ -44,6 +44,7 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/logfields"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
@@ -156,7 +157,7 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Build the flat-map request, resolving any Secret references.
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {
-		log.ErrorC(ctx, "failed to build registration request: %v", err)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to build registration request", "error", err))
 		dbaasSecretResolutionErrorsTotal.WithLabelValues(edb.Namespace, secretResolutionReason(err)).Inc()
 		markTransientFailure(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
 			EventReasonSecretError, err.Error())
@@ -175,11 +176,12 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	aggErr := r.Aggregator.RegisterExternalDatabase(ctx, namespace, aggReq)
 	recordAggregatorCall(controllerEDB, operationRegisterEDB, aggStart, aggErr)
 	if aggErr != nil {
-		log.ErrorC(ctx, "failed to register external database in dbaas-aggregator: %v", aggErr)
+		log.ErrorC(ctx, "%s", logfields.Format("failed to register external database in dbaas-aggregator", "error", aggErr))
 		return handleAggregatorError(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, r.Recorder, edb, aggErr, requestID)
 	}
 
-	log.InfoC(ctx, "external database registered successfully. type: %v, dbName: %v", edb.Spec.Type, edb.Spec.DbName)
+	log.InfoC(ctx, "%s", logfields.Format("external database registered successfully",
+		"type", edb.Spec.Type, "dbName", edb.Spec.DbName))
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)

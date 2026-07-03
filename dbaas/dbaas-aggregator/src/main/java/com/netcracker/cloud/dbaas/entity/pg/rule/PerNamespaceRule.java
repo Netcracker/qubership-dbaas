@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg.rule;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.netcracker.cloud.dbaas.dto.RuleType;
 import jakarta.persistence.*;

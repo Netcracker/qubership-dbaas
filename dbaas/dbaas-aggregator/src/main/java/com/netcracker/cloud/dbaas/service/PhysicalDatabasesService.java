@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.google.common.collect.Maps;
 import com.netcracker.cloud.dbaas.dto.PhysicalDatabaseRegistrationBuilder;
@@ -65,9 +66,7 @@ public class PhysicalDatabasesService {
                 .filter(adapter -> adapter.getApiVersions() == null || adapter.getApiVersions().getSpecs().isEmpty())
                 .map(ExternalAdapterRegistrationEntry::getAddress)
                 .reduce((acc, host) -> acc + ", " + host)
-                .ifPresent(s -> log.warn("The following list of adapters does not support the latest contract, so some functionality will work in a limited mode: {}. " +
-                        "Please update the physical databases according to the compatibility matrix (see Installation Notes). " +
-                        "Compatibility with the current adapter API will be removed in the DBaaS 25.1 release.", s));
+                .ifPresent(s -> StructuredLog.warn(log, "The following list of adapters does not support the latest contract, so some functionality will work in a limited mode: . " + "Please update the physical databases according to the compatibility matrix (see Installation Notes). " + "Compatibility with the current adapter API will be removed in the DBaaS 25.1 release", "s", s));
     }
 
     public List<PhysicalDatabase> getAllRegisteredDatabases() {
@@ -99,7 +98,7 @@ public class PhysicalDatabasesService {
                         PhysicalDatabaseRegistryRequestV3 request) throws
             AdapterUnavailableException,
             PhysicalDatabaseRegistrationConflictException {
-        log.info("Starting registration of {} with type {}", physicalDatabaseId, type);
+        StructuredLog.info(log, "Starting registration of with type", "physicalDatabaseId", physicalDatabaseId, "type", type);
         String username = request.getHttpBasicCredentials().getUsername();
         String password = request.getHttpBasicCredentials().getPassword();
         Optional<PhysicalDatabase> foundDatabase = findAndValidate(
@@ -136,7 +135,7 @@ public class PhysicalDatabasesService {
                                                             PhysicalDatabaseRegistryRequestV3 request) throws
             AdapterUnavailableException,
             PhysicalDatabaseRegistrationConflictException {
-        log.info("Starting registration of {} with type {}", physicalDatabaseId, type);
+        StructuredLog.info(log, "Starting registration of with type", "physicalDatabaseId", physicalDatabaseId, "type", type);
         String username = request.getHttpBasicCredentials().getUsername();
         String password = request.getHttpBasicCredentials().getPassword();
         return findAndValidateV3(
@@ -179,8 +178,9 @@ public class PhysicalDatabasesService {
     public void writeChanges(String physicalDatabaseId,
                              PhysicalDatabaseRegistryRequestV3 updateReq,
                              PhysicalDatabase existing) {
-        log.info(MESSAGE_UPDATING_EXISTING_DATABASE,
-                existing.getPhysicalDatabaseIdentifier(), existing.getAdapter().getAddress());
+        StructuredLog.info(log, "Updating existing database",
+                "phydbid", existing.getPhysicalDatabaseIdentifier(),
+                "adapter_address", existing.getAdapter().getAddress());
         existing.setLabels(updateReq.getLabels());
         encryption.deletePassword(existing);
         encryption.encryptPassword(updateReq);
@@ -246,15 +246,14 @@ public class PhysicalDatabasesService {
         }
         if (byPhyDBId != null && !request.getAdapterAddress().equals(byPhyDBId.getAdapter().getAddress())) {
             if (!isTLSUpdate(byPhyDBId.getAdapter().getAddress(), request.getAdapterAddress())) {
-                log.error("Address from request: {} conflicts with already saved address: {}", request.getAdapterAddress(), byPhyDBId.getAdapter().getAddress());
+                StructuredLog.error(log, "Address from request: conflicts with already saved address:", "adapter", request.getAdapterAddress(), "adapter", byPhyDBId.getAdapter().getAddress());
                 throw new PhysicalDatabaseRegistrationConflictException("Database with phydbid " + physicalDatabaseId +
                         " already exists, but adapter address differs. Cannot register another one as adapter " +
                         "address is unique and immutable");
             }
         } else if (byAdapter != null && !physicalDatabaseId.equals(byAdapter.getPhysicalDatabaseIdentifier()) &&
                 byAdapter.isIdentified()) {
-            log.error("sent physicalDatabaseIdentifier = {}, stored at db = {}",
-                    physicalDatabaseId, byAdapter.getPhysicalDatabaseIdentifier());
+            StructuredLog.error(log, "sent physicalDatabaseIdentifier = , stored at db =", "physicalDatabaseId", physicalDatabaseId, "adapter", byAdapter.getPhysicalDatabaseIdentifier());
             throw new PhysicalDatabaseRegistrationConflictException("Database with set adapter exists but its " +
                     "phydbid is different from provided value and cannot be updated");
         }
@@ -292,15 +291,14 @@ public class PhysicalDatabasesService {
         }
         if (byPhyDBId != null && !request.getAdapterAddress().equals(byPhyDBId.getAdapter().getAddress())) {
             if (!isTLSUpdate(byPhyDBId.getAdapter().getAddress(), request.getAdapterAddress())) {
-                log.error("Address from request: {} conflicts with already saved address: {}", request.getAdapterAddress(), byPhyDBId.getAdapter().getAddress());
+                StructuredLog.error(log, "Address from request: conflicts with already saved address:", "adapter", request.getAdapterAddress(), "adapter", byPhyDBId.getAdapter().getAddress());
                 throw new PhysicalDatabaseRegistrationConflictException("Database with physical DB id " + physicalDatabaseId +
                         " already exists, but adapter address differs. Cannot register another one as adapter " +
                         "address is unique and immutable");
             }
         } else if (byAdapter != null && !physicalDatabaseId.equals(byAdapter.getPhysicalDatabaseIdentifier()) &&
                 byAdapter.isIdentified()) {
-            log.error("sent physicalDatabaseIdentifier = {}, stored at db = {}",
-                    physicalDatabaseId, byAdapter.getPhysicalDatabaseIdentifier());
+            StructuredLog.error(log, "sent physicalDatabaseIdentifier = , stored at db =", "physicalDatabaseId", physicalDatabaseId, "adapter", byAdapter.getPhysicalDatabaseIdentifier());
             throw new PhysicalDatabaseRegistrationConflictException("Database with set adapter exists but its " +
                     "physical DB id is different from provided value and cannot be updated");
         }
@@ -355,7 +353,7 @@ public class PhysicalDatabasesService {
     }
 
     private DbaasAdapter getDbaasAdapterRESTClient(PhysicalDatabase physicalDatabase) {
-        log.info("Starting registration of adapter with id = {}", physicalDatabase.getAdapter().getAdapterId());
+        StructuredLog.info(log, "Starting registration of adapter with id =", "adapter", physicalDatabase.getAdapter().getAdapterId());
         String username = physicalDatabase.getAdapter().getHttpBasicCredentials().getUsername();
         String password = encryption.decrypt(physicalDatabase.getAdapter().getHttpBasicCredentials().getPassword());
         if (physicalDatabase.getAdapter().getSupportedVersion().equals(VERSION_2)) {
@@ -385,8 +383,7 @@ public class PhysicalDatabasesService {
                 final Map<String, Boolean> supports = adapter.supports();
                 dto.setSupports(supports);
             } catch (Exception e) {
-                log.error("Failed to retrieve supports info from adapter: {}, type: {}, err: {}",
-                        adapter.identifier(), adapter.type(), e.getMessage());
+                StructuredLog.error(log, "Failed to retrieve supports info from adapter: , type: , err:", "adapter", adapter.identifier(), "adapter", adapter.type(), "error", e.getMessage());
             }
             dto.setFeatures(entity.getFeatures());
             identifiedMap.put(entity.getPhysicalDatabaseIdentifier(), dto);
@@ -397,7 +394,7 @@ public class PhysicalDatabasesService {
 
     public boolean checkContainsConnectedLogicalDb(PhysicalDatabase database) {
         String adapterId = database.getAdapter().getAdapterId();
-        log.debug("Start check if adapter {} contains any logical databases", adapterId);
+        StructuredLog.debug(log, "Start check if adapter contains any logical databases", "adapterId", adapterId);
 
         List<String> registeredInAdapter = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllInternalDatabases().stream()
                 .filter(db -> adapterId.equals(db.getAdapterId()))
@@ -420,7 +417,7 @@ public class PhysicalDatabasesService {
     @Transactional
     public void dropDatabase(PhysicalDatabase databaseForDeletion) {
         physicalDatabaseDbaasRepository.delete(databaseForDeletion);
-        log.info("Successfully drop database {}", databaseForDeletion.getPhysicalDatabaseIdentifier());
+        StructuredLog.info(log, "Successfully drop database", "arg0", databaseForDeletion.getPhysicalDatabaseIdentifier());
     }
 
     public boolean checkSupportedVersion(String physicalDatabaseIdentifier, double version) {
@@ -442,7 +439,7 @@ public class PhysicalDatabasesService {
     @Transactional
     public void makeGlobal(PhysicalDatabase newGlobal) {
         if (newGlobal.isGlobal()) {
-            log.info("Database {} already marked as global", newGlobal.getPhysicalDatabaseIdentifier());
+            StructuredLog.info(log, "Database already marked as global", "arg0", newGlobal.getPhysicalDatabaseIdentifier());
             return;
         }
 
@@ -450,12 +447,12 @@ public class PhysicalDatabasesService {
         if (currentGlobalByType.isPresent()) {
             PhysicalDatabase currentGlobal = currentGlobalByType.get();
             currentGlobal.setGlobal(false);
-            log.info("Make database {} not global", currentGlobal.getPhysicalDatabaseIdentifier());
+            StructuredLog.info(log, "Make database not global", "arg0", currentGlobal.getPhysicalDatabaseIdentifier());
             physicalDatabaseDbaasRepository.save(currentGlobal);
         }
 
         newGlobal.setGlobal(true);
-        log.info("Make database {} global", newGlobal.getPhysicalDatabaseIdentifier());
+        StructuredLog.info(log, "Make database global", "arg0", newGlobal.getPhysicalDatabaseIdentifier());
         physicalDatabaseDbaasRepository.save(newGlobal);
     }
 

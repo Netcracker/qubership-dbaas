@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 
 import com.netcracker.cloud.dbaas.dto.*;
@@ -33,8 +34,7 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
     @Override
     @TimeMeasure(value = METRIC_NAME, tags = {"operation", "CreateDatabase"}, fieldTags = {"type", "identifier"})
     public CreatedDatabase createDatabase(AbstractDatabaseCreateRequest databaseCreateRequest, String microserviceName) {
-        log.info("Adapter {} request to {} of type {} to create db with classifier {}",
-                super.identifier(), super.adapterAddress(), super.type(), databaseCreateRequest.getClassifier());
+        StructuredLog.info(log, "Adapter request to of type to create db with classifier", "arg0", super.identifier(), "adapter", super.adapterAddress(), "type", super.type(), "classifier", databaseCreateRequest.getClassifier());
         AdapterDatabaseCreateRequest adapterRequest = new AdapterDatabaseCreateRequest();
         Map<String, Object> map = new HashMap<>();
         map.put(CLASSIFIER, databaseCreateRequest.getClassifier());
@@ -143,15 +143,13 @@ public class DbaasAdapterRESTClient extends AbstractDbaasAdapterRESTClient imple
 
     @Override
     public void changeMetaData(String dbName, Map<String, Object> metadata) {
-        log.info("Call adapter {} of type {} to update {} metadata {}",
-                adapterAddress(), type(), dbName, metadata);
+        StructuredLog.info(log, "Call adapter of type to update metadata", "adapter", adapterAddress(), "type", type(), "dbName", dbName, "metadata", metadata);
         restClient.changeMetaData(type(), dbName, metadata);
     }
 
     @Override
     public Map<String, DescribedDatabase> describeDatabases(Collection<String> databases) {
-        log.info("Call adapter {} of type {} to describe {} databases",
-                adapterAddress(), type(), databases.size());
+        StructuredLog.info(log, "Call adapter of type to describe databases", "adapter", adapterAddress(), "type", type(), "arg2", databases.size());
         return restClient.describeDatabases(type(), databases);
     }
 

@@ -1,4 +1,5 @@
 package com.netcracker.cloud.dbaas.service;
+import com.netcracker.cloud.dbaas.logging.StructuredLog;
 
 import com.cronutils.utils.Preconditions;
 import com.netcracker.cloud.dbaas.DatabaseType;
@@ -63,10 +64,10 @@ public class DBaaService {
     private static final String SCOPE = "scope";
 
     public Optional<CreatedDatabaseV3> createDatabase(AbstractDatabaseCreateRequest request, String namespace, String microserviceName) {
-        log.debug("Creating database by request {} at namespace {} for microserviceName {}", request, namespace, microserviceName);
+StructuredLog.debug(log, "Creating database by request at namespace for microserviceName", "request", request, "namespace", namespace, "microserviceName", microserviceName);
         return getAdapter(request, namespace, microserviceName)
                 .map(adapter -> {
-                    log.debug("Checking adapter existence with {} type", adapter.type());
+StructuredLog.debug(log, "Checking adapter existence with type", "adapter", adapter.type());
                     request.getClassifier().put("namespace", namespace);
                     CreatedDatabaseV3 databaseV3;
                     if (VERSION_1.equals(adapter.getSupportedVersion())) {
@@ -76,7 +77,7 @@ public class DBaaService {
                         databaseV3 = adapter.createDatabaseV3(request, microserviceName);
                     }
                     databaseV3.setAdapterId(adapter.identifier());
-                    log.debug("Created database from adapter = {}", databaseV3);
+StructuredLog.debug(log, "Created database from adapter =", "databaseV3", databaseV3);
                     return databaseV3;
                 });
     }
@@ -103,12 +104,12 @@ public class DBaaService {
                         "Identifier: " + physicalDbId);
             }
             String adapterId = physicalDatabaseRegistration.getAdapter().getAdapterId();
-            log.info("Physical database determined by request: {}", physicalDatabaseRegistration);
+StructuredLog.info(log, "Physical database determined by request:", "physicalDatabaseRegistration", physicalDatabaseRegistration);
             return Optional.of(physicalDatabasesService.getAdapterById(adapterId));
         }
 
         PhysicalDatabase physicalDatabase = balancingRulesService.applyBalancingRules(type, namespace, microserviceName);
-        log.info("Returning adapter of physical database {}", physicalDatabase.getPhysicalDatabaseIdentifier());
+StructuredLog.info(log, "Returning adapter of physical database", "database", physicalDatabase.getPhysicalDatabaseIdentifier());
         return Optional.ofNullable(physicalDatabasesService.getAdapterById(physicalDatabase.getAdapter().getAdapterId()));
     }
 
@@ -209,7 +210,7 @@ public class DBaaService {
                 throw new UnregisteredPhysicalDatabaseException(Source.builder().pointer("/physicalDatabaseId").build(),
                         "Identifier: " + updateConnectionPropertiesRequest.getPhysicalDatabaseId());
             }
-            log.info("Physical database determined by request: {}", physicalDatabase);
+StructuredLog.info(log, "Physical database determined by request:", "physicalDatabase", physicalDatabase);
             String adapterId = physicalDatabase.getAdapter().getAdapterId();
             databaseRegistry.setPhysicalDatabaseId(updateConnectionPropertiesRequest.getPhysicalDatabaseId());
 
@@ -223,13 +224,13 @@ public class DBaaService {
                 boolean isDbNameProvidedInUpdatedResources = updatedResources.stream()
                         .anyMatch(dbResource -> (dbResource.getName().equals(updatedDbName)));
                 if (isDbNameProvidedInOldResources && !isDbNameProvidedInUpdatedResources) {
-                    log.error("New resources does not contains new database name, which equals to dbName in request, 'resources': {}", updatedResources);
+StructuredLog.error(log, "New resources does not contains new database name, which equals to dbName in request, 'resources':", "updatedResources", updatedResources);
                     throw new InvalidUpdateConnectionPropertiesRequestException("New resources does not contains new database name",
                             Source.builder().build());
                 }
             } else {
                 if (isDbNameProvidedInOldResources) {
-                    log.error("For changing dbName provide new resources with kind 'name' too, 'request': {}", updateConnectionPropertiesRequest);
+StructuredLog.error(log, "For changing dbName provide new resources with kind 'name' too, 'request':", "updateConnectionPropertiesRequest", updateConnectionPropertiesRequest);
                     throw new InvalidUpdateConnectionPropertiesRequestException("New resources does not contains new database name",
                             Source.builder().build());
                 }
@@ -239,7 +240,7 @@ public class DBaaService {
         }
         if (updatedResources != null && !updatedResources.isEmpty()) {
             if (databaseRegistry.getResources().size() > updatedResources.size()) {
-                log.error("New resources size must be no less than the size of the previous ones. 'resources': {}", updatedResources);
+StructuredLog.error(log, "New resources size must be no less than the size of the previous ones. 'resources':", "updatedResources", updatedResources);
                 throw new InvalidUpdateConnectionPropertiesRequestException("New resources size must be no less than the size of the previous ones.",
                         Source.builder().build());
             }
@@ -306,7 +307,7 @@ public class DBaaService {
         }
         encryption.encryptPassword(databaseRegistry.getDatabase());
         DatabaseRegistry savedDatabase = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveExternalDatabase(databaseRegistry);
-        log.info("External logical database was saved {}.", savedDatabase);
+StructuredLog.info(log, "External logical database was saved", "savedDatabase", savedDatabase);
         return savedDatabase;
     }
 
@@ -344,7 +345,7 @@ public class DBaaService {
         }
         databaseRegistry.setClassifier(targetClassifier);
         databaseRegistry.getDatabase().setClassifier(targetClassifier);
-        log.debug("database after udpate classifier = {}", databaseRegistry);
+StructuredLog.debug(log, "database after udpate classifier =", "databaseRegistry", databaseRegistry);
 
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
         return databaseRegistry;
@@ -374,7 +375,7 @@ public class DBaaService {
     private void backupRecord(DatabaseRegistry databaseRegistry) {
         DatabaseHistory databaseHistory = new DatabaseHistory(databaseRegistry);
         Integer lastVersion = databaseHistoryDbaasRepository.getLastVersionByName(databaseRegistry.getName());
-        log.debug("Last version database record with name {} is {}", databaseRegistry.getName(), lastVersion);
+StructuredLog.debug(log, "Last version database record with name is", "database", databaseRegistry.getName(), "lastVersion", lastVersion);
         databaseHistory.setVersion(lastVersion == null ? 0 : lastVersion + 1);
         databaseHistory.setChangeAction(DatabaseHistory.ChangeAction.UPDATE_CLASSIFIER);
         databaseHistoryDbaasRepository.save(databaseHistory);
@@ -383,7 +384,7 @@ public class DBaaService {
     private void backupRecordForUpdateConnectionProperties(DatabaseRegistry databaseRegistry) {
         DatabaseHistory databaseHistory = new DatabaseHistory(databaseRegistry);
         Integer lastVersion = databaseHistoryDbaasRepository.getLastVersionByName(databaseRegistry.getName());
-        log.debug("Last version database record with name {} is {}", databaseRegistry.getName(), lastVersion);
+StructuredLog.debug(log, "Last version database record with name is", "database", databaseRegistry.getName(), "lastVersion", lastVersion);
         databaseHistory.setVersion(lastVersion == null ? 0 : lastVersion + 1);
         databaseHistory.setChangeAction(DatabaseHistory.ChangeAction.UPDATE_CONNECTION_PROPERTIES);
         databaseHistoryDbaasRepository.save(databaseHistory);
@@ -398,19 +399,21 @@ public class DBaaService {
         if (decryptPassword(databaseRegistry.getDatabase())) {
             return new DatabaseResponse(databaseRegistry);
         } else {
-            log.warn(MESSAGE_FAILED_TO_DECRYPT_PASSWORD, databaseRegistry.getClassifier());
+            StructuredLog.warn(log, "Failed to decrypt password for database with classifier",
+                    "classifier", databaseRegistry.getClassifier());
         }
         return new DatabaseResponse(databaseRegistry);
     }
 
     public DatabaseResponseV3ListCP processConnectionPropertiesV3(DatabaseRegistry databaseRegistry) {
-        log.info("database for decryption = {}", databaseRegistry);
+StructuredLog.info(log, "database for decryption =", "databaseRegistry", databaseRegistry);
         connectionPropertiesService.addAdditionalPropToCP(databaseRegistry);
         String physicalDatabaseId = getPhysicalDatabaseId(databaseRegistry.getDatabase());
         if (decryptPassword(databaseRegistry.getDatabase())) {
             return new DatabaseResponseV3ListCP(databaseRegistry, physicalDatabaseId);
         } else {
-            log.warn(MESSAGE_FAILED_TO_DECRYPT_PASSWORD, databaseRegistry.getClassifier());
+            StructuredLog.warn(log, "Failed to decrypt password for database with classifier",
+                    "classifier", databaseRegistry.getClassifier());
         }
         return new DatabaseResponseV3ListCP(databaseRegistry, physicalDatabaseId);
     }
@@ -427,7 +430,7 @@ public class DBaaService {
     }
 
     public DatabaseResponseV3 processConnectionPropertiesV3(DatabaseRegistry databaseRegistry, String role) {
-        log.info("database for decryption = {}", databaseRegistry);
+StructuredLog.info(log, "database for decryption =", "databaseRegistry", databaseRegistry);
         connectionPropertiesService.addAdditionalPropToCP(databaseRegistry);
         String physicalDatabaseId = getPhysicalDatabaseId(databaseRegistry.getDatabase());
         if (decryptPassword(databaseRegistry.getDatabase())) {
@@ -435,7 +438,8 @@ public class DBaaService {
                     physicalDatabaseId,
                     role);
         } else {
-            log.warn(MESSAGE_FAILED_TO_DECRYPT_PASSWORD, databaseRegistry.getClassifier());
+            StructuredLog.warn(log, "Failed to decrypt password for database with classifier",
+                    "classifier", databaseRegistry.getClassifier());
         }
         return new DatabaseResponseV3SingleCP(databaseRegistry,
                 physicalDatabaseId,
@@ -444,8 +448,9 @@ public class DBaaService {
 
 
     public DatabaseRegistry recreateDatabase(DatabaseRegistry existedDb, String physDbId) {
-        log.info("Start recreate logical db with classifier {}, type {}, adapterId {} in physical db with Id {}", existedDb.getClassifier(),
-                existedDb.getType(), existedDb.getDatabase().getAdapterId(), physDbId);
+        StructuredLog.info(log, "Start recreate logical db",
+                "classifier", existedDb.getClassifier(), "type", existedDb.getType(),
+                "adapterId", existedDb.getDatabase().getAdapterId(), "physicalDbId", physDbId);
         DatabaseCreateRequestV3 databaseCreateRequest = new DatabaseCreateRequestV3();
         databaseCreateRequest.setClassifier(existedDb.getClassifier());
         databaseCreateRequest.setSettings(existedDb.getDatabase().getSettings());
@@ -453,7 +458,7 @@ public class DBaaService {
         String microserviceName = (String) existedDb.getClassifier().get(MICROSERVICE_NAME);
         CreatedDatabaseV3 createdDatabase = this.createDatabase(databaseCreateRequest, existedDb.getNamespace(), microserviceName)
                 .orElseThrow(() -> new UnregisteredPhysicalDatabaseException("Identifier: " + physDbId));
-        log.debug("logical db was recreated. Db resources {}. Try to set previous db as archived", createdDatabase.getResources());
+StructuredLog.debug(log, "logical db was recreated. Db resources. Try to set previous db as archived", "database", createdDatabase.getResources());
 
         // database have been created try to set the current db as archived
         SortedMap<String, Object> classifier = existedDb.getClassifier();
@@ -471,7 +476,7 @@ public class DBaaService {
         }
         existedDb.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.ARCHIVED);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveExternalDatabase(existedDb);
-        log.debug("Logical db with classifier {} was saved with a new classifier {}", classifier, archivedClassifier);
+StructuredLog.debug(log, "Logical db with classifier was saved with a new classifier", "classifier", classifier, "archivedClassifier", archivedClassifier);
         entityManager.detach(existedDb); // we do detach, because otherwise you will not be able to save a copy of the database
         entityManager.detach(existedDb.getDatabase());
         Database newDatabase = new Database();
@@ -525,7 +530,7 @@ public class DBaaService {
     public DatabaseRegistry shareDbToNamespace(DatabaseRegistry sourceRegistry, String targetNamespace) {
         Database sourceDatabase = sourceRegistry.getDatabase();
         DatabaseRegistry newRegistry = new DatabaseRegistry(sourceRegistry, targetNamespace);
-        log.debug("Share static database to {} namespace with new classifier {}", targetNamespace, newRegistry.getClassifier());
+StructuredLog.debug(log, "Share static database to namespace with new classifier", "targetNamespace", targetNamespace, "classifier", newRegistry.getClassifier());
         Optional<DatabaseRegistry> existingRegistry = sourceDatabase.getDatabaseRegistry().stream()
                 .filter(dbr -> dbr.getClassifier().equals(newRegistry.getClassifier())
                         && dbr.getType().equals(newRegistry.getType()))
