@@ -17,7 +17,6 @@ M2M_ENABLED="${3:-false}"
 
 helm upgrade --install "$GO_SERVICE_NAME" \
   test-apps/go-test-app-service/helm-templates/go-test-app-service \
-  -f test-apps/go-test-app-service/helm-templates/go-test-app-service/resource-profiles/dev.yaml \
   --namespace "$TEST_NAMESPACE" \
   --set NAMESPACE="$TEST_NAMESPACE" \
   --set IMAGE_REPOSITORY="$GO_IMAGE_REPOSITORY" \
@@ -30,7 +29,6 @@ helm upgrade --install "$GO_SERVICE_NAME" \
 
 helm upgrade --install "$SPRING_SERVICE_NAME" \
   test-apps/spring-test-app-service/helm-templates/spring-test-app-service \
-  -f test-apps/spring-test-app-service/helm-templates/spring-test-app-service/resource-profiles/dev.yaml \
   --namespace "$TEST_NAMESPACE" \
   --set NAMESPACE="$TEST_NAMESPACE" \
   --set IMAGE_REPOSITORY="$SPRING_IMAGE_REPOSITORY" \
@@ -42,7 +40,6 @@ helm upgrade --install "$SPRING_SERVICE_NAME" \
 
 helm upgrade --install "$QUARKUS_SERVICE_NAME" \
   test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service \
-  -f test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service/resource-profiles/dev.yaml \
   --namespace "$TEST_NAMESPACE" \
   --set NAMESPACE="$TEST_NAMESPACE" \
   --set IMAGE_REPOSITORY="$QUARKUS_IMAGE_REPOSITORY" \
