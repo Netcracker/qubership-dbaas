@@ -9,8 +9,17 @@ on:
   push:
     branches:
       - main
+    # Skip the operator build for commits that touch only operator docs/dev helpers.
+    # paths-ignore skips the run only when EVERY changed file matches; a mixed
+    # docs-plus-code commit still builds.
+    paths-ignore:
+      - 'dbaas-operator/docs/**'
+      - 'dbaas-operator/dev/**'
   pull_request:
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'dbaas-operator/docs/**'
+      - 'dbaas-operator/dev/**'
   workflow_dispatch:
 
 jobs:
