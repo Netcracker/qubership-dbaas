@@ -227,33 +227,33 @@ jobs:
           name: surefire-reports
           path: artifacts/*
 
-      - name: Collect Fluent Bit logs
+      - name: Collect pod stdout (Fluent Bit)
         id: collect_fluentbit_logs
         if: always()
         run: |
           chmod +x .github/scripts/collect-fluentbit-logs.sh && \
           .github/scripts/collect-fluentbit-logs.sh
 
-      - name: Upload Fluent Bit logs
+      - name: Upload pod stdout (Fluent Bit)
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: dbaas-pod-logs
+          name: dbaas-pod-stdout
           path: fluentbit-logs/**
           if-no-files-found: warn
 
-      - name: Collect DBaaS logs
+      - name: Collect K8s diagnostics (kubectl)
         id: collect_logs
         if: always()
         run: |
           chmod +x .github/scripts/get-dbaas-logs.sh && \
           .github/scripts/get-dbaas-logs.sh
 
-      - name: Upload DBaaS logs
+      - name: Upload K8s diagnostics (kubectl)
         if: always() && steps.collect_logs.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: dbaas-logs
+          name: dbaas-k8s-diagnostics
           path: logs/*
 
       - name: Build test report
