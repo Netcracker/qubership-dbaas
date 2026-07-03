@@ -1,6 +1,6 @@
-# DBaaS Migration Examples
+# DBaaS migration examples
 
-## JSON DatabaseDeclaration To InternalDatabase
+## JSON DatabaseDeclaration to InternalDatabase
 
 Before:
 
@@ -47,7 +47,7 @@ spec:
     approach: clone
 ```
 
-## YAML DBaaS Wrapper Variant
+## YAML DBaaS wrapper variant
 
 This repeats the same field conversion for generic YAML CR input. Drop the `kind: DBaaS`/`subKind` wrapper and
 its wrapper-only Core labels.
@@ -101,7 +101,7 @@ spec:
         logicalDbName: source-db
 ```
 
-## Extra Classifier Keys
+## Extra classifier keys
 
 Before:
 
@@ -134,7 +134,7 @@ spec:
   type: postgresql
 ```
 
-## JSON DbPolicy To DatabaseAccessPolicy
+## JSON DbPolicy to DatabaseAccessPolicy
 
 Before:
 
@@ -182,7 +182,7 @@ spec:
   disableGlobalPermissions: false
 ```
 
-## Split Database Declaration
+## Split database declaration
 
 Before JSON with two `declarations[]` entries must become two `InternalDatabase` resources:
 

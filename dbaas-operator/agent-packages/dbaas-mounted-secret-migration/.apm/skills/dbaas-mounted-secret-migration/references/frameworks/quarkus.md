@@ -97,10 +97,12 @@ Exercise every named datasource because CDI may initialize it lazily. Prove migr
 REST unreachable, then verify retained REST fallback separately. Test CDI startup ordering and
 credential rotation where supported.
 
-## Proven baseline
+## Resolve version evidence
 
-The repository E2E baseline uses `com.netcracker.cloud.quarkus:dbaas-datasource-postgresql:10.1.2`
-with Quarkus 3.33.1. It proves service and static-tenant classifiers with empty and admin roles,
-Flyway, DML, mounted-secret resolution with REST unreachable, and REST fallback without mounts.
-Treat this as evidence only for that resolved dependency graph. Do not transfer it to older direct
-extensions or BSS wrappers without source proof or the same E2E.
+Treat the target service's Maven dependency graph and imported BOMs as the source of truth. Do not
+copy a Quarkus or DBaaS extension version from this skill. When mounted-secret support is absent,
+consult the upstream [Qubership Core Java Libraries releases](https://github.com/Netcracker/qubership-core-java-libs/releases)
+and BOM release notes, choose a compatible coordinate in the consumer build, resolve all direct and
+transitive extensions again, and rerun mounted-provider and REST-fallback tests. An E2E result
+applies only to the exact resolved graph that was tested; it does not establish compatibility for
+other direct extensions or BSS wrappers.

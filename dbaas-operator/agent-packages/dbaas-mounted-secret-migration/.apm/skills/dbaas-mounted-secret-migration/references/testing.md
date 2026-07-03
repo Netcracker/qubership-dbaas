@@ -1,4 +1,4 @@
-# Testing DBaaS declarative transformation
+# Testing DBaaS mounted-secret migration
 
 Use layered tests. A mounted static Secret test proves only the application-side client contract;
 it does not prove that either CR is valid or that the operator creates the Secret.
@@ -43,7 +43,7 @@ Install PyYAML in the execution environment, then run the bundled validator:
 python scripts/validate_generated.py --inventory inventory.json <manifest-or-directory> [...]
 ```
 
-Paths are relative to the deployed `dbaas-declarative-transform` skill directory. The validator
+Paths are relative to the deployed `dbaas-mounted-secret-migration` skill directory. The validator
 checks the inventory-to-resource cardinality, classifier/type/role identities, names, claim labels,
 Secret references, and workload mounts.
 

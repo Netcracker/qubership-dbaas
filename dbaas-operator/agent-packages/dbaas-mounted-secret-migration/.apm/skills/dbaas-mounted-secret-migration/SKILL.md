@@ -1,10 +1,9 @@
 ---
-name: dbaas-declarative-transform
+name: dbaas-mounted-secret-migration
 description: >-
-  Migrate Qubership DBaaS-backed Go, Spring, and Quarkus microservices from runtime provisioning to
-  deployment-time InternalDatabase and DatabaseSecretClaim resources. Use when inventorying datasources,
-  classifiers, logical databases, tenants, shards, roles, migrations, generated Secrets, and mounts. Generate only
-  deployment-known identities and prove the resolved client version's Secret-consumption contract.
+  Migrate Qubership DBaaS-backed Go, Spring, and Quarkus microservices from runtime REST provisioning
+  to deployment-time InternalDatabase and DatabaseSecretClaim resources with mounted Secrets. Use only
+  when the user asks to migrate an existing service to this mounted-secret workflow.
 ---
 
 # Transform DBaaS provisioning to declarative resources
@@ -221,7 +220,9 @@ containers:
         readOnly: true
 ```
 
-The final path component must equal `DatabaseSecretClaim.spec.secretName`. Preserve existing Helm
+Name the mount directory after `DatabaseSecretClaim.spec.secretName`. This is the skill's
+generation convention for unique, validator-checkable mounts; the client matches the Secret by
+`metadata.json`, not by the directory name. Preserve existing Helm
 expressions, volumes, mounts, init containers, and sidecars. Mount only into containers that use the
 database.
 

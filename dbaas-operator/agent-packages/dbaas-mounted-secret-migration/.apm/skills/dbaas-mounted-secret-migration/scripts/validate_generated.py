@@ -111,6 +111,17 @@ def effective_classifier(obj: dict[str, Any], errors: list[str]) -> dict[str, An
         if reserved:
             errors.append(f"{identity}: classifier.extraKeys contains reserved keys: {', '.join(reserved)}")
 
+        # The CR stores arbitrary top-level runtime classifier extensions under
+        # extraKeys. Compare identities using the flattened wire representation.
+        classifier.pop("extraKeys", None)
+        for key, value in extra_keys.items():
+            if key in RESERVED_EXTRA_KEYS:
+                continue
+            if key in classifier:
+                errors.append(f"{identity}: classifier.extraKeys key {key!r} collides with classifier.{key}")
+                continue
+            classifier[key] = value
+
     return classifier
 
 
@@ -239,19 +250,20 @@ def validate(paths: list[Path], inventory: Path | None) -> list[str]:
             secret = volume.get("secret") or {}
             if secret.get("secretName"):
                 volume_secrets[volume_name] = secret["secretName"]
-        for container in pod_spec.get("containers") or []:
-            for mount in container.get("volumeMounts") or []:
-                secret_name = volume_secrets.get(mount.get("name"))
-                if not secret_name:
-                    continue
-                secret_key = (namespace, secret_name)
-                mount_occurrences.setdefault(secret_key, []).append(
-                    (
-                        f"{object_identity(obj)} container {container.get('name', '<missing>')}",
-                        mount.get("mountPath"),
-                        mount.get("readOnly"),
+        for container_field, container_label in (("containers", "container"), ("initContainers", "initContainer")):
+            for container in pod_spec.get(container_field) or []:
+                for mount in container.get("volumeMounts") or []:
+                    secret_name = volume_secrets.get(mount.get("name"))
+                    if not secret_name:
+                        continue
+                    secret_key = (namespace, secret_name)
+                    mount_occurrences.setdefault(secret_key, []).append(
+                        (
+                            f"{object_identity(obj)} {container_label} {container.get('name', '<missing>')}",
+                            mount.get("mountPath"),
+                            mount.get("readOnly"),
+                        )
                     )
-                )
 
     for secret_key, claim_identity in secret_claims.items():
         occurrences = mount_occurrences.get(secret_key, [])

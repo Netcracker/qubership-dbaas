@@ -1,9 +1,9 @@
 ---
 name: migrate-core-operator-dbaas-declarations
-description: "Migrate legacy Core Operator DBaaS declarations to dbaas-operator resources (DatabaseDeclaration/DbPolicy to InternalDatabase/DatabaseAccessPolicy). Use when converting legacy JSON or generic DBaaS YAML wrappers from user-provided paths or repository discovery."
+description: "Migrate legacy Core Operator DBaaS declarations to dbaas-operator resources. Use only when the user asks to migrate DatabaseDeclaration/DbPolicy resources to InternalDatabase/DatabaseAccessPolicy."
 ---
 
-# Migrate Core Operator DBaaS Declarations
+# Migrate Core Operator DBaaS declarations
 
 Convert legacy DBaaS declarations into dedicated Kubernetes resources:
 

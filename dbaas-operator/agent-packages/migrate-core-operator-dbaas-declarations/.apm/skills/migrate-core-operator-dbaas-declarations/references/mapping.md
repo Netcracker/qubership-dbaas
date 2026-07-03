@@ -1,8 +1,8 @@
-# DBaaS CR Migration Mapping
+# DBaaS CR migration mapping
 
 Use this reference to convert old DBaaS declarative formats to the dedicated dbaas-operator CRDs.
 
-## Source Formats
+## Source formats
 
 Legacy JSON:
 
@@ -26,7 +26,7 @@ Target CRDs:
 - `kind: InternalDatabase`
 - `kind: DatabaseAccessPolicy`
 
-## DatabaseDeclaration To InternalDatabase
+## DatabaseDeclaration to InternalDatabase
 
 Each old database declaration becomes one `InternalDatabase`.
 
@@ -52,7 +52,7 @@ Each old database declaration becomes one `InternalDatabase`.
 Do not keep old `spec.classifierConfig`. The dbaas-operator controller re-wraps `spec.classifier` into the aggregator
 wire shape.
 
-## DbPolicy To DatabaseAccessPolicy
+## DbPolicy to DatabaseAccessPolicy
 
 Each old DB policy becomes one `DatabaseAccessPolicy`.
 
@@ -89,7 +89,7 @@ namespace: "{{ .Values.NAMESPACE }}"
 
 Do not copy status blocks. Do not copy old generic CR labels unless the target deployment tooling still requires them.
 
-## Validation Checklist
+## Validation checklist
 
 - Ensure no output manifest has `kind: DBaaS`.
 - Ensure no `InternalDatabase` has `spec.classifierConfig`.

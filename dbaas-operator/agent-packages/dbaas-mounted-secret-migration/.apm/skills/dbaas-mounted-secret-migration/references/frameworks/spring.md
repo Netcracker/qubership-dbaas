@@ -91,9 +91,11 @@ endpoint deliberately unreachable, prove a mounted-secret hit and successful DML
 retained REST path separately for unsupported dynamic identities. Include credential rotation when
 the resolved client claims rotation support.
 
-## Proven baseline
+## Resolve version evidence
 
-The repository E2E baseline uses Spring DBaaS client 9.1.4 with Spring Boot 4.0.6. It proves service
-and static-tenant classifiers with empty and admin roles, Flyway, DML, mounted-secret resolution with
-REST unreachable, and REST fallback without mounts. Treat this as evidence only for that resolved
-dependency graph. Older versions and different wrappers remain unproven.
+Treat the target service's Maven or Gradle dependency graph and imported BOMs as the source of truth.
+Do not copy a client or Spring Boot version from this skill. When mounted-secret support is absent,
+consult the upstream [Qubership Core Java Libraries releases](https://github.com/Netcracker/qubership-core-java-libs/releases)
+and BOM release notes, choose a compatible coordinate in the consumer build, resolve the graph
+again, and rerun mounted-provider and REST-fallback tests. An E2E result applies only to the exact
+resolved graph that was tested; it is not a baseline for other services or wrappers.
