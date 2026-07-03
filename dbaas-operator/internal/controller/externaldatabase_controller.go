@@ -278,7 +278,7 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 		}
 	}
 
-	// Defence-in-depth duplicate name check — CRD CEL validation should catch this
+	// Defense-in-depth duplicate name check — CRD CEL validation should catch this
 	// first, but we guard here too in case validation is bypassed.
 	seen := make(map[string]string, len(ref.Keys))
 	for _, km := range ref.Keys {
@@ -321,8 +321,8 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 // generation and would otherwise be filtered out.
 //
 // Create and Delete fall through to the embedded predicate.Funcs defaults
-// (both return true), preserving standard behaviour for new and removed CRs.
-// Only Update is customised.
+// (both return true), preserving standard behavior for new and removed CRs.
+// Only Update is customized.
 type specOrRefreshTriggerPredicate struct{ predicate.Funcs }
 
 func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
@@ -347,7 +347,7 @@ func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
 // periodic resync (ResyncInterval) via RequeueAfter on a successful reconcile, or
 // immediately via the refresh annotation above.
 //
-// opts allows callers to customise the controller's behaviour — most notably
+// opts allows callers to customize the controller's behavior — most notably
 // the RateLimiter, which controls the exponential backoff applied when
 // Reconcile returns an error (BackingOff phase).  Pass
 // ctrlcontroller.Options{} to keep the controller-runtime defaults.

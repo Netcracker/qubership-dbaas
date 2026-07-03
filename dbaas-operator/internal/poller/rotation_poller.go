@@ -74,7 +74,7 @@ type RotationPoller struct {
 // cursor owner drives the fan-out.
 func (p *RotationPoller) NeedLeaderElection() bool { return true }
 
-// Start runs the poll loop until ctx is cancelled. It implements manager.Runnable.
+// Start runs the poll loop until ctx is canceled. It implements manager.Runnable.
 func (p *RotationPoller) Start(ctx context.Context) error {
 	limit := p.Limit
 	if limit <= 0 {

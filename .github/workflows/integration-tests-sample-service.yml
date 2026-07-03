@@ -154,6 +154,19 @@ jobs:
           kubectl rollout status deployment/dbaas-aggregator -n "$TEST_NAMESPACE" --timeout=300s
           kubectl rollout status deployment/dbaas-operator -n "$TEST_NAMESPACE" --timeout=300s
 
+      # Phase C authenticates with `dbaas`-audience projected tokens, which the aggregator verifies by
+      # OIDC discovery against the kube-apiserver (/.well-known/openid-configuration + JWKS). Grant the
+      # aggregator ServiceAccount the issuer-discovery role and restart so the verifier re-runs
+      # discovery with the permission. Test-only — the product chart does not ship this binding.
+      - name: Grant aggregator OIDC issuer-discovery (for direct-M2M verification)
+        run: |
+          kubectl create clusterrolebinding dbaas-aggregator-issuer-discovery \
+            --clusterrole=system:service-account-issuer-discovery \
+            --serviceaccount="$TEST_NAMESPACE":dbaas-aggregator \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$TEST_NAMESPACE" rollout restart deployment/dbaas-aggregator
+          kubectl rollout status deployment/dbaas-aggregator -n "$TEST_NAMESPACE" --timeout=300s
+
       - name: Wait for PostgreSQL readiness
         run: |
           PATRONI_POD="$(kubectl -n postgres get pods -o name | grep '^pod/pg-patroni-' | head -1 | cut -d/ -f2)"
@@ -260,6 +273,33 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ─────────────────────── Phase C — direct M2M REST ───────────────────────
+      # Redeploy all three apps pointing DIRECTLY at the real aggregator, no mounted secrets, with a
+      # `dbaas`-audience projected token (M2M_ENABLED=true). Each client authenticates its aggregator
+      # call with its own Kubernetes token (no dbaas-agent), so a working /postgres* round-trip
+      # proves the direct-M2M path in every library.
+      - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
+        run: |
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false true
+
+      - name: "Phase C — wait for sample services"
+        run: |
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
+
+      - name: "Phase C — run integration tests (direct M2M)"
+        id: tests_c
+        working-directory: test-apps/test-apps-integration-tests
+        run: >
+          mvn --batch-mode
+          -DskipIT=false
+          -Dclouds.cloud.name=kind
+          -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload Surefire reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -268,24 +308,27 @@ jobs:
           path: test-apps/test-apps-integration-tests/target/surefire-reports/**
           if-no-files-found: warn
 
-      - name: Collect Fluent Bit logs
+      - name: Collect pod stdout (Fluent Bit)
         id: collect_fluentbit_logs
         if: always()
         run: |
           chmod +x .github/scripts/collect-fluentbit-logs.sh
           .github/scripts/collect-fluentbit-logs.sh
 
-      - name: Upload Fluent Bit logs
+      - name: Upload pod stdout (Fluent Bit)
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: sample-services-pod-logs
+          name: sample-services-pod-stdout
           path: fluentbit-logs/**
           if-no-files-found: warn
 
-      - name: Dump diagnostics on failure
-        # always() so this also runs when the deploy/rollout fails (which skips the tests step);
-        # the body stays quiet on a fully green run.
+      - name: Collect K8s diagnostics (kubectl)
+        id: collect_diagnostics
+        # always() so this also runs when the deploy/rollout fails (which skips the tests step).
+        # Each section is written to a file (for the downloadable artifact) AND echoed to the job
+        # log with ::group:: folding — one kubectl call per section, so file and console show the
+        # same snapshot. A fully green run writes no files, so no diagnostics artifact is produced.
         if: always()
         run: |
           set +e
@@ -295,38 +338,58 @@ jobs:
             echo "All sample-service tests passed; skipping diagnostics."
             exit 0
           fi
-          echo "::group::All pods"
-          kubectl get pods -A -o wide
-          echo "::endgroup::"
-          echo "::group::Sample-service pods describe (scheduling / FailedMount events)"
+
+          DIAG=diagnostics
+          mkdir -p "$DIAG"
+          dump() { echo "::group::$1"; cat "$DIAG/$2"; echo "::endgroup::"; }
+
+          kubectl get pods -A -o wide > "$DIAG/all-pods.txt" 2>&1
+          dump "All pods" all-pods.txt
+
           for svc in "$GO_SERVICE_NAME" "$SPRING_SERVICE_NAME" "$QUARKUS_SERVICE_NAME"; do
-            kubectl -n "$TEST_NAMESPACE" describe pod -l app.kubernetes.io/name="$svc"
+            kubectl -n "$TEST_NAMESPACE" describe pod -l app.kubernetes.io/name="$svc" >> "$DIAG/sample-pods-describe.txt" 2>&1
           done
-          echo "::endgroup::"
-          echo "::group::All InternalDatabase + DatabaseSecretClaim ($TEST_NAMESPACE)"
-          kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o wide
-          kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o yaml
-          echo "::endgroup::"
-          echo "::group::Secrets ($TEST_NAMESPACE)"
-          kubectl -n "$TEST_NAMESPACE" get secret -o name
-          echo "::endgroup::"
-          echo "::group::Physical databases on Patroni + dbaas classifier registry (who created what)"
+          dump "Sample-service pods describe (scheduling / FailedMount events)" sample-pods-describe.txt
+
+          {
+            kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o wide
+            echo
+            kubectl -n "$TEST_NAMESPACE" get internaldatabase,databasesecretclaim -o yaml
+          } > "$DIAG/internaldatabase-databasesecretclaim.txt" 2>&1
+          dump "All InternalDatabase + DatabaseSecretClaim ($TEST_NAMESPACE)" internaldatabase-databasesecretclaim.txt
+
+          kubectl -n "$TEST_NAMESPACE" get secret -o name > "$DIAG/secrets.txt" 2>&1
+          dump "Secrets ($TEST_NAMESPACE)" secrets.txt
+
           PG_POD="$(kubectl -n postgres get pods -o name | grep '^pod/pg-patroni-' | head -1 | cut -d/ -f2)"
-          echo "patroni pod: $PG_POD"
-          kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -P pager=off -c '\l'" 2>&1
-          echo "--- every dbaas-managed classifier (microserviceName/namespace/scope/tenantId) by creation time ---"
-          kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -d dbaas -P pager=off -c \"select time_db_creation, type, namespace, classifier from classifier order by time_db_creation;\"" 2>&1
-          echo "::endgroup::"
+          {
+            echo "patroni pod: $PG_POD"
+            kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -P pager=off -c '\l'"
+            echo "--- every dbaas-managed classifier (microserviceName/namespace/scope/tenantId) by creation time ---"
+            kubectl -n postgres exec "$PG_POD" -- bash -lc "psql -U postgres -d dbaas -P pager=off -c \"select time_db_creation, type, namespace, classifier from classifier order by time_db_creation;\""
+          } > "$DIAG/physical-databases-and-classifiers.txt" 2>&1
+          dump "Physical databases on Patroni + dbaas classifier registry (who created what)" physical-databases-and-classifiers.txt
+
           for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "dbaas-postgres-adapter:postgres"; do
             d="${pair%%:*}"; ns="${pair##*:}"
-            echo "::group::logs $d ($ns)"
-            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=2000 2>&1
-            echo "::endgroup::"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=2000 > "$DIAG/logs-$d.txt" 2>&1
+            dump "logs $d ($ns)" "logs-$d.txt"
           done
-          echo "::group::Recent events ($TEST_NAMESPACE + postgres)"
-          kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -150
-          kubectl -n postgres get events --sort-by=.lastTimestamp | tail -100
-          echo "::endgroup::"
+
+          {
+            kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -150
+            echo "--- postgres ---"
+            kubectl -n postgres get events --sort-by=.lastTimestamp | tail -100
+          } > "$DIAG/events.txt" 2>&1
+          dump "Recent events ($TEST_NAMESPACE + postgres)" events.txt
+
+      - name: Upload K8s diagnostics (kubectl)
+        if: always() && steps.collect_diagnostics.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sample-services-k8s-diagnostics
+          path: diagnostics/**
+          if-no-files-found: ignore
 
       - name: Fail job if sample service tests failed
         if: always()

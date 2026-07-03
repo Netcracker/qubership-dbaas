@@ -16,6 +16,12 @@ REGION_DBAAS: database
 
 LOG_LEVEL: info
 DBAAS_AGENT: http://dbaas-aggregator.dbaas:8080
+# Direct-M2M phase toggle. When true, the pod mounts a `dbaas`-audience projected token and the
+# base client calls API_DBAAS_ADDRESS directly with a Bearer (no dbaas-agent). Default false keeps
+# the mounted-secret / REST-fallback phases unchanged.
+M2M_ENABLED: false
+# Direct aggregator URL used only when M2M_ENABLED is true (koanf key api.dbaas.address).
+API_DBAAS_ADDRESS: ""
 BASECLIENT_RETRY_MAX_ATTEMPTS: 0
 BASECLIENT_RETRY_DELAY_MS: 10
 

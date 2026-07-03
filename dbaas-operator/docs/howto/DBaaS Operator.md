@@ -208,7 +208,7 @@ After a `202 Accepted` from the apply endpoint, the controller polls this endpoi
 | `status=COMPLETED` | Provisioning finished | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned`; `trackingID` cleared |
 | `status=IN_PROGRESS` / `NOT_STARTED` | Still running | `WaitingForDependency` — requeued after the poll interval, reason `ProvisioningStarted` |
 | `status=FAILED` | Provisioning failed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected`; `trackingID` cleared |
-| `status=TERMINATED` | Cancelled mid-flight (aggregator restart or admin terminate) | `BackingOff` — `trackingID` cleared and the operation is **resubmitted** on the next reconcile, reason `OperationTerminated` |
+| `status=TERMINATED` | Canceled mid-flight (aggregator restart or admin terminate) | `BackingOff` — `trackingID` cleared and the operation is **resubmitted** on the next reconcile, reason `OperationTerminated` |
 | HTTP `401` | Missing or invalid credentials | `BackingOff` — `trackingID` kept, retried, reason `Unauthorized` |
 | HTTP `404` | `trackingId` expired or unknown | `BackingOff` — `trackingID` cleared, operation **resubmitted** next reconcile, reason `AggregatorError` |
 | HTTP `5xx` / Network error | Aggregator error / unreachable | `BackingOff` — `trackingID` kept, retried, reason `AggregatorError` |
@@ -1207,7 +1207,7 @@ spec:
 
 | Field | Required | Description |
 |-------|:--------:|-------------|
-| `approach` | No | `clone` (clone from `sourceClassifier`) or `new` (create an empty database). Default behaviour when the field is absent is `new` |
+| `approach` | No | `clone` (clone from `sourceClassifier`) or `new` (create an empty database). Default behavior when the field is absent is `new` |
 | `sourceClassifier` | Required when `approach=clone` | Classifier of the source database to clone from. **Constraint:** `sourceClassifier.microserviceName` must equal `classifier.microserviceName` (enforced by the controller) |
 
 > **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingID` and polls until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingID` and start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
@@ -1285,7 +1285,7 @@ PUT /api/v3/dbaas/{namespace}/databases
 
 This materializes the database exactly as the tenant's first runtime connection would, so a matching `DatabaseSecretClaim` resolves immediately instead of waiting on `DatabaseNotFound`. The call is:
 
-- **scoped** — a no-op for `scope=service`, or for a tenant declaration **without** a pinned `tenantId` (the tenant-agnostic template behaviour is unchanged);
+- **scoped** — a no-op for `scope=service`, or for a tenant declaration **without** a pinned `tenantId` (the tenant-agnostic template behavior is unchanged);
 - **idempotent** — get-or-create returns the existing database on subsequent reconciles;
 - **gating** — if it fails, the CR does **not** become `Succeeded`: a transient/5xx failure surfaces as `BackingOff` and is retried on the next reconcile, exactly like the `apply` call;
 - **observable** — recorded on `dbaas_aggregator_requests_total` and `dbaas_aggregator_request_duration_seconds` under `operation="create_database"`.
@@ -1801,7 +1801,7 @@ CR created / spec changed / rotation-trigger annotation changed
   RequeueAfter 1h (safety-net re-poll)
 ```
 
-Two behaviours are worth calling out:
+Two behaviors are worth calling out:
 
 - **Content-aware update** — on a rotation-triggered reconcile the operator compares the existing Secret's `connectionProperties.json` (and managed labels) against what it would write. If they already match, it skips the write entirely: no Secret update, no event, `lastRotatedAt` unchanged. This avoids needlessly waking every pod that mounts the Secret (the kubelet reloads mounted Secrets on change). Only a genuine content change is written and reported as `SecretRotated`.
 - **Sibling-conflict tiebreak** — if two CRs in the namespace target the same `secretName`, the older one (by `creationTimestamp`, falling back to UID lexical order on a tie) wins and proceeds; the younger one moves to `SecretConflict`. The loser recovers automatically — without a spec change — once the winner is deleted or rebinds, because the controller watches sibling `DatabaseSecretClaim`s by `secretName`.
@@ -1856,7 +1856,7 @@ The cache index the poller queries is keyed by `(classifier, type)` **only** —
 1. The same `spec.userRole` on two CRs can resolve to two different effective roles, and an empty `spec.userRole` can resolve to *anything* the policy dictates. There is no static, CR-local function from `spec.userRole` to the aggregator's effective role.
 2. A `DatabaseAccessPolicy` edit changes the effective role of existing `DatabaseSecretClaim` CRs **without** changing those CRs — so any operator-side mapping would have to be invalidated and recomputed every time a policy changes, duplicating the aggregator's resolution and racing its cache.
 
-Matching a specific rotated role to the affected CRs would require the operator to replicate all of the above. Rather than do that, **the poller wakes every `DatabaseSecretClaim` that shares the changed database's `(classifier, type)`, regardless of role.** Each woken CR then re-fetches its own credentials through get-by-classifier — where the aggregator performs the authoritative role resolution — and the [content-aware update](#how-databasesecretclaim-works) writes nothing when the returned credentials are unchanged. So CRs bound to a role other than the one that rotated simply perform a cheap no-op; only the CR(s) whose effective role actually changed get a Secret write and a `SecretRotated` event.
+Matching a specific rotated role to the affected CRs would require the operator to replicate all of the above. Rather than do that, **the poller wakes every `DatabaseSecretClaim` that shares the changed database's `(classifier, type)`, regardless of role.** Each woken CR then re-fetches its own credentials through get-by-classifier — where the aggregator performs the authoritative role resolution — and the [content-aware update](#how-databasesecretclaim-works) writes nothing when the returned credentials are unchanged. So CRs bound to a role other than the one that rotated perform a cheap no-op; only the CR(s) whose effective role actually changed get a Secret write and a `SecretRotated` event.
 
 The over-fetch is bounded and cheap: a classifier is typically referenced by 1–3 `DatabaseSecretClaim` CRs (one per role), each costing one get-by-classifier round-trip and no Secret churn on a no-op. Trading a couple of redundant reads for not reimplementing — and not having to keep coherent — the aggregator's role-resolution rules is the right balance.
 
@@ -2007,7 +2007,7 @@ The following parameters control the operator's deployment and behavior. They ar
 
 When a reconcile attempt fails with a transient error (Secret not found, aggregator 5xx, network error, etc.), the controller does not retry immediately. It uses an **exponential backoff** rate limiter: the delay doubles on each consecutive failure for the same object, up to a configured maximum.
 
-This behaviour is controlled by two operator startup flags, which can be set via `args` in the Deployment:
+This behavior is controlled by two operator startup flags, which can be set via `args` in the Deployment:
 
 | Flag | Default | Description |
 |------|---------|-------------|
