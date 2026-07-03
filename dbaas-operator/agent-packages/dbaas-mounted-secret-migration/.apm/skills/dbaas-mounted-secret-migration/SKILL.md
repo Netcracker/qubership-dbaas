@@ -6,7 +6,7 @@ description: >-
   when the user asks to migrate an existing service to this mounted-secret workflow.
 ---
 
-# Migrate DBaaS services to mounted Secrets
+# Migrate DBaaS provisioning to mounted Secrets
 
 Inventory every logical database identity before editing manifests. Generate one
 `InternalDatabase` for each unique `(classifier, type)` and one `DatabaseSecretClaim` for each
