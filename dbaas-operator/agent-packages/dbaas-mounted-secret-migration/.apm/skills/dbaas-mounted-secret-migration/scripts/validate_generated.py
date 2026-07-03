@@ -134,6 +134,7 @@ def validate_inventory(
     with inventory_path.open(encoding="utf-8") as stream:
         inventory = json.load(stream)
 
+    inventory_error_count = len(errors)
     expected_databases: set[str] = set()
     expected_claims: set[str] = set()
     for datasource in inventory.get("datasources", []):
@@ -144,6 +145,19 @@ def validate_inventory(
         if not isinstance(classifier, dict) or not isinstance(db_type, str) or not db_type:
             errors.append(f"inventory datasource {datasource.get('id', '<unknown>')}: classifier and type are required")
             continue
+        classifier_namespace = classifier.get("namespace")
+        if not isinstance(classifier_namespace, str) or not classifier_namespace:
+            errors.append(
+                f"inventory datasource {datasource.get('id', '<unknown>')}: "
+                "classifier.namespace must contain the effective workload namespace"
+            )
+            continue
+        if "extraKeys" in classifier:
+            errors.append(
+                f"inventory datasource {datasource.get('id', '<unknown>')}: classifier must use the effective "
+                "wire form; flatten classifier.extraKeys into top-level keys"
+            )
+            continue
         db_key = database_key(classifier, db_type)
         expected_databases.add(db_key)
         roles = datasource.get("requestedRoles", [""])
@@ -151,6 +165,9 @@ def validate_inventory(
             errors.append(f"inventory datasource {datasource.get('id', '<unknown>')}: requestedRoles must be strings")
             continue
         expected_claims.update(claim_key(classifier, db_type, role) for role in roles)
+
+    if len(errors) > inventory_error_count:
+        return
 
     missing_databases = expected_databases - set(internals)
     extra_databases = set(internals) - expected_databases

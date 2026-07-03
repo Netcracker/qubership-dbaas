@@ -6,7 +6,7 @@ description: >-
   when the user asks to migrate an existing service to this mounted-secret workflow.
 ---
 
-# Transform DBaaS provisioning to declarative resources
+# Migrate DBaaS services to mounted Secrets
 
 Inventory every logical database identity before editing manifests. Generate one
 `InternalDatabase` for each unique `(classifier, type)` and one `DatabaseSecretClaim` for each
@@ -101,6 +101,10 @@ Canonicalize classifier maps by keys and values for comparison.
 - Different types always require different `InternalDatabase` resources.
 - Different classifier keys or values require different `InternalDatabase` resources.
 - Different requested roles share the database but require separate claims and mounted Secrets.
+
+Inventory classifiers use the effective runtime wire form: include the resolved workload namespace and
+place top-level extension keys directly in the classifier. Do not use `extraKeys` in inventory JSON;
+`extraKeys` is only the CR encoding described in section 3.
 
 Produce the inventory before making changes:
 
