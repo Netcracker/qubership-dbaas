@@ -1,0 +1,4 @@
+name: dbaas-mounted-secret-migration
+version: 1.0.0
+description: Migrate Go, Spring, and Quarkus DBaaS services from runtime REST provisioning to mounted database Secrets.
+author: Qubership
