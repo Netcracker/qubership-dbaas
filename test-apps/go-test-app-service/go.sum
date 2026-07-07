@@ -121,8 +121,8 @@ github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.5.3 h1:YOUqT
 github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.5.3/go.mod h1:bXE50/NZT9gBdA2w7W3UkKVBvVPDBF8AwFQDZdHJMiE=
 github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.4.3 h1:liO3z/pclqtDHV8IliaLRwjIHxwUgjmwMwLGWJvu41Q=
 github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.4.3/go.mod h1:2BtPJVZ0Noe0tLc64qeRwxbBwBFmqNAJdLjwRyr8NhI=
-github.com/netcracker/qubership-core-lib-go/v3 v3.12.0 h1:EBdb4Vc33dXSpnXDYijcs14h2M8olh6TJaWIo48GUlU=
-github.com/netcracker/qubership-core-lib-go/v3 v3.12.0/go.mod h1:DJg7ebBI1IZqlc1PbqaCB1OFtX3+zULmtpHmDMCmeZw=
+github.com/netcracker/qubership-core-lib-go/v3 v3.13.0 h1:EVhHibms2G7hBybTC06+HSPYZDcFCxgv2HUziNAzxa8=
+github.com/netcracker/qubership-core-lib-go/v3 v3.13.0/go.mod h1:DJg7ebBI1IZqlc1PbqaCB1OFtX3+zULmtpHmDMCmeZw=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
