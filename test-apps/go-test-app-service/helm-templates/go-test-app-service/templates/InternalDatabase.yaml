@@ -1,0 +1,23 @@
+{{- if .Values.SAMPLE_SERVICE_ENABLED }}
+{{- range .Values.INTERNAL_DATABASES }}
+---
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: '{{ .name }}'
+  namespace: '{{ $.Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ $.Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ $.Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ $.Values.MANAGED_BY }}'
+spec:
+  classifier:
+    microserviceName: '{{ $.Values.SERVICE_NAME }}'
+    namespace: '{{ $.Values.NAMESPACE }}'
+    scope: {{ .scope }}
+    {{- if eq .scope "tenant" }}
+    tenantId: '{{ $.Values.TENANT_ID }}'
+    {{- end }}
+  type: '{{ $.Values.DB_TYPE }}'
+{{- end }}
+{{- end }}

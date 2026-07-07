@@ -27,3 +27,19 @@ package v1
 // Consumer: a controller-side predicate that fires reconcile on annotation
 // changes, in addition to the standard generation-change predicate.
 const AnnotationRotationTrigger = "dbaas.netcracker.com/rotation-trigger"
+
+// AnnotationRefresh forces an immediate reconcile of an ExternalDatabase. The
+// ExternalDatabase controller does not watch Secrets (to avoid cluster-wide
+// Secret list/watch RBAC), so a change to a referenced credential Secret is
+// otherwise only picked up on the periodic resync (RequeueAfter). Changing this
+// annotation's value (e.g. to a fresh timestamp) makes the underlying Kubernetes
+// watch fire, triggering an immediate re-read of the referenced Secret and a
+// re-register with dbaas-aggregator. The value is opaque; only a change matters
+// (an identical patch is a no-op), so callers should write a changing value:
+//
+//	kubectl annotate externaldatabase <name> dbaas.netcracker.com/refresh="$(date +%s)" --overwrite
+//
+// Producer: an operator/admin (manual or automation), not the operator itself.
+// Consumer: a controller-side predicate that fires reconcile on annotation
+// changes, in addition to the standard generation-change predicate.
+const AnnotationRefresh = "dbaas.netcracker.com/refresh"

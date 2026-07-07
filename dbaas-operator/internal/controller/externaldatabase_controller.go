@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -310,13 +311,41 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 	return nil
 }
 
+// specOrRefreshTriggerPredicate fires a reconcile on (a) a spec change
+// (generation bump) or (b) a change to the refresh annotation (AnnotationRefresh).
+// The ExternalDatabase controller does not watch Secrets, so a referenced
+// credential Secret change is normally only picked up on the periodic resync;
+// touching the refresh annotation forces an immediate reconcile — re-read the
+// Secret and re-register with dbaas-aggregator — without a spec change. Plain
+// GenerationChangedPredicate is not enough: an annotation change does not bump
+// generation and would otherwise be filtered out.
+//
+// Create and Delete fall through to the embedded predicate.Funcs defaults
+// (both return true), preserving standard behaviour for new and removed CRs.
+// Only Update is customised.
+type specOrRefreshTriggerPredicate struct{ predicate.Funcs }
+
+func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return false
+	}
+	if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+		return true
+	}
+	return e.ObjectOld.GetAnnotations()[dbaasv1.AnnotationRefresh] !=
+		e.ObjectNew.GetAnnotations()[dbaasv1.AnnotationRefresh]
+}
+
 // SetupWithManager sets up the controller with the Manager.
-// GenerationChangedPredicate ensures the controller reconciles only when the
-// spec changes (metadata.generation increments), not on its own status updates.
+// The For-predicate (specOrRefreshTriggerPredicate) reconciles on spec changes
+// (metadata.generation) and on a change to the AnnotationRefresh annotation — the
+// latter is a manual escape hatch to apply a referenced-Secret change at once
+// instead of waiting for the resync.
 //
 // There is intentionally no Secret watch: the operator holds only namespaced Secret
 // RBAC (no cluster-wide list/watch), so credential-Secret changes are picked up by the
-// periodic resync (ResyncInterval) via RequeueAfter on a successful reconcile.
+// periodic resync (ResyncInterval) via RequeueAfter on a successful reconcile, or
+// immediately via the refresh annotation above.
 //
 // opts allows callers to customise the controller's behaviour — most notably
 // the RateLimiter, which controls the exponential backoff applied when
@@ -329,7 +358,7 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.ExternalDatabase{},
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+			builder.WithPredicates(specOrRefreshTriggerPredicate{})).
 		// Re-enqueue all ExternalDatabases in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.

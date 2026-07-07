@@ -1,0 +1,33 @@
+name: Go Test App Service Build
+
+run-name: >
+  Build Go Test App Service -
+  ${{ github.event_name == 'push' && format('push [{0}]', github.event.head_commit.message) || '' }}
+  ${{ github.event_name == 'pull_request' && format('PR ({0}) [{1}]', github.head_ref, github.event.pull_request.title) || '' }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'test-apps/go-test-app-service/**'
+      - '.github/workflows/go-build-sample-service.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'test-apps/go-test-app-service/**'
+      - '.github/workflows/go-build-sample-service.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and test go test app service
+    # Build/test only — the image is built in-job by the integration-tests workflow and loaded
+    # into kind, so this workflow no longer builds or publishes a Docker image. (Omitting
+    # docker-config-file is not enough: it defaults to docker-dev-config.json and would build the
+    # aggregator image; skip-docker disables the docker-build job entirely.)
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.4.1
+    with:
+      skip-docker: true
+      go-module-dir: 'test-apps/go-test-app-service'
+    secrets: inherit

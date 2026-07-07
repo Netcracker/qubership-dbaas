@@ -54,6 +54,13 @@ limitations under the License.
 //	                      POST /api/v3/dbaas/{ns}/databases/get-by-classifier/{type}
 //	                      (default: /config/get-by-classifier.json). No rule →
 //	                      a synthetic default property set.
+//	MOCK_CREATEDB_RULES_FILE – path to a JSON file mapping originService → MockRule
+//	                      for the get-or-create database call
+//	                      PUT /api/v3/dbaas/{namespace}/databases — the operator issues
+//	                      it to materialize the concrete {scope=tenant, tenantId} database
+//	                      for a tenant declaration that pins a tenantId
+//	                      (default: /config/create-db-rules.json). Missing = not an error;
+//	                      no rule → 200 with a synthetic database descriptor.
 package main
 
 import (
@@ -67,6 +74,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -133,6 +141,12 @@ var (
 	// POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}
 	reGetByClassifier = regexp.MustCompile(
 		`^/api/v3/dbaas/([^/]+)/databases/get-by-classifier/([^/]+)$`)
+
+	// PUT /api/v3/dbaas/{namespace}/databases — get-or-create database (the
+	// operator's pinned-tenant materialization call). Anchored on a bare
+	// /databases suffix so it never matches the longer .../databases/registration/…
+	// or .../databases/get-by-classifier/… paths.
+	reCreateDB = regexp.MustCompile(`^/api/v3/dbaas/([^/]+)/databases$`)
 )
 
 // ChangedEntry is one database in the rotation feed (changed.json). Its JSON tags
@@ -144,6 +158,47 @@ type ChangedEntry struct {
 	Type          string         `json:"type"`
 	LastRotatedAt string         `json:"lastRotatedAt"`
 	Classifier    map[string]any `json:"classifier"`
+}
+
+// dbStore is the mock's in-memory record of databases materialized via the get-or-create
+// call (PUT .../databases). It lets get-by-classifier emulate the real aggregator's
+// lazy-tenant behaviour: a tenant database exists only after it has been created, so a
+// DatabaseSecretClaim for a not-yet-materialized tenant gets a 404 (DatabaseNotFound) —
+// exactly what the operator's pinned-tenant materialization is there to prevent. State is
+// per-process and lost on restart.
+type dbStore struct {
+	mu   sync.Mutex
+	seen map[string]bool
+}
+
+func newDBStore() *dbStore { return &dbStore{seen: map[string]bool{}} }
+
+func (s *dbStore) add(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seen[key] = true
+}
+
+func (s *dbStore) has(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.seen[key]
+}
+
+// classifierKey is a deterministic identity for a (classifier, type) pair. Both the
+// get-or-create and get-by-classifier handlers compute it from the same flat classifier the
+// operator sends (ClassifierFlatMap), so a database created by one is found by the other.
+// json.Marshal sorts map keys, making the encoding stable.
+func classifierKey(classifier map[string]any, dbType string) string {
+	b, _ := json.Marshal(classifier)
+	return dbType + "|" + string(b)
+}
+
+// isTenant reports whether a classifier is tenant-scoped (scope=tenant), matched
+// case-insensitively like the operator and aggregator do.
+func isTenant(classifier map[string]any) bool {
+	scope, _ := classifier["scope"].(string)
+	return strings.EqualFold(scope, "tenant")
 }
 
 func main() {
@@ -160,6 +215,8 @@ func main() {
 	changed := loadChanged(changedFile)
 	gbcFile := envOr("MOCK_GETBYCLASSIFIER_FILE", "/config/get-by-classifier.json")
 	gbcRules := loadGbcRules(gbcFile)
+	createDbFile := envOr("MOCK_CREATEDB_RULES_FILE", "/config/create-db-rules.json")
+	createDbRules := loadRules(createDbFile)
 
 	log.Printf("mock dbaas-aggregator starting on :%s", port)
 	log.Printf("  PUT  .../externally_manageable → default httpCode=%d  (%d per-dbName rules loaded)",
@@ -170,11 +227,13 @@ func main() {
 		len(pollRules))
 	log.Printf("  POST .../get-by-classifier/{type} → 200 connectionProperties (%d per-originService rules loaded)",
 		len(gbcRules))
+	log.Printf("  PUT  .../databases → 200 get-or-create database (%d per-originService create-db rules loaded)",
+		len(createDbRules))
 	log.Printf("  GET  .../databases/changed → rotation feed (%d changed entries loaded; seed reports no history)",
 		len(changed))
 	log.Printf("  auth: Basic Auth or Bearer token required (value not validated — both modes accepted)")
 
-	h := handler(defaultRule, rules, applyRules, pollRules, changed, gbcRules)
+	h := handler(defaultRule, rules, applyRules, pollRules, changed, gbcRules, createDbRules)
 	if err := http.ListenAndServe(":"+port, h); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
@@ -264,8 +323,12 @@ func handler(
 	defaultRule MockRule, rules map[string]MockRule,
 	applyRules map[string]MockRule, pollRules map[string]MockPollRule,
 	changed []ChangedEntry, gbcRules map[string]map[string]any,
+	createDbRules map[string]MockRule,
 ) http.Handler {
 	mux := http.NewServeMux()
+	// store records databases materialized via PUT .../databases so get-by-classifier
+	// can emulate the real aggregator's lazy-tenant 404 before materialization.
+	store := newDBStore()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		body := logRequest(r)
 
@@ -287,7 +350,10 @@ func handler(
 			handleChanged(w, r, changed)
 
 		case reGetByClassifier.MatchString(r.URL.Path) && r.Method == http.MethodPost:
-			handleGetByClassifier(w, r, body, gbcRules)
+			handleGetByClassifier(w, r, body, gbcRules, store)
+
+		case reCreateDB.MatchString(r.URL.Path) && r.Method == http.MethodPut:
+			handleCreateDatabase(w, r, body, createDbRules, store)
 
 		case reMicroserviceBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
 			handleMicroserviceBalancingRule(w, r)
@@ -586,7 +652,10 @@ func handleChanged(w http.ResponseWriter, r *http.Request, changed []ChangedEntr
 // default. Editing a rule's password (and restarting the mock) lets a subsequent
 // rotation fan-out surface a real SecretRotated; the stable default yields the
 // content-aware no-op (SecretUpToDate) on re-fetch.
-func handleGetByClassifier(w http.ResponseWriter, r *http.Request, body []byte, gbcRules map[string]map[string]any) {
+func handleGetByClassifier(
+	w http.ResponseWriter, r *http.Request, body []byte,
+	gbcRules map[string]map[string]any, store *dbStore,
+) {
 	m := reGetByClassifier.FindStringSubmatch(r.URL.Path)
 	namespace, dbType := m[1], m[2]
 
@@ -607,9 +676,23 @@ func handleGetByClassifier(w http.ResponseWriter, r *http.Request, body []byte, 
 	}
 
 	props, ok := gbcRules[key]
-	if ok && len(props) > 0 {
+	switch {
+	case ok && len(props) > 0:
 		log.Printf("  → get-by-classifier originService=%q type=%q role=%q → 200 (rule props)", key, dbType, role)
-	} else {
+	case isTenant(req.Classifier) && !store.has(classifierKey(req.Classifier, dbType)):
+		// Tenant database that was never materialized (no get-or-create yet) — the real
+		// aggregator returns DatabaseNotFound. This is the gap the operator's pinned-tenant
+		// materialization closes; without it the claim would wait here forever.
+		log.Printf("  → get-by-classifier originService=%q type=%q tenantId=%v → 404 (tenant database not materialized)",
+			key, dbType, req.Classifier["tenantId"])
+		writeTmfError(w, MockRule{
+			HTTPCode: http.StatusNotFound,
+			TmfCode:  "CORE-DBAAS-4001",
+			Reason:   "Database not found",
+			Message:  "Database not found by classifier and type",
+		})
+		return
+	default:
 		props = defaultConnProps(role)
 		log.Printf("  → get-by-classifier originService=%q type=%q role=%q → 200 (default props)", key, dbType, role)
 	}
@@ -646,6 +729,71 @@ func defaultConnProps(role string) map[string]any {
 		"url":      "jdbc:postgresql://pg.example.com:5432/app_db",
 		"role":     role,
 	}
+}
+
+// handleCreateDatabase serves PUT /api/v3/dbaas/{namespace}/databases — the get-or-create
+// database call the operator issues to materialize a concrete {scope=tenant, tenantId}
+// database for a tenant declaration that pins a tenantId. The response code comes from the
+// per-originService createDbRules rule when present (e.g. to simulate a 500); otherwise the
+// mock returns 200 with a DatabaseResponseV3-shaped body. The operator ignores the body and
+// inspects only the status code, so a minimal descriptor is enough.
+func handleCreateDatabase(
+	w http.ResponseWriter, r *http.Request, body []byte,
+	createDbRules map[string]MockRule, store *dbStore,
+) {
+	m := reCreateDB.FindStringSubmatch(r.URL.Path)
+	namespace := m[1]
+
+	var req struct {
+		Classifier    map[string]any `json:"classifier"`
+		Type          string         `json:"type"`
+		OriginService string         `json:"originService"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	key := req.OriginService
+	if key == "" {
+		key, _ = req.Classifier["microserviceName"].(string)
+	}
+	tenantID, _ := req.Classifier["tenantId"].(string)
+
+	if rule, ok := createDbRules[key]; ok {
+		log.Printf("  → create database originService=%q tenantId=%q namespace=%q → httpCode=%d (rule)",
+			key, tenantID, namespace, rule.HTTPCode)
+		if rule.HTTPCode >= 400 {
+			writeTmfError(w, rule)
+			return
+		}
+		store.add(classifierKey(req.Classifier, req.Type))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(rule.HTTPCode)
+		writeCreatedDatabase(w, namespace, req.Type, key, tenantID)
+		return
+	}
+
+	store.add(classifierKey(req.Classifier, req.Type))
+	log.Printf("  → create database originService=%q tenantId=%q namespace=%q → 200 (default, recorded)",
+		key, tenantID, namespace)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	writeCreatedDatabase(w, namespace, req.Type, key, tenantID)
+}
+
+// writeCreatedDatabase writes a minimal DatabaseResponseV3-shaped success body for the
+// get-or-create call. The operator does not read it (it checks only the status code); it
+// exists so the mock returns a well-formed JSON object rather than an empty body.
+func writeCreatedDatabase(w http.ResponseWriter, namespace, dbType, originService, tenantID string) {
+	name := originService + "-db"
+	if tenantID != "" {
+		name = originService + "-" + tenantID + "-db"
+	}
+	writeJSON(w, map[string]any{
+		"id":                   "db-" + name,
+		"name":                 name,
+		"namespace":            namespace,
+		"type":                 dbType,
+		"connectionProperties": defaultConnProps("admin"),
+	})
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

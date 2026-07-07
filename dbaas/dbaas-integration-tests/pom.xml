@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.netcracker.cloud</groupId>
     <artifactId>dbaas-integration-tests</artifactId>
-    <version>6.13.1-2-SNAPSHOT</version>
+    <version>6.13.2-1-SNAPSHOT</version>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -24,14 +24,13 @@
         <dependency>
             <groupId>com.netcracker.cloud.junit.cloudcore</groupId>
             <artifactId>cloud-core-extension</artifactId>
-            <version>8.9.1</version>
+            <version>8.9.2</version>
         </dependency>
 
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>io.undertow</groupId>
@@ -167,7 +166,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>4.2.0</version>
+            <version>4.2.2</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>

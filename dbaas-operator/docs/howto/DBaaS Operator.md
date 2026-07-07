@@ -38,6 +38,7 @@
   - [InternalDatabase](#internaldatabase)
     - [Resource Fields](#internaldatabase-resource-fields)
     - [How It Works](#how-internaldatabase-works)
+    - [Tenant database materialization](#tenant-database-materialization)
     - [Status Reference](#internaldatabase-status-reference)
     - [Usage Examples](#internaldatabase-usage-examples)
   - [Balancing Rule CRDs](#balancing-rule-crds)
@@ -127,6 +128,7 @@ The operator calls the following dbaas-aggregator endpoints:
 | `PUT` | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable` | `ExternalDatabase` reconciler | Register or update an externally managed database |
 | `POST` | `/api/declarations/v1/apply` | `DatabaseAccessPolicy` and `InternalDatabase` reconcilers | Apply a declarative database role policy (`subKind=DbPolicy`) or database declaration (`subKind=DatabaseDeclaration`) |
 | `GET` | `/api/declarations/v1/operation/{trackingId}/status` | `InternalDatabase` reconciler | Poll the status of an asynchronous provisioning operation |
+| `PUT` | `/api/v3/dbaas/{namespace}/databases` | `InternalDatabase` reconciler (tenant declarations with a pinned `tenantId`) | Get-or-create the concrete `{scope=tenant, tenantId}` database after the declarative apply — see [Tenant database materialization](#tenant-database-materialization) |
 | `POST` | `/api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}` | `DatabaseSecretClaim` reconciler (and rotation-poller fan-out) | Fetch the connection properties of a registered database |
 | `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices` | `MicroserviceBalancingRule` reconciler | Apply the microservice balancing rule set for a business namespace |
 | `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` | `NamespaceBalancingRule` reconciler | Create or update one named namespace balancing rule |
@@ -738,6 +740,12 @@ the controller sends the following `classifier` to dbaas-aggregator:
 
 > **Credential rotation:** the operator does **not** watch Secrets. Each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`); every reconcile re-reads the referenced Secrets and pushes any changed credentials to dbaas-aggregator without a manual spec change. So a credential rotation is picked up within one resync interval rather than instantly. Secret bodies are not cached — they are fetched from the API server only at reconcile time.
 
+> **Force an immediate refresh:** to apply a referenced-Secret change at once (instead of waiting for the resync), change the `dbaas.netcracker.com/refresh` annotation on the CR — the controller reconciles immediately, re-reads the Secret, and re-registers with dbaas-aggregator. Use a changing value (e.g. a timestamp) so the underlying watch fires:
+
+```bash
+kubectl annotate externaldatabase <name> dbaas.netcracker.com/refresh="$(date +%s)" --overwrite
+```
+
 #### How ExternalDatabase Works
 
 A reconcile is triggered when any of the following happens:
@@ -745,6 +753,7 @@ A reconcile is triggered when any of the following happens:
 - The CR is created.
 - The CR spec changes (i.e., `metadata.generation` increments).
 - The periodic resync fires (every `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`). Each reconcile re-reads the referenced Secrets, so a credential rotation is picked up on the next resync — the operator does **not** watch Secrets, so the reaction is bounded by this interval rather than instant.
+- The `dbaas.netcracker.com/refresh` annotation changes — a manual escape hatch to apply a referenced-Secret change at once, without waiting for the resync (see below).
 - The covering `NamespaceBinding` is created or updated (e.g., the namespace is being claimed for the first time).
 
 On each reconcile, the controller:
@@ -1170,7 +1179,7 @@ spec:
 | `microserviceName` | Yes | Name of the owning microservice |
 | `scope` | Yes | `service` or `tenant` |
 | `namespace` | No | If set, must equal `metadata.namespace` — controller-side validation; mismatch causes `InvalidConfiguration`/`InvalidSpec`. If absent, the aggregator uses `metadata.namespace` from the request |
-| `tenantId` | No | Only meaningful when `scope=tenant`. When absent, the aggregator applies the declaration for every tenant already registered in the namespace |
+| `tenantId` | No | Only meaningful when `scope=tenant`. **When absent**, the declaration is a tenant-agnostic template — the aggregator applies it to tenants already registered in the namespace and materializes a per-tenant database lazily, on each tenant's first runtime connection. **When set**, the operator additionally eagerly materializes that concrete tenant's database after the declarative apply — see [Tenant database materialization](#tenant-database-materialization) |
 | `customKeys` | No | Adapter-specific identifiers, emitted as a **nested** `customKeys` object on the wire (`classifier.customKeys.*`). Values can be any JSON type (string, number, boolean, nested object). Not validated by the aggregator — passed through as-is |
 | `extraKeys` | No | Arbitrary additional identity fields **flattened onto the classifier top level** (legacy open-classifier compatibility). The reserved keys `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are not allowed — the controller rejects the spec with `InvalidConfiguration`. Both the operator and every consuming dbaas-client must produce the same keys/values for identity to match |
 
@@ -1255,6 +1264,32 @@ CR created / spec changed
                                 └─────────────────────────┘
 ```
 
+> For a `scope=tenant` declaration that pins a `tenantId`, the **Succeeded** transition (both the
+> `200 OK` and `COMPLETED` paths) is preceded by a get-or-create that materializes the concrete
+> tenant database — see [Tenant database materialization](#tenant-database-materialization) below.
+
+#### Tenant database materialization
+
+A `scope=tenant` declaration is, by default, a **tenant-agnostic template**: the aggregator drops `tenantId` when it stores a tenant declaration and provisions a concrete per-tenant database only when that tenant first connects at runtime (plus for tenants already registered in the namespace). A freshly declared tenant that has never connected therefore has **no database** — and a `DatabaseSecretClaim` for `{scope=tenant, tenantId}` would call the [connection-lookup endpoint](#databasesecretclaim-connection-lookup-endpoint), get `DatabaseNotFound`, and wait indefinitely.
+
+When the classifier **pins a concrete `tenantId`**, the operator closes that gap. After the declarative apply succeeds — on both the synchronous `200 OK` and the asynchronous `COMPLETED` paths — and **before** marking the CR `Succeeded`, it issues a get-or-create for that exact tenant database:
+
+```
+PUT /api/v3/dbaas/{namespace}/databases
+  {
+    "classifier": { …, "scope": "tenant", "tenantId": "<tenantId>" },
+    "type": "<type>",
+    "originService": "<microserviceName>"
+  }
+```
+
+This materializes the database exactly as the tenant's first runtime connection would, so a matching `DatabaseSecretClaim` resolves immediately instead of waiting on `DatabaseNotFound`. The call is:
+
+- **scoped** — a no-op for `scope=service`, or for a tenant declaration **without** a pinned `tenantId` (the tenant-agnostic template behaviour is unchanged);
+- **idempotent** — get-or-create returns the existing database on subsequent reconciles;
+- **gating** — if it fails, the CR does **not** become `Succeeded`: a transient/5xx failure surfaces as `BackingOff` and is retried on the next reconcile, exactly like the `apply` call;
+- **observable** — recorded on `dbaas_aggregator_requests_total` and `dbaas_aggregator_request_duration_seconds` under `operation="create_database"`.
+
 #### InternalDatabase Status Reference
 
 **`status.phase`** — human-readable summary for `kubectl get dbidb`.
@@ -1331,6 +1366,24 @@ spec:
     scope: service
   type: postgresql
 ```
+
+**Tenant-scoped with a pinned `tenantId` (eager materialization):**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: my-app-db-acme
+  namespace: my-namespace
+spec:
+  classifier:
+    microserviceName: my-service
+    scope: tenant
+    tenantId: acme        # operator materializes this concrete tenant's database after apply
+  type: postgresql
+```
+
+After the declarative apply, the operator get-or-creates the `{scope=tenant, tenantId: acme}` database, so a `DatabaseSecretClaim` with the same classifier resolves without waiting on `DatabaseNotFound` — see [Tenant database materialization](#tenant-database-materialization).
 
 **Clone from an existing database:**
 

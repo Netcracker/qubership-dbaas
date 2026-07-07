@@ -7,7 +7,6 @@ import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtensio
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v1.BackupStatus;
 import com.netcracker.it.dbaas.entity.backup.v1.RestoreStatus;
-import com.netcracker.it.dbaas.entity.backup.v3.Status;
 import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
@@ -36,9 +35,9 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.BGHelper.TEST_NAMESPACE_CANDIDATE;
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_NAMESPACE_PATTERN;
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
@@ -1427,33 +1426,35 @@ public class OperatorIT extends AbstractIT {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
+
                     var sourceClassifier = new ClassifierBuilder().ms(microserviceName).ns(sourceNamespace).build();
+                    helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
 
-                    try {
-                        helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
+                    var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+                    helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
 
-                        var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
-                        helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
-                        var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                        var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
-                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
 
-                        String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
+                    var backupRequest = new BackupRequestBuilder()
+                            .filterCriteria(fc -> fc.include(f -> f.ms(microserviceName).ns(sourceNamespace)))
+                            .build();
+                    var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+                    assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
 
-                        var namespaceBackup = backupHelperV3.collectBackup(helperV3.getBackupDaemonAuthorization(), sourceNamespace, false);
-                        assertTrue(namespaceBackup.canRestore(), "backup must be in restorable state");
+                    var restoreRequest = new RestoreRequestBuilder()
+                            .mapping(m -> m.ns(sourceNamespace, NAMESPACE))
+                            .build();
+                    var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+                    assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
 
-                        var namespaceRestoreResult = backupHelperV3.restoreBackup(helperV3.getBackupDaemonAuthorization(), namespaceBackup, NAMESPACE);
-                        assertEquals(Status.SUCCESS, namespaceRestoreResult.getStatus(), "restore must succeed");
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
 
-                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
-
-                        String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
-                        assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
-                    } finally {
-                        deleteDb(sourceClassifier, POSTGRES_TYPE);
-                    }
+                    String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
+                    assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
                 }
 
                 @Test
@@ -1500,6 +1501,338 @@ public class OperatorIT extends AbstractIT {
                                     .path("classifier");
 
                     // extraKeys must be flattened to the top level alongside microserviceName/scope.
+                    assertEquals(extraKeyValue, metaClassifier.path("region").asText(),
+                            "extraKeys entry 'region' must sit at classifier top level");
+                    assertFalse(metaClassifier.has("extraKeys"),
+                            "extraKeys wrapper key must not appear in the flattened classifier");
+
+                    // customKeys must remain nested, not promoted to the top level.
+                    JsonNode customKeys = metaClassifier.path("customKeys");
+                    assertFalse(customKeys.isMissingNode(),
+                            "customKeys must be a nested object inside the classifier");
+                    assertEquals(customKeyValue, customKeys.path("logicalDBName").asText(),
+                            "customKeys entry 'logicalDBName' must be nested under classifier.customKeys");
+                    assertFalse(metaClassifier.has("logicalDBName"),
+                            "customKeys entry 'logicalDBName' must not be promoted to classifier top level");
+                }
+            }
+
+            // Tenant counterpart of DatabaseSecretClaim: the same flows with a tenant-scoped
+            // classifier (scope=tenant + a per-test tenantId). The InternalDatabase-backed cases
+            // (Created/ApplyRotation/RotationFanOut) additionally exercise the operator's
+            // pinned-tenant materialization — without it the concrete {scope=tenant, tenantId}
+            // database is never created and the claim stays on DatabaseNotFound.
+            @Nested
+            @EnableExtension
+            class DatabaseSecretClaimTenant {
+                @Test
+                void testDatabaseSecretClaimTenantCreatedSuccessfully() throws IOException {
+                    String internalDatabaseCRName = generateName();
+                    String dbSecretCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+
+                    var internalDatabaseCR = asTenant(
+                            buildInternalDatabaseCR(internalDatabaseCRName, microserviceName, NAMESPACE, POSTGRES_TYPE), tenantId);
+                    createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                    var tenantClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
+                    var expectedConnections = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), tenantClassifier, NAMESPACE, POSTGRES_TYPE, 200).getConnectionProperties();
+
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var secret = getSecret(secretName);
+                    assertSecretOwnedByCR(secret, createdDatabaseSecretClaimCR);
+                    assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
+                    // userRole is empty in this CR → descriptor must omit it; scope/tenantId must be carried.
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "", "tenant", tenantId);
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantDbNotExist() throws IOException {
+                    String crName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+                    var tenantClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
+
+                    helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(),
+                            tenantClassifier, NAMESPACE, POSTGRES_TYPE, 404);
+
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_DATABASE_NOT_FOUND, STATUS_FALSE);
+
+                    assertNull(getSecret(secretName));
+
+                    var expectedConnections = helperV3.createDatabase(tenantClassifier, POSTGRES_TYPE, 201).getConnectionProperties();
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var secret = getSecret(secretName);
+                    assertSecretOwnedByCR(secret, createdDatabaseSecretClaimCR);
+                    assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantCascadeDeleting() throws IOException {
+                    String crName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+
+                    helperV3.createDatabase(new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build(), POSTGRES_TYPE, 201);
+
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var secret = getSecret(secretName);
+                    assertSecretOwnedByCR(secret, createdDatabaseSecretClaimCR);
+
+                    kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
+                            .withName(crName)
+                            .delete();
+
+                    var deletedDatabaseSecretClaimCR = kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
+                            .inNamespace(NAMESPACE)
+                            .withName(crName)
+                            .delete();
+                    assertTrue(deletedDatabaseSecretClaimCR.isEmpty());
+
+                    waitForSecretDeleted(secretName);
+                    assertNull(getSecret(secretName));
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantApplyDatabaseAccessPolicy() throws IOException {
+                    String dbSecretCrName = generateName();
+                    String databaseAccessPolicyCrName = generateName();
+                    String microserviceName = generateName();
+                    String originService = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+
+                    var expectedConnections = helperV3.createDatabase(
+                            new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build(),
+                            POSTGRES_TYPE, 201
+                    ).getConnectionProperties();
+
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCrName, originService, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE), tenantId);
+                    var failedDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, failedDatabaseSecretClaimCR, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_AGGREGATOR_REJECTED, STATUS_TRUE);
+                    assertNull(getSecret(secretName));
+
+                    kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
+                            .withName(dbSecretCrName)
+                            .delete();
+
+                    OperatorIT.this.testDatabaseAccessPolicyOnlyServicesSet(databaseAccessPolicyCrName, microserviceName, originService, List.of("admin"));
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    var secret = getSecret(secretName);
+                    assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnections);
+                    // userRole "admin" is requested in this CR → descriptor must carry it, plus scope/tenantId.
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "admin", "tenant", tenantId);
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantApplyRotation() throws IOException {
+                    String internalDatabaseCRName = generateName();
+                    String dbSecretCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+                    var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
+
+                    var internalDatabaseCR = asTenant(
+                            buildInternalDatabaseCR(internalDatabaseCRName, microserviceName, NAMESPACE, POSTGRES_TYPE), tenantId);
+                    createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var secretBefore = getSecret(secretName);
+                    assertNotNull(secretBefore, "secret must exist");
+                    var passwordBefore = extractPasswordFromSecret(secretBefore);
+
+                    helperV3.changePassword(classifier, POSTGRES_TYPE, 200, NAMESPACE);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+
+                    var secretAfter = getSecret(secretName);
+                    assertNotNull(secretAfter, "secret must exist after rotation");
+                    var passwordAfter = extractPasswordFromSecret(secretAfter);
+
+                    assertNotEquals(passwordBefore, passwordAfter, "password must change after rotation");
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantRotationFanOutToSameClassifier() throws IOException {
+                    String internalDatabaseCRName = generateName();
+                    String dbSecretCRName1 = generateName();
+                    String dbSecretCRName2 = generateName();
+                    String microserviceName = generateName();
+                    String secretName1 = generateName();
+                    String secretName2 = generateName();
+                    String tenantId = generateName();
+                    var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
+
+                    var internalDatabaseCR = asTenant(
+                            buildInternalDatabaseCR(internalDatabaseCRName, microserviceName, NAMESPACE, POSTGRES_TYPE), tenantId);
+                    createCR(CRD_INTERNAL_DATABASE, internalDatabaseCR);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, internalDatabaseCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                    var databaseSecretCR1 = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCRName1, microserviceName, microserviceName, NAMESPACE, secretName1, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR1 = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR1);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var databaseSecretCR2 = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCRName2, microserviceName, microserviceName, NAMESPACE, secretName2, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR2 = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR2);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var passwordBefore1 = extractPasswordFromSecret(getSecret(secretName1));
+                    var passwordBefore2 = extractPasswordFromSecret(getSecret(secretName2));
+
+                    helperV3.changePassword(classifier, POSTGRES_TYPE, 200, NAMESPACE);
+
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR1, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR2, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+
+                    var passwordAfter1 = extractPasswordFromSecret(getSecret(secretName1));
+                    var passwordAfter2 = extractPasswordFromSecret(getSecret(secretName2));
+
+                    assertNotEquals(passwordBefore1, passwordAfter1, "secret 1 password must change after rotation");
+                    assertNotEquals(passwordBefore2, passwordAfter2, "secret 2 password must change after rotation");
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantRotationTriggeredByBackupRestore() throws IOException {
+                    String dbSecretCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+                    var classifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
+
+                    helperV3.createDatabase(classifier, POSTGRES_TYPE, 201);
+
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var passwordBefore = extractPasswordFromSecret(getSecret(secretName));
+
+                    var backupRequest = new BackupRequestBuilder()
+                            .filterCriteria(fc -> fc.include(f -> f.ms(microserviceName)))
+                            .build();
+                    var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+                    assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+
+                    var restoreRequest = new RestoreRequestBuilder().build();
+                    var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+                    assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+                    var passwordAfter = extractPasswordFromSecret(getSecret(secretName));
+                    assertNotEquals(passwordBefore, passwordAfter, "secret password must change after rotation");
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantUpdatedAfterBackupRestoreV3() throws IOException {
+                    String sourceNamespace = helperV3.generateTestNamespace();
+                    String dbSecretCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+
+                    var sourceClassifier = new ClassifierBuilder().ms(microserviceName).ns(sourceNamespace).tenant().tenantId(tenantId).build();
+                    helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
+
+                    var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
+                    helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
+
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
+
+                    var backupRequest = new BackupRequestBuilder()
+                            .filterCriteria(fc -> fc.include(f -> f.ms(microserviceName).ns(sourceNamespace)))
+                            .build();
+                    var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+                    assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
+
+                    var restoreRequest = new RestoreRequestBuilder()
+                            .mapping(m -> m.ns(sourceNamespace, NAMESPACE))
+                            .build();
+                    var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+                    assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
+
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+
+                    String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
+                    assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
+                }
+
+                @Test
+                void testDatabaseSecretClaimTenantExtraKeysAndCustomKeysClassifierShape() throws IOException {
+                    String edbCRName = generateName();
+                    String dscCRName = generateName();
+                    String microserviceName = generateName();
+                    String secretName = generateName();
+                    String tenantId = generateName();
+                    String extraKeyValue = "eu-west";
+                    String customKeyValue = "billing";
+
+                    // ExternalDatabase with a tenant classifier plus extraKeys and customKeys.
+                    var edbCR = asTenant(buildExternalDatabaseCR(edbCRName, microserviceName, NAMESPACE, "billing-db", ""), tenantId);
+                    Map<String, Object> spec = (Map<String, Object>) edbCR.getAdditionalProperties().get("spec");
+                    Map<String, Object> classifier = (Map<String, Object>) spec.get("classifier");
+                    classifier.put("extraKeys", Map.of("region", extraKeyValue));
+                    classifier.put("customKeys", Map.of("logicalDBName", customKeyValue));
+
+                    createCR(CRD_EXTERNAL_DATABASE, edbCR);
+                    waitForDesiredState(CRD_EXTERNAL_DATABASE, edbCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
+
+                    // DatabaseSecretClaim with the same tenant classifier.
+                    var dscCR = asTenant(buildDatabaseSecretClaimCR(dscCRName, microserviceName, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE), tenantId);
+                    Map<String, Object> dscSpec = (Map<String, Object>) dscCR.getAdditionalProperties().get("spec");
+                    Map<String, Object> dscClassifier = (Map<String, Object>) dscSpec.get("classifier");
+                    dscClassifier.put("extraKeys", Map.of("region", extraKeyValue));
+                    dscClassifier.put("customKeys", Map.of("logicalDBName", customKeyValue));
+
+                    var createdDscCR = createCR(CRD_DATABASE_SECRET_CLAIM, dscCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDscCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+                    var secret = getSecret(secretName);
+                    assertSecretOwnedByCR(secret, createdDscCR);
+                    assertSecretContainsMetadata(secret, microserviceName, NAMESPACE, POSTGRES_TYPE, "admin", "tenant", tenantId);
+
+                    // Decode metadata.json to verify classifier shape.
+                    String decodedJson = new String(
+                            java.util.Base64.getDecoder().decode(secret.getData().get(METADATA_KEY)),
+                            java.nio.charset.StandardCharsets.UTF_8
+                    );
+                    JsonNode metaClassifier =
+                            new ObjectMapper()
+                                    .readTree(decodedJson)
+                                    .path("classifier");
+
+                    // extraKeys must be flattened to the top level alongside microserviceName/scope/tenantId.
                     assertEquals(extraKeyValue, metaClassifier.path("region").asText(),
                             "extraKeys entry 'region' must sit at classifier top level");
                     assertFalse(metaClassifier.has("extraKeys"),
@@ -1994,13 +2327,20 @@ public class OperatorIT extends AbstractIT {
     }
 
     private static void deleteAllLogicalDatabases() throws IOException {
-        var logicalDbs = helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).stream()
-                .filter(db -> NAMESPACE_PATTERN.matcher((String) db.getClassifier().get("microserviceName")).matches())
-                .toList();
+        helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(NAMESPACE_PATTERN);
+        helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(TEST_NAMESPACE_PATTERN);
 
-        for (DatabaseV3 logicalDb : logicalDbs) {
-            deleteDb(logicalDb.getClassifier(), logicalDb.getType());
-        }
+        List<DatabaseV3> logicalDbs;
+        do {
+            // limit 20 DBs, let's repeat the check to be sure that we delete all DBs
+            logicalDbs = helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).stream()
+                    .filter(db -> NAMESPACE_PATTERN.matcher((String) db.getClassifier().get("microserviceName")).matches())
+                    .toList();
+
+            for (DatabaseV3 logicalDb : logicalDbs) {
+                deleteDb(logicalDb.getClassifier(), logicalDb.getType());
+            }
+        } while (!logicalDbs.isEmpty());
     }
 
     private static void deleteDb(Map<String, Object> classifier, String type) throws IOException {

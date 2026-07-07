@@ -1660,12 +1660,16 @@ public class DbaasHelperV3 {
     }
 
     public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces() throws IOException {
+        deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(TEST_NAMESPACE_PATTERN);
+    }
+
+    public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(Pattern namespacePattern) throws IOException {
         log.info("Finding test namespaces for deleting all logical databases and namespace backups");
 
         var namespaces = findAllRegisteredNamespaces();
 
         var testNamespaces = namespaces.stream()
-                .filter(namespace -> TEST_NAMESPACE_PATTERN.matcher(namespace).matches())
+                .filter(namespace -> namespacePattern.matcher(namespace).matches())
                 .toList();
 
         log.info("Found {} test namespaces: {}", namespaces.size(), namespaces);
