@@ -45,7 +45,7 @@ public class MigrationHelper {
             .build();
 
     private static final String DBAAS_METADATA = "_dbaas_metadata";
-    private static final String ADAPTER_CREDS_SECRET_NAME = "dbaas-aggregator-credentials.v1";
+    private static final String ADAPTER_CREDS_SECRET_NAME = "dbaas-adapter-credentials";
     public static final String CONNECTION_PROPERTIES = "connectionProperties";
 
     public static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";

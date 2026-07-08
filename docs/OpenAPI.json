@@ -4113,7 +4113,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Current APi version and supported API versions"
+            "description": "Current APi version and supported API versions",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           }
         },
         "summary": "Api Version Info"
@@ -4710,7 +4715,12 @@
         },
         "responses": {
           "200": {
-            "description": "Backup metadata uploaded successfully"
+            "description": "Backup metadata uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "The request was invalid or cannot be served",
@@ -5059,7 +5069,12 @@
         },
         "responses": {
           "200": {
-            "description": "Commit operation successfully done"
+            "description": "Commit operation successfully done",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Incorrect request"
@@ -5105,7 +5120,12 @@
         },
         "responses": {
           "200": {
-            "description": "Blue-green domain successfully destroyed"
+            "description": "Blue-green domain successfully destroyed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Incorrect request"
@@ -5144,7 +5164,12 @@
         "description": "Get all registered Blue-Green domains",
         "responses": {
           "200": {
-            "description": "All registered Blue-Green domains"
+            "description": "All registered Blue-Green domains",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DBaaS."
@@ -5184,7 +5209,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Specific registered Blue-Green domain"
+            "description": "Specific registered Blue-Green domain",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DBaaS."
@@ -5224,7 +5254,12 @@
         },
         "responses": {
           "200": {
-            "description": "Blue-green domain successfully registered"
+            "description": "Blue-green domain successfully registered",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Incorrect request"
@@ -5260,7 +5295,12 @@
         "description": "List of registered Blue-Green domains",
         "responses": {
           "200": {
-            "description": "List of registered Blue-Green domains"
+            "description": "List of registered Blue-Green domains",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DBaaS."
@@ -5303,7 +5343,12 @@
         },
         "responses": {
           "200": {
-            "description": "List of databases"
+            "description": "List of databases",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Bad request"
@@ -5344,7 +5389,12 @@
         },
         "responses": {
           "200": {
-            "description": "Orphan databases successfully dropped"
+            "description": "Orphan databases successfully dropped",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Bad request"
@@ -5386,7 +5436,12 @@
         },
         "responses": {
           "200": {
-            "description": "Promote is already done"
+            "description": "Promote is already done",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Incorrect request"
@@ -5431,7 +5486,12 @@
         },
         "responses": {
           "200": {
-            "description": "Rollback is already done"
+            "description": "Rollback is already done",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Incorrect request"
@@ -5477,7 +5537,12 @@
         },
         "responses": {
           "200": {
-            "description": "Warmup is already done"
+            "description": "Warmup is already done",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "202": {
             "description": "Warmup process has started, return trackingId "
@@ -5527,7 +5592,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Return operation status"
+            "description": "Return operation status",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DBaaS."
@@ -5568,7 +5638,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Terminate operation and return status"
+            "description": "Terminate operation and return status",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DBaaS."
@@ -5642,7 +5717,12 @@
         "description": "Retrieve all composite structures that are registered in DBaaS.",
         "responses": {
           "200": {
-            "description": "Successful operation"
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Internal server error"
@@ -5682,7 +5762,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Composite is found"
+            "description": "Composite is found",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "404": {
             "description": "Composite not found"
@@ -5785,7 +5870,12 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -5825,7 +5915,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Return operation status"
+            "description": "Return operation status",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "404": {
             "description": "Not found operation status"
@@ -6152,7 +6247,12 @@
             "description": "Selected backup not found"
           },
           "200": {
-            "description": "Backup successfully restored"
+            "description": "Backup successfully restored",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -6193,7 +6293,12 @@
             "description": "Rules not found"
           },
           "200": {
-            "description": "Return founded rules"
+            "description": "Return founded rules",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -6232,7 +6337,12 @@
         },
         "responses": {
           "200": {
-            "description": "Rules deleted"
+            "description": "Rules deleted",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -6274,7 +6384,12 @@
             "description": "Cannot create two different rules for same namespace with different physicalDbId and same DbType"
           },
           "200": {
-            "description": "New rules created"
+            "description": "New rules created",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -7309,9 +7424,23 @@
         },
         "responses": {
           "400": {
-            "description": "The classifier contains a namespace that differs from the one in the path",
+            "description": "Validation error",
             "content": {
               "application/json": {
+                "examples": {
+                  "MissingClassifierOrProperties": {
+                    "value": "\"Database classifier or new connection properties must not be nil\""
+                  },
+                  "MissingRoleKey": {
+                    "value": "\"New connection properties must contain key \u0027role\u0027\""
+                  },
+                  "EncryptedPasswordAsPlaintext": {
+                    "value": "\"Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext\""
+                  },
+                  "NamespaceMismatch": {
+                    "value": "\"The classifier contains a namespace that differs from the one in the path\""
+                  }
+                },
                 "schema": {
                   "type": "string"
                 }
@@ -7319,9 +7448,17 @@
             }
           },
           "404": {
-            "description": "Database with classifier does not contain connection properties for role",
+            "description": "Not found",
             "content": {
               "application/json": {
+                "examples": {
+                  "NoSuchDatabase": {
+                    "value": "\"there is no existing database with such type and classifier\""
+                  },
+                  "NoConnectionPropertiesForRole": {
+                    "value": "\"Database with classifier does not contain connection properties for role\""
+                  }
+                },
                 "schema": {
                   "type": "string"
                 }
@@ -7758,7 +7895,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Successfully returned backups."
+            "description": "Successfully returned backups.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -8032,7 +8174,12 @@
         },
         "responses": {
           "200": {
-            "description": "Information was added successfully"
+            "description": "Information was added successfully",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "403": {
             "description": "Backup namespace and specified namespace are different"
@@ -8154,7 +8301,12 @@
             "description": "Selected backup not found"
           },
           "200": {
-            "description": "Backup is validated and can be restored"
+            "description": "Backup is validated and can be restored",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -8218,7 +8370,12 @@
             "description": "Selected backup not found"
           },
           "200": {
-            "description": "Backup successfully restored"
+            "description": "Backup successfully restored",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -8829,7 +8986,12 @@
             "description": "New rule created"
           },
           "200": {
-            "description": "Existing rule changed"
+            "description": "Existing rule changed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "401": {
             "description": "Not Authorized"
@@ -8880,7 +9042,12 @@
         },
         "responses": {
           "200": {
-            "description": "Return result of rules evaluation"
+            "description": "Return result of rules evaluation",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Error happened when processing rules"
@@ -8924,7 +9091,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Gotten on microservice physical database balancing rules"
+            "description": "Gotten on microservice physical database balancing rules",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "500": {
             "description": "Unknown error which may be related with internal work of DBaaS."
@@ -9030,7 +9202,12 @@
         },
         "responses": {
           "200": {
-            "description": "Schema is valid"
+            "description": "Schema is valid",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "400": {
             "description": "Schema is not valid"
@@ -9219,7 +9396,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Successfully deleted physical databases."
+            "description": "Successfully deleted physical databases.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "406": {
             "description": "Database is marked as default or there are connected logical databases."
@@ -9275,7 +9457,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Updated existing physical database"
+            "description": "Updated existing physical database",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "404": {
             "description": "Specified physical database does not registered"
@@ -9299,7 +9486,7 @@
   },
   "info": {
     "title": "DBaaS Aggregator API",
-    "version": "6.13.1",
+    "version": "6.13.2",
     "description": "This documentation presents the REST API for the \"Database as a Service\" (DBaaS) component. DBaaS acts as an aggregator for all adapters. It is designed to collect requests for managed databases and route them to the appropriate adapter. DBaaS stores information about all databases used in a cloud project. These databases are isolated by namespace. DBaaS uses a Classifier to identify databases within a cloud namespace. The Classifier includes service-related information such as scope, microservice name, tenant ID, and namespace."
   }
 }
