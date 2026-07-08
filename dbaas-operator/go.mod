@@ -1,6 +1,6 @@
 module github.com/netcracker/qubership-dbaas/dbaas-operator
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1
