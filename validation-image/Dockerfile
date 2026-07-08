@@ -1,4 +1,4 @@
-FROM ghcr.io/netcracker/qubership-core-base:2.3.5@sha256:ce0f2451c96c254e58c54600b58aa323b6582e38a38cbdd5ce6b0e071b32b700
+FROM ghcr.io/netcracker/qubership-core-base:2.3.6@sha256:b77f160cfd406124b3f1be223e82b21e742d5533638c64409e5992342587304a
 LABEL maintainer="qubership"
 
 USER root
