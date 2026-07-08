@@ -33,7 +33,7 @@ jobs:
       # But Fork is used for safety reasons
       # You can use any repository - thay are fully compatible
       # - uses: Nikita-Filonov/ai-review@v0.43.0
-      - uses: exadmin/ai-review@v0.43.0
+      - uses: exadmin/ai-review@0818142e0b3bd1aff9d18a0aba5b0ecf454be92e # v0.43.0
         with:
           review-command: ${{ inputs.review-command }}
         env:

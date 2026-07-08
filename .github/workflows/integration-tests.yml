@@ -26,16 +26,16 @@ jobs:
           EOF
 
       - name: Set up Kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           cluster_name: kind
           config: kind-config.yaml
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v5
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -220,7 +220,7 @@ jobs:
       - name: Upload Surefire reports
         id: upload_surefire
         if: always() && steps.collect_reports.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: surefire-reports
           path: artifacts/*
@@ -234,7 +234,7 @@ jobs:
 
       - name: Upload Fluent Bit logs
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dbaas-pod-logs
           path: fluentbit-logs/**
@@ -249,7 +249,7 @@ jobs:
 
       - name: Upload DBaaS logs
         if: always() && steps.collect_logs.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dbaas-logs
           path: logs/*
