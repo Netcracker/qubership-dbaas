@@ -134,7 +134,7 @@
         <dependency>
             <groupId>com.netcracker.core</groupId>
             <artifactId>process-engine</artifactId>
-            <version>1.5.2</version>
+            <version>1.5.3</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -206,7 +206,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.security.core.utils</groupId>
             <artifactId>k8s-utils</artifactId>
-            <version>3.1.4</version>
+            <version>3.1.5</version>
         </dependency>
 
         <dependency>

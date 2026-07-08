@@ -24,7 +24,7 @@
         <!-- Pin to the unique snapshot published from the throwaway branch (throwaway/quarkus-mounted-secret-publish)
              so a master rebuild of 10.1.1-SNAPSHOT does NOT overwrite the mounted-secret artifacts.
              Revert to the released version once the feature lands. -->
-        <dbaas-quarkus.version>10.1.2</dbaas-quarkus.version>
+        <dbaas-quarkus.version>10.1.3</dbaas-quarkus.version>
         <skipITs>true</skipITs>
     </properties>
 
