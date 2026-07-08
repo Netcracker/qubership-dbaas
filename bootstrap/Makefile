@@ -129,12 +129,7 @@ setup-repos:
 	@echo "$(BLUE)=== STAGE 1: Repository Setup ===$(NC)"
 	@echo "$(CYAN)--- Stage 1 BEGIN: Cloning repositories...$(NC)"
 	@mkdir -p $(REPOS_DIR)
-	@if [ ! -d "$(REPOS_DIR)/pgskipper-operator" ]; then \
-		git init $(REPOS_DIR)/pgskipper-operator && \
-		git -C $(REPOS_DIR)/pgskipper-operator remote add origin https://github.com/Netcracker/pgskipper-operator.git && \
-		git -C $(REPOS_DIR)/pgskipper-operator fetch --depth 1 origin 7d6fb2976bd16663ce06caf8fe68fbb0e2bd5c45 && \
-		git -C $(REPOS_DIR)/pgskipper-operator checkout FETCH_HEAD; \
-	else echo "Directory already exists"; fi
+  @git clone --depth 1 https://github.com/Netcracker/pgskipper-operator.git $(REPOS_DIR)/pgskipper-operator 2>/dev/null || echo "Directory already exists"
 	@git clone --depth 1 https://github.com/Netcracker/qubership-dbaas.git $(REPOS_DIR)/qubership-dbaas 2>/dev/null || echo "Directory already exists"
 	@echo "$(GREEN)--- Stage 1 END: Repositories ready$(NC)"
 	@echo ""
