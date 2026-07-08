@@ -25,6 +25,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.ExampleObject;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
@@ -235,12 +236,20 @@ public class DatabaseOperationControllerV3 {
     @Operation(summary = "V3. Update existing database connection properties",
             description = "The API allows to update existing database connection properties")
     @APIResponses({
-            @APIResponse(responseCode = "400", description = "Database classifier or new connection properties must not be nil", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "400", description = "New connection properties must contain key 'role'", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "400", description = "Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "400", description = "The classifier contains a namespace that differs from the one in the path", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "404", description = "there is no existing database with such type and classifier", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "404", description = "Database with classifier does not contain connection properties for role", content = @Content(schema = @Schema(implementation = String.class))),
+            @APIResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = String.class),
+                            examples = {
+                                    @ExampleObject(name = "MissingClassifierOrProperties", value = "\"Database classifier or new connection properties must not be nil\""),
+                                    @ExampleObject(name = "MissingRoleKey", value = "\"New connection properties must contain key 'role'\""),
+                                    @ExampleObject(name = "EncryptedPasswordAsPlaintext", value = "\"Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext\""),
+                                    @ExampleObject(name = "NamespaceMismatch", value = "\"The classifier contains a namespace that differs from the one in the path\"")
+                            })),
+            @APIResponse(responseCode = "404", description = "Not found",
+                    content = @Content(schema = @Schema(implementation = String.class),
+                            examples = {
+                                    @ExampleObject(name = "NoSuchDatabase", value = "\"there is no existing database with such type and classifier\""),
+                                    @ExampleObject(name = "NoConnectionPropertiesForRole", value = "\"Database with classifier does not contain connection properties for role\"")
+                            })),
             @APIResponse(responseCode = "200", description = "Database connection properties were updated successfully", content = @Content(schema = @Schema(implementation = Database.class)))
     })
     @Path("/databases/update-connection/{type}")

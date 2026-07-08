@@ -9,7 +9,7 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
-import org.junit.Assert;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -96,7 +96,7 @@ class NamespaceValidationRequestFilterTest {
 
             when(namespaceValidator.isNamespaceFromPathValid("ns1", "other-ns")).thenReturn(false);
 
-            Assert.assertThrows(FailedNamespaceIsolationCheckException.class, () -> {
+            Assertions.assertThrows(FailedNamespaceIsolationCheckException.class, () -> {
                 filter.filter(requestContext);
             });
 

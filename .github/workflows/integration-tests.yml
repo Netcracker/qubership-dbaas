@@ -34,10 +34,10 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
 
-      - name: Set up JDK 21
+      - name: Set up JDK 25
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'temurin'
           cache: maven
 
@@ -105,7 +105,7 @@ jobs:
       - name: Wait for MinIO Tenant readiness
         run: |
           echo "Waiting for MinIO Tenant to become Ready..."
-      
+
           for i in {1..30}; do
             STATE=$(kubectl get tenant test-minio -n minio -o jsonpath='{.status.currentState}')
             echo "Current state: $STATE"
@@ -115,7 +115,7 @@ jobs:
             fi
             sleep 10
           done
-      
+
           echo "MinIO Tenant did not become ready in time"
           exit 1
 
@@ -123,23 +123,21 @@ jobs:
         run: |
           cat <<'EOF' > "$GITHUB_WORKSPACE/patroni-services-values.yaml"
           postgresPassword: ${POSTGRES_PASSWORD}
-      
+
           backupDaemon:
             install: true
             storage:
-              storageClass: ${STORAGE_CLASS}
-              type: pv
-              size: 2Gi
+              type: s3
             s3Storage:
               url: http://minio.minio.svc.cluster.local
               accessKeyId: minio
               secretAccessKey: minio123
               bucket: dbaas-backup-restore-test
-              region: region123
+              untrustedCert: true
             securityContext:
               runAsUser: 101
               fsGroup: 101
-      
+
           dbaas:
             install: true
             aggregator:
