@@ -132,7 +132,7 @@ setup-repos:
 	@if [ ! -d "$(REPOS_DIR)/pgskipper-operator" ]; then \
 		git init $(REPOS_DIR)/pgskipper-operator && \
 		git -C $(REPOS_DIR)/pgskipper-operator remote add origin https://github.com/Netcracker/pgskipper-operator.git && \
-		git -C $(REPOS_DIR)/pgskipper-operator fetch --depth 1 origin 79fec4e9cb3306f72a34c02d13d600f1d839d813 && \
+		git -C $(REPOS_DIR)/pgskipper-operator fetch --depth 1 origin 2ac6f033fefce20289ef54ede4d81a745ae68314 && \
 		git -C $(REPOS_DIR)/pgskipper-operator checkout FETCH_HEAD; \
 	else echo "Directory already exists"; fi
 	@git clone --depth 1 https://github.com/Netcracker/qubership-dbaas.git $(REPOS_DIR)/qubership-dbaas 2>/dev/null || echo "Directory already exists"
