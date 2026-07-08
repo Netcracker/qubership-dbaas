@@ -7,8 +7,8 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/google/uuid v1.6.0
-	github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.6.2
-	github.com/netcracker/qubership-core-lib-go/v3 v3.13.0
+	github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.6.3
+	github.com/netcracker/qubership-core-lib-go/v3 v3.13.1
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
 	github.com/prometheus/client_golang v1.23.2
