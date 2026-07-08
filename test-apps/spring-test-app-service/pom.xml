@@ -16,7 +16,7 @@
         <!-- Must match the Spring Boot line the dbaas client (microservice-restclient 7.x) is
              built against: Spring Boot 4.0. A 3.x parent mixes spring-boot-restclient:4.x with
              spring-boot-autoconfigure:3.x and the two RestClientAutoConfiguration beans clash. -->
-        <version>4.0.6</version>
+        <version>4.0.7</version>
         <relativePath/>
     </parent>
 
