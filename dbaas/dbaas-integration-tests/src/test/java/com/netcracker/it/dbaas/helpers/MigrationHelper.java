@@ -45,7 +45,10 @@ public class MigrationHelper {
             .build();
 
     private static final String DBAAS_METADATA = "_dbaas_metadata";
-    private static final String ADAPTER_CREDS_SECRET_NAME = "dbaas-adapter-credentials";
+    private static final List<String> ADAPTER_CREDS_SECRET_NAMES = List.of(
+            "dbaas-adapter-credentials",
+            "dbaas-aggregator-credentials.v1" // for MongoDB
+    );
     public static final String CONNECTION_PROPERTIES = "connectionProperties";
 
     public static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";
@@ -156,12 +159,14 @@ public class MigrationHelper {
     }
 
     private String readFromAggregatorCredentialsSecret(String namespace, String key) {
-        var secret = helperV3.getKubernetesClientSecret(namespace, ADAPTER_CREDS_SECRET_NAME);
-        if (secret == null || secret.getData() == null || !secret.getData().containsKey(key)) {
-            throw new RuntimeException("Key '" + key + "' not found in secret '" + ADAPTER_CREDS_SECRET_NAME + "'"
-                    + " in namespace " + namespace);
+        for (String secretName : ADAPTER_CREDS_SECRET_NAMES) {
+            var secret = helperV3.getKubernetesClientSecret(namespace, secretName);
+            if (secret != null && secret.getData() != null && secret.getData().containsKey(key)) {
+                return new String(Base64.getDecoder().decode(secret.getData().get(key)));
+            }
         }
-        return new String(Base64.getDecoder().decode(secret.getData().get(key)));
+        throw new RuntimeException("Key '" + key + "' not found in any of secrets " + ADAPTER_CREDS_SECRET_NAMES
+                + " in namespace " + namespace);
     }
 
     public DatabaseResponse prepareMigratedExternalToInternalPostgresDatabase(String sourceNamespace,
