@@ -3,8 +3,11 @@ package com.netcracker.cloud.dbaas;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.microprofile.config.ConfigProvider;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -25,24 +28,25 @@ public class JdbcUtils {
     public static final boolean DEFAULT_SSL_ENABLED = false;
     public static final String PROCESS_ORCHESTRATOR_DATASOURCE = "process-orchestrator";
 
-    private static final String CERTIFICATE_STORE_PATH = getEnvOrProperty("CERTIFICATE_FILE_PATH", "/etc/tls");
+    private static final String CERTIFICATE_STORE_PATH = getParameterValue("CERTIFICATE_FILE_PATH", "/etc/tls");
     private static final String CA_CERTIFICATE_URL = "file://" + CERTIFICATE_STORE_PATH + "/ca.crt";
     private static final String SSL_URL_PARAMS = "?ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=" + CA_CERTIFICATE_URL;
+    private static final String POD_SECRETS_PATH = "/etc/secrets/pod-secrets";
 
     public static String resolveConnectionURL() {
-        String host = ConfigProvider.getConfig().getOptionalValue("POSTGRES_HOST", String.class).orElse(DEFAULT_HOST);
-        String port = ConfigProvider.getConfig().getOptionalValue("POSTGRES_PORT", String.class).orElse(DEFAULT_PORT);
-        String database = ConfigProvider.getConfig().getOptionalValue("POSTGRES_DATABASE", String.class).orElse(DEFAULT_DATABASE_NAME);
-        boolean ssl = Boolean.parseBoolean(ConfigProvider.getConfig().getOptionalValue("INTERNAL_TLS_ENABLED", String.class).orElse(Boolean.toString(DEFAULT_SSL_ENABLED)));
+        String host = getParameterValue("POSTGRES_HOST", DEFAULT_HOST);
+        String port = getParameterValue("POSTGRES_PORT", DEFAULT_PORT);
+        String database = getParameterValue("POSTGRES_DATABASE", DEFAULT_DATABASE_NAME);
+        boolean ssl = Boolean.parseBoolean(getParameterValue("INTERNAL_TLS_ENABLED", Boolean.toString(DEFAULT_SSL_ENABLED)));
         return buildConnectionURL(host, port, database, ssl);
     }
 
     public static String resolveUsername() {
-        return ConfigProvider.getConfig().getOptionalValue("POSTGRES_USER", String.class).orElse(DEFAULT_USERNAME);
+        return getParameterValue("POSTGRES_USER", DEFAULT_USERNAME);
     }
 
     public static String resolvePassword() {
-        return ConfigProvider.getConfig().getOptionalValue("POSTGRES_PASSWORD", String.class).orElse(DEFAULT_PASSWORD);
+        return getParameterValue("POSTGRES_PASSWORD", DEFAULT_PASSWORD);
     }
 
     public static String buildConnectionURL(String host, String port, String database, boolean ssl) {
@@ -56,8 +60,20 @@ public class JdbcUtils {
         return url;
     }
 
-    private static String getEnvOrProperty(String name, String defaultValue) {
-        return System.getProperty(name, System.getenv().getOrDefault(name, defaultValue));
+    private static String getParameterValue(String name, String defaultValue) {
+        String value = System.getProperty(name, System.getenv().get(name));
+        if (value != null) {
+            return value;
+        }
+        Path secretFile = Paths.get(POD_SECRETS_PATH, name);
+        if (Files.exists(secretFile)) {
+            try {
+                return Files.readString(secretFile).strip();
+            } catch (IOException e) {
+                log.warn("Failed to read secret file {}", secretFile, e);
+            }
+        }
+        return defaultValue;
     }
 
     public static List<Map<String, Object>> queryForList(Connection connection, String query) throws SQLException {
