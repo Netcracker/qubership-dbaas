@@ -52,6 +52,13 @@ spec:
                                 path: POSTGRES_PASSWORD
                             -   key: database
                                 path: POSTGRES_DATABASE
+                    -   secret:
+                            name: '{{ .Values.SERVICE_NAME }}-encryption-secret'
+                            items:
+                            -   key: sym-key
+                                path: SYM_KEY
+                            -   key: default-key
+                                path: KS_DEFAULT_KEY
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
@@ -112,16 +119,6 @@ spec:
                     value: {{ $sha1sum }}
                 -   name: DBAAS_SECURITY_CONFIGURATION_LOCATION
                     value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-                -   name: SYM_KEY
-                    valueFrom:
-                        secretKeyRef:
-                            name: '{{ .Values.SERVICE_NAME }}-encryption-secret'
-                            key: 'sym-key'
-                -   name: KS_DEFAULT_KEY
-                    valueFrom:
-                        secretKeyRef:
-                            name: '{{ .Values.SERVICE_NAME }}-encryption-secret'
-                            key: 'default-key'
                 -   name: DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES
                     value: '{{ .Values.DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES }}'
                 -   name: DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED
