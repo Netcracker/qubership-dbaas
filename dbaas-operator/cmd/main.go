@@ -102,16 +102,12 @@ func main() {
 	ctrl.SetLogger(logrLogger)
 	klog.SetLogger(logrLogger)
 
-	// httpServerOpts configures the operator's general-purpose HTTP server. It
-	// hosts the Prometheus /metrics endpoint (the operator exposes no inbound
-	// endpoint of its own). The option type is named metricsserver.Options for
-	// historical reasons inside controller-runtime — conceptually it is the
-	// manager's HTTP listener.
+	// The manager HTTP listener hosts /metrics; the operator exposes no
+	// application endpoint of its own.
 	httpServerOpts := httpserver.Options{
 		BindAddress: httpAddr,
 	}
 
-	// ── Operator namespace ────────────────────────────────────────────────────
 	cloudNamespace := os.Getenv("CLOUD_NAMESPACE")
 	if cloudNamespace == "" {
 		setupLog.Errorf("CLOUD_NAMESPACE env var is not set — ownership checks will not work correctly")
@@ -119,7 +115,6 @@ func main() {
 	}
 	setupLog.Infof("operator namespace cloud-namespace=%v", cloudNamespace)
 
-	// ── dbaas-aggregator client ───────────────────────────────────────────────
 	aggregatorURL := os.Getenv("DBAAS_AGGREGATOR_URL")
 	if aggregatorURL == "" {
 		aggregatorURL = "http://dbaas-aggregator:8080"
@@ -141,8 +136,7 @@ func main() {
 		// Secret (dbaas-operator-aggregator-credentials at securityDir).
 		username, password := loadAggregatorCredentials(setupLog, securityDir)
 		aggregator = aggregatorclient.NewBasicAuthClient(aggregatorURL, username, password)
-		// Reload credentials on Secret rotation without a pod restart; shares the
-		// manager lifecycle (registered below once the manager is constructed).
+		// Reload credentials on Secret rotation without a pod restart.
 		credentialWatcher = manager.RunnableFunc(func(ctx context.Context) error {
 			return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregator)
 		})
@@ -164,12 +158,8 @@ func main() {
 		leaderElectionConfig.WrapTransport = silentEventsTransport
 	}
 
-	// Scope the PermanentBalancingRule informer to the operator's own namespace.
-	// It is an operator-namespace-only resource (decoupled from NamespaceBinding),
-	// so a cluster-wide watch is neither needed nor wanted: namespace-scoping lets
-	// the operator run with only a namespaced Role for it (no ClusterRole) and
-	// means CRs created in other namespaces are simply never reconciled. All other
-	// CRs remain cluster-wide. Guarded on a non-empty CLOUD_NAMESPACE.
+	// PermanentBalancingRule is operator-namespace-only, so its informer is
+	// scoped to CLOUD_NAMESPACE. All other CRs remain cluster-wide.
 	cacheOpts := cache.Options{}
 	if cloudNamespace != "" {
 		cacheOpts.ByObject = map[client.Object]cache.ByObject{
@@ -195,16 +185,8 @@ func main() {
 				DisableFor: []client.Object{&corev1.Secret{}},
 			},
 		},
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
+		// The process exits when the manager stops, so releasing the leader lease
+		// on cancel is safe and speeds voluntary leader transitions.
 		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
@@ -219,7 +201,6 @@ func main() {
 	}
 	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
 
-	// ── Ownership resolver ────────────────────────────────────────────────────
 	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
 	controller.RegisterResourceMetrics(mgr.GetClient(), ownershipResolver, cloudNamespace)
 	if err := mgr.Add(&ownershipWarmupRunnable{resolver: ownershipResolver}); err != nil {
@@ -227,7 +208,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── NamespaceBinding controller (always enabled) ───────────────────────────
 	edbChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
 	dpChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} })
 	ddChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} })
@@ -264,9 +244,8 @@ func main() {
 		Recorder:   recorderFor(mgr, "externaldatabase", eventsEnabled),
 		Ownership:  ownershipResolver,
 	}
-	// ExternalDatabase has no Secret watch, so a referenced credential Secret change is picked up
-	// by a periodic resync. Defaults to 10m (controller.externalDatabaseDefaultResync); override
-	// (e.g. to 30s in integration tests) for faster credential-rotation pickup.
+	// ExternalDatabase picks up referenced credential Secret changes through a
+	// periodic resync. Override the default interval for faster rotation pickup.
 	if v := os.Getenv("DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL"); v != "" {
 		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
 			externalDatabaseReconciler.ResyncInterval = d
@@ -335,14 +314,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── Rotation poller ───────────────────────────────────────────────────────
 	// Leader-only loop that pulls dbaas-aggregator's changed-databases feed and
 	// patches the AnnotationRotationTrigger annotation on each affected
-	// DatabaseSecretClaim CR, waking its reconcile. Replaces the former inbound
-	// rotation webhook: a single outbound direction (operator → aggregator) that
-	// reuses the existing dbaas-audience token, with no inbound endpoint or second
-	// auth surface. Correctness is backstopped by the startup reconcile and the
-	// per-CR safety-net requeue, so the cursor is kept in-memory.
+	// DatabaseSecretClaim CR, waking its reconcile. The in-memory cursor is
+	// backed by startup reconciliation and the per-CR safety-net requeue.
 	pollInterval := 30 * time.Second
 	if v := os.Getenv("DBAAS_ROTATION_POLL_INTERVAL"); v != "" {
 		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {

@@ -116,8 +116,7 @@ func enqueueForBindingList[L client.ObjectList](
 	return reqs
 }
 
-// requestIDFromContext extracts the X-Request-Id string from ctx.
-// Raising a panic if it can't fetch it
+// requestIDFromContext returns the reconcile request ID from ctx.
 func requestIDFromContext(ctx context.Context) string {
 	xrid, err := xrequestid.Of(ctx)
 	if err != nil {
@@ -134,21 +133,9 @@ func initReconcileContext(ctx context.Context) (context.Context, string) {
 	return ctxmanager.InitContext(ctx, map[string]any{xRequestID: id}), id
 }
 
-// checkOwnership checks whether namespace is owned by this operator instance.
-// Returns (true, {}, nil) when reconciliation should proceed.
-// Returns (false, result, nil) when the caller should return result immediately.
-// Returns (false, {}, err) on a hard lookup error.
-//
-// State semantics and requeue strategy:
-//
-//	Unknown  — transient; no cache entry (startup race or post-Forget).
-//	           Requeue quickly so the CR is retried once the cache settles.
-//	Unbound  — live GET confirmed no NamespaceBinding exists.  Requeue at a
-//	           long interval as a safety net: if the NamespaceBinding →
-//	           workloads fan-out loses its trigger due to a transient LIST
-//	           error, the periodic requeue here ensures the CR is eventually
-//	           reconciled after the binding is created and SetOwner is called.
-//	Foreign  — binding belongs to another operator instance; no requeue.
+// checkOwnership returns whether reconciliation should proceed for namespace.
+// Unknown ownership requeues quickly, Unbound requeues slowly as a safety net,
+// and Foreign returns without requeue.
 func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, namespace, name, kind string) (bool, ctrl.Result, error) {
 	mine, err := resolver.IsMyNamespace(ctx, namespace)
 	if err != nil {
@@ -249,13 +236,8 @@ func invalidSpec[P ~string](
 	return ctrl.Result{}, nil
 }
 
-// handleAggregatorError maps a non-nil error from any aggregator call to the
-// appropriate phase/conditions and emits a Kubernetes event.
-// It is the shared implementation used by all three controllers.
-//
-//   - 401                   → BackingOff  (transient, requeue)
-//   - 400/403/409/410/422   → InvalidConfiguration (permanent, no requeue)
-//   - 5xx / network         → BackingOff  (transient, requeue)
+// handleAggregatorError maps an aggregator call failure to phase, conditions,
+// event, and retry behavior for controllers that call dbaas-aggregator.
 func handleAggregatorError[P ~string](
 	phase *P,
 	conditions *[]metav1.Condition,

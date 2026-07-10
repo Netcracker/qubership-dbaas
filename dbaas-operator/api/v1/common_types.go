@@ -143,19 +143,9 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Condition types used by all dbaas operator resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase):
-	//   - "Ready"   — True when the resource was successfully processed by
-	//                 dbaas-aggregator for the current generation.
-	//                 ExternalDatabase: reason "DatabaseRegistered" on success.
-	//                 DatabaseAccessPolicy: reason "PolicyApplied" on success.
-	//                 InternalDatabase: reason "DatabaseProvisioned" on success;
-	//                   reason "ProvisioningStarted" while the async operation is in progress.
-	//                 False on any error; see Reason for the error category.
-	//   - "Stalled" — True when the error is permanent and the controller will
-	//                 not retry until the spec is changed (e.g. InvalidSpec,
-	//                 AggregatorRejected). False for transient errors that are
-	//                 retried automatically (e.g. SecretError, AggregatorError,
-	//                 Unauthorized, ProvisioningStarted).
+	// Ready describes whether the current generation was successfully processed.
+	// Stalled=True marks a permanent error that will not retry until the spec changes;
+	// Stalled=False marks a transient error that the controller retries automatically.
 	// +optional
 	// +listType=map
 	// +listMapKey=type

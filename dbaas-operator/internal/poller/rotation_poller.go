@@ -46,8 +46,7 @@ type ChangedSource interface {
 }
 
 // RotationPoller periodically pulls the aggregator's changed-databases feed and
-// wakes the affected DatabaseSecretClaim reconciles. It replaces the inbound
-// rotation webhook.
+// wakes the affected DatabaseSecretClaim reconciles.
 //
 // Correctness does not depend on the poller catching every change: the operator's
 // startup full reconcile syncs all CRs against current state, and the per-CR
@@ -138,9 +137,8 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 			log.ErrorC(ctx, "Rotation poller failed to fan out namespace=%s type=%s err=%v",
 				it.Namespace, it.Type, perr)
 		}
-		// Items are ordered by (lastRotatedAt, id) ascending; advance the cursor
-		// unconditionally so a per-namespace list error (logged above) does not
-		// stall it — the safety-net reconcile heals any skipped fan-out.
+		// Items are ordered by (lastRotatedAt, id) ascending. Advance the cursor
+		// even when fan-out fails; the safety-net reconcile heals skipped notifications.
 		advanced = &aggregatorclient.ChangeCursor{LastRotatedAt: it.LastRotatedAt, Id: it.Id}
 	}
 	if len(resp.Items) > 0 {

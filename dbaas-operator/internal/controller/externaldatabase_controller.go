@@ -48,8 +48,8 @@ import (
 )
 
 // externalDatabaseDefaultResync is the fallback re-reconcile period used when
-// ResyncInterval is left zero. The operator no longer watches Secrets, so a change
-// to a referenced credentials Secret is picked up on the next periodic resync.
+// ResyncInterval is left zero. Referenced credential Secret changes are picked up
+// on the next periodic resync.
 const externalDatabaseDefaultResync = 10 * time.Minute
 
 // ExternalDatabaseReconciler reconciles ExternalDatabase objects.
@@ -103,21 +103,14 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	recordReconcileTrigger(controllerEDB, trigger)
 
-	// Snapshot for the status patch at the end of reconcile.
 	original := edb.DeepCopy()
 
-	// Always patch status on exit, even if reconcile fails.
-	// This ensures the CR reflects the actual outcome.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), edb, original, &retErr,
 			func(_ *dbaasv1.ExternalDatabase, retErr error) bool { return retErr == nil },
 			"ExternalDatabase")
 	}()
 
-	// Mark as Processing while we work.
-	// Conditions are NOT cleared here — setCondition upserts each type in place,
-	// preserving LastTransitionTime when Status has not changed.
-	// This makes conditions durable API state across reconcile cycles.
 	edb.Status.Phase = dbaasv1.PhaseProcessing
 
 	// Validate that classifier.namespace, if set, matches the CR's own namespace.
@@ -153,7 +146,6 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	// Build the flat-map request, resolving any Secret references.
 	aggReq, err := r.buildRequest(ctx, edb)
 	if err != nil {
 		log.ErrorC(ctx, "failed to build registration request: %v", err)
@@ -169,7 +161,6 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// back to the CR's own namespace if the classifier does not contain one.
 	namespace := resolveAggregatorNamespace(edb)
 
-	// Call the aggregator.
 	edb.Status.LastRequestID = requestID
 	aggStart := time.Now()
 	aggErr := r.Aggregator.RegisterExternalDatabase(ctx, namespace, aggReq)
@@ -278,8 +269,7 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 		}
 	}
 
-	// Defense-in-depth duplicate name check — CRD CEL validation should catch this
-	// first, but we guard here too in case validation is bypassed.
+	// Duplicate target names would overwrite each other in the aggregator request.
 	seen := make(map[string]string, len(ref.Keys))
 	for _, km := range ref.Keys {
 		if prevKey, dup := seen[km.Name]; dup {
@@ -320,9 +310,7 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 // GenerationChangedPredicate is not enough: an annotation change does not bump
 // generation and would otherwise be filtered out.
 //
-// Create and Delete fall through to the embedded predicate.Funcs defaults
-// (both return true), preserving standard behavior for new and removed CRs.
-// Only Update is customized.
+// Only Update is customized; Create and Delete use predicate.Funcs defaults.
 type specOrRefreshTriggerPredicate struct{ predicate.Funcs }
 
 func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
@@ -336,21 +324,9 @@ func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
 		e.ObjectNew.GetAnnotations()[dbaasv1.AnnotationRefresh]
 }
 
-// SetupWithManager sets up the controller with the Manager.
-// The For-predicate (specOrRefreshTriggerPredicate) reconciles on spec changes
-// (metadata.generation) and on a change to the AnnotationRefresh annotation — the
-// latter is a manual escape hatch to apply a referenced-Secret change at once
-// instead of waiting for the resync.
-//
-// There is intentionally no Secret watch: the operator holds only namespaced Secret
-// RBAC (no cluster-wide list/watch), so credential-Secret changes are picked up by the
-// periodic resync (ResyncInterval) via RequeueAfter on a successful reconcile, or
-// immediately via the refresh annotation above.
-//
-// opts allows callers to customize the controller's behavior — most notably
-// the RateLimiter, which controls the exponential backoff applied when
-// Reconcile returns an error (BackingOff phase).  Pass
-// ctrlcontroller.Options{} to keep the controller-runtime defaults.
+// SetupWithManager registers watches for spec changes, refresh annotations, and
+// NamespaceBinding fan-out. Credential Secret changes are picked up by periodic
+// resync or by changing AnnotationRefresh.
 func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	if r.ResyncInterval == 0 {
 		r.ResyncInterval = externalDatabaseDefaultResync

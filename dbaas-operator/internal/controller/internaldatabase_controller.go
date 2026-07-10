@@ -147,7 +147,6 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 		return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 	}
 
-	// ── Call aggregator ───────────────────────────────────────────────────────
 	payload := r.buildPayload(dd)
 	dd.Status.LastRequestID = requestID
 	aggStart := time.Now()
@@ -538,10 +537,8 @@ func pollProgressMessage(resp *aggregatorclient.DeclarativeResponse) string {
 	return pollConditionText(resp, "")
 }
 
-// SetupWithManager sets up the controller with the Manager.
-// GenerationChangedPredicate ensures reconcile fires only on spec changes,
-// not on the controller's own status updates. Timer-based requeues (RequeueAfter)
-// bypass the predicate and always trigger reconcile.
+// SetupWithManager registers watches for spec changes, polling requeues, and
+// NamespaceBinding fan-out.
 func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.InternalDatabase{},

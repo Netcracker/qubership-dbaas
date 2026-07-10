@@ -38,12 +38,7 @@ type KindChecker[L client.ObjectList] struct {
 	newList func() L
 }
 
-// NewKindChecker creates a KindChecker for the given list type.
-//
-//   - newList returns a fresh, empty list object (e.g. func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
-//
-// The item count is obtained generically via meta.LenList, so no per-type
-// counting closure is required.
+// NewKindChecker creates a KindChecker for a Kubernetes list type.
 func NewKindChecker[L client.ObjectList](cl client.Client, newList func() L) *KindChecker[L] {
 	return &KindChecker[L]{cl: cl, newList: newList}
 }

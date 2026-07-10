@@ -72,10 +72,8 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	// ── Keep ownership cache current ─────────────────────────────────────────
 	r.Ownership.SetOwner(nb.Namespace, nb.Spec.OperatorNamespace)
 
-	// ── Foreign binding — cache update only, no mutations ────────────────────
 	// Only the operator instance whose CLOUD_NAMESPACE matches spec.operatorNamespace
 	// owns this binding.  A foreign operator must update its cache (so workload
 	// reconcilers know the namespace is Foreign / not theirs) but must not touch
@@ -86,10 +84,8 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	// ── Deletion path ────────────────────────────────────────────────────────
 	if !nb.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer) {
-			// Finalizer already removed; nothing left to do.
 			return ctrl.Result{}, nil
 		}
 
@@ -106,7 +102,6 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, nil
 		}
 
-		// No blocking resources — remove finalizer to allow deletion.
 		patch := client.MergeFrom(nb.DeepCopy())
 		controllerutil.RemoveFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer)
 		if err := r.Patch(ctx, nb, patch); err != nil {
@@ -117,7 +112,6 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	// ── Creation / update path ───────────────────────────────────────────────
 	if !controllerutil.ContainsFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer) {
 		patch := client.MergeFrom(nb.DeepCopy())
 		controllerutil.AddFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer)
@@ -144,7 +138,7 @@ func enqueueBindingForWorkload(_ context.Context, obj client.Object) []reconcile
 	}
 }
 
-// SetupWithManager registers the controller and configures watches.
+// SetupWithManager registers NamespaceBinding and workload watches.
 func (r *NamespaceBindingReconciler) SetupWithManager(
 	mgr ctrl.Manager,
 	opts ctrlcontroller.Options,
@@ -184,11 +178,9 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 		Complete(r)
 }
 
-// SetupWithManagerOpts is an alias that passes zero controller options.
-// Useful in tests where custom rate limiters are not needed.
+// SetupWithManagerOpts registers the controller with default controller-runtime options.
 func (r *NamespaceBindingReconciler) SetupWithManagerOpts(mgr ctrl.Manager) error {
 	return r.SetupWithManager(mgr, ctrlcontroller.Options{})
 }
 
-// Ensure runtime.Object is satisfied (required for recorder.Eventf).
 var _ runtime.Object = &dbaasv1.NamespaceBinding{}

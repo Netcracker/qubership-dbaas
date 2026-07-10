@@ -16,31 +16,9 @@ limitations under the License.
 
 // Package ownership manages namespace ownership for the dbaas-operator.
 //
-// The central abstraction is OwnershipResolver: a write-through in-memory cache
-// that maps Kubernetes namespace names to one of four states:
-//
-//   - Mine    — an NamespaceBinding in this namespace points to the operator's
-//     own location (CLOUD_NAMESPACE), so the operator owns it.
-//   - Foreign — an NamespaceBinding exists but belongs to a different operator
-//     instance; workload resources in this namespace must be ignored
-//     and must not be requeued (the watch re-triggers on binding changes).
-//   - Unbound — a live API lookup confirmed that no NamespaceBinding exists yet.
-//     Workload reconcilers requeue at a long interval (ownershipUnboundRetryInterval)
-//     as a safety net: if the NamespaceBinding → workloads watch fan-out
-//     loses its trigger due to a transient LIST error, the periodic
-//     requeue guarantees the CR is eventually reconciled once a binding
-//     is created.  The interval is intentionally much longer than the
-//     Unknown requeue to avoid background churn on permanently-unbound
-//     namespaces.
-//   - Unknown — no cached information is available; a live lookup is needed.
-//     This is a transient state that occurs only at startup (before
-//     warmup) or immediately after Forget (binding just deleted).
-//     Workload reconcilers requeue quickly (ownershipPollInterval) so
-//     the CR is retried once the cache settles.
-//
-// The cache is populated eagerly at startup (WarmupOwnershipCache) and kept
-// current by the NamespaceBindingReconciler, which calls SetOwner/Forget on
-// every create/update/delete event.
+// OwnershipResolver is a write-through cache of NamespaceBinding ownership:
+// Mine, Foreign, Unbound, or Unknown. Workload reconcilers use those states to
+// decide whether to process a CR, requeue as a safety net, or ignore it.
 package ownership
 
 import (
@@ -60,20 +38,12 @@ type OwnershipState int
 
 const (
 	// Unknown means no cached information is available; a live lookup is needed.
-	// This is a transient state: it occurs only at startup (before warmup completes)
-	// or immediately after Forget is called.  Workload reconcilers may requeue
-	// briefly when they encounter this state.
 	Unknown OwnershipState = iota
 	// Mine means the namespace is owned by this operator instance.
 	Mine
 	// Foreign means the namespace is claimed by a different operator instance.
 	Foreign
-	// Unbound means a live API lookup confirmed that no NamespaceBinding exists in
-	// this namespace.  Workload reconcilers requeue at ownershipUnboundRetryInterval
-	// as a safety net against lost watch fan-out triggers; the interval is long
-	// enough that permanently-unbound namespaces cause negligible background churn.
-	// When a binding is created, SetOwner overwrites this entry with Mine or Foreign
-	// and the NamespaceBinding watch fan-out re-enqueues affected workload CRs.
+	// Unbound means a live API lookup confirmed that no NamespaceBinding exists.
 	Unbound
 )
 
@@ -143,33 +113,17 @@ func (r *OwnershipResolver) GetState(namespace string) OwnershipState {
 	return s
 }
 
-// IsMyNamespace reports whether the operator owns namespace.
-//
-// Fast path: if the cache has an entry (Mine, Foreign, or Unbound) it is
-// returned immediately without any API call.
-// Slow path: if the cache has no entry (Unknown) the resolver fetches the
-// NamespaceBinding named "binding" from the API server, updates the cache,
-// and returns the result.
-//
-// Returns (false, nil) when there is no NamespaceBinding (Unbound namespace).
-// Returns an error only when the API call itself fails.
+// IsMyNamespace reports whether the operator owns namespace, using the cache
+// when populated and falling back to a live NamespaceBinding lookup on Unknown.
 func (r *OwnershipResolver) IsMyNamespace(ctx context.Context, namespace string) (bool, error) {
-	// Fast path — covers Mine, Foreign, and Unbound.
 	if state := r.GetState(namespace); state != Unknown {
 		return state == Mine, nil
 	}
 
-	// Slow path — live lookup.
 	ob := &dbaasv1.NamespaceBinding{}
 	err := r.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: dbaasv1.NamespaceBindingName}, ob)
 	if err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			// No binding found — cache Unbound so that subsequent calls use the
-			// fast path rather than hitting the API on every reconcile.
-			// Workload reconcilers will requeue at ownershipUnboundRetryInterval as
-			// a safety net.  When a binding is eventually created, SetOwner overwrites
-			// Unbound with Mine or Foreign, and the NamespaceBinding watch fan-out
-			// re-enqueues workload CRs so they are reconciled promptly.
 			r.mu.Lock()
 			r.cache[namespace] = Unbound
 			r.mu.Unlock()
@@ -178,7 +132,6 @@ func (r *OwnershipResolver) IsMyNamespace(ctx context.Context, namespace string)
 		return false, fmt.Errorf("get NamespaceBinding %s/%s: %w", namespace, dbaasv1.NamespaceBindingName, err)
 	}
 
-	// Cache the result for subsequent fast-path hits.
 	r.SetOwner(namespace, ob.Spec.OperatorNamespace)
 	return ob.Spec.OperatorNamespace == r.myNamespace, nil
 }
