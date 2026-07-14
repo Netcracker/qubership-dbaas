@@ -23,8 +23,7 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.Map;
 
-import static com.netcracker.it.dbaas.helpers.BackupHelperV1.BACKUP_METADATA;
-import static com.netcracker.it.dbaas.helpers.BackupHelperV1.DIGEST;
+import static com.netcracker.it.dbaas.helpers.BackupHelperV1.*;
 import static com.netcracker.it.dbaas.helpers.BackupHelperV3.*;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.EXTERNALLY_MANAGEABLE_V3;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.calculateDigest;
@@ -748,15 +747,8 @@ class BackupV3IT extends AbstractIT {
         assertEquals(BackupStatus.IN_PROGRESS, backupResponse1.getStatus());
         assertEquals(BackupStatus.IN_PROGRESS, backupResponse2.getStatus());
 
-        while (true) {
-            backupResponse1 = backupHelperV1.getBackup(backupRequest1.getBackupName(), 200);
-            if (backupResponse1.getStatus() == BackupStatus.COMPLETED) {
-                break;
-            }
-            if (backupResponse1.getStatus() == BackupStatus.FAILED) {
-                assertEquals(BackupStatus.COMPLETED, backupResponse1.getStatus());
-            }
-        }
+        backupResponse1 = backupHelperV1.waitBackupFinish(backupRequest1.getBackupName());
+        assertEquals(BackupStatus.COMPLETED, backupResponse1.getStatus());
 
         backupHelperV1.startRestoreParallel(backupRequest1.getBackupName(), new RestoreRequestBuilder().build(), false, 202);
         backupHelperV1.startRestore(backupRequest1.getBackupName(), new RestoreRequestBuilder().build(), false, 409);

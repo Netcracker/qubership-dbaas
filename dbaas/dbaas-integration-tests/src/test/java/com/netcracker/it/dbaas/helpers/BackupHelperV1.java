@@ -94,16 +94,7 @@ public class BackupHelperV1 {
                     return gson.fromJson(body, new TypeToken<BackupResponse>() {
                     }.getType());
                 case 202:
-                    log.info("Backup status checking");
-                    return Failsafe.with(BACKUP_RESTORE_RETRY_POLICY).get(() -> {
-                        var backup = getBackup(backupRequest.getBackupName(), 200);
-                        BackupStatus status = backup.getStatus();
-                        assertTrue(
-                                BackupStatus.COMPLETED == status ||
-                                        BackupStatus.FAILED == status
-                        );
-                        return backup;
-                    });
+                    return waitBackupFinish(backupRequest.getBackupName());
             }
         } catch (IOException e) {
             log.error("Error during backup process", e);
@@ -141,6 +132,19 @@ public class BackupHelperV1 {
             log.error("Error during restore process", e);
         }
         return null;
+    }
+
+    public BackupResponse waitBackupFinish(String backupName) {
+        log.info("Backup status checking");
+        return Failsafe.with(BACKUP_RESTORE_RETRY_POLICY).get(() -> {
+            var backup = getBackup(backupName, 200);
+            BackupStatus status = backup.getStatus();
+            assertTrue(
+                    BackupStatus.COMPLETED == status ||
+                            BackupStatus.FAILED == status
+            );
+            return backup;
+        });
     }
 
     public BackupResponse startBackup(BackupRequest backupRequest, boolean dryRun, int code) {
