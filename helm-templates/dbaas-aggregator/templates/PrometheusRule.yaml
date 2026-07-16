@@ -1,0 +1,25 @@
+{{- if .Values.MONITORING_ENABLED }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dbaas-registry-discrepancy
+  labels:
+    app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
+    app.kubernetes.io/part-of: "{{ .Values.APPLICATION_NAME }}"
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+spec:
+  groups:
+    - name: dbaas-registry-consistency
+      rules:
+        - alert: DbaasRegistryDiscrepancy
+          expr: max(dbaas_registration_databases_lost_number{namespace="{{ .Values.NAMESPACE }}", container="{{ .Values.SERVICE_NAME }}"}) > 0
+          for: 20m
+          labels:
+            severity: warning
+            service: "{{ .Values.SERVICE_NAME }}"
+          annotations:
+            summary: DBaaS registry contains databases that are missing from their adapters
+            description: >-
+              DBaaS reports {{ "{{" }} $value {{ "}}" }} registered database(s) that are absent from adapter database lists
+              in namespace {{ .Values.NAMESPACE }}. Use the DBaaS lost databases API to identify the affected databases.
+{{- end }}
