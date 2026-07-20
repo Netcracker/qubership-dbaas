@@ -22,6 +22,7 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import io.opentelemetry.context.Context;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
@@ -61,7 +62,7 @@ public class DBBackupsService {
     private final DbaaSHelper dbaaSHelper;
     private final DeletionService deletionService;
 
-    private final ExecutorService asyncExecutorService = Executors.newSingleThreadExecutor();
+    private final ExecutorService asyncExecutorService = Context.taskWrapping(Executors.newSingleThreadExecutor());
 
     public DBBackupsService(PhysicalDatabasesService physicalDatabasesService,
                             DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository, BackupsDbaasRepository backupsDbaasRepository,

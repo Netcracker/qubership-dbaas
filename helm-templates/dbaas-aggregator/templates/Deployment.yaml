@@ -163,6 +163,12 @@ spec:
               {{- end }}
                 -   name: DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
                     value: '{{ .Values.DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED }}'
+                -   name: TRACING_HOST
+                    value: '{{ .Values.TRACING_HOST }}'
+                -   name: TRACING_SAMPLER_PROBABILISTIC
+                    value: '{{ .Values.TRACING_SAMPLER_PROBABILISTIC }}'
+                -   name: QUARKUS_OTEL_SDK_DISABLED
+                    value: '{{ if .Values.TRACING_ENABLED }}false{{ else }}true{{ end }}'
                 -   name: KUBERNETES_M2M_ENABLED
                     value: '{{ .Values.KUBERNETES_M2M_ENABLED }}'
               {{- if .Values.KUBERNETES_M2M_AUDIENCE }}

@@ -60,7 +60,8 @@ type NamespaceBindingReconciler struct {
 }
 
 func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ctx, requestID := initReconcileContext(ctx)
+	ctx, requestID, span := initReconcileContext(ctx, "NamespaceBinding.Reconcile")
+	defer span.End()
 
 	nb := &dbaasv1.NamespaceBinding{}
 	if err := r.Get(ctx, req.NamespacedName, nb); err != nil {

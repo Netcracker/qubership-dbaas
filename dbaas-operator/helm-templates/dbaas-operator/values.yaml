@@ -19,6 +19,11 @@ restrictedEnvironment: false
 LOG_LEVEL: "info"
 K8S_EVENTS_ENABLED: false
 LEADER_ELECT: true
+
+# ============== TRACING VARIABLES ============================
+TRACING_ENABLED: false
+TRACING_HOST: 'nc-diagnostic-agent'
+TRACING_SAMPLER_PROBABILISTIC: '0.01'
 # Rotation poll period as a Go duration (e.g. 15s, 1m). Leave empty to use the
 # operator's built-in default (30s). The leader polls dbaas-aggregator's
 # changed-databases feed at this interval to propagate password rotations.

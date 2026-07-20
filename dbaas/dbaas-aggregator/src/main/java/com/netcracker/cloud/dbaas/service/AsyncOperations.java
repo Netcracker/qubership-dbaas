@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.context.propagation.core.ContextManager;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
+import io.opentelemetry.context.Context;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -30,13 +31,13 @@ public class AsyncOperations {
     public AsyncOperations(
             @ConfigProperty(name = "backup.aggregator.async.thread.pool.size", defaultValue = "10") int backupPoolSize
     ) {
-        backupExecutor = new ThreadPoolExecutor(
+        backupExecutor = Context.taskWrapping(new ThreadPoolExecutor(
                 backupPoolSize, backupPoolSize, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<>(),
                 new NamedThreadFactory("backups-")
-        );
-        debugExecutor = Executors.newVirtualThreadPerTaskExecutor();
-        cleanupExecutor = Executors.newSingleThreadExecutor(new NamedThreadFactory("cleanup-"));
+        ));
+        debugExecutor = Context.taskWrapping(Executors.newVirtualThreadPerTaskExecutor());
+        cleanupExecutor = Context.taskWrapping(Executors.newSingleThreadExecutor(new NamedThreadFactory("cleanup-")));
     }
 
     private static class NamedThreadFactory implements ThreadFactory {

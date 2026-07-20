@@ -15,6 +15,7 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
 import com.netcracker.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
+import io.opentelemetry.context.Context;
 import io.quarkus.narayana.jta.QuarkusTransactionException;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -72,7 +73,7 @@ public class AggregatedDatabaseAdministrationService {
 
     @PostConstruct
     void init() {
-        executorService = Executors.newFixedThreadPool(10);
+        executorService = Context.taskWrapping(Executors.newFixedThreadPool(10));
     }
 
     public Response createDatabaseFromRequest(DatabaseCreateRequestV3 createRequest, String namespace,

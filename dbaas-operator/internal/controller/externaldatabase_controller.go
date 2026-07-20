@@ -74,7 +74,8 @@ type ExternalDatabaseReconciler struct {
 }
 
 func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	ctx, requestID := initReconcileContext(ctx)
+	ctx, requestID, span := initReconcileContext(ctx, "ExternalDatabase.Reconcile")
+	defer span.End()
 
 	edbKey := req.Namespace + "/" + req.Name
 	edb := &dbaasv1.ExternalDatabase{}

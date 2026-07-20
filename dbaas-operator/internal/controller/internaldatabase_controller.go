@@ -75,7 +75,8 @@ type InternalDatabaseReconciler struct {
 
 func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	// requestID is stored in ctx; sub-methods retrieve it via requestIDFromContext.
-	ctx, _ = initReconcileContext(ctx)
+	ctx, _, span := initReconcileContext(ctx, "InternalDatabase.Reconcile")
+	defer span.End()
 
 	dd := &dbaasv1.InternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {

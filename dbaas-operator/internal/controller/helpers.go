@@ -28,6 +28,8 @@ import (
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/tracing"
+	"go.opentelemetry.io/otel/trace"
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -127,11 +129,16 @@ func requestIDFromContext(ctx context.Context) string {
 	return xrid.GetRequestId()
 }
 
-// initReconcileContext seeds ctx with a fresh X-Request-Id and returns both
-// the enriched context and the raw ID string (used in status fields and event messages).
-func initReconcileContext(ctx context.Context) (context.Context, string) {
+// initReconcileContext seeds ctx with a fresh X-Request-Id and a root tracing
+// span named spanName (there is no inbound HTTP request to auto-instrument, so
+// every reconcile starts its own span here). Returns the enriched context, the
+// raw request ID string (used in status fields and event messages), and the
+// span — callers must `defer span.End()`.
+func initReconcileContext(ctx context.Context, spanName string) (context.Context, string, trace.Span) {
 	id := uuid.New().String()
-	return ctxmanager.InitContext(ctx, map[string]any{xRequestID: id}), id
+	ctx = ctxmanager.InitContext(ctx, map[string]any{xRequestID: id})
+	ctx, span := tracing.StartSpan(ctx, spanName)
+	return ctx, id, span
 }
 
 // checkOwnership checks whether namespace is owned by this operator instance.

@@ -591,11 +591,15 @@ Variables read by the operator binary:
 
 | Variable | Purpose | Required |
 |---|---|---|
-| `CLOUD_NAMESPACE` | Operator's own namespace (ownership checks) | Yes |
+| `CLOUD_NAMESPACE` | Operator's own namespace (ownership checks; also the `-namespace` suffix in the traced `service.name`) | Yes |
 | `DBAAS_AGGREGATOR_URL` | Aggregator base URL (default: `http://dbaas-aggregator:8080`) | No |
 | `KUBERNETES_M2M_ENABLED` | Auth mode; **must match the aggregator**. `false` (default) → HTTP Basic Auth (creds from `users.json` in the mounted `dbaas-security-configuration-secret`); `true` → M2M Bearer token. | No |
 | `DBAAS_ROTATION_POLL_INTERVAL` | Poll period for the changed-databases feed used to propagate credential rotations (Go duration; empty → built-in default `30s`). | No |
 | `K8S_EVENTS_ENABLED` | Enable/disable Kubernetes event recording (`true`/`false`). | No |
+| `MICROSERVICE_NAME` | Service name reported to tracing (default `dbaas-operator`); combined with `CLOUD_NAMESPACE` as `service.name`. | No |
+| `TRACING_ENABLED` | Enable OpenTelemetry OTLP export (`true`/`false`, default `false`). | No |
+| `TRACING_HOST` | OTLP proxy host tracing is exported to (default `nc-diagnostic-agent`). | No |
+| `TRACING_SAMPLER_PROBABILISTIC` | Ratio of new root traces sampled (`parentbased_traceidratio`), default `0.01`. | No |
 
 Notes:
 - **Basic Auth credentials are not environment variables** — the operator reads its credentials
@@ -617,7 +621,14 @@ Notes:
 - **Do NOT** remove `// +kubebuilder:scaffold:*` comments.
 - **Do NOT** create API or webhook files manually — use `kubebuilder create api/webhook`.
 - **Do NOT** read aggregator credentials from environment variables — they come from the mounted Secret.
-- **Do NOT** configure OpenTelemetry or zap directly — use the platform libraries.
+- **Do NOT** configure zap directly — use the platform logger (`logging.GetLogger`).
+  OpenTelemetry is the one exception: as of this writing there is no platform Go
+  library that wraps it and satisfies the platform tracing contract (the only
+  existing wrapper, `qubership-core-lib-go-actuator-common/tracing`, is
+  internal-only and exports Zipkin, not OTLP) — so the operator wires
+  `go.opentelemetry.io/otel` directly (see `internal/tracing/tracing.go`). If a
+  compliant platform tracing library appears later, migrate to it and restore a
+  blanket "use the platform library" rule here.
 - **Do NOT** use `GOMEMLIMIT` manually — use the `memlimit` blank import.
 - **Do NOT** use custom string fields for status conditions — use `metav1.Condition`.
 - **Do NOT** inline HTTP status code checks in controllers — use typed error structs.

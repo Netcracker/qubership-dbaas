@@ -56,7 +56,8 @@ type DatabaseAccessPolicyReconciler struct {
 }
 
 func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	ctx, requestID := initReconcileContext(ctx)
+	ctx, requestID, span := initReconcileContext(ctx, "DatabaseAccessPolicy.Reconcile")
+	defer span.End()
 
 	dp := &dbaasv1.DatabaseAccessPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, dp); err != nil {

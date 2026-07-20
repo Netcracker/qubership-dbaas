@@ -96,7 +96,8 @@ func generationOrLifecycleChangedPredicate() predicate.Funcs {
 }
 
 func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	ctx, requestID := initReconcileContext(ctx)
+	ctx, requestID, span := initReconcileContext(ctx, "MicroserviceBalancingRule.Reconcile")
+	defer span.End()
 
 	rule := &dbaasv1.MicroserviceBalancingRule{}
 	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {
@@ -168,7 +169,8 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 }
 
 func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	ctx, requestID := initReconcileContext(ctx)
+	ctx, requestID, span := initReconcileContext(ctx, "NamespaceBalancingRule.Reconcile")
+	defer span.End()
 
 	rule := &dbaasv1.NamespaceBalancingRule{}
 	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {
@@ -280,7 +282,8 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 }
 
 func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	ctx, requestID := initReconcileContext(ctx)
+	ctx, requestID, span := initReconcileContext(ctx, "PermanentBalancingRule.Reconcile")
+	defer span.End()
 
 	rule := &dbaasv1.PermanentBalancingRule{}
 	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {

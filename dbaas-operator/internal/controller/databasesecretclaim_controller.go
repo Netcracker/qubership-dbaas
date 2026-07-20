@@ -78,7 +78,8 @@ type DatabaseSecretClaimReconciler struct {
 }
 
 func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	ctx, requestID := initReconcileContext(ctx)
+	ctx, requestID, span := initReconcileContext(ctx, "DatabaseSecretClaim.Reconcile")
+	defer span.End()
 
 	s := &dbaasv1.DatabaseSecretClaim{}
 	if err := r.Get(ctx, req.NamespacedName, s); err != nil {

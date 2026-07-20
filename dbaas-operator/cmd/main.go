@@ -55,6 +55,7 @@ import (
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/poller"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/tracing"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -118,6 +119,25 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Infof("operator namespace cloud-namespace=%v", cloudNamespace)
+
+	// ── OpenTelemetry tracing ─────────────────────────────────────────────────
+	// traceId/spanId land in every log line written with a reconcile's ctx via
+	// this custom field (see internal/tracing.StartSpan for how they get there).
+	logging.DefaultFormat.SetCustomLogFields("[traceId=%{traceId}] [spanId=%{spanId}]")
+	microserviceName := os.Getenv("MICROSERVICE_NAME")
+	if microserviceName == "" {
+		microserviceName = "dbaas-operator"
+	}
+	tracingShutdown, err := tracing.Init(context.Background(), microserviceName+"-"+cloudNamespace)
+	if err != nil {
+		setupLog.Errorf("Failed to initialize tracing: %v", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := tracingShutdown(context.Background()); err != nil {
+			setupLog.Errorf("Failed to shut down tracing: %v", err)
+		}
+	}()
 
 	// ── dbaas-aggregator client ───────────────────────────────────────────────
 	aggregatorURL := os.Getenv("DBAAS_AGGREGATOR_URL")

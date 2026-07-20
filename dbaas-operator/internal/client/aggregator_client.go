@@ -31,6 +31,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 	"github.com/netcracker/qubership-core-lib-go/v3/security/tokensource"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const defaultTimeout = 30 * time.Second
@@ -104,6 +105,11 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 	c := &AggregatorClient{getToken: getToken}
 
 	c.rc = resty.New().
+		// Creates a client span per call and injects the platform propagation
+		// headers (b3multi, set as the global TextMapPropagator in
+		// internal/tracing) so a trace started in Reconcile links up with the
+		// dbaas-aggregator server span for the same call.
+		SetTransport(otelhttp.NewTransport(http.DefaultTransport)).
 		SetBaseURL(baseURL).
 		SetTimeout(defaultTimeout).
 		SetHeader("Accept", "application/json").

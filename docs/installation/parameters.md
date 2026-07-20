@@ -26,6 +26,9 @@
         + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
         + [KUBERNETES_M2M_ENABLED](#kubernetes_m2m_enabled)
         + [KUBERNETES_M2M_AUDIENCE](#kubernetes_m2m_audience)
+        + [TRACING_ENABLED](#tracing_enabled)
+        + [TRACING_HOST](#tracing_host)
+        + [TRACING_SAMPLER_PROBABILISTIC](#tracing_sampler_probabilistic)
         + [priorityClassName](#priorityClassName)
     * [CREDENTIALS](#credentials)
         + [DBAAS_DB_EDITOR_CREDENTIALS_USERNAME / DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD](#dbaas_db_editor_credentials_username--dbaas_db_editor_credentials_password)
@@ -342,6 +345,32 @@ KUBERNETES_M2M_AUDIENCE specifies the expected audience from Kubernetes tokens. 
 | Default | Recommended                                                               |
 |---------|---------------------------------------------------------------------------|
 | "dbaas" | Only change for test purposes because other services expect value 'dbaas' |
+
+#### TRACING_ENABLED
+
+Enables OpenTelemetry distributed tracing (OTLP export). When enabled, DBaaS Aggregator exports traces via
+`http/protobuf` to the platform tracing proxy defined by `TRACING_HOST`.
+
+| Default | Recommended                                                     |
+|---------|-------------------------------------------------------------------|
+| false   | Set to true to enable tracing export                              |
+
+#### TRACING_HOST
+
+OTLP proxy host tracing is exported to (same namespace). Alternative value in some clusters: `open-telemetry-collector`.
+
+| Default             | Recommended                                                              |
+|----------------------|---------------------------------------------------------------------------|
+| nc-diagnostic-agent  | Change only if the platform tracing proxy has a different service name |
+
+#### TRACING_SAMPLER_PROBABILISTIC
+
+Ratio of new root traces that get sampled (`parentbased_traceidratio`); traces that already carry a sampled parent are
+always continued regardless of this value.
+
+| Default | Recommended                                       |
+|---------|-----------------------------------------------------|
+| 0.01    | Increase for troubleshooting; keep low in production |
 
 #### priorityClassName
 
