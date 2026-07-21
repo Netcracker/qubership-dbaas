@@ -796,6 +796,8 @@ CR created / spec changed / periodic resync (re-reads Secrets)
 #### ExternalDatabase Status Reference
 
 **`status.phase`** — human-readable summary for `kubectl get dbedb`.
+Read `status.conditions` for automation: phase summarizes them and carries no information they do not
+already have.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1023,6 +1025,8 @@ CR created / spec changed
 #### DatabaseAccessPolicy Status Reference
 
 **`status.phase`** — human-readable summary for `kubectl get dbdap`.
+Read `status.conditions` for automation: phase summarizes them and carries no information they do not
+already have.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1293,6 +1297,8 @@ This materializes the database exactly as the tenant's first runtime connection 
 #### InternalDatabase Status Reference
 
 **`status.phase`** — human-readable summary for `kubectl get dbidb`.
+Read `status.conditions` for automation: phase summarizes them and carries no information they do not
+already have.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1593,7 +1599,9 @@ For blue-green cleanup, keep the old operator running until any finalizers on mi
 
 #### Balancing Rule Status Reference
 
-**`status.phase`**
+**`status.phase`** — human-readable summary for `kubectl get`.
+Read `status.conditions` for automation: phase summarizes them and carries no information they do not
+already have.
 
 | Phase | Meaning |
 |-------|---------|
@@ -1865,6 +1873,8 @@ The over-fetch is bounded and cheap: a classifier is typically referenced by 1�
 #### DatabaseSecretClaim Status Reference
 
 **`status.phase`** — human-readable summary for `kubectl get databasesecretclaim`.
+Read `status.conditions` for automation: phase summarizes them and carries no information they do not
+already have.
 
 | Phase | Meaning |
 |-------|---------|

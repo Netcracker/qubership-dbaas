@@ -239,8 +239,10 @@ All CRs are served at `dbaas.netcracker.com/v1` (single group, no alpha versions
 
 - Use `metav1.Condition` for status conditions — never custom string fields.
 - Embed a shared `OperatorStatus` struct for common fields (`Phase`, `ObservedGeneration`, `Conditions`).
-- Define a `Phase` enum with these standard values:
-  `Unknown → Processing → Succeeded | BackingOff | InvalidConfiguration`
+- Treat `status.conditions` as the API contract. `Phase` is only a human-readable summary for `kubectl get`: never
+  gate controller logic on it, and never constrain it with an OpenAPI enum. A closed enum on a status field makes the
+  API server reject the whole status write — conditions included — whenever a new value ships ahead of the CRD.
+  Standard values: `Unknown → Processing → Succeeded | BackingOff | InvalidConfiguration`.
 - Use `+kubebuilder:validation:XValidation` (CEL) for immutability rules on spec fields.
 - Use `+listType=map` / `+listMapKey=type` on Condition slices for strategic merge.
 - Implement `SetObservedGeneration(int64)` on every CR root type.
@@ -250,6 +252,7 @@ All CRs are served at `dbaas.netcracker.com/v1` (single group, no alpha versions
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 ```
 

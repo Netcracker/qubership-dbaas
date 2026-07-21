@@ -342,3 +342,23 @@ func setObservedGeneration[T interface {
 }](obj T) {
 	obj.SetObservedGeneration(obj.GetGeneration())
 }
+
+// isTerminal reports whether the controller has finished with the resource for
+// now: either it was processed successfully (Ready=True) or it hit a permanent
+// error that will not be retried until the spec changes (Stalled=True).
+// Used by watch predicates to skip resources that need no further work.
+func isTerminal(conditions []metav1.Condition) bool {
+	return apimeta.IsStatusConditionTrue(conditions, conditionTypeReady) ||
+		apimeta.IsStatusConditionTrue(conditions, conditionTypeStalled)
+}
+
+// isReadyForGeneration reports whether Ready=True was recorded for generation
+// or newer. Unlike isTerminal it does not accept a Ready condition left over
+// from an earlier generation, so callers can tell "successfully reconciled the
+// current spec" from "succeeded once, but the spec has changed since".
+func isReadyForGeneration(conditions []metav1.Condition, generation int64) bool {
+	ready := apimeta.FindStatusCondition(conditions, conditionTypeReady)
+	return ready != nil &&
+		ready.Status == metav1.ConditionTrue &&
+		ready.ObservedGeneration >= generation
+}
