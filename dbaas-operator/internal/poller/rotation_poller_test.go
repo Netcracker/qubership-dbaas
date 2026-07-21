@@ -42,13 +42,13 @@ func (f *fakeSource) GetChangedSince(_ context.Context, cursor *aggregatorclient
 }
 
 func TestPollOnce_SeedFromHighWaterMark(t *testing.T) {
-	hwm := aggregatorclient.ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), Id: "aaaa"}
+	hwm := aggregatorclient.ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), ID: "aaaa"}
 	src := &fakeSource{resp: &aggregatorclient.ChangedDatabasesResponse{HighWaterMark: &hwm}}
 	p := &RotationPoller{Client: newFakeClient(), Source: src}
 
 	cursor := p.pollOnce(context.Background(), nil, DefaultLimit)
 
-	if cursor == nil || !cursor.LastRotatedAt.Equal(hwm.LastRotatedAt) || cursor.Id != hwm.Id {
+	if cursor == nil || !cursor.LastRotatedAt.Equal(hwm.LastRotatedAt) || cursor.ID != hwm.ID {
 		t.Fatalf("cursor = %+v, want high-water mark %+v", cursor, hwm)
 	}
 	if len(src.gotCursor) != 1 || src.gotCursor[0] != nil {
@@ -63,44 +63,44 @@ func TestPollOnce_SeedEpochWhenNothingRotated(t *testing.T) {
 	cursor := p.pollOnce(context.Background(), nil, DefaultLimit)
 
 	want := epochCursor()
-	if cursor == nil || !cursor.LastRotatedAt.Equal(want.LastRotatedAt) || cursor.Id != want.Id {
+	if cursor == nil || !cursor.LastRotatedAt.Equal(want.LastRotatedAt) || cursor.ID != want.ID {
 		t.Fatalf("cursor = %+v, want epoch baseline %+v", cursor, want)
 	}
 }
 
 func TestPollOnce_AdvancesCursorByKeysetThroughTies(t *testing.T) {
-	start := aggregatorclient.ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), Id: "0000"}
+	start := aggregatorclient.ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), ID: "0000"}
 	// Two items share the SAME timestamp but differ by id — the keyset cursor must
 	// advance to the last id so the next poll does not re-fetch the same page.
 	ts := start.LastRotatedAt.Add(time.Minute)
 	src := &fakeSource{resp: &aggregatorclient.ChangedDatabasesResponse{
 		Items: []aggregatorclient.ChangedDatabaseRef{
-			{Id: "aaaa", Namespace: "ns", Classifier: map[string]any{"microserviceName": "a", "scope": "service", "namespace": "ns"}, Type: "postgresql", LastRotatedAt: ts},
-			{Id: "bbbb", Namespace: "ns", Classifier: map[string]any{"microserviceName": "b", "scope": "service", "namespace": "ns"}, Type: "postgresql", LastRotatedAt: ts},
+			{ID: "aaaa", Namespace: "ns", Classifier: map[string]any{"microserviceName": "a", "scope": "service", "namespace": "ns"}, Type: "postgresql", LastRotatedAt: ts},
+			{ID: "bbbb", Namespace: "ns", Classifier: map[string]any{"microserviceName": "b", "scope": "service", "namespace": "ns"}, Type: "postgresql", LastRotatedAt: ts},
 		},
 	}}
 	p := &RotationPoller{Client: newFakeClient(), Source: src}
 
 	cursor := p.pollOnce(context.Background(), &start, DefaultLimit)
 
-	if cursor == nil || !cursor.LastRotatedAt.Equal(ts) || cursor.Id != "bbbb" {
+	if cursor == nil || !cursor.LastRotatedAt.Equal(ts) || cursor.ID != "bbbb" {
 		t.Fatalf("cursor = %+v, want (%v, bbbb)", cursor, ts)
 	}
 	// The request must use the cursor verbatim — no timestamp-subtraction overlap.
 	if len(src.gotCursor) != 1 || src.gotCursor[0] == nil ||
-		!src.gotCursor[0].LastRotatedAt.Equal(start.LastRotatedAt) || src.gotCursor[0].Id != start.Id {
+		!src.gotCursor[0].LastRotatedAt.Equal(start.LastRotatedAt) || src.gotCursor[0].ID != start.ID {
 		t.Errorf("request cursor = %v, want verbatim %+v", src.gotCursor, start)
 	}
 }
 
 func TestPollOnce_ErrorKeepsCursor(t *testing.T) {
-	start := aggregatorclient.ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), Id: "cccc"}
+	start := aggregatorclient.ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), ID: "cccc"}
 	src := &fakeSource{err: errors.New("boom")}
 	p := &RotationPoller{Client: newFakeClient(), Source: src}
 
 	cursor := p.pollOnce(context.Background(), &start, DefaultLimit)
 
-	if cursor == nil || !cursor.LastRotatedAt.Equal(start.LastRotatedAt) || cursor.Id != start.Id {
+	if cursor == nil || !cursor.LastRotatedAt.Equal(start.LastRotatedAt) || cursor.ID != start.ID {
 		t.Fatalf("cursor = %+v, want unchanged %+v on error", cursor, start)
 	}
 }

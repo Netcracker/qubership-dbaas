@@ -64,7 +64,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 				Scope:            "service",
 			},
 			Type:   "postgresql",
-			DbName: "testdb",
+			DBName: "testdb",
 			ConnectionProperties: []dbaasv1.ConnectionProperty{
 				{
 					Role: "admin",
@@ -1075,7 +1075,7 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 			Spec: dbaasv1.ExternalDatabaseSpec{
 				Classifier:           dbaasv1.Classifier{Namespace: ns, MicroserviceName: "svc", Scope: "service"},
 				Type:                 "postgresql",
-				DbName:               "testdb",
+				DBName:               "testdb",
 				ConnectionProperties: []dbaasv1.ConnectionProperty{{Role: "admin"}},
 			},
 		}

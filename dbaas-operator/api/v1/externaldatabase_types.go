@@ -101,7 +101,7 @@ type ExternalDatabaseSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.dbName is immutable after creation"
-	DbName string `json:"dbName"`
+	DBName string `json:"dbName"`
 
 	// connectionProperties is the list of connection entries, one per access role.
 	// Each entry provides the credentials and extra properties for that role.

@@ -254,7 +254,7 @@ type PermanentBalancingRuleItem struct {
 	// dbType is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	DbType string `json:"dbType"`
+	DBType string `json:"dbType"`
 
 	// physicalDatabaseId is the physical database identifier where new logical
 	// databases of this type should be created. The operator validates this
@@ -277,7 +277,7 @@ type PermanentBalancingRuleItem struct {
 // rule entry for cleanup on update/delete.
 type PermanentBalancingRuleAppliedRule struct {
 	// dbType is the database engine type last applied.
-	DbType string `json:"dbType"`
+	DBType string `json:"dbType"`
 
 	// namespaces is the namespace set last applied for dbType.
 	// +listType=set

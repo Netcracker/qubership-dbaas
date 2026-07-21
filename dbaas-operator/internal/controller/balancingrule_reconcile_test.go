@@ -392,8 +392,8 @@ var _ = Describe("BalancingRule Controller", func() {
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
-						{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments", "orders"}},
-						{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
+						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments", "orders"}},
+						{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
 					},
 				},
 			}
@@ -409,8 +409,8 @@ var _ = Describe("BalancingRule Controller", func() {
 			var got []aggregatorclient.PermanentBalancingRuleRequest
 			Expect(json.Unmarshal(fixture.calls[0].body, &got)).To(Succeed())
 			Expect(got).To(HaveLen(2))
-			Expect(got[0].DbType).To(Equal("mongodb"))
-			Expect(got[1].DbType).To(Equal("cassandra"))
+			Expect(got[0].DBType).To(Equal("mongodb"))
+			Expect(got[1].DBType).To(Equal("cassandra"))
 			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(stored.Status.AppliedRules).To(HaveLen(2))
 		})
@@ -425,13 +425,13 @@ var _ = Describe("BalancingRule Controller", func() {
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
-						{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
+						{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
 					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 			updatePermanentStatus(rule, []dbaasv1.PermanentBalancingRuleAppliedRule{
-				{DbType: "cassandra", Namespaces: []string{"blue", "green"}},
+				{DBType: "cassandra", Namespaces: []string{"blue", "green"}},
 			})
 
 			_, _, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
@@ -459,7 +459,7 @@ var _ = Describe("BalancingRule Controller", func() {
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
-						{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
+						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
 					},
 				},
 			}
@@ -483,13 +483,13 @@ var _ = Describe("BalancingRule Controller", func() {
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
-						{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"blue", "green"}},
+						{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"blue", "green"}},
 					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
 			updatePermanentStatus(rule, []dbaasv1.PermanentBalancingRuleAppliedRule{
-				{DbType: "cassandra", Namespaces: []string{"blue", "green"}},
+				{DBType: "cassandra", Namespaces: []string{"blue", "green"}},
 			})
 			Expect(k8sClient.Delete(ctx, rule)).To(Succeed())
 
@@ -503,7 +503,7 @@ var _ = Describe("BalancingRule Controller", func() {
 			var cleanup []aggregatorclient.PermanentBalancingRuleDeleteRequest
 			Expect(json.Unmarshal(fixture.calls[0].body, &cleanup)).To(Succeed())
 			Expect(cleanup).To(HaveLen(1))
-			Expect(cleanup[0].DbType).To(Equal("cassandra"))
+			Expect(cleanup[0].DBType).To(Equal("cassandra"))
 			Expect(cleanup[0].Namespaces).To(Equal([]string{"blue", "green"}))
 			Eventually(func() bool {
 				current := &dbaasv1.PermanentBalancingRule{}

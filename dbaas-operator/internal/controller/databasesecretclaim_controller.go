@@ -547,7 +547,7 @@ type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
 	Type       string         `json:"type"`
 	UserRole   string         `json:"userRole,omitempty"`
-	Id         string         `json:"id,omitempty"`
+	ID         string         `json:"id,omitempty"`
 	Name       string         `json:"name,omitempty"`
 	Namespace  string         `json:"namespace,omitempty"`
 	Settings   map[string]any `json:"settings,omitempty"`
@@ -568,7 +568,7 @@ func buildSecretData(s *dbaasv1.DatabaseSecretClaim, dbResp *aggregatorclient.Da
 		Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		Type:       s.Spec.Type,
 		UserRole:   s.Spec.UserRole,
-		Id:         dbResp.Id,
+		ID:         dbResp.ID,
 		Name:       dbResp.Name,
 		Namespace:  dbResp.Namespace,
 		Settings:   dbResp.Settings,

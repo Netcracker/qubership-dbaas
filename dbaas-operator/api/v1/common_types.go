@@ -55,7 +55,7 @@ type Classifier struct {
 	// tenantId is the tenant identifier for multi-tenant deployments.
 	// Only relevant when scope="tenant".
 	// +optional
-	TenantId string `json:"tenantId,omitempty"`
+	TenantID string `json:"tenantId,omitempty"`
 
 	// customKeys is an optional nested map for adapter-specific or
 	// application-specific identifiers (e.g. logicalDBName).
