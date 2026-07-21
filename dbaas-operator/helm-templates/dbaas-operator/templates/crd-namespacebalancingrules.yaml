@@ -61,9 +61,11 @@ spec:
                     balancing rule entry.
                   properties:
                     name:
-                      description: name is the aggregator rule name used in the namespace
-                        balancing rule endpoint.
+                      description: |-
+                        name is the aggregator rule name used in the namespace balancing rule endpoint.
+                        The Pattern rejects a whitespace-only value, which MinLength alone accepts.
                       minLength: 1
+                      pattern: \S
                       type: string
                     order:
                       description: |-
@@ -79,11 +81,13 @@ spec:
                         the rule, not that this identifier was resolved to a registered physical
                         database.
                       minLength: 1
+                      pattern: \S
                       type: string
                     type:
                       description: type is the database engine type this rule applies
                         to, e.g. "postgresql" or "mongodb".
                       minLength: 1
+                      pattern: \S
                       type: string
                   required:
                   - name
@@ -237,6 +241,9 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: NamespaceBalancingRule name must be 'namespace-balancing-rules'
+          rule: self.metadata.name == 'namespace-balancing-rules'
     served: true
     storage: true
     subresources:

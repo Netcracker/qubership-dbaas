@@ -6,11 +6,19 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 )
+
+// conflictNS hosts the second NamespaceBalancingRule singleton used by the
+// cross-namespace conflict spec. Aggregator rule names are global, so the
+// collision that validateNamespaceRuleGlobalConflicts guards against is between
+// the singletons of two different namespaces.
+const conflictNS = "balancing-conflict-ns"
 
 var _ = Describe("BalancingRule validation", func() {
 	const (
@@ -22,7 +30,7 @@ var _ = Describe("BalancingRule validation", func() {
 		deleteIfExists(&dbaasv1.MicroserviceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS}})
 		deleteIfExists(&dbaasv1.MicroserviceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: businessNS}})
 		deleteIfExists(&dbaasv1.NamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: businessNS}})
-		deleteIfExists(&dbaasv1.NamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: "other-namespace-rules", Namespace: businessNS}})
+		deleteIfExists(&dbaasv1.NamespaceBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: conflictNS}})
 		deleteIfExists(&dbaasv1.PermanentBalancingRule{ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.PermanentBalancingRuleName, Namespace: operatorNS}})
 	})
 
@@ -152,8 +160,16 @@ var _ = Describe("BalancingRule validation", func() {
 		})
 
 		It("keeps global namespace-rule name checks best-effort and leaves type/order conflicts to aggregator 409", func() {
+			// The singleton name is enforced by the CRD, so the conflicting rule
+			// must live in another namespace — which is also the real-world case:
+			// aggregator rule names are global, one singleton per namespace.
+			ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: conflictNS}}
+			if err := k8sClient.Create(ctx, ns); err != nil {
+				Expect(apierrors.IsAlreadyExists(err)).To(BeTrue(), "unexpected error creating %s: %v", conflictNS, err)
+			}
+
 			existing := &dbaasv1.NamespaceBalancingRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "other-namespace-rules", Namespace: businessNS},
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: conflictNS},
 				Spec: dbaasv1.NamespaceBalancingRuleSpec{
 					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "orders-postgres-primary", Type: "postgresql", PhysicalDatabaseID: "postgresql-orders", Order: 10},
@@ -182,6 +198,65 @@ var _ = Describe("BalancingRule validation", func() {
 			reason, err = reconciler.validateNamespaceRule(context.Background(), duplicateOrder)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(reason).To(BeEmpty())
+		})
+
+		It("rejects a non-singleton name at admission for all three kinds", func() {
+			err := k8sClient.Create(ctx, &dbaasv1.MicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: "wrong-name", Namespace: businessNS},
+				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
+						{Type: "postgresql", Label: "zone=fast", Microservices: []string{"billing"}},
+					},
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(dbaasv1.MicroserviceBalancingRuleName))
+
+			err = k8sClient.Create(ctx, &dbaasv1.NamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: "wrong-name", Namespace: businessNS},
+				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					Rules: []dbaasv1.NamespaceBalancingRuleItem{
+						{Name: "pg-primary", Type: "postgresql", PhysicalDatabaseID: "postgresql-a", Order: 0},
+					},
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(dbaasv1.NamespaceBalancingRuleName))
+
+			err = k8sClient.Create(ctx, &dbaasv1.PermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: "wrong-name", Namespace: operatorNS},
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
+						{DbType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments"}},
+					},
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(dbaasv1.PermanentBalancingRuleName))
+		})
+
+		It("rejects a whitespace-only value that MinLength alone would accept", func() {
+			err := k8sClient.Create(ctx, &dbaasv1.MicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
+						{Type: " ", Label: "zone=fast", Microservices: []string{"billing"}},
+					},
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.rules[0].type"))
+
+			err = k8sClient.Create(ctx, &dbaasv1.MicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
+						{Type: "postgresql", Label: "zone=fast", Microservices: []string{" "}},
+					},
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.rules[0].microservices[0]"))
 		})
 
 		It("accepts a valid permanent singleton and rejects operator namespace/duplicate target violations", func() {
