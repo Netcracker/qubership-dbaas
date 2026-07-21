@@ -12,6 +12,19 @@ To access the dashboard:
 
 This section describes metrics and their meanings.
 
+The DBaaS registry consistency check exports these Prometheus gauges every 10 minutes:
+
+| Metric | Description |
+|---|---|
+| `dbaas_registration_databases_total_number` | Number of databases registered in DBaaS. |
+| `dbaas_registration_databases_lost_number` | Number of databases registered in DBaaS but absent from adapter database lists. |
+| `dbaas_registration_databases_ghost_number` | Number of databases returned by adapters but absent from the DBaaS registry. |
+| `dbaas_registration_databases_deleting_number` | Number of registered databases marked for deletion. |
+
+The aggregator also exports these gauges per database type. The type appears before the suffix, for example,
+`dbaas_registration_databases_postgresql_lost_number` and
+`dbaas_registration_databases_postgresql_total_number`.
+
 * [Overview Section](#overview-section)
 * [Adapter Statistics Section](#adapter-statistics-section)
 * [JVM Heap Section](#jvm-heap-section)
@@ -89,6 +102,11 @@ It shows the count of databases over time. The graph displays three series:
 
 It shows the health status of each registered DBaaS adapter over time. Each series represents one adapter identified by its type and identifier.
 
+### Registry discrepancy count over time
+
+It shows the number of lost databases over time. A value greater than zero means that at least one database is present
+in the DBaaS registry but absent from its adapter's database list.
+
 ## Adapter Statistics Section
 
 This section shows request and operation statistics for each DBaaS adapter.
@@ -112,6 +130,21 @@ It shows the count of ghost databases (existing in storage but not registered in
 ### Number of Lost Databases per Adapter Type
 
 It shows the count of lost databases (registered in DBaaS but not found in storage) for each adapter type over time.
+
+
+## Registered databases section
+
+The **Registered databases** section shows the current number of databases in the DBaaS registry. It contains
+an overall panel and separate panels for PostgreSQL, MongoDB, Cassandra, Elasticsearch, and Redis. Each database-type
+panel includes registrations found in the adapter and lost registrations.
+
+## Registry discrepancy alert
+
+The `DbaasRegistryDiscrepancy` alert fires when
+`dbaas_registration_databases_lost_number` remains greater than zero for 20 minutes. The alert has `warning` severity
+and is created when `MONITORING_ENABLED` is set to `true`.
+
+Use `GET /api/v3/dbaas/debug/internal/lost` to identify the affected databases.
 
 ## JVM Heap Section
 
