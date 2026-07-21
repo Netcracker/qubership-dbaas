@@ -32,3 +32,33 @@ jobs:
       docker-config-file: 'docker-go-dev-config.json'
       go-module-dir: 'dbaas-operator'
     secrets: inherit
+
+  # CRDs, DeepCopy and the chart's CRD templates are generated from the markers in
+  # api/v1. Regenerate them here and fail if anything differs from what was committed,
+  # so a stale artifact cannot reach the chart. The Helm CRD templates used to be
+  # synced by hand and had already drifted — the chart shipped shortName "dbdp" while
+  # the source said "dbdap", breaking every documented `kubectl get dbdap`.
+  verify-generated:
+    name: Verify generated artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: dbaas-operator/go.mod
+          cache-dependency-path: dbaas-operator/go.sum
+
+      - name: Regenerate and check for drift
+        working-directory: dbaas-operator
+        run: |
+          make manifests generate sync-helm-crds
+          if ! git diff --exit-code; then
+            echo "::error::Generated artifacts are stale. Run 'make manifests generate sync-helm-crds' in dbaas-operator/ and commit the result."
+            exit 1
+          fi
