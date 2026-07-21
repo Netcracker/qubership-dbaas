@@ -33,6 +33,9 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databasesecretclaims/status ]
     verbs: [ get, update, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ databasesecretclaims/finalizers ]
+    verbs: [ update ]
   # balancing rule CRs: operator reads and watches list-based singleton rules and
   # requires patch/finalizer permissions for cleanup on deletion.
   # NOTE: permanentbalancingrules are intentionally absent here. They are an
