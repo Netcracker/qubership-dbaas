@@ -37,6 +37,7 @@ rules:
     verbs: [get, update, patch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
+      - databasesecretclaims/finalizers
       - microservicebalancingrules/finalizers
       - namespacebalancingrules/finalizers
     verbs: [update]

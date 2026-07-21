@@ -42,6 +42,7 @@ rules:
 - apiGroups:
   - dbaas.netcracker.com
   resources:
+  - databasesecretclaims/finalizers
   - microservicebalancingrules/finalizers
   - namespacebalancingrules/finalizers
   - namespacebindings/finalizers
