@@ -139,7 +139,16 @@ jobs:
             securityContext:
               runAsUser: 101
               fsGroup: 101
-      
+            s3Aliases:
+              - name: default
+                spec:
+                  storageServerUrl: http://minio.minio.svc.cluster.local
+                  storageBucket: dbaas-backup-restore-test
+                  storageUsername: minio
+                  storageRegion: region123
+                secretContent:
+                  storagePassword: minio123
+
           dbaas:
             install: true
             aggregator:
