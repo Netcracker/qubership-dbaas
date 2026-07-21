@@ -208,11 +208,32 @@ jobs:
           kubectl -n postgres get events --sort-by=.lastTimestamp | tail -40
           echo "::endgroup::"
 
+      - name: Start aggregator stall watchdog
+        run: |
+          chmod +x .github/scripts/watch-aggregator-stalls.sh
+          nohup .github/scripts/watch-aggregator-stalls.sh > watchdog.log 2>&1 &
+          echo "WATCHDOG_PID=$!" >> "$GITHUB_ENV"
+
       - name: Run tests
         id: tests
         run: mvn --batch-mode -Dmaven.test.failure.ignore=true -DskipIT="false" -Dclouds.cloud.name="kind-kind" -Dclouds.cloud.namespaces.namespace="dbaas" test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stop aggregator stall watchdog
+        if: always()
+        run: |
+          kill "${WATCHDOG_PID:-}" 2>/dev/null || true
+          cp watchdog.log thread-dumps/ 2>/dev/null || true
+          ls -la thread-dumps/ 2>/dev/null || echo "no snapshots collected"
+
+      - name: Upload aggregator stall snapshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: aggregator-stall-snapshots
+          path: thread-dumps/**
+          if-no-files-found: warn
 
       - name: Aggregate Surefire reports
         id: collect_reports
