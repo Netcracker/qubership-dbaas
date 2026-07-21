@@ -137,6 +137,7 @@ jobs:
             securityContext:
               runAsUser: 101
               fsGroup: 101
+            s3Aliases: []
 
           dbaas:
             install: true
