@@ -392,8 +392,9 @@ Production install is via the **Qubership Helm chart** under `helm-templates/dba
 - Helm templates live in `helm-templates/<component>/`.
 - Provide resource profiles: `dev.yaml`, `dev-ha.yaml`, `prod-nonha.yaml`, `prod.yaml`.
 - Always include a `values.schema.json` for value validation.
-- CRDs are rendered as Helm templates (not raw `config/crd/bases` output), each gated on
-  `{{- if .Values.DBAAS_OPERATOR_ENABLED }}`.
+- CRDs ship as Helm templates gated on `{{- if .Values.DBAAS_OPERATOR_ENABLED }}`. Each template is
+  the generated `config/crd/bases` file wrapped in that conditional and nothing else, so it is
+  produced by `make sync-helm-crds` — never edited by hand.
 
 ---
 
@@ -405,8 +406,12 @@ Production install is via the **Qubership Helm chart** under `helm-templates/dba
 |---|---|
 | `config/crd/bases/*.yaml` | `make manifests` |
 | `config/rbac/role.yaml` | `make manifests` |
+| `helm-templates/dbaas-operator/templates/crd-*.yaml` | `make sync-helm-crds` |
 | `**/zz_generated.*.go` | `make generate` |
 | `PROJECT` | `kubebuilder` CLI |
+
+The `verify-generated` job in `go-build.yml` regenerates all of the above and fails the build if the
+result differs from what was committed.
 
 ### Never remove scaffold markers
 
@@ -415,8 +420,9 @@ Do NOT delete `// +kubebuilder:scaffold:*` comments — the CLI injects code at 
 ### After editing `*_types.go` or RBAC markers
 
 ```bash
-make manifests    # Regenerate CRDs + RBAC
-make generate     # Regenerate DeepCopy
+make manifests        # Regenerate CRDs + RBAC
+make generate         # Regenerate DeepCopy
+make sync-helm-crds   # Copy the regenerated CRDs into the chart templates
 ```
 
 ### After editing any `*.go` file
