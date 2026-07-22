@@ -69,7 +69,7 @@ spec:
                   Required keys: microserviceName, scope.
                   Immutable after creation — changing the classifier of an existing
                   InternalDatabase would switch the CR onto a different database while
-                  the controller's status (trackingID, observedGeneration) still references
+                  the controller's status (trackingId, observedGeneration) still references
                   the original one. To rebind to a different database, delete and recreate
                   the CR.
                 properties:
@@ -346,9 +346,9 @@ spec:
               pendingOperationGeneration:
                 description: |-
                   pendingOperationGeneration stores the .metadata.generation at which the
-                  current trackingID was obtained. The controller uses this to detect spec
+                  current trackingId was obtained. The controller uses this to detect spec
                   changes that occur while an async operation is in progress: if the current
-                  generation differs from pendingOperationGeneration, the stale trackingID is
+                  generation differs from pendingOperationGeneration, the stale trackingId is
                   cleared and the operation is re-submitted.
                   Zero means no pending async operation.
                 format: int64
@@ -360,9 +360,9 @@ spec:
                   conditions instead. Not defaulted by the API server: status is owned by the
                   controller, which always sets phase alongside the conditions.
                 type: string
-              trackingID:
+              trackingId:
                 description: |-
-                  trackingID is the identifier returned by dbaas-aggregator when a database
+                  trackingId is the identifier returned by dbaas-aggregator when a database
                   provisioning operation is started asynchronously (HTTP 202). The controller
                   stores it here and uses it to poll the operation status on subsequent reconciles.
                   Cleared once the operation reaches a terminal state (Completed or Failed).

@@ -227,7 +227,7 @@ var _ = Describe("BalancingRule validation", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "wrong-name", Namespace: operatorNS},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
-						{DbType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments"}},
+						{DBType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments"}},
 					},
 				},
 			})
@@ -265,8 +265,8 @@ var _ = Describe("BalancingRule validation", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.PermanentBalancingRuleName, Namespace: operatorNS},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
-						{DbType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments", "orders"}},
-						{DbType: "mongodb", PhysicalDatabaseID: "mongodb-a", Namespaces: []string{"notifications"}},
+						{DBType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments", "orders"}},
+						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-a", Namespaces: []string{"notifications"}},
 					},
 				},
 			}
@@ -281,7 +281,7 @@ var _ = Describe("BalancingRule validation", func() {
 
 			duplicateTarget := valid.DeepCopy()
 			duplicateTarget.Spec.Rules = append(duplicateTarget.Spec.Rules, dbaasv1.PermanentBalancingRuleItem{
-				DbType:             "postgresql",
+				DBType:             "postgresql",
 				PhysicalDatabaseID: "postgresql-b",
 				Namespaces:         []string{nsPayments},
 			})

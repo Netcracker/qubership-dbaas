@@ -187,7 +187,7 @@ The same declarative endpoint as above, but the `InternalDatabase` reconciler po
 | HTTP Code | Situation | Operator outcome |
 |-----------|-----------|-----------------|
 | `200 OK` | Provisioned synchronously | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned` |
-| `202 Accepted` | Async operation accepted; response carries `trackingId` | `WaitingForDependency` — reason `ProvisioningStarted`; the controller persists `status.trackingID` and polls the operation-status endpoint |
+| `202 Accepted` | Async operation accepted; response carries `trackingId` | `WaitingForDependency` — reason `ProvisioningStarted`; the controller persists `status.trackingId` and polls the operation-status endpoint |
 | `400` / `403` / `409` / `410` / `422` | Invalid or permanently rejected declaration | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
@@ -199,19 +199,19 @@ See [InternalDatabase Status Reference](#internaldatabase-status-reference) for 
 
 **`GET /api/declarations/v1/operation/{trackingId}/status`**
 
-After a `202 Accepted` from the apply endpoint, the controller polls this endpoint with the returned `{trackingId}` (persisted in `status.trackingID`) every `pollRequeueAfter` until the operation reaches a terminal state. The response body carries a `status` (`TaskState`) field — `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` / `FAILED` / `TERMINATED` — so outcomes are driven by that value as well as by the HTTP code.
+After a `202 Accepted` from the apply endpoint, the controller polls this endpoint with the returned `{trackingId}` (persisted in `status.trackingId`) every `pollRequeueAfter` until the operation reaches a terminal state. The response body carries a `status` (`TaskState`) field — `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` / `FAILED` / `TERMINATED` — so outcomes are driven by that value as well as by the HTTP code.
 
 **Possible responses and operator behavior:**
 
 | Response | Situation | Operator outcome |
 |----------|-----------|-----------------|
-| `status=COMPLETED` | Provisioning finished | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned`; `trackingID` cleared |
+| `status=COMPLETED` | Provisioning finished | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned`; `trackingId` cleared |
 | `status=IN_PROGRESS` / `NOT_STARTED` | Still running | `WaitingForDependency` — requeued after the poll interval, reason `ProvisioningStarted` |
-| `status=FAILED` | Provisioning failed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected`; `trackingID` cleared |
-| `status=TERMINATED` | Canceled mid-flight (aggregator restart or admin terminate) | `BackingOff` — `trackingID` cleared and the operation is **resubmitted** on the next reconcile, reason `OperationTerminated` |
-| HTTP `401` | Missing or invalid credentials | `BackingOff` — `trackingID` kept, retried, reason `Unauthorized` |
-| HTTP `404` | `trackingId` expired or unknown | `BackingOff` — `trackingID` cleared, operation **resubmitted** next reconcile, reason `AggregatorError` |
-| HTTP `5xx` / Network error | Aggregator error / unreachable | `BackingOff` — `trackingID` kept, retried, reason `AggregatorError` |
+| `status=FAILED` | Provisioning failed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected`; `trackingId` cleared |
+| `status=TERMINATED` | Canceled mid-flight (aggregator restart or admin terminate) | `BackingOff` — `trackingId` cleared and the operation is **resubmitted** on the next reconcile, reason `OperationTerminated` |
+| HTTP `401` | Missing or invalid credentials | `BackingOff` — `trackingId` kept, retried, reason `Unauthorized` |
+| HTTP `404` | `trackingId` expired or unknown | `BackingOff` — `trackingId` cleared, operation **resubmitted** next reconcile, reason `AggregatorError` |
+| HTTP `5xx` / Network error | Aggregator error / unreachable | `BackingOff` — `trackingId` kept, retried, reason `AggregatorError` |
 
 ### DatabaseSecretClaim Connection Lookup Endpoint
 
@@ -413,7 +413,7 @@ generated from).
 | `dbaas.netcracker.com` | `databaseaccesspolicies` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `databaseaccesspolicies/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `internaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
-| `dbaas.netcracker.com` | `internaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, and `status.trackingID` |
+| `dbaas.netcracker.com` | `internaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, and `status.trackingId` |
 | `dbaas.netcracker.com` | `externaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
 | `dbaas.netcracker.com` | `externaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` |
 | `dbaas.netcracker.com` | `databasesecretclaims` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required for the rotation poller to stamp the `dbaas.netcracker.com/rotation-trigger` annotation on matched CRs |
@@ -1191,7 +1191,7 @@ spec:
 
 | Field | Required | Mutable | Description |
 |-------|:--------:|:-------:|-------------|
-| `spec.classifier` | Yes | **No** | Database identity in dbaas-aggregator. Immutable after creation (CRD CEL rule `self == oldSelf`): switching the classifier on an existing CR would re-target the controller at a different database while `status.trackingID` and `status.observedGeneration` still reference the original one. Delete and recreate the CR to rebind. |
+| `spec.classifier` | Yes | **No** | Database identity in dbaas-aggregator. Immutable after creation (CRD CEL rule `self == oldSelf`): switching the classifier on an existing CR would re-target the controller at a different database while `status.trackingId` and `status.observedGeneration` still reference the original one. Delete and recreate the CR to rebind. |
 | `spec.type` | Yes | **No** | Database engine type (e.g., `postgresql`, `mongodb`). Must match a type known to dbaas-aggregator. Immutable after creation: changing the engine mid-flight would request provisioning of a fresh database on a different adapter while the original one stays registered under the same CR identity. |
 | `spec.lazy` | No | Yes | When `true`, provisioning is deferred until first access. Defaults to `false`. **Prohibited** in combination with `initialInstantiation.approach=clone` — controller rejects with `InvalidSpec` |
 | `spec.settings` | No | Yes | Free-form string-to-string map of adapter-specific settings |
@@ -1214,7 +1214,7 @@ spec:
 | `approach` | No | `clone` (clone from `sourceClassifier`) or `new` (create an empty database). Default behavior when the field is absent is `new` |
 | `sourceClassifier` | Required when `approach=clone` | Classifier of the source database to clone from. **Constraint:** `sourceClassifier.microserviceName` must equal `classifier.microserviceName` (enforced by the controller) |
 
-> **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingID` and polls until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingID` and start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
+> **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingId` and polls until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingId` and start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
 
 #### How InternalDatabase Works
 
@@ -1223,12 +1223,12 @@ A reconcile is triggered when any of the following happens:
 - The CR is created.
 - The CR spec changes (i.e., `metadata.generation` increments).
 - The covering `NamespaceBinding` is created or updated.
-- A polling cycle: while an async operation is in progress (`status.trackingID` is set), the controller re-enqueues itself every 5 seconds.
+- A polling cycle: while an async operation is in progress (`status.trackingId` is set), the controller re-enqueues itself every 5 seconds.
 
 The reconcile loop has two branches:
 
-- **SUBMIT** — no pending `trackingID`. Validates the spec, builds the declarative payload, sends `POST /api/declarations/v1/apply` with `subKind=DatabaseDeclaration`.
-- **POLL** — `status.trackingID` present. Sends `GET /api/declarations/v1/operation/{trackingId}/status` and reacts to the returned task state.
+- **SUBMIT** — no pending `trackingId`. Validates the spec, builds the declarative payload, sends `POST /api/declarations/v1/apply` with `subKind=DatabaseDeclaration`.
+- **POLL** — `status.trackingId` present. Sends `GET /api/declarations/v1/operation/{trackingId}/status` and reacts to the returned task state.
 
 ```
 CR created / spec changed
@@ -1246,24 +1246,24 @@ CR created / spec changed
     approach=clone AND sourceClassifier absent? ────▶ InvalidConfiguration (InvalidSpec)
     sourceClassifier.microserviceName ≠ classifier.microserviceName? ▶ InvalidConfiguration (InvalidSpec)
         │
-        ├── trackingID present in status?
+        ├── trackingId present in status?
         │
         ▼ no                              ▼ yes
   ┌── SUBMIT ──────────────┐    ┌── POLL ─────────────────┐
   │ POST /apply            │    │ GET /operation/{id}     │
   │   401 ▶ BackingOff     │    │   401 ▶ BackingOff      │
   │   400/403/409/410/422  │    │   404 ▶ BackingOff      │
-  │     ▶ InvalidConfig    │    │     (trackingID cleared │
+  │     ▶ InvalidConfig    │    │     (trackingId cleared │
   │   5xx/network          │    │      → resubmit)        │
   │     ▶ BackingOff       │    │   5xx/network           │
   │   200 OK ▶ Succeeded   │    │     ▶ BackingOff        │
   │   202 Accepted         │    │                         │
-  │     store trackingID   │    │ task state:             │
+  │     store trackingId   │    │ task state:             │
   │     ▶ WaitingForDep    │    │   IN_PROGRESS ▶ poll    │
   └────────────────────────┘    │   COMPLETED ▶ Succeeded │
                                 │   FAILED    ▶ InvalidConfig
                                 │   TERMINATED ▶ BackingOff
-                                │     (trackingID cleared │
+                                │     (trackingId cleared │
                                 │      → resubmit)        │
                                 └─────────────────────────┘
 ```
@@ -1309,13 +1309,13 @@ already have.
 | `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
 | `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
 
-**`status.trackingID`** — aggregator-assigned tracking ID for an in-flight async operation.
+**`status.trackingId`** — aggregator-assigned tracking ID for an in-flight async operation.
 
 - Set when `POST /api/declarations/v1/apply` returns `202 Accepted`.
 - Cleared when polling completes (`COMPLETED`, `FAILED`) or the operation must be re-submitted (`TERMINATED`, `404 Not Found`).
-- While `trackingID` is non-empty, every reconcile goes through the POLL branch (no resubmission).
+- While `trackingId` is non-empty, every reconcile goes through the POLL branch (no resubmission).
 
-**`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingID` was set. If a newer `generation` is observed during a reconcile, the stale `trackingID` is discarded and the operation is re-submitted with the new spec. It is reset to `0` together with `trackingID` whenever the operation reaches a terminal state (`COMPLETED`/`FAILED`) or the tracking is cleared (`TERMINATED`/`404`); `0` therefore means "no pending async operation".
+**`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingId` was set. If a newer `generation` is observed during a reconcile, the stale `trackingId` is discarded and the operation is re-submitted with the new spec. It is reset to `0` together with `trackingId` whenever the operation reaches a terminal state (`COMPLETED`/`FAILED`) or the tracking is cleared (`TERMINATED`/`404`); `0` therefore means "no pending async operation".
 
 **`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as `ExternalDatabase`.
 
@@ -1329,12 +1329,12 @@ already have.
 | `ProvisioningStarted` | `Ready=False`, `Stalled=False` | `202 Accepted` received; async polling in progress |
 | `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
 | `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 on submit, or returned `FAILED` on poll — permanent spec issue |
-| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, polling 404 (trackingID expired), or network error |
-| `OperationTerminated` | `Ready=False`, `Stalled=False` | Poll returned `TERMINATED` (aggregator restart or admin cancellation). The stale `trackingID` is cleared and the controller resubmits on the next reconcile |
+| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, polling 404 (trackingId expired), or network error |
+| `OperationTerminated` | `Ready=False`, `Stalled=False` | Poll returned `TERMINATED` (aggregator restart or admin cancellation). The stale `trackingId` is cleared and the controller resubmits on the next reconcile |
 
 **Full state matrix:**
 
-| Scenario | `phase` | `Ready` | `Reason` | `Stalled` | `trackingID` |
+| Scenario | `phase` | `Ready` | `Reason` | `Stalled` | `trackingId` |
 |----------|---------|:-------:|----------|:---------:|:------------:|
 | Pre-flight failed | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` | — |
 | POST → 401 | `BackingOff` | `False` | `Unauthorized` | `False` | — |
@@ -1346,7 +1346,7 @@ already have.
 | Poll → COMPLETED | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | cleared |
 | Poll → FAILED | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` | cleared |
 | Poll → TERMINATED | `BackingOff` | `False` | `OperationTerminated` | `False` | cleared (resubmits) |
-| Poll → 404 (trackingID expired) | `BackingOff` | `False` | `AggregatorError` | `False` | cleared (resubmits) |
+| Poll → 404 (trackingId expired) | `BackingOff` | `False` | `AggregatorError` | `False` | cleared (resubmits) |
 | Poll → 401 / 5xx / network | `BackingOff` | `False` | `Unauthorized` / `AggregatorError` | `False` | preserved (keeps polling) |
 
 **Diagnostic rules:**
@@ -1445,10 +1445,10 @@ kubectl get dbidb -n my-namespace
 **Watch async progress:**
 
 ```bash
-# The trackingID field is populated while async provisioning is in progress
-kubectl get dbidb my-app-db -n my-namespace -o jsonpath='{.status.trackingID}{"\n"}'
+# The trackingId field is populated while async provisioning is in progress
+kubectl get dbidb my-app-db -n my-namespace -o jsonpath='{.status.trackingId}{"\n"}'
 
-# Full status (phase, conditions, trackingID, lastRequestId)
+# Full status (phase, conditions, trackingId, lastRequestId)
 kubectl get dbidb my-app-db -n my-namespace -o yaml
 ```
 

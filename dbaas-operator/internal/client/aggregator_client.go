@@ -328,7 +328,7 @@ func (c *AggregatorClient) GetChangedSince(ctx context.Context, cursor *ChangeCu
 		func(r *resty.Request) {
 			if cursor != nil {
 				r.SetQueryParam("sinceTs", cursor.LastRotatedAt.UTC().Format(time.RFC3339Nano))
-				r.SetQueryParam("sinceId", cursor.Id)
+				r.SetQueryParam("sinceId", cursor.ID)
 			}
 			if limit > 0 {
 				r.SetQueryParam("limit", strconv.Itoa(limit))

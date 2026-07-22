@@ -109,7 +109,7 @@ func classifierFromMap(m map[string]any) (dbaasv1.Classifier, error) {
 		case "namespace":
 			c.Namespace, _ = v.(string)
 		case "tenantId":
-			c.TenantId, _ = v.(string)
+			c.TenantID, _ = v.(string)
 		case "customKeys":
 			obj, ok := v.(map[string]any)
 			if !ok {

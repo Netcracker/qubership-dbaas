@@ -234,7 +234,7 @@ func (r *InternalDatabaseReconciler) buildPayload(dd *dbaasv1.InternalDatabase) 
 // API materializes the database exactly as the first runtime tenant connection would, after which the
 // claim resolves. No-op for service scope or a tenant declaration without a pinned tenantId.
 func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx context.Context, dd *dbaasv1.InternalDatabase) error {
-	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantId == "" {
+	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantID == "" {
 		return nil
 	}
 	req := &aggregatorclient.CreateDatabaseRequest{
@@ -243,7 +243,7 @@ func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx conte
 		OriginService: dd.Spec.Classifier.MicroserviceName,
 	}
 	log.InfoC(ctx, "materializing pinned tenant database tenantId=%v microserviceName=%v",
-		dd.Spec.Classifier.TenantId, dd.Spec.Classifier.MicroserviceName)
+		dd.Spec.Classifier.TenantID, dd.Spec.Classifier.MicroserviceName)
 	start := time.Now()
 	err := r.Aggregator.CreateDatabase(ctx, dd.Namespace, req)
 	recordAggregatorCall(controllerIDB, operationCreateDatabase, start, err)
