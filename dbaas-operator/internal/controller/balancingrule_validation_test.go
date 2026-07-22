@@ -227,7 +227,7 @@ var _ = Describe("BalancingRule validation", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "wrong-name", Namespace: operatorNS},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
-						{DbType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments"}},
+						{DBType: "postgresql", PhysicalDatabaseID: "postgresql-a", Namespaces: []string{"payments"}},
 					},
 				},
 			})
