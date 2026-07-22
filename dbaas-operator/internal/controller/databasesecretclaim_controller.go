@@ -113,14 +113,12 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		// Stamp observedGeneration on terminal states only. Successful
 		// reconciles now carry a safety-net RequeueAfter, so the result's
 		// requeue delay can no longer distinguish "done" from "retrying";
-		// gate on the phase instead. Succeeded and InvalidConfiguration are
-		// terminal (the generation has been fully processed); BackingOff is
-		// not (still polling on a transient error).
+		// gate on the conditions instead. Ready=True and Stalled=True are
+		// terminal (the generation has been fully processed); a transient
+		// error leaves both false (still polling).
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecretClaim, retErr error) bool {
-				return retErr == nil &&
-					(obj.Status.Phase == dbaasv1.PhaseSucceeded ||
-						obj.Status.Phase == dbaasv1.PhaseInvalidConfiguration)
+				return retErr == nil && isTerminal(obj.Status.Conditions, obj.Generation)
 			},
 			"DatabaseSecretClaim")
 	}()
@@ -710,7 +708,7 @@ func (r *DatabaseSecretClaimReconciler) triggerForSecretClaim(key string, s *dba
 		return triggerNamespaceBindingChange
 	case r.consumeSiblingTrigger(key):
 		return triggerSiblingSecretClaim
-	case s.Status.ObservedGeneration >= s.Generation && s.Status.Phase == dbaasv1.PhaseSucceeded:
+	case isReadyForGeneration(s.Status.Conditions, s.Generation):
 		return triggerSafetyNet
 	default:
 		return triggerSpecChange

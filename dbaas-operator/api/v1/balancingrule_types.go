@@ -57,14 +57,17 @@ type MicroserviceBalancingRuleSpec struct {
 // MicroserviceBalancingRuleItem defines one on-microservice balancing rule entry.
 type MicroserviceBalancingRuleItem struct {
 	// type is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
+	// The Pattern rejects a whitespace-only value, which MinLength alone accepts.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`\S`
 	Type string `json:"type"`
 
 	// microservices is the list of microservice names to which the rule applies.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:Pattern=`\S`
 	// +listType=set
 	Microservices []string `json:"microservices"`
 
@@ -107,7 +110,9 @@ type MicroserviceBalancingRuleStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=microservicebalancingrules,singular=microservicebalancingrule,shortName=dbmbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:validation:XValidation:rule="self.metadata.name == 'microservice-balancing-rules'",message="MicroserviceBalancingRule name must be 'microservice-balancing-rules'"
 
 // MicroserviceBalancingRule is the Schema for the microservicebalancingrules API.
 // It declares a physical database placement rule for specific microservices in a namespace.
@@ -152,13 +157,16 @@ type NamespaceBalancingRuleSpec struct {
 // NamespaceBalancingRuleItem defines one on-namespace balancing rule entry.
 type NamespaceBalancingRuleItem struct {
 	// name is the aggregator rule name used in the namespace balancing rule endpoint.
+	// The Pattern rejects a whitespace-only value, which MinLength alone accepts.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`\S`
 	Name string `json:"name"`
 
 	// type is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`\S`
 	Type string `json:"type"`
 
 	// physicalDatabaseId is the physical database identifier where new logical
@@ -168,6 +176,7 @@ type NamespaceBalancingRuleItem struct {
 	// database.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`\S`
 	PhysicalDatabaseID string `json:"physicalDatabaseId"`
 
 	// order is the aggregator rule priority. Higher order wins when multiple
@@ -207,7 +216,9 @@ type NamespaceBalancingRuleStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=namespacebalancingrules,singular=namespacebalancingrule,shortName=dbnbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:validation:XValidation:rule="self.metadata.name == 'namespace-balancing-rules'",message="NamespaceBalancingRule name must be 'namespace-balancing-rules'"
 
 // NamespaceBalancingRule is the Schema for the namespacebalancingrules API.
 // It declares a namespace-level physical database placement rule.
@@ -252,8 +263,10 @@ type PermanentBalancingRuleSpec struct {
 // PermanentBalancingRuleItem defines one permanent balancing rule entry.
 type PermanentBalancingRuleItem struct {
 	// dbType is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
+	// The Pattern rejects a whitespace-only value, which MinLength alone accepts.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`\S`
 	DBType string `json:"dbType"`
 
 	// physicalDatabaseId is the physical database identifier where new logical
@@ -263,12 +276,14 @@ type PermanentBalancingRuleItem struct {
 	// database.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`\S`
 	PhysicalDatabaseID string `json:"physicalDatabaseId"`
 
 	// namespaces is the list of namespaces where the permanent rule applies.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:Pattern=`\S`
 	// +listType=set
 	Namespaces []string `json:"namespaces"`
 }
@@ -300,7 +315,9 @@ type PermanentBalancingRuleStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=permanentbalancingrules,singular=permanentbalancingrule,shortName=dbpbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:validation:XValidation:rule="self.metadata.name == 'permanent-balancing-rules'",message="PermanentBalancingRule name must be 'permanent-balancing-rules'"
 
 // PermanentBalancingRule is the Schema for the permanentbalancingrules API.
 // It declares a permanent namespace-level physical database placement rule.

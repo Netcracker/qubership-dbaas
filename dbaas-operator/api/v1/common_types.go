@@ -96,7 +96,15 @@ type Classifier struct {
 // ExternalDatabase and DatabaseAccessPolicy never transition into WaitingForDependency —
 // their reconcile flows are fully synchronous.
 //
-// +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
+// Phase is an observational summary for humans, not an API contract: it exists so
+// that `kubectl get` can show a single readable column, which conditions cannot
+// provide (JSONPath selects, it cannot branch). Conditions are the source of
+// truth — automation must read status.conditions, never status.phase.
+//
+// Deliberately not constrained by a CEL/OpenAPI enum. A closed enum on a status
+// field means that shipping a new phase value before the updated CRD reaches the
+// cluster makes the API server reject the whole status write — which would drop
+// the conditions in the same request and leave the resource unobservable.
 type Phase string
 
 const (
@@ -128,8 +136,10 @@ const (
 
 // OperatorStatus contains common status fields shared by all dbaas operator resources.
 type OperatorStatus struct {
-	// phase represents the current processing phase of the resource.
-	// +kubebuilder:default=Unknown
+	// phase is a human-readable summary of the conditions below, provided so that
+	// `kubectl get` can show one column. Do not automate against it — read
+	// conditions instead. Not defaulted by the API server: status is owned by the
+	// controller, which always sets phase alongside the conditions.
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
 
