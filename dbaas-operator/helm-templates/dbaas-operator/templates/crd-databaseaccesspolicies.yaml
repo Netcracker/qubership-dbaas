@@ -15,7 +15,7 @@ spec:
     listKind: DatabaseAccessPolicyList
     plural: databaseaccesspolicies
     shortNames:
-    - dbdp
+    - dbdap
     singular: databaseaccesspolicy
   scope: Namespaced
   versions:
