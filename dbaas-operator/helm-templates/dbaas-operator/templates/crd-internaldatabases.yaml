@@ -264,6 +264,9 @@ spec:
                                   DatabaseAccessPolicy: reason "PolicyApplied" on success.
                                   InternalDatabase: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
+                                  NamespaceBinding: reason "BindingRegistered" on success;
+                                    reason "BindingBlocked" while deletion is deferred by
+                                    remaining workload resources (the message lists their kinds).
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,

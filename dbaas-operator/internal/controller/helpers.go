@@ -29,6 +29,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -330,10 +331,19 @@ func patchStatusOnExit[T interface {
 		setObservedGeneration(obj)
 	}
 
-	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
-		log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
-		*retErr = errors.Join(*retErr, patchErr)
+	patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original))
+	if patchErr == nil {
+		return
 	}
+	if apierrors.IsNotFound(patchErr) {
+		// The reconcile may have released the object's last finalizer, letting a
+		// pending deletion complete before this deferred patch ran. A vanished
+		// object has no status to report — not an error.
+		log.InfoC(ctx, "skipping %v status patch: object is gone", objectType)
+		return
+	}
+	log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
+	*retErr = errors.Join(*retErr, patchErr)
 }
 
 func setObservedGeneration[T interface {

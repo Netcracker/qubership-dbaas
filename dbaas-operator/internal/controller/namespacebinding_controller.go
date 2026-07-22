@@ -17,12 +17,15 @@ limitations under the License.
 package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebindings/finalizers,verbs=update
 
 import (
 	"context"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,7 +62,7 @@ type NamespaceBindingReconciler struct {
 	Checker     ownership.BlockingResourceChecker
 }
 
-func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
 	nb := &dbaasv1.NamespaceBinding{}
@@ -79,12 +82,35 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Only the operator instance whose CLOUD_NAMESPACE matches spec.operatorNamespace
 	// owns this binding.  A foreign operator must update its cache (so workload
 	// reconcilers know the namespace is Foreign / not theirs) but must not touch
-	// the finalizer or emit events — that is the owning instance's responsibility.
+	// the finalizer, status, or events — that is the owning instance's
+	// responsibility. This return sits above the status defer on purpose: two
+	// instances writing conditions to the same object would fight forever. The
+	// flip side: a binding whose operatorNamespace matches no running operator
+	// keeps an empty status — document that as "unclaimed", it cannot be
+	// reported by anyone.
 	if nb.Spec.OperatorNamespace != r.MyNamespace {
 		log.InfoC(ctx, "NamespaceBinding %s/%s belongs to operatorNamespace=%s (mine=%s) — skipping mutations",
 			nb.Namespace, nb.Name, nb.Spec.OperatorNamespace, r.MyNamespace)
 		return ctrl.Result{}, nil
 	}
+
+	// ── Snapshot + deferred status patch (owning instance only) ──────────────
+	// observedGeneration is stamped only when a terminal condition holds for
+	// the current generation and the reconcile exits cleanly; a deletion in
+	// progress (Ready=False/BindingBlocked) therefore never stamps.
+	original := nb.DeepCopy()
+	defer func() {
+		// Assigned inside the defer: the finalizer patch below refreshes nb
+		// from the API response, which would wipe an in-memory status field
+		// assigned before it ran. Conditions are safe — every mark* call
+		// happens after the last main-resource patch on its path.
+		nb.Status.LastRequestID = requestID
+		patchStatusOnExit(ctx, r.Status(), nb, original, &retErr,
+			func(obj *dbaasv1.NamespaceBinding, retErr error) bool {
+				return retErr == nil && isTerminal(obj.Status.Conditions, obj.Generation)
+			},
+			"NamespaceBinding")
+	}()
 
 	// ── Deletion path ────────────────────────────────────────────────────────
 	if !nb.DeletionTimestamp.IsZero() {
@@ -93,16 +119,25 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, nil
 		}
 
-		blocking, err := r.Checker.HasBlockingResources(ctx, nb.Namespace)
+		kinds, err := r.Checker.BlockingKinds(ctx, nb.Namespace)
 		if err != nil {
 			log.ErrorC(ctx, "checking blocking resources for NamespaceBinding %s/%s: %v", nb.Namespace, nb.Name, err)
+			markTransientFailure(&nb.Status.Phase, &nb.Status.Conditions, nb.Generation,
+				ReasonOwnershipCheckError, err.Error())
 			return ctrl.Result{}, err
 		}
 
-		if blocking {
-			log.InfoC(ctx, "NamespaceBinding %s/%s blocked by dbaas resources — deletion deferred", nb.Namespace, nb.Name)
+		if len(kinds) > 0 {
+			msg := "deletion deferred: " + strings.Join(kinds, ", ") + " resources still present in the namespace"
+			log.InfoC(ctx, "NamespaceBinding %s/%s blocked by dbaas resources kinds=%v — deletion deferred", nb.Namespace, nb.Name, kinds)
+			nb.Status.Phase = dbaasv1.PhaseProcessing
+			setCondition(&nb.Status.Conditions, nb.Generation,
+				conditionTypeReady, metav1.ConditionFalse, EventReasonBindingBlocked, msg)
+			setCondition(&nb.Status.Conditions, nb.Generation,
+				conditionTypeStalled, metav1.ConditionFalse, EventReasonBindingBlocked,
+				"Deletion proceeds automatically once the blocking resources are deleted.")
 			r.Recorder.Eventf(nb, corev1.EventTypeWarning, EventReasonBindingBlocked,
-				"deletion deferred: namespace still contains dbaas workload resources (requestId=%s)", requestID)
+				"%s (requestId=%s)", msg, requestID)
 			return ctrl.Result{}, nil
 		}
 
@@ -129,6 +164,10 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			"namespace %s bound to operatorNamespace %s (requestId=%s)", nb.Namespace, nb.Spec.OperatorNamespace, requestID)
 	}
 
+	// Idempotent on every owner reconcile, not only when the finalizer is first
+	// added: workload create/delete events re-enqueue the binding, and
+	// setCondition preserves LastTransitionTime when nothing changed.
+	markSucceeded(&nb.Status.Phase, &nb.Status.Conditions, nb.Generation, EventReasonBindingRegistered)
 	return ctrl.Result{}, nil
 }
 

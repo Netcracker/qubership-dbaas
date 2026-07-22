@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -106,6 +107,24 @@ var _ = Describe("NamespaceBinding Controller", func() {
 
 			// Ownership cache must reflect Mine.
 			Expect(resolver.GetState(ns)).To(Equal(ownership.Mine))
+		})
+
+		It("marks the binding Ready and stamps observedGeneration", func() {
+			Expect(k8sClient.Create(ctx, newBinding(myOperatorNS))).To(Succeed())
+
+			fetched, _, err := reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(fetched.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			ready := findCondition(fetched.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+			Expect(ready.Reason).To(Equal(EventReasonBindingRegistered))
+			stalled := findCondition(fetched.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			Expect(fetched.Status.ObservedGeneration).To(Equal(fetched.Generation))
+			Expect(fetched.Status.LastRequestID).NotTo(BeEmpty())
 		})
 
 		It("emits a BindingRegistered event", func() {
@@ -201,6 +220,65 @@ var _ = Describe("NamespaceBinding Controller", func() {
 
 			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonBindingBlocked)
 		})
+
+		It("reports the blocking kinds in the Ready condition and does not stamp observedGeneration", func() {
+			reconciler.Checker = &alwaysBlockingChecker{}
+
+			Expect(k8sClient.Create(ctx, newBinding(myOperatorNS))).To(Succeed())
+			fetched, _, err := reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+			generationBeforeDelete := fetched.Generation
+			Expect(fetched.Status.ObservedGeneration).To(Equal(generationBeforeDelete))
+
+			Expect(k8sClient.Delete(ctx, &dbaasv1.NamespaceBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: ns},
+			})).To(Succeed())
+
+			fetched, _, err = reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(fetched.Status.Phase).To(Equal(dbaasv1.PhaseProcessing))
+			ready := findCondition(fetched.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonBindingBlocked))
+			Expect(ready.Message).To(ContainSubstring("InternalDatabase, DatabaseSecretClaim"))
+			stalled := findCondition(fetched.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			// Deletion bumped the generation; a blocked deletion is not terminal,
+			// so observedGeneration must stay at the pre-deletion value.
+			Expect(fetched.Generation).To(BeNumerically(">", generationBeforeDelete))
+			Expect(fetched.Status.ObservedGeneration).To(Equal(generationBeforeDelete))
+		})
+	})
+
+	// ── Deletion path: blocking-resource check fails ─────────────────────────
+
+	Context("when the blocking-resource check fails during deletion", func() {
+		It("marks a transient failure and returns the error", func() {
+			reconciler.Checker = &failingChecker{}
+
+			Expect(k8sClient.Create(ctx, newBinding(myOperatorNS))).To(Succeed())
+			_, _, err := reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+			drainRecordedEvents(fakeRecorder.Events)
+
+			Expect(k8sClient.Delete(ctx, &dbaasv1.NamespaceBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: ns},
+			})).To(Succeed())
+
+			fetched, _, err := reconcileBinding()
+			Expect(err).To(HaveOccurred())
+
+			Expect(fetched.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			ready := findCondition(fetched.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(ReasonOwnershipCheckError))
+			Expect(ready.Message).To(ContainSubstring("connection refused"))
+		})
 	})
 
 	// ── Foreign binding — no mutations ───────────────────────────────────────
@@ -224,6 +302,12 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			fetched := &dbaasv1.NamespaceBinding{}
 			Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
 			Expect(controllerutil.ContainsFinalizer(fetched, dbaasv1.NamespaceBindingProtectionFinalizer)).To(BeFalse())
+
+			// Status belongs to the owning instance — a foreign instance must
+			// leave it completely empty.
+			Expect(fetched.Status.Phase).To(BeEmpty())
+			Expect(fetched.Status.Conditions).To(BeEmpty())
+			Expect(fetched.Status.ObservedGeneration).To(BeZero())
 
 			// No events must be emitted.
 			expectNoRecordedEvent(fakeRecorder.Events)
@@ -276,9 +360,17 @@ var _ = Describe("NamespaceBinding Controller", func() {
 	})
 })
 
-// alwaysBlockingChecker is a BlockingResourceChecker that always returns true.
+// alwaysBlockingChecker is a BlockingResourceChecker that always reports two
+// blocking kinds.
 type alwaysBlockingChecker struct{}
 
-func (a *alwaysBlockingChecker) HasBlockingResources(_ context.Context, _ string) (bool, error) {
-	return true, nil
+func (a *alwaysBlockingChecker) BlockingKinds(_ context.Context, _ string) ([]string, error) {
+	return []string{"InternalDatabase", "DatabaseSecretClaim"}, nil
+}
+
+// failingChecker is a BlockingResourceChecker whose check always fails.
+type failingChecker struct{}
+
+func (f *failingChecker) BlockingKinds(_ context.Context, _ string) ([]string, error) {
+	return nil, errors.New("list InternalDatabase: connection refused")
 }

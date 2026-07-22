@@ -23,6 +23,7 @@ rules:
   - internaldatabases/status
   - microservicebalancingrules/status
   - namespacebalancingrules/status
+  - namespacebindings/status
   verbs:
   - get
   - patch

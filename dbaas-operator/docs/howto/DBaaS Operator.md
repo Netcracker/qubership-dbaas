@@ -420,6 +420,7 @@ generated from).
 | `dbaas.netcracker.com` | `databasesecretclaims/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase`, `status.conditions`, `status.lastRotatedAt`, and `status.firstNotFoundAt` |
 | `dbaas.netcracker.com` | `databasesecretclaims/finalizers` | `update` | `SetControllerReference` sets `blockOwnerDeletion: true` on the owner reference of managed Secrets; with the `OwnerReferencesPermissionEnforcement` admission plugin enabled, writing such a reference requires `update` on the owner's `finalizers` subresource |
 | `dbaas.netcracker.com` | `namespacebindings` | `get`, `list`, `watch`, `patch` | Watch and read CRs; `patch` is required to add/remove the `binding-protection` finalizer via `client.MergeFrom` |
+| `dbaas.netcracker.com` | `namespacebindings/status` | `get`, `update`, `patch` | Write reconcile outcome to `status.phase` and `status.conditions` (registered / deletion blocked); only the owning instance writes it |
 | `dbaas.netcracker.com` | `namespacebindings/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `microservicebalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton microservice balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
 | `dbaas.netcracker.com` | `microservicebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
@@ -532,8 +533,29 @@ This finalizer prevents the `NamespaceBinding` from being deleted while workload
 
 | Situation | Result |
 |-----------|--------|
-| Namespace still contains any operator-managed workload — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, or a balancing-rule CR | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted |
+| Namespace still contains any operator-managed workload — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, or a balancing-rule CR | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted and the `Ready` condition lists the blocking kinds |
 | No blocking workload resources remain | Finalizer is removed; Kubernetes completes the deletion |
+
+#### NamespaceBinding Status Reference
+
+**`status.phase`** — human-readable summary for `kubectl get dbnb`; read `status.conditions` for automation.
+
+**Only the owning operator instance writes this status** — the one whose `CLOUD_NAMESPACE` equals
+`spec.operatorNamespace`. Foreign instances never touch the object. A binding whose
+`operatorNamespace` matches no running operator therefore keeps an **empty status**: no conditions
+and no `observedGeneration` long after creation mean no instance has claimed the binding — check
+`spec.operatorNamespace` for a typo.
+
+| Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
+|----------|---------|---------|----------|-----------|
+| Registered (finalizer in place) | `Succeeded` | `True` | `BindingRegistered` | `False` |
+| Deletion blocked by workloads | `Processing` | `False` | `BindingBlocked` — message lists the blocking kinds, e.g. `deletion deferred: InternalDatabase, DatabaseSecretClaim resources still present in the namespace` | `False` |
+| Blocking-resource check failed | `BackingOff` | `False` | `OwnershipCheckError` | `False` |
+| Unclaimed (no matching operator) | — | *(no conditions)* | — | — |
+
+`status.observedGeneration` is stamped only when the binding is `Ready` for the current generation.
+Deletion bumps the generation, so a blocked deletion keeps `observedGeneration` at the pre-deletion
+value — `metadata.generation > status.observedGeneration` is a quick "deletion is pending" signal.
 
 #### NamespaceBinding Usage Examples
 
