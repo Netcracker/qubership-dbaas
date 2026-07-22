@@ -24,6 +24,7 @@
     - [Resource Fields](#namespacebinding-resource-fields)
     - [How It Works](#how-namespacebinding-works)
     - [Finalizer Protection](#finalizer-protection)
+    - [Status Reference](#namespacebinding-status-reference)
     - [Usage Examples](#namespacebinding-usage-examples)
   - [ExternalDatabase](#externaldatabase)
     - [Resource Fields](#externaldatabase-resource-fields)
@@ -575,16 +576,25 @@ EOF
 
 **Check that the operator has processed the binding:**
 
-`NamespaceBinding` has no `status` field. For this resource, the presence of the finalizer is the single indicator that the operator has picked it up and is actively managing the namespace:
+Read the status — see the [NamespaceBinding Status Reference](#namespacebinding-status-reference) above:
+
+```bash
+kubectl get dbnb binding -n my-namespace
+# NAME      PHASE       READY   OPERATORNAMESPACE   AGE
+# binding   Succeeded   True    dbaas-system        5s
+```
+
+`PHASE Succeeded` / `READY True` means the operator owns the namespace and reconciles all
+`dbaas.netcracker.com` workload resources within it. If the status stays **empty**, no operator
+instance has claimed the binding — check `spec.operatorNamespace` for a typo.
+
+The protection finalizer is a supplementary signal of the same fact (it is added in the same
+reconcile that sets `Ready=True`):
 
 ```bash
 kubectl get namespacebinding binding -n my-namespace -o jsonpath='{.metadata.finalizers}'
 # ["platform.dbaas.netcracker.com/binding-protection"]
 ```
-
-If the finalizer is present, the operator owns the namespace and will reconcile all `dbaas.netcracker.com` workload resources within it.
-
-This is intentional. `NamespaceBinding` is a declaration of ownership, not a job or pipeline — its semantics are binary: either the operator has claimed the namespace or it has not. A `status` field would add complexity without real benefit, and stale status values would be misleading in edge cases (e.g., operator restart). The finalizer is sufficient and follows the established Kubernetes practice for simple ownership resources.
 
 **Delete a binding (after removing all workload resources):**
 
@@ -594,6 +604,15 @@ kubectl delete externaldatabase,databaseaccesspolicy,internaldatabase --all -n m
 
 # Then delete the binding
 kubectl delete namespacebinding binding -n my-namespace
+```
+
+If the deletion hangs, the `Ready` condition names the resource kinds that block it
+(reason `BindingBlocked`), and reason `OwnershipCheckError` means the blocking-resource
+check itself failed and is being retried:
+
+```bash
+kubectl get dbnb binding -n my-namespace -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}'
+# deletion deferred: ExternalDatabase resources still present in the namespace
 ```
 
 ---
