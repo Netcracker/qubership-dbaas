@@ -55,8 +55,11 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 # that conditional, so it is derived — never edit the files under
 # helm-templates/dbaas-operator/templates/crd-*.yaml by hand. Depends on
 # manifests so the copy can never be made from a stale config/crd/bases.
+# The rm gives the sync delete semantics: dropping a CRD from the API removes
+# its chart template instead of leaving an orphan that keeps installing it.
 .PHONY: sync-helm-crds
 sync-helm-crds: manifests ## Regenerate the Helm CRD templates from config/crd/bases.
+	@rm -f helm-templates/dbaas-operator/templates/crd-*.yaml
 	@for f in config/crd/bases/*.yaml; do \
 		kind=$$(basename "$$f" .yaml | sed 's/^dbaas\.netcracker\.com_//'); \
 		out="helm-templates/dbaas-operator/templates/crd-$$kind.yaml"; \
