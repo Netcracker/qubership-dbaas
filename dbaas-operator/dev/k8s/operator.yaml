@@ -35,6 +35,8 @@ rules:
       - microservicebalancingrules/status
       - namespacebalancingrules/status
     verbs: [get, update, patch]
+  # databasesecretclaims/finalizers is required because SetControllerReference creates
+  # the Secret ownerReference with blockOwnerDeletion=true.
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - databasesecretclaims/finalizers

@@ -33,6 +33,8 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databasesecretclaims/status ]
     verbs: [ get, update, patch ]
+  # Required because SetControllerReference creates the Secret ownerReference
+  # with blockOwnerDeletion=true.
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databasesecretclaims/finalizers ]
     verbs: [ update ]
