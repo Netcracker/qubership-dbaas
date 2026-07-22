@@ -17,6 +17,9 @@ limitations under the License.
 package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims,verbs=get;list;watch;patch
+// The finalizers permission lets SetControllerReference create Secret owner references with
+// blockOwnerDeletion=true when OwnerReferencesPermissionEnforcement is enabled.
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
 //
 // Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the

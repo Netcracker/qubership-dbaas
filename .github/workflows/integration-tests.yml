@@ -19,6 +19,13 @@ jobs:
           cat <<EOF > kind-config.yaml
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
+          kubeadmConfigPatches:
+            - |
+              kind: ClusterConfiguration
+              apiServer:
+                extraArgs:
+                  - name: enable-admission-plugins
+                    value: NodeRestriction,OwnerReferencesPermissionEnforcement
           nodes:
             - role: control-plane
             - role: worker
