@@ -102,13 +102,13 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	original := dd.DeepCopy()
 
-	// Stamp observedGeneration only when reaching a terminal state.
-	// WaitingForDependency/BackingOff are not terminal — don't stamp.
+	// Stamp observedGeneration only when reaching a terminal state: Ready=True
+	// (provisioned) or Stalled=True (permanent error). A pending async operation
+	// or a transient error leaves both false — don't stamp.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dd, original, &retErr,
 			func(dd *dbaasv1.InternalDatabase, _ error) bool {
-				return dd.Status.Phase == dbaasv1.PhaseSucceeded ||
-					dd.Status.Phase == dbaasv1.PhaseInvalidConfiguration
+				return isTerminal(dd.Status.Conditions, dd.Generation)
 			},
 			"InternalDatabase")
 	}()

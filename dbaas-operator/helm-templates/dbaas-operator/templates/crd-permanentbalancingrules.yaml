@@ -23,6 +23,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -214,16 +217,11 @@ spec:
                 format: int64
                 type: integer
               phase:
-                default: Unknown
-                description: phase represents the current processing phase of the
-                  resource.
-                enum:
-                - Unknown
-                - Processing
-                - WaitingForDependency
-                - Succeeded
-                - BackingOff
-                - InvalidConfiguration
+                description: |-
+                  phase is a human-readable summary of the conditions below, provided so that
+                  `kubectl get` can show one column. Do not automate against it — read
+                  conditions instead. Not defaulted by the API server: status is owned by the
+                  controller, which always sets phase alongside the conditions.
                 type: string
             type: object
         required:

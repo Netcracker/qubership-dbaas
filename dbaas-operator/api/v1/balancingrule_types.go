@@ -107,6 +107,7 @@ type MicroserviceBalancingRuleStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=microservicebalancingrules,singular=microservicebalancingrule,shortName=dbmbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // MicroserviceBalancingRule is the Schema for the microservicebalancingrules API.
@@ -207,6 +208,7 @@ type NamespaceBalancingRuleStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=namespacebalancingrules,singular=namespacebalancingrule,shortName=dbnbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // NamespaceBalancingRule is the Schema for the namespacebalancingrules API.
@@ -300,6 +302,7 @@ type PermanentBalancingRuleStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=permanentbalancingrules,singular=permanentbalancingrule,shortName=dbpbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // PermanentBalancingRule is the Schema for the permanentbalancingrules API.
