@@ -90,9 +90,11 @@ spec:
                       classifier model, where services could place arbitrary identity fields
                       at the classifier's top level. Values may be any JSON type (string,
                       number, boolean, nested object, array). The reserved keys
-                      microserviceName, scope, namespace, tenantId and customKeys are ignored
-                      here — the typed fields above always take precedence (a CEL rule cannot
-                      guard this map because its values are unstructured JSON).
+                      microserviceName, scope, namespace, tenantId and customKeys are not
+                      allowed: the controller rejects such a spec with InvalidConfiguration, and
+                      ClassifierFlatMap also skips them defensively so the typed fields always
+                      win. (A CEL rule cannot guard this map because its values are unstructured
+                      JSON, so the check lives in the controller.)
                       Because these fields are part of the database identity, every consumer's
                       dbaas-client must produce the same keys/values, otherwise the database
                       (and its mounted Secret) will not be found.
@@ -147,7 +149,6 @@ spec:
                           description: |-
                             keys is the list of mappings from Secret data keys to dbaas-aggregator
                             connection payload field names. At least one mapping is required.
-                            All name values within the list must be unique.
                           items:
                             description: |-
                               SecretKeyMapping maps a single key from a Kubernetes Secret to the field name
@@ -230,15 +231,19 @@ spec:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by ExternalDatabase:
-                    - "Ready"   — True when the resource was successfully registered with
-                                  dbaas-aggregator for the current generation (reason "DatabaseRegistered").
+                  Condition types used by all dbaas operator resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase):
+                    - "Ready"   — True when the resource was successfully processed by
+                                  dbaas-aggregator for the current generation.
+                                  ExternalDatabase: reason "DatabaseRegistered" on success.
+                                  DatabaseAccessPolicy: reason "PolicyApplied" on success.
+                                  InternalDatabase: reason "DatabaseProvisioned" on success;
+                                    reason "ProvisioningStarted" while the async operation is in progress.
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,
                                   AggregatorRejected). False for transient errors that are
                                   retried automatically (e.g. SecretError, AggregatorError,
-                                  Unauthorized).
+                                  Unauthorized, ProvisioningStarted).
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
