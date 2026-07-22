@@ -118,7 +118,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		// error leaves both false (still polling).
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecretClaim, retErr error) bool {
-				return retErr == nil && isTerminal(obj.Status.Conditions)
+				return retErr == nil && isTerminal(obj.Status.Conditions, obj.Generation)
 			},
 			"DatabaseSecretClaim")
 	}()

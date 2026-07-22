@@ -132,7 +132,7 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), rule, original, &retErr,
 			func(rule *dbaasv1.MicroserviceBalancingRule, _ error) bool {
-				return isTerminal(rule.Status.Conditions)
+				return isTerminal(rule.Status.Conditions, rule.Generation)
 			},
 			"MicroserviceBalancingRule")
 	}()
@@ -203,7 +203,7 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), rule, original, &retErr,
 			func(rule *dbaasv1.NamespaceBalancingRule, _ error) bool {
-				return isTerminal(rule.Status.Conditions)
+				return isTerminal(rule.Status.Conditions, rule.Generation)
 			},
 			"NamespaceBalancingRule")
 	}()
@@ -305,7 +305,7 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), rule, original, &retErr,
 			func(rule *dbaasv1.PermanentBalancingRule, _ error) bool {
-				return isTerminal(rule.Status.Conditions)
+				return isTerminal(rule.Status.Conditions, rule.Generation)
 			},
 			"PermanentBalancingRule")
 	}()

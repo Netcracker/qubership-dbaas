@@ -95,24 +95,34 @@ func cond(condType string, status metav1.ConditionStatus, generation int64) meta
 // TestIsTerminal covers the predicate that replaced the former
 // "phase == Succeeded || phase == InvalidConfiguration" check: a resource is
 // terminal once it either succeeded (Ready=True) or hit a permanent error
-// (Stalled=True). Transient failures and in-flight work are not terminal.
+// (Stalled=True) for the given generation. Transient failures and in-flight
+// work are not terminal.
+//
+// The stale cases are regression tests: conditions persist across reconciles,
+// so a reconcile that exits early after a spec change still carries the
+// previous generation's terminal condition. Counting it as terminal would let
+// patchStatusOnExit stamp status.observedGeneration for a spec the controller
+// never finished processing. The former phase-based predicate was immune —
+// phase was reset to Processing at the start of every reconcile.
 func TestIsTerminal(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name  string
-		conds []metav1.Condition
-		want  bool
+		name       string
+		conds      []metav1.Condition
+		generation int64
+		want       bool
 	}{
-		{"no conditions yet", nil, false},
-		{"succeeded", []metav1.Condition{cond(conditionTypeReady, metav1.ConditionTrue, 1)}, true},
+		{"no conditions yet", nil, 1, false},
+		{"succeeded", []metav1.Condition{cond(conditionTypeReady, metav1.ConditionTrue, 1)}, 1, true},
 		{
 			name: "permanent error",
 			conds: []metav1.Condition{
 				cond(conditionTypeReady, metav1.ConditionFalse, 1),
 				cond(conditionTypeStalled, metav1.ConditionTrue, 1),
 			},
-			want: true,
+			generation: 1,
+			want:       true,
 		},
 		{
 			name: "transient error keeps retrying",
@@ -120,13 +130,35 @@ func TestIsTerminal(t *testing.T) {
 				cond(conditionTypeReady, metav1.ConditionFalse, 1),
 				cond(conditionTypeStalled, metav1.ConditionFalse, 1),
 			},
-			want: false,
+			generation: 1,
+			want:       false,
+		},
+		{
+			name:       "stale Ready — spec changed since",
+			conds:      []metav1.Condition{cond(conditionTypeReady, metav1.ConditionTrue, 1)},
+			generation: 2,
+			want:       false,
+		},
+		{
+			name: "stale Stalled — spec changed since",
+			conds: []metav1.Condition{
+				cond(conditionTypeReady, metav1.ConditionFalse, 1),
+				cond(conditionTypeStalled, metav1.ConditionTrue, 1),
+			},
+			generation: 2,
+			want:       false,
+		},
+		{
+			name:       "Ready observed after a later reconcile",
+			conds:      []metav1.Condition{cond(conditionTypeReady, metav1.ConditionTrue, 3)},
+			generation: 2,
+			want:       true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isTerminal(tc.conds); got != tc.want {
+			if got := isTerminal(tc.conds, tc.generation); got != tc.want {
 				t.Errorf("isTerminal() = %v, want %v", got, tc.want)
 			}
 		})

@@ -108,7 +108,7 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dd, original, &retErr,
 			func(dd *dbaasv1.InternalDatabase, _ error) bool {
-				return isTerminal(dd.Status.Conditions)
+				return isTerminal(dd.Status.Conditions, dd.Generation)
 			},
 			"InternalDatabase")
 	}()
