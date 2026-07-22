@@ -35,6 +35,9 @@ jobs:
       - name: Set up Kind
         uses: helm/kind-action@v1.14.0
         with:
+          # kind v0.32.0 is the first release that generates kubeadm v1beta4
+          # config; the admission-plugin patch in kind-config.yaml uses its list-form extraArgs.
+          version: v0.32.0
           cluster_name: kind
           config: kind-config.yaml
 
