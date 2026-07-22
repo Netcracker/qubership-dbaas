@@ -78,14 +78,17 @@ spec:
                         to which the rule applies.
                       items:
                         minLength: 1
+                        pattern: \S
                         type: string
                       minItems: 1
                       type: array
                       x-kubernetes-list-type: set
                     type:
-                      description: type is the database engine type this rule applies
-                        to, e.g. "postgresql" or "mongodb".
+                      description: |-
+                        type is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
+                        The Pattern rejects a whitespace-only value, which MinLength alone accepts.
                       minLength: 1
+                      pattern: \S
                       type: string
                   required:
                   - label
@@ -229,6 +232,9 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: MicroserviceBalancingRule name must be 'microservice-balancing-rules'
+          rule: self.metadata.name == 'microservice-balancing-rules'
     served: true
     storage: true
     subresources:

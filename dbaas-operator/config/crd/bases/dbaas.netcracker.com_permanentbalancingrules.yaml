@@ -63,15 +63,18 @@ spec:
                     rule entry.
                   properties:
                     dbType:
-                      description: dbType is the database engine type this rule applies
-                        to, e.g. "postgresql" or "mongodb".
+                      description: |-
+                        dbType is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
+                        The Pattern rejects a whitespace-only value, which MinLength alone accepts.
                       minLength: 1
+                      pattern: \S
                       type: string
                     namespaces:
                       description: namespaces is the list of namespaces where the
                         permanent rule applies.
                       items:
                         minLength: 1
+                        pattern: \S
                         type: string
                       minItems: 1
                       type: array
@@ -84,6 +87,7 @@ spec:
                         the rule, not that this identifier was resolved to a registered physical
                         database.
                       minLength: 1
+                      pattern: \S
                       type: string
                   required:
                   - dbType
@@ -226,6 +230,9 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: PermanentBalancingRule name must be 'permanent-balancing-rules'
+          rule: self.metadata.name == 'permanent-balancing-rules'
     served: true
     storage: true
     subresources:
