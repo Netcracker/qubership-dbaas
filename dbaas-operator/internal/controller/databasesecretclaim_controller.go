@@ -17,6 +17,9 @@ limitations under the License.
 package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims,verbs=get;list;watch;patch
+// The finalizers permission lets SetControllerReference create Secret owner references with
+// blockOwnerDeletion=true when OwnerReferencesPermissionEnforcement is enabled.
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
 //
 // Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
@@ -110,15 +113,15 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	original := s.DeepCopy()
 	defer func() {
-		// Stamp observedGeneration on terminal states only. Reconciles carry a
-		// safety-net RequeueAfter, so completion is determined by phase:
-		// Succeeded and InvalidConfiguration are terminal; BackingOff is still
-		// polling on a transient error.
+		// Stamp observedGeneration on terminal states only. Successful
+		// reconciles now carry a safety-net RequeueAfter, so the result's
+		// requeue delay can no longer distinguish "done" from "retrying";
+		// gate on the conditions instead. Ready=True and Stalled=True are
+		// terminal (the generation has been fully processed); a transient
+		// error leaves both false (still polling).
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecretClaim, retErr error) bool {
-				return retErr == nil &&
-					(obj.Status.Phase == dbaasv1.PhaseSucceeded ||
-						obj.Status.Phase == dbaasv1.PhaseInvalidConfiguration)
+				return retErr == nil && isTerminal(obj.Status.Conditions, obj.Generation)
 			},
 			"DatabaseSecretClaim")
 	}()
@@ -521,7 +524,7 @@ type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
 	Type       string         `json:"type"`
 	UserRole   string         `json:"userRole,omitempty"`
-	Id         string         `json:"id,omitempty"`
+	ID         string         `json:"id,omitempty"`
 	Name       string         `json:"name,omitempty"`
 	Namespace  string         `json:"namespace,omitempty"`
 	Settings   map[string]any `json:"settings,omitempty"`
@@ -542,7 +545,7 @@ func buildSecretData(s *dbaasv1.DatabaseSecretClaim, dbResp *aggregatorclient.Da
 		Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		Type:       s.Spec.Type,
 		UserRole:   s.Spec.UserRole,
-		Id:         dbResp.Id,
+		ID:         dbResp.ID,
 		Name:       dbResp.Name,
 		Namespace:  dbResp.Namespace,
 		Settings:   dbResp.Settings,
@@ -682,7 +685,7 @@ func (r *DatabaseSecretClaimReconciler) triggerForSecretClaim(key string, s *dba
 		return triggerNamespaceBindingChange
 	case r.consumeSiblingTrigger(key):
 		return triggerSiblingSecretClaim
-	case s.Status.ObservedGeneration >= s.Generation && s.Status.Phase == dbaasv1.PhaseSucceeded:
+	case isReadyForGeneration(s.Status.Conditions, s.Generation):
 		return triggerSafetyNet
 	default:
 		return triggerSpecChange

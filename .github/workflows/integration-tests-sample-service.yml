@@ -39,6 +39,13 @@ jobs:
           cat <<EOF_KIND > kind-config.yaml
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
+          kubeadmConfigPatches:
+            - |
+              kind: ClusterConfiguration
+              apiServer:
+                extraArgs:
+                  - name: enable-admission-plugins
+                    value: NodeRestriction,OwnerReferencesPermissionEnforcement
           nodes:
             - role: control-plane
             - role: worker
@@ -50,6 +57,9 @@ jobs:
       - name: Set up Kind
         uses: helm/kind-action@v1.14.0
         with:
+          # kind v0.32.0 is the first release that generates kubeadm v1beta4
+          # config; the admission-plugin patch in kind-config.yaml uses its list-form extraArgs.
+          version: v0.32.0
           cluster_name: kind
           config: kind-config.yaml
 
@@ -121,7 +131,7 @@ jobs:
           MAVEN_USERNAME: ${{ github.actor }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mvn --batch-mode --no-transfer-progress -f test-apps/spring-test-app-service/pom.xml package -DskipTests
+          mvn --batch-mode --no-transfer-progress -U -f test-apps/spring-test-app-service/pom.xml package -DskipTests
           docker build -t "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" test-apps/spring-test-app-service
           kind load docker-image "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" --name kind
 
@@ -130,7 +140,7 @@ jobs:
           MAVEN_USERNAME: ${{ github.actor }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mvn --batch-mode --no-transfer-progress -f test-apps/quarkus-test-app-service/pom.xml package -DskipTests
+          mvn --batch-mode --no-transfer-progress -U -f test-apps/quarkus-test-app-service/pom.xml package -DskipTests
           docker build -t "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" test-apps/quarkus-test-app-service
           kind load docker-image "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" --name kind
 
@@ -238,11 +248,15 @@ jobs:
       - name: "Pass A — run integration tests (mount proof)"
         id: tests_a
         working-directory: test-apps/test-apps-integration-tests
+        # Each pass writes its own reports directory. All passes run `mvn test` in the same module,
+        # so a shared directory would let a later pass overwrite an earlier pass's results and hide
+        # its failures from the gate.
         run: >
           mvn --batch-mode
           -DskipIT=false
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Dsurefire.reportsDirectory=target/surefire-reports/pass-a
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -269,6 +283,7 @@ jobs:
           -DskipIT=false
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Dsurefire.reportsDirectory=target/surefire-reports/pass-b
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -296,6 +311,7 @@ jobs:
           -DskipIT=false
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Dsurefire.reportsDirectory=target/surefire-reports/phase-c
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -333,7 +349,7 @@ jobs:
         run: |
           set +e
           shopt -s nullglob
-          reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
+          reports=(test-apps/test-apps-integration-tests/target/surefire-reports/*/TEST-*.xml)
           if [ "${#reports[@]}" -gt 0 ] && ! grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
             echo "All sample-service tests passed; skipping diagnostics."
             exit 0
@@ -395,12 +411,19 @@ jobs:
         if: always()
         run: |
           shopt -s nullglob
-          reports=(test-apps/test-apps-integration-tests/target/surefire-reports/TEST-*.xml)
-          if [ "${#reports[@]}" -eq 0 ]; then
-            echo "::error::No Surefire XML reports were generated for sample service integration tests"
-            exit 1
-          fi
-          if grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
-            echo "::error::Sample service integration test failed"
-            exit 1
-          fi
+          # Check every pass separately, and require reports from each one. A missing set means the
+          # pass never ran or wrote elsewhere — treat both as failures, or a broken pass stays green.
+          rc=0
+          for pass in pass-a pass-b phase-c; do
+            reports=(test-apps/test-apps-integration-tests/target/surefire-reports/"$pass"/TEST-*.xml)
+            if [ "${#reports[@]}" -eq 0 ]; then
+              echo "::error::No Surefire XML reports were generated for $pass"
+              rc=1
+              continue
+            fi
+            if grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
+              echo "::error::Sample service integration tests failed in $pass"
+              rc=1
+            fi
+          done
+          exit $rc

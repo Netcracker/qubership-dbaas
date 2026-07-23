@@ -324,3 +324,38 @@ func setObservedGeneration[T interface {
 }](obj T) {
 	obj.SetObservedGeneration(obj.GetGeneration())
 }
+
+// conditionTrueForGeneration reports whether the condition of the given type
+// is True and was recorded for generation or newer. A True condition left over
+// from an earlier generation does not count: conditions persist across
+// reconciles, so after a spec change the controller must re-earn the condition
+// for the new generation.
+func conditionTrueForGeneration(conditions []metav1.Condition, condType string, generation int64) bool {
+	c := apimeta.FindStatusCondition(conditions, condType)
+	return c != nil &&
+		c.Status == metav1.ConditionTrue &&
+		c.ObservedGeneration >= generation
+}
+
+// isTerminal reports whether the controller has finished with the resource for
+// the given generation: either it was processed successfully (Ready=True) or
+// it hit a permanent error that will not be retried until the spec changes
+// (Stalled=True), and the terminal condition was recorded for that generation
+// or newer. The generation check is what makes the predicate safe as the
+// shouldObserve gate in patchStatusOnExit: a reconcile that exits early
+// without touching conditions (for example on a benign create/update race)
+// still carries the previous generation's Ready=True, and without the check
+// the exit patch would stamp status.observedGeneration for a spec it never
+// finished processing. The former phase-based predicate was immune to this
+// because phase was reset to Processing at the start of every reconcile.
+func isTerminal(conditions []metav1.Condition, generation int64) bool {
+	return conditionTrueForGeneration(conditions, conditionTypeReady, generation) ||
+		conditionTrueForGeneration(conditions, conditionTypeStalled, generation)
+}
+
+// isReadyForGeneration reports whether Ready=True was recorded for generation
+// or newer, so callers can tell "successfully reconciled the current spec"
+// from "succeeded once, but the spec has changed since".
+func isReadyForGeneration(conditions []metav1.Condition, generation int64) bool {
+	return conditionTrueForGeneration(conditions, conditionTypeReady, generation)
+}

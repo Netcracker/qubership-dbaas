@@ -19,6 +19,13 @@ jobs:
           cat <<EOF > kind-config.yaml
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
+          kubeadmConfigPatches:
+            - |
+              kind: ClusterConfiguration
+              apiServer:
+                extraArgs:
+                  - name: enable-admission-plugins
+                    value: NodeRestriction,OwnerReferencesPermissionEnforcement
           nodes:
             - role: control-plane
             - role: worker
@@ -28,6 +35,9 @@ jobs:
       - name: Set up Kind
         uses: helm/kind-action@v1.14.0
         with:
+          # kind v0.32.0 is the first release that generates kubeadm v1beta4
+          # config; the admission-plugin patch in kind-config.yaml uses its list-form extraArgs.
+          version: v0.32.0
           cluster_name: kind
           config: kind-config.yaml
 
@@ -139,7 +149,16 @@ jobs:
             securityContext:
               runAsUser: 101
               fsGroup: 101
-      
+            s3Aliases:
+              - name: default
+                spec:
+                  storageServerUrl: http://minio.minio.svc.cluster.local
+                  storageBucket: dbaas-backup-restore-test
+                  storageUsername: minio
+                  storageRegion: region123
+                secretContent:
+                  storagePassword: minio123
+
           dbaas:
             install: true
             aggregator:

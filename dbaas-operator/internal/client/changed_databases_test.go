@@ -27,7 +27,7 @@ import (
 )
 
 func TestGetChangedSince_SeedCallOmitsCursorParams(t *testing.T) {
-	hwm := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), Id: "11111111-1111-1111-1111-111111111111"}
+	hwm := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), ID: "11111111-1111-1111-1111-111111111111"}
 	var gotMethod, gotPath, gotSinceTs, gotSinceID, gotLimit string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +57,7 @@ func TestGetChangedSince_SeedCallOmitsCursorParams(t *testing.T) {
 	if gotLimit != "" {
 		t.Errorf("limit must be omitted when 0, got %q", gotLimit)
 	}
-	if resp.HighWaterMark == nil || !resp.HighWaterMark.LastRotatedAt.Equal(hwm.LastRotatedAt) || resp.HighWaterMark.Id != hwm.Id {
+	if resp.HighWaterMark == nil || !resp.HighWaterMark.LastRotatedAt.Equal(hwm.LastRotatedAt) || resp.HighWaterMark.ID != hwm.ID {
 		t.Errorf("highWaterMark = %+v, want %+v", resp.HighWaterMark, hwm)
 	}
 	if len(resp.Items) != 0 {
@@ -66,7 +66,7 @@ func TestGetChangedSince_SeedCallOmitsCursorParams(t *testing.T) {
 }
 
 func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
-	cursor := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), Id: "22222222-2222-2222-2222-222222222222"}
+	cursor := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), ID: "22222222-2222-2222-2222-222222222222"}
 	next := cursor.LastRotatedAt.Add(time.Minute)
 	var gotSinceTs, gotSinceID, gotLimit string
 
@@ -76,7 +76,7 @@ func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 		gotLimit = r.URL.Query().Get("limit")
 		writeJSON(t, w, http.StatusOK, ChangedDatabasesResponse{
 			Items: []ChangedDatabaseRef{{
-				Id:            "33333333-3333-3333-3333-333333333333",
+				ID:            "33333333-3333-3333-3333-333333333333",
 				Namespace:     "ns",
 				Classifier:    map[string]any{"microserviceName": "ms", "scope": "service", "namespace": "ns"},
 				Type:          dbTypePostgresql,
@@ -94,8 +94,8 @@ func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 	if want := cursor.LastRotatedAt.Format(time.RFC3339Nano); gotSinceTs != want {
 		t.Errorf("sinceTs = %q, want %q", gotSinceTs, want)
 	}
-	if gotSinceID != cursor.Id {
-		t.Errorf("sinceId = %q, want %q", gotSinceID, cursor.Id)
+	if gotSinceID != cursor.ID {
+		t.Errorf("sinceId = %q, want %q", gotSinceID, cursor.ID)
 	}
 	if gotLimit != "100" {
 		t.Errorf("limit = %q, want 100", gotLimit)
@@ -104,7 +104,7 @@ func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 		t.Fatalf("items = %d, want 1", len(resp.Items))
 	}
 	got := resp.Items[0]
-	if got.Id != "33333333-3333-3333-3333-333333333333" || got.Type != dbTypePostgresql || got.Namespace != "ns" || !got.LastRotatedAt.Equal(next) {
+	if got.ID != "33333333-3333-3333-3333-333333333333" || got.Type != dbTypePostgresql || got.Namespace != "ns" || !got.LastRotatedAt.Equal(next) {
 		t.Errorf("item = %+v", got)
 	}
 }
@@ -118,7 +118,7 @@ func TestGetChangedSince_PreservesLargeIntClassifier(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, http.StatusOK, ChangedDatabasesResponse{
 			Items: []ChangedDatabaseRef{{
-				Id:        "1",
+				ID:        "1",
 				Namespace: "ns",
 				Classifier: map[string]any{
 					"microserviceName": "ms", "scope": "service", "namespace": "ns",

@@ -23,6 +23,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -75,14 +78,17 @@ spec:
                         to which the rule applies.
                       items:
                         minLength: 1
+                        pattern: \S
                         type: string
                       minItems: 1
                       type: array
                       x-kubernetes-list-type: set
                     type:
-                      description: type is the database engine type this rule applies
-                        to, e.g. "postgresql" or "mongodb".
+                      description: |-
+                        type is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
+                        The Pattern rejects a whitespace-only value, which MinLength alone accepts.
                       minLength: 1
+                      pattern: \S
                       type: string
                   required:
                   - label
@@ -216,21 +222,19 @@ spec:
                 format: int64
                 type: integer
               phase:
-                default: Unknown
-                description: phase represents the current processing phase of the
-                  resource.
-                enum:
-                - Unknown
-                - Processing
-                - WaitingForDependency
-                - Succeeded
-                - BackingOff
-                - InvalidConfiguration
+                description: |-
+                  phase is a human-readable summary of the conditions below, provided so that
+                  `kubectl get` can show one column. Do not automate against it — read
+                  conditions instead. Not defaulted by the API server: status is owned by the
+                  controller, which always sets phase alongside the conditions.
                 type: string
             type: object
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: MicroserviceBalancingRule name must be 'microservice-balancing-rules'
+          rule: self.metadata.name == 'microservice-balancing-rules'
     served: true
     storage: true
     subresources:

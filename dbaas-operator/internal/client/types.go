@@ -92,7 +92,7 @@ type ExternalDatabaseRequest struct {
 	// rather than map[string]string to preserve the wire-side fidelity.
 	Classifier                 map[string]any      `json:"classifier"`
 	Type                       string              `json:"type"`
-	DbName                     string              `json:"dbName"`
+	DBName                     string              `json:"dbName"`
 	ConnectionProperties       []map[string]string `json:"connectionProperties"`
 	UpdateConnectionProperties bool                `json:"updateConnectionProperties,omitempty"`
 }
@@ -138,7 +138,7 @@ type NamespaceBalancingRuleBody struct {
 // PermanentBalancingRuleRequest is the request item for
 // PUT /api/v3/dbaas/balancing/rules/permanent.
 type PermanentBalancingRuleRequest struct {
-	DbType             string   `json:"dbType"`
+	DBType             string   `json:"dbType"`
 	PhysicalDatabaseID string   `json:"physicalDatabaseId"`
 	Namespaces         []string `json:"namespaces"`
 }
@@ -146,7 +146,7 @@ type PermanentBalancingRuleRequest struct {
 // PermanentBalancingRuleDeleteRequest is the request item for
 // DELETE /api/v3/dbaas/balancing/rules/permanent.
 type PermanentBalancingRuleDeleteRequest struct {
-	DbType     string   `json:"dbType,omitempty"`
+	DBType     string   `json:"dbType,omitempty"`
 	Namespaces []string `json:"namespaces"`
 }
 
@@ -219,7 +219,7 @@ type GetByClassifierRequest struct {
 // by-classifier lookup ("might not be used … for security purpose"), so callers
 // must tolerate an empty Id.
 type DatabaseResponseSingleCP struct {
-	Id                   string         `json:"id,omitempty"`
+	ID                   string         `json:"id,omitempty"`
 	Name                 string         `json:"name,omitempty"`
 	Namespace            string         `json:"namespace,omitempty"`
 	Type                 string         `json:"type,omitempty"`
@@ -235,7 +235,7 @@ type DatabaseResponseSingleCP struct {
 // CR(s); connection properties are fetched separately via GetDatabaseByClassifier.
 // Id together with LastRotatedAt forms the keyset cursor the poller advances by.
 type ChangedDatabaseRef struct {
-	Id            string         `json:"id"`
+	ID            string         `json:"id"`
 	Namespace     string         `json:"namespace"`
 	Classifier    map[string]any `json:"classifier"`
 	Type          string         `json:"type"`
@@ -248,7 +248,7 @@ type ChangedDatabaseRef struct {
 // registries), so the poller always makes forward progress.
 type ChangeCursor struct {
 	LastRotatedAt time.Time `json:"lastRotatedAt"`
-	Id            string    `json:"id"`
+	ID            string    `json:"id"`
 }
 
 // ChangedDatabasesResponse is the response from GetChangedSince. HighWaterMark is
