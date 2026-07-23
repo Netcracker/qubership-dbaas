@@ -551,6 +551,7 @@ and no `observedGeneration` long after creation mean no instance has claimed the
 |----------|---------|---------|----------|-----------|
 | Registered (finalizer in place) | `Succeeded` | `True` | `BindingRegistered` | `False` |
 | Deletion blocked by workloads | `Processing` | `False` | `BindingBlocked` — message lists the blocking kinds, e.g. `deletion deferred: InternalDatabase, DatabaseSecretClaim resources still present in the namespace` | `False` |
+| Released, held by another finalizer | `Processing` | `False` | `BindingReleased` — the protection finalizer is removed; deletion completes once the remaining finalizers are removed | `False` |
 | Blocking-resource check failed | `BackingOff` | `False` | `OwnershipCheckError` | `False` |
 | Unclaimed (no matching operator) | — | *(no conditions)* | — | — |
 
@@ -606,9 +607,10 @@ kubectl delete externaldatabase,databaseaccesspolicy,internaldatabase --all -n m
 kubectl delete namespacebinding binding -n my-namespace
 ```
 
-If the deletion hangs, the `Ready` condition names the resource kinds that block it
-(reason `BindingBlocked`), and reason `OwnershipCheckError` means the blocking-resource
-check itself failed and is being retried:
+If the deletion hangs, the `Ready` condition explains why: reason `BindingBlocked` names
+the resource kinds that block it, reason `BindingReleased` means the operator's part is done
+and the object is held by another controller's finalizer, and reason `OwnershipCheckError`
+means the blocking-resource check itself failed and is being retried:
 
 ```bash
 kubectl get dbnb binding -n my-namespace -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}'

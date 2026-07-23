@@ -125,7 +125,12 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// ── Deletion path ────────────────────────────────────────────────────────
 	if !nb.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(nb, dbaasv1.NamespaceBindingProtectionFinalizer) {
-			// Finalizer already removed; nothing left to do.
+			// Our finalizer is gone but the object is still alive (usually under
+			// another controller's finalizer). Re-assert the released conditions:
+			// the release reconcile's status patch may have failed transiently,
+			// and without this the stale BindingBlocked would survive forever.
+			// When the status already says released, the exit patch is skipped.
+			markBindingReleased(nb)
 			return ctrl.Result{}, nil
 		}
 
@@ -162,12 +167,7 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		// gone. Refresh the conditions so a stale BindingBlocked does not keep
 		// naming resources that no longer exist; when nothing else holds the
 		// object, the deferred status patch hits NotFound and is skipped.
-		nb.Status.Phase = dbaasv1.PhaseProcessing
-		setCondition(&nb.Status.Conditions, nb.Generation,
-			conditionTypeReady, metav1.ConditionFalse, ReasonBindingReleased,
-			"Protection finalizer removed; deletion completes once any remaining finalizers are removed.")
-		setCondition(&nb.Status.Conditions, nb.Generation,
-			conditionTypeStalled, metav1.ConditionFalse, ReasonBindingReleased, "")
+		markBindingReleased(nb)
 		log.InfoC(ctx, "NamespaceBinding %s/%s finalizer removed, deletion unblocked", nb.Namespace, nb.Name)
 		return ctrl.Result{}, nil
 	}
@@ -189,6 +189,18 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// setCondition preserves LastTransitionTime when nothing changed.
 	markSucceeded(&nb.Status.Phase, &nb.Status.Conditions, nb.Generation, EventReasonBindingRegistered)
 	return ctrl.Result{}, nil
+}
+
+// markBindingReleased records that the operator's protection finalizer is off:
+// deletion is out of the operator's hands and completes once any remaining
+// finalizers are removed.
+func markBindingReleased(nb *dbaasv1.NamespaceBinding) {
+	nb.Status.Phase = dbaasv1.PhaseProcessing
+	setCondition(&nb.Status.Conditions, nb.Generation,
+		conditionTypeReady, metav1.ConditionFalse, ReasonBindingReleased,
+		"Protection finalizer removed; deletion completes once any remaining finalizers are removed.")
+	setCondition(&nb.Status.Conditions, nb.Generation,
+		conditionTypeStalled, metav1.ConditionFalse, ReasonBindingReleased, "")
 }
 
 // enqueueBindingForWorkload maps any workload object to the NamespaceBinding

@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -294,6 +295,49 @@ var _ = Describe("NamespaceBinding Controller", func() {
 		})
 	})
 
+	Context("when the release status patch fails transiently", func() {
+		It("re-asserts BindingReleased on the retry instead of keeping BindingBlocked forever", func() {
+			// Fail exactly one status patch — the one the release reconcile issues.
+			failNext := false
+			reconciler.Client = &failingStatusClient{Client: k8sClient, failNext: &failNext}
+			reconciler.Checker = &alwaysBlockingChecker{}
+
+			nb := newBinding(myOperatorNS)
+			nb.Finalizers = []string{"example.com/other-protection"}
+			Expect(k8sClient.Create(ctx, nb)).To(Succeed())
+			_, _, err := reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Delete(ctx, &dbaasv1.NamespaceBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: ns},
+			})).To(Succeed())
+			_, _, err = reconcileBinding() // blocked
+			Expect(err).NotTo(HaveOccurred())
+
+			// Blockers gone; the release reconcile removes the finalizer but its
+			// status patch fails — the stale BindingBlocked survives this attempt.
+			reconciler.Checker = ownership.NewCompositeChecker()
+			failNext = true
+			fetched, _, err := reconcileBinding()
+			Expect(err).To(HaveOccurred())
+			Expect(controllerutil.ContainsFinalizer(fetched, dbaasv1.NamespaceBindingProtectionFinalizer)).To(BeFalse())
+			Expect(findCondition(fetched.Status.Conditions, conditionTypeReady).Reason).To(Equal(EventReasonBindingBlocked))
+
+			// The retry lands in the finalizer-already-removed branch and must
+			// still replace the stale condition.
+			fetched, _, err = reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+			ready := findCondition(fetched.Status.Conditions, conditionTypeReady)
+			Expect(ready.Reason).To(Equal(ReasonBindingReleased))
+			Expect(ready.Message).NotTo(ContainSubstring("still present"))
+
+			// Cleanup: drop the foreign finalizer so AfterEach can delete the object.
+			patch := client.MergeFrom(fetched.DeepCopy())
+			fetched.Finalizers = nil
+			Expect(k8sClient.Patch(ctx, fetched, patch)).To(Succeed())
+		})
+	})
+
 	// ── Deletion path: blocking-resource check fails ─────────────────────────
 
 	Context("when the blocking-resource check fails during deletion", func() {
@@ -413,4 +457,28 @@ type failingChecker struct{}
 
 func (f *failingChecker) BlockingKinds(_ context.Context, _ string) ([]string, error) {
 	return nil, errors.New("list InternalDatabase: connection refused")
+}
+
+// failingStatusClient fails status patches while *failNext is true (resetting
+// it), letting tests simulate a transient status-write failure.
+type failingStatusClient struct {
+	client.Client
+	failNext *bool
+}
+
+func (f *failingStatusClient) Status() client.SubResourceWriter {
+	return &failingStatusWriter{SubResourceWriter: f.Client.Status(), failNext: f.failNext}
+}
+
+type failingStatusWriter struct {
+	client.SubResourceWriter
+	failNext *bool
+}
+
+func (w *failingStatusWriter) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+	if *w.failNext {
+		*w.failNext = false
+		return apierrors.NewInternalError(errors.New("simulated transient status patch failure"))
+	}
+	return w.SubResourceWriter.Patch(ctx, obj, patch, opts...)
 }

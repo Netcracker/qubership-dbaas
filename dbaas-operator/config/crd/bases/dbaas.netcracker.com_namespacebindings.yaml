@@ -42,7 +42,8 @@ spec:
           Deleting the NamespaceBinding releases ownership; the finalizer prevents deletion
           while blocking workload resources still exist in the namespace. While deletion
           is deferred, the Ready condition (reason BindingBlocked) lists the resource
-          kinds that still block it.
+          kinds that still block it; once the operator removes its finalizer, reason
+          BindingReleased marks a binding kept alive only by other controllers' finalizers.
         properties:
           apiVersion:
             description: |-
