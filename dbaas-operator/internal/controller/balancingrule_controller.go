@@ -344,7 +344,10 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 		For(&dbaasv1.MicroserviceBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueMicroserviceRulesForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueMicroserviceRulesForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("microservicebalancingrule").
 		Complete(reconcile.Func(r.ReconcileMicroservice)); err != nil {
@@ -355,7 +358,10 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 		For(&dbaasv1.NamespaceBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueNamespaceRulesForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueNamespaceRulesForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("namespacebalancingrule").
 		Complete(reconcile.Func(r.ReconcileNamespace)); err != nil {

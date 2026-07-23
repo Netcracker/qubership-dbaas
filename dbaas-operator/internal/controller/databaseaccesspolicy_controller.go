@@ -163,7 +163,10 @@ func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("databaseaccesspolicy").
 		Complete(r)

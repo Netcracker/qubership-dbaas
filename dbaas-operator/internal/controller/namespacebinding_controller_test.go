@@ -258,6 +258,42 @@ var _ = Describe("NamespaceBinding Controller", func() {
 		})
 	})
 
+	Context("when another finalizer keeps the released binding alive", func() {
+		It("replaces BindingBlocked with BindingReleased instead of naming gone resources", func() {
+			reconciler.Checker = &alwaysBlockingChecker{}
+
+			nb := newBinding(myOperatorNS)
+			nb.Finalizers = []string{"example.com/other-protection"}
+			Expect(k8sClient.Create(ctx, nb)).To(Succeed())
+			_, _, err := reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Delete(ctx, &dbaasv1.NamespaceBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: ns},
+			})).To(Succeed())
+
+			// Blocked first.
+			fetched, _, err := reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(findCondition(fetched.Status.Conditions, conditionTypeReady).Reason).To(Equal(EventReasonBindingBlocked))
+
+			// Blockers gone → our finalizer is removed, but the other finalizer
+			// keeps the object alive; the conditions must stop claiming blockers.
+			reconciler.Checker = ownership.NewCompositeChecker()
+			fetched, _, err = reconcileBinding()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(controllerutil.ContainsFinalizer(fetched, dbaasv1.NamespaceBindingProtectionFinalizer)).To(BeFalse())
+			ready := findCondition(fetched.Status.Conditions, conditionTypeReady)
+			Expect(ready.Reason).To(Equal(ReasonBindingReleased))
+			Expect(ready.Message).NotTo(ContainSubstring("still present"))
+
+			// Cleanup: drop the foreign finalizer so AfterEach can delete the object.
+			patch := client.MergeFrom(fetched.DeepCopy())
+			fetched.Finalizers = nil
+			Expect(k8sClient.Patch(ctx, fetched, patch)).To(Succeed())
+		})
+	})
+
 	// ── Deletion path: blocking-resource check fails ─────────────────────────
 
 	Context("when the blocking-resource check fails during deletion", func() {

@@ -158,6 +158,16 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, err
 		}
 		r.Ownership.Forget(nb.Namespace)
+		// Another controller's finalizer can keep the object alive after ours is
+		// gone. Refresh the conditions so a stale BindingBlocked does not keep
+		// naming resources that no longer exist; when nothing else holds the
+		// object, the deferred status patch hits NotFound and is skipped.
+		nb.Status.Phase = dbaasv1.PhaseProcessing
+		setCondition(&nb.Status.Conditions, nb.Generation,
+			conditionTypeReady, metav1.ConditionFalse, ReasonBindingReleased,
+			"Protection finalizer removed; deletion completes once any remaining finalizers are removed.")
+		setCondition(&nb.Status.Conditions, nb.Generation,
+			conditionTypeStalled, metav1.ConditionFalse, ReasonBindingReleased, "")
 		log.InfoC(ctx, "NamespaceBinding %s/%s finalizer removed, deletion unblocked", nb.Namespace, nb.Name)
 		return ctrl.Result{}, nil
 	}
