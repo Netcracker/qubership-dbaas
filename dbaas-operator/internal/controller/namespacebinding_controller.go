@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -100,6 +102,14 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// progress (Ready=False/BindingBlocked) therefore never stamps.
 	original := nb.DeepCopy()
 	defer func() {
+		// Workload create/delete events re-enqueue the binding, so most owner
+		// reconciles change nothing: setCondition preserves LastTransitionTime
+		// and the phase stays put. Skip the patch entirely then — a per-event
+		// status write (LastRequestID alone would differ every time) turns the
+		// binding into an API-write amplifier during workload churn.
+		if equality.Semantic.DeepEqual(nb.Status, original.Status) {
+			return
+		}
 		// Assigned inside the defer: the finalizer patch below refreshes nb
 		// from the API response, which would wipe an in-memory status field
 		// assigned before it ran. Conditions are safe — every mark* call
@@ -183,6 +193,17 @@ func enqueueBindingForWorkload(_ context.Context, obj client.Object) []reconcile
 	}
 }
 
+// workloadLifecyclePredicate limits the workload watches to create and delete
+// events. The binding only cares whether blocking resources exist, and a
+// spec or status update cannot change that — without the filter every status
+// write on every workload CR re-enqueued the binding.
+var workloadLifecyclePredicate = predicate.Funcs{
+	CreateFunc:  func(event.CreateEvent) bool { return true },
+	DeleteFunc:  func(event.DeleteEvent) bool { return true },
+	UpdateFunc:  func(event.UpdateEvent) bool { return false },
+	GenericFunc: func(event.GenericEvent) bool { return false },
+}
+
 // SetupWithManager registers the controller and configures watches.
 func (r *NamespaceBindingReconciler) SetupWithManager(
 	mgr ctrl.Manager,
@@ -194,22 +215,27 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 		Watches(
 			&dbaasv1.ExternalDatabase{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+			builder.WithPredicates(workloadLifecyclePredicate),
 		).
 		Watches(
 			&dbaasv1.DatabaseAccessPolicy{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+			builder.WithPredicates(workloadLifecyclePredicate),
 		).
 		Watches(
 			&dbaasv1.InternalDatabase{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+			builder.WithPredicates(workloadLifecyclePredicate),
 		).
 		Watches(
 			&dbaasv1.MicroserviceBalancingRule{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+			builder.WithPredicates(workloadLifecyclePredicate),
 		).
 		Watches(
 			&dbaasv1.NamespaceBalancingRule{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+			builder.WithPredicates(workloadLifecyclePredicate),
 		).
 		// PermanentBalancingRule is intentionally NOT watched here: it is
 		// operator-namespace-only and decoupled from NamespaceBinding, so it never
@@ -217,6 +243,7 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 		Watches(
 			&dbaasv1.DatabaseSecretClaim{},
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
+			builder.WithPredicates(workloadLifecyclePredicate),
 		).
 		WithOptions(opts).
 		Named("namespacebinding").

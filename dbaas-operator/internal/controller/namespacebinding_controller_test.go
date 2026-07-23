@@ -150,14 +150,18 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			Expect(k8sClient.Create(ctx, nb)).To(Succeed())
 
 			// First reconcile — adds finalizer + emits event.
-			_, _, err := reconcileBinding()
+			first, _, err := reconcileBinding()
 			Expect(err).NotTo(HaveOccurred())
 			drainRecordedEvents(fakeRecorder.Events)
 
-			// Second reconcile — no-op.
-			_, _, err = reconcileBinding()
+			// Second reconcile — no-op: no event and, because nothing in the
+			// status changed, no status write either (workload churn re-enqueues
+			// the binding constantly; a per-reconcile write would amplify it).
+			second, _, err := reconcileBinding()
 			Expect(err).NotTo(HaveOccurred())
 			expectNoRecordedEvent(fakeRecorder.Events)
+			Expect(second.ResourceVersion).To(Equal(first.ResourceVersion))
+			Expect(second.Status.LastRequestID).To(Equal(first.Status.LastRequestID))
 		})
 	})
 
