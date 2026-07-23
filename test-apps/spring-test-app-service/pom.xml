@@ -33,7 +33,7 @@
         <!-- Pin the dbaas client to the snapshot that carries the mounted-secret feature. -->
         <dbaas-client.version>9.1.5</dbaas-client.version>
         <!-- Match the Flyway line the dbaas-client-postgres-flyway module is built against. -->
-        <flyway.version>12.10.0</flyway.version>
+        <flyway.version>12.11.0</flyway.version>
     </properties>
 
     <dependencies>
