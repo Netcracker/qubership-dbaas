@@ -131,7 +131,7 @@ jobs:
           MAVEN_USERNAME: ${{ github.actor }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mvn --batch-mode --no-transfer-progress -f test-apps/spring-test-app-service/pom.xml package -DskipTests
+          mvn --batch-mode --no-transfer-progress -U -f test-apps/spring-test-app-service/pom.xml package -DskipTests
           docker build -t "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" test-apps/spring-test-app-service
           kind load docker-image "$SPRING_IMAGE_REPOSITORY:$SPRING_IMAGE_TAG" --name kind
 
@@ -140,7 +140,7 @@ jobs:
           MAVEN_USERNAME: ${{ github.actor }}
           MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mvn --batch-mode --no-transfer-progress -f test-apps/quarkus-test-app-service/pom.xml package -DskipTests
+          mvn --batch-mode --no-transfer-progress -U -f test-apps/quarkus-test-app-service/pom.xml package -DskipTests
           docker build -t "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" test-apps/quarkus-test-app-service
           kind load docker-image "$QUARKUS_IMAGE_REPOSITORY:$QUARKUS_IMAGE_TAG" --name kind
 
