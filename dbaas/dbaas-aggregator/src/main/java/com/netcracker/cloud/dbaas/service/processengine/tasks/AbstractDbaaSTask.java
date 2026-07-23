@@ -44,8 +44,12 @@ public abstract class AbstractDbaaSTask extends AbstractProcessTask implements S
     }
 
     protected static void updateState(DataContext context, String stateDescription, boolean waitingForResources) {
-        context.put("stateDescription", stateDescription);
-        context.put("waitingForResources", Boolean.toString(waitingForResources));
-        context.save();
+        // apply() recovers from a concurrent version conflict by re-applying the
+        // mutation on a fresh copy; a plain save() aborted the whole task when the
+        // POProcess tick or the timeout watchdog wrote the same row first.
+        context.apply(c -> {
+            c.put("stateDescription", stateDescription);
+            c.put("waitingForResources", Boolean.toString(waitingForResources));
+        });
     }
 }
