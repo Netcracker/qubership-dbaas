@@ -162,7 +162,11 @@ type OperatorStatus struct {
 	//                   reason "ProvisioningStarted" while the async operation is in progress.
 	//                 NamespaceBinding: reason "BindingRegistered" on success;
 	//                   reason "BindingBlocked" while deletion is deferred by
-	//                   remaining workload resources (the message lists their kinds).
+	//                   remaining workload resources (the message lists their kinds);
+	//                   reason "BindingReleased" once the operator removed its
+	//                   finalizer and only other controllers' finalizers keep the
+	//                   object alive; reason "OwnershipCheckError" when listing
+	//                   the potentially blocking resources failed (retried).
 	//                 False on any error; see Reason for the error category.
 	//   - "Stalled" — True when the error is permanent and the controller will
 	//                 not retry until the spec is changed (e.g. InvalidSpec,
