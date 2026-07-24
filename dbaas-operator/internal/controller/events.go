@@ -88,9 +88,8 @@ const (
 	// successfully registered (finalizer added). Type: Normal.
 	EventReasonBindingRegistered = "BindingRegistered"
 
-	// EventReasonBindingBlocked is emitted when an NamespaceBinding deletion is
-	// deferred because the namespace still contains dbaas workload resources
-	// (ExternalDatabase, InternalDatabase, or DatabaseAccessPolicy). Type: Warning.
+	// EventReasonBindingBlocked is emitted when NamespaceBinding deletion is
+	// deferred because blocking dbaas workload resources still exist. Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
 
 	// ReasonBindingReleased is the Ready condition reason set when the operator
@@ -122,13 +121,9 @@ const (
 	// has no ownerReference at all. Type: Warning.
 	EventReasonSecretConflict = "SecretConflict"
 
-	// ReasonSecretUpToDate is the Ready condition reason for a steady-state
-	// reconcile that wrote nothing because the target Secret already matches the
-	// desired content, and for a metadata/label backfill that rewrote the Secret
-	// without a credential change. It is a condition-only reason — no Kubernetes
-	// event is emitted — so the Ready reason stays accurate (nothing was created
-	// or rotated) instead of reusing SecretCreated, and it does not overwrite the
-	// rotation history carried by Status.LastRotatedAt and the SecretRotated event.
+	// ReasonSecretUpToDate is the Ready condition reason when the target Secret
+	// already matches the desired content, or when only metadata/labels changed.
+	// It is condition-only; no Kubernetes event is emitted.
 	ReasonSecretUpToDate = "SecretUpToDate"
 
 	// EventReasonDatabaseNotFound is emitted when dbaas-aggregator returns HTTP 404

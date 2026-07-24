@@ -14,10 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package poller pulls rotation events from dbaas-aggregator and wakes the
-// affected DatabaseSecretClaim reconciles. It replaces the former inbound
-// rotation webhook: instead of the aggregator pushing notifications, the
-// operator's leader polls the aggregator's changed-databases feed.
+// Package poller pulls rotation events from dbaas-aggregator's changed-databases
+// feed and wakes the affected DatabaseSecretClaim reconciles.
 package poller
 
 import (
