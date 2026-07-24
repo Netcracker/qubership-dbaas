@@ -1,11 +1,16 @@
 {
     "title":  "DBaaS Operator",
-    "uid":  "dbaas-operator",
+    "uid":  "dashboard-uid-placeholder",
+    "tags":  [
+                 "dbaas",
+                 "operator",
+                 "prometheus",
+                 "k8s"
+             ],
     "schemaVersion":  39,
-    "version":  3,
-    "refresh":  "30s",
+    "version":  4,
     "time":  {
-                 "from":  "now-15m",
+                 "from":  "now-30m",
                  "to":  "now"
              },
     "timezone":  "browser",
@@ -30,6 +35,54 @@
                                         "regex":  "",
                                         "skipUrlSync":  false,
                                         "type":  "datasource"
+                                    },
+                                    {
+                                        "current":  {
+                                                        "selected":  true,
+                                                        "text":  "All",
+                                                        "value":  "$__all"
+                                                    },
+                                        "datasource":  "$datasource",
+                                        "definition":  "label_values(dbaas_resource_collector_success, cluster)",
+                                        "hide":  0,
+                                        "includeAll":  true,
+                                        "allValue":  ".*",
+                                        "label":  "Cluster",
+                                        "multi":  false,
+                                        "name":  "cluster",
+                                        "options":  [
+
+                                                    ],
+                                        "query":  {
+                                                      "query":  "label_values(dbaas_resource_collector_success, cluster)",
+                                                      "refId":  "StandardVariableQuery"
+                                                  },
+                                        "refresh":  1,
+                                        "regex":  "",
+                                        "skipUrlSync":  false,
+                                        "sort":  1,
+                                        "type":  "query"
+                                    },
+                                    {
+                                        "datasource":  "$datasource",
+                                        "definition":  "label_values(dbaas_resource_collector_success{cluster=~\"$cluster\"}, namespace)",
+                                        "hide":  0,
+                                        "includeAll":  false,
+                                        "label":  "DBaaS Operator Namespace",
+                                        "multi":  false,
+                                        "name":  "namespace",
+                                        "options":  [
+
+                                                    ],
+                                        "query":  {
+                                                      "query":  "label_values(dbaas_resource_collector_success{cluster=~\"$cluster\"}, namespace)",
+                                                      "refId":  "StandardVariableQuery"
+                                                  },
+                                        "refresh":  1,
+                                        "regex":  "",
+                                        "skipUrlSync":  false,
+                                        "sort":  1,
+                                        "type":  "query"
                                     }
                                 ]
                    },
@@ -53,7 +106,7 @@
                        "description":  "Reconcile invocations for ExternalDatabase by trigger source (spec_change, namespace_binding_change).",
                        "gridPos":  {
                                        "h":  8,
-                                       "w":  12,
+                                       "w":  24,
                                        "x":  0,
                                        "y":  1
                                    },
@@ -91,7 +144,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (trigger) (rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"externaldatabase\"}[1m]))",
+                                           "expr":  "sum by (trigger) (rate(dbaas_reconcile_trigger_total{cluster=~\"$cluster\",namespace=~\"$namespace\",controller=\"externaldatabase\"}[1m]))",
                                            "legendFormat":  "{{trigger}}"
                                        }
                                    ]
@@ -103,7 +156,7 @@
                        "description":  "Failures reading a credentials Secret. Reasons are actionable: secret_not_found, key_missing, key_empty, forbidden, or secret_read_failed.",
                        "gridPos":  {
                                        "h":  8,
-                                       "w":  12,
+                                       "w":  24,
                                        "x":  0,
                                        "y":  9
                                    },
@@ -128,7 +181,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[1m]))",
+                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{cluster=~\"$cluster\",namespace=~\"$namespace\"}[1m]))",
                                            "legendFormat":  "{{exported_namespace}} / {{reason}}"
                                        }
                                    ]
@@ -173,15 +226,15 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "histogram_quantile(0.50, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "expr":  "histogram_quantile(0.50, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{cluster=~\"$cluster\",namespace=~\"$namespace\"}[5m])))",
                                            "legendFormat":  "P50 {{controller}}/{{operation}}"
                                        },
                                        {
-                                           "expr":  "histogram_quantile(0.90, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "expr":  "histogram_quantile(0.90, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{cluster=~\"$cluster\",namespace=~\"$namespace\"}[5m])))",
                                            "legendFormat":  "P90 {{controller}}/{{operation}}"
                                        },
                                        {
-                                           "expr":  "histogram_quantile(0.99, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "expr":  "histogram_quantile(0.99, sum by (controller, operation, le) (rate(dbaas_aggregator_request_duration_seconds_bucket{cluster=~\"$cluster\",namespace=~\"$namespace\"}[5m])))",
                                            "legendFormat":  "P99 {{controller}}/{{operation}}"
                                        }
                                    ]
@@ -306,7 +359,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\"}[1m]))",
+                                           "expr":  "sum by (result) (rate(dbaas_aggregator_requests_total{cluster=~\"$cluster\",namespace=~\"$namespace\"}[1m]))",
                                            "legendFormat":  "{{result}}"
                                        }
                                    ]
@@ -359,12 +412,12 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (controller, result) (increase(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!~\"success|database_not_found\"}[$__range]))",
+                                           "expr":  "sum by (controller, result) (increase(dbaas_aggregator_requests_total{cluster=~\"$cluster\",namespace=~\"$namespace\",result!~\"success|database_not_found\"}[$__range]))",
                                            "legendFormat":  "aggregator {{controller}} / {{result}}",
                                            "refId":  "A"
                                        },
                                        {
-                                           "expr":  "sum by (exported_namespace, reason) (increase(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[$__range]))",
+                                           "expr":  "sum by (exported_namespace, reason) (increase(dbaas_secret_resolution_errors_total{cluster=~\"$cluster\",namespace=~\"$namespace\"}[$__range]))",
                                            "legendFormat":  "secret {{exported_namespace}} / {{reason}}",
                                            "refId":  "B"
                                        }
@@ -406,12 +459,12 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (controller, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",result!~\"success|database_not_found\"}[15m])) \u003e 0",
+                                           "expr":  "sum by (controller, result) (rate(dbaas_aggregator_requests_total{cluster=~\"$cluster\",namespace=~\"$namespace\",result!~\"success|database_not_found\"}[15m])) \u003e 0",
                                            "legendFormat":  "aggregator {{controller}} / {{result}}",
                                            "refId":  "A"
                                        },
                                        {
-                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{namespace=\"#namespace#\"}[15m])) \u003e 0",
+                                           "expr":  "sum by (exported_namespace, reason) (rate(dbaas_secret_resolution_errors_total{cluster=~\"$cluster\",namespace=~\"$namespace\"}[15m])) \u003e 0",
                                            "legendFormat":  "secret {{exported_namespace}} / {{reason}}",
                                            "refId":  "B"
                                        }
@@ -453,12 +506,12 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum(rate(dbaas_reconcile_trigger_total{namespace=\"#namespace#\",controller=\"internaldatabase\",trigger=\"polling\"}[15m]))",
+                                           "expr":  "sum(rate(dbaas_reconcile_trigger_total{cluster=~\"$cluster\",namespace=~\"$namespace\",controller=\"internaldatabase\",trigger=\"polling\"}[15m]))",
                                            "legendFormat":  "polling rate",
                                            "refId":  "A"
                                        },
                                        {
-                                           "expr":  "sum(rate(dbaas_async_operation_duration_seconds_count{namespace=\"#namespace#\"}[15m]))",
+                                           "expr":  "sum(rate(dbaas_async_operation_duration_seconds_count{cluster=~\"$cluster\",namespace=~\"$namespace\"}[15m]))",
                                            "legendFormat":  "completion rate",
                                            "refId":  "B"
                                        }
@@ -471,8 +524,8 @@
                        "description":  "How long it takes from HTTP 202 (async accepted) to a terminal state (completed / failed / terminated). This is the user-visible provisioning SLO.",
                        "gridPos":  {
                                        "h":  8,
-                                       "w":  18,
-                                       "x":  6,
+                                       "w":  24,
+                                       "x":  0,
                                        "y":  44
                                    },
                        "datasource":  "$datasource",
@@ -492,15 +545,15 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "histogram_quantile(0.50, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "expr":  "histogram_quantile(0.50, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{cluster=~\"$cluster\",namespace=~\"$namespace\"}[5m])))",
                                            "legendFormat":  "P50 {{result}}"
                                        },
                                        {
-                                           "expr":  "histogram_quantile(0.90, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "expr":  "histogram_quantile(0.90, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{cluster=~\"$cluster\",namespace=~\"$namespace\"}[5m])))",
                                            "legendFormat":  "P90 {{result}}"
                                        },
                                        {
-                                           "expr":  "histogram_quantile(0.99, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{namespace=\"#namespace#\"}[5m])))",
+                                           "expr":  "histogram_quantile(0.99, sum by (result, le) (rate(dbaas_async_operation_duration_seconds_bucket{cluster=~\"$cluster\",namespace=~\"$namespace\"}[5m])))",
                                            "legendFormat":  "P99 {{result}}"
                                        }
                                    ]
@@ -512,7 +565,7 @@
                        "description":  "Rate of async operations completing per second, split by result (success / failed / terminated). Terminated means the aggregator canceled and the operator will resubmit.",
                        "gridPos":  {
                                        "h":  8,
-                                       "w":  12,
+                                       "w":  24,
                                        "x":  0,
                                        "y":  52
                                    },
@@ -580,7 +633,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (result) (rate(dbaas_async_operation_duration_seconds_count{namespace=\"#namespace#\"}[1m]))",
+                                           "expr":  "sum by (result) (rate(dbaas_async_operation_duration_seconds_count{cluster=~\"$cluster\",namespace=~\"$namespace\"}[1m]))",
                                            "legendFormat":  "{{result}}"
                                        }
                                    ]
@@ -625,7 +678,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "sum by (operation, result) (rate(dbaas_aggregator_requests_total{namespace=\"#namespace#\",controller=\"balancingrule\"}[1m]))",
+                                           "expr":  "sum by (operation, result) (rate(dbaas_aggregator_requests_total{cluster=~\"$cluster\",namespace=~\"$namespace\",controller=\"balancingrule\"}[1m]))",
                                            "legendFormat":  "{{operation}} / {{result}}"
                                        }
                                    ]
@@ -670,7 +723,7 @@
                                    },
                        "targets":  [
                                        {
-                                          "expr":  "sum by (kind, phase) (max without (pod, instance) (dbaas_resource_phase{namespace=\"#namespace#\"}))",
+                                          "expr":  "sum by (kind, phase) (max without (pod, instance) (dbaas_resource_phase{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
                                            "legendFormat":  "{{kind}} / {{phase}}"
                                        }
                                    ]
@@ -703,7 +756,7 @@
                                    },
                        "targets":  [
                                        {
-                                          "expr":  "sum by (kind, reason) (max without (pod, instance) (dbaas_resource_condition{namespace=\"#namespace#\",condition=\"Ready\",status!=\"True\"}))",
+                                          "expr":  "sum by (kind, reason) (max without (pod, instance) (dbaas_resource_condition{cluster=~\"$cluster\",namespace=~\"$namespace\",condition=\"Ready\",status!=\"True\"}))",
                                            "legendFormat":  "{{kind}} / {{reason}}"
                                        }
                                    ]
@@ -736,7 +789,7 @@
                                    },
                        "targets":  [
                                        {
-                                          "expr":  "sum by (kind, resource_namespace, name) (max without (pod, instance) (dbaas_resource_observed_generation_lag{namespace=\"#namespace#\"}) > 0)",
+                                          "expr":  "sum by (kind, resource_namespace, name) (max without (pod, instance) (dbaas_resource_observed_generation_lag{cluster=~\"$cluster\",namespace=~\"$namespace\"}) > 0)",
                                            "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}}"
                                        }
                                    ]
@@ -769,7 +822,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "min by (kind) (dbaas_resource_collector_success{namespace=\"#namespace#\"})",
+                                           "expr":  "min by (kind) (dbaas_resource_collector_success{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
                                            "legendFormat":  "{{kind}}"
                                        }
                                    ]
@@ -814,7 +867,7 @@
                                    },
                        "targets":  [
                                        {
-                                          "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_first_not_found_timestamp_seconds{namespace=\"#namespace#\"})",
+                                          "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_first_not_found_timestamp_seconds{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
                                            "legendFormat":  "{{resource_namespace}}/{{name}}"
                                        }
                                    ]
@@ -847,7 +900,7 @@
                                    },
                        "targets":  [
                                        {
-                                           "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_last_rotation_timestamp_seconds{namespace=\"#namespace#\"})",
+                                           "expr":  "max by (resource_namespace, name) (time() - dbaas_secret_claim_last_rotation_timestamp_seconds{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
                                            "legendFormat":  "{{resource_namespace}}/{{name}}"
                                        }
                                    ]
@@ -868,7 +921,7 @@
                        "id":  28,
                        "type":  "timeseries",
                        "title":  "Balancing Rule Desired vs Applied Targets",
-                       "description":  "Compares placement intent from spec with the last applied state recorded in status. These counts do not prove referenced physical databases exist or independently read back aggregator state.",
+                       "description":  "Compares placement intent from spec with the last applied state recorded in status. These counts do not prove referenced physical databases exist or independently read back aggregator state. No data means no owned balancing-rule CRs currently exist.",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  12,
@@ -892,12 +945,12 @@
                                    },
                        "targets":  [
                                        {
-                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_desired_targets{namespace=\"#namespace#\"}))",
+                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_desired_targets{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
                                            "legendFormat":  "desired {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
                                            "refId":  "A"
                                        },
                                        {
-                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_applied_targets{namespace=\"#namespace#\"}))",
+                                          "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_applied_targets{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
                                            "legendFormat":  "applied {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
                                            "refId":  "B"
                                        }
@@ -931,7 +984,7 @@
                                    },
                        "targets":  [
                                        {
-                                          "expr":  "sum by (state) (max without (pod, instance) (dbaas_namespace_binding_state{namespace=\"#namespace#\"}))",
+                                          "expr":  "sum by (state) (max without (pod, instance) (dbaas_namespace_binding_state{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
                                            "legendFormat":  "{{state}}"
                                        }
                                    ]
@@ -940,7 +993,7 @@
                        "id":  30,
                        "type":  "timeseries",
                        "title":  "Resources being deleted",
-                       "description":  "Current dbaas resources that have deletionTimestamp set. deleting_with_finalizer means cleanup/finalizer removal is still pending.",
+                       "description":  "Current dbaas resources that have deletionTimestamp set. deleting_with_finalizer means cleanup/finalizer removal is still pending. No data means no resources are currently being deleted.",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  24,
@@ -964,7 +1017,7 @@
                                    },
                        "targets":  [
                                        {
-                                          "expr":  "sum by (kind, resource_namespace, name, state) (max without (pod, instance) (dbaas_resource_deletion_state{namespace=\"#namespace#\"}))",
+                                          "expr":  "sum by (kind, resource_namespace, name, state) (max without (pod, instance) (dbaas_resource_deletion_state{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
                                            "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}} / {{state}}"
                                        }
                                    ]

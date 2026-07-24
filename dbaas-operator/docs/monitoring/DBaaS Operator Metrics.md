@@ -142,14 +142,25 @@ The chart ships a ready-made Grafana dashboard for these metrics. It is delivere
 title **"DBaaS Operator"**) from `templates/Dashboard.yaml`, gated on
 `DBAAS_OPERATOR_ENABLED && MONITORING_ENABLED` (chart defaults: `DBAAS_OPERATOR_ENABLED: false`,
 `MONITORING_ENABLED: true` — so it ships once the operator is enabled) and reconciled by the
-**Grafana Operator**. The panel queries are pre-scoped to the operator's namespace at install time (the chart
-substitutes the operator `NAMESPACE` for the dashboard's `#namespace#` placeholder), so there is no
-namespace picker. The dashboard exposes one variable — **`datasource`** — to select the
-Prometheus/VictoriaMetrics data source.
+**Grafana Operator**. Its UID follows the monitoring convention
+`<dashboard-namespace>-dbaas-operator`; Helm derives it from `NAMESPACE` and truncates the namespace portion to keep the
+Grafana 40-character limit.
+
+The dashboard exposes three variables:
+
+- **`datasource`** - Prometheus, VictoriaMetrics, or Promxy data source.
+- **`cluster`** - source Kubernetes cluster added by Promxy. `All` uses `.*`, which also matches
+  metrics without a `cluster` label when the dashboard uses Prometheus/VictoriaMetrics directly.
+- **`namespace`** - DBaaS Operator namespace discovered from
+  `dbaas_resource_collector_success`, restricted to the selected cluster.
+
+Every panel query is scoped by `cluster=~"$cluster"` and `namespace=~"$namespace"`. This allows one
+provisioned dashboard to switch between operator instances without changing its UID. The default
+range is the last 30 minutes and automatic refresh is disabled; refresh manually when testing a
+short-lived state such as deletion.
 
 **To open it:** in Grafana, open the **DBaaS Operator** dashboard (the name may differ per
-installation), select the **datasource**, and set the time range.
-
+installation), select the **datasource**, **cluster**, and **DBaaS Operator Namespace**.
 The dashboard is organized into rows that mirror the metric groups above.
 
 ### Credentials & Secret Resolution
@@ -202,9 +213,9 @@ The dashboard is organized into rows that mirror the metric groups above.
 
 | Panel | What it shows | Based on |
 |---|---|---|
-| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
+| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts. No data means no owned balancing-rule CRs currently exist. | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
 | NamespaceBinding States | NamespaceBindings by state (`mine` / `foreign` / `deleting` …) | `dbaas_namespace_binding_state` |
-| Resources being deleted | CRs stuck in deletion | `dbaas_resource_deletion_state` |
+| Resources being deleted | CRs currently in deletion. No data means no resources are being deleted. | `dbaas_resource_deletion_state` |
 
 ---
 
