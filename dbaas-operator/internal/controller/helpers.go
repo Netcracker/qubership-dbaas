@@ -136,8 +136,10 @@ func initReconcileContext(ctx context.Context) (context.Context, string) {
 }
 
 // checkOwnership returns whether reconciliation should proceed for namespace.
-// Unknown ownership requeues quickly, Unbound requeues slowly as a safety net,
-// and Foreign returns without requeue.
+// Unknown ownership requeues quickly; Unbound requeues at a long interval as a
+// safety net against lost NamespaceBinding→workload fan-out triggers (the
+// interval is long so permanently-unbound namespaces cause no churn); Foreign
+// returns without requeue.
 func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, namespace, name, kind string) (bool, ctrl.Result, error) {
 	mine, err := resolver.IsMyNamespace(ctx, namespace)
 	if err != nil {
@@ -239,9 +241,9 @@ func invalidSpec[P ~string](
 }
 
 // handleAggregatorError maps an aggregator failure to status, event, and retry behavior:
-//   - 401 -> BackingOff (transient, retry)
-//   - 400/403/409/410/422 -> InvalidConfiguration (permanent, no retry)
-//   - 5xx/network -> BackingOff (transient, retry)
+//   - 401 → BackingOff (transient, retry)
+//   - 400/403/409/410/422 → InvalidConfiguration (permanent, no retry)
+//   - 5xx/network → BackingOff (transient, retry)
 func handleAggregatorError[P ~string](
 	phase *P,
 	conditions *[]metav1.Condition,

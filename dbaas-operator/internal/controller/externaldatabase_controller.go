@@ -325,8 +325,9 @@ func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
 }
 
 // SetupWithManager registers watches for spec changes, refresh annotations, and
-// NamespaceBinding fan-out. Credential Secret changes are picked up by periodic
-// resync or by changing AnnotationRefresh.
+// NamespaceBinding fan-out. There is intentionally no Secret watch (the operator
+// holds only namespaced Secret RBAC, no cluster-wide list/watch); credential
+// Secret changes are picked up by periodic resync or by changing AnnotationRefresh.
 func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	if r.ResyncInterval == 0 {
 		r.ResyncInterval = externalDatabaseDefaultResync

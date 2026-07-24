@@ -153,13 +153,17 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Ready describes whether the current generation was successfully processed.
-	// NamespaceBinding uses BindingRegistered on success, BindingBlocked while
-	// deletion is deferred, BindingReleased after its protection finalizer is
-	// removed, and OwnershipCheckError when listing blocking resources fails.
-	// Stalled=True marks a permanent error that will not retry until the spec changes;
-	// Stalled=False means the resource is not permanently stalled and is used for
-	// successful, ongoing, and retriable states.
+	// Ready is True when the current generation was successfully processed;
+	// False on any error, with Reason carrying the error category. Success
+	// reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
+	// (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
+	// ProvisioningStarted while the async operation runs), BindingRegistered
+	// (NamespaceBinding; BindingBlocked while deletion is deferred,
+	// BindingReleased once only other controllers' finalizers keep the object
+	// alive, OwnershipCheckError when listing blocking resources fails).
+	// Stalled=True marks a permanent error; the controller does not retry
+	// until the spec changes. Stalled=False covers successful, ongoing, and
+	// retriable states.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
