@@ -241,6 +241,13 @@ spec:
                                   DatabaseAccessPolicy: reason "PolicyApplied" on success.
                                   InternalDatabase: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
+                                  NamespaceBinding: reason "BindingRegistered" on success;
+                                    reason "BindingBlocked" while deletion is deferred by
+                                    remaining workload resources (the message lists their kinds);
+                                    reason "BindingReleased" once the operator removed its
+                                    finalizer and only other controllers' finalizers keep the
+                                    object alive; reason "OwnershipCheckError" when listing
+                                    the potentially blocking resources failed (retried).
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,
@@ -307,8 +314,10 @@ spec:
                 x-kubernetes-list-type: map
               lastRequestId:
                 description: |-
-                  lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-                  Use this value to correlate operator logs with dbaas-aggregator logs when
+                  lastRequestId is the X-Request-Id of the most recent reconcile attempt
+                  that wrote this status; a reconcile that leaves the status untouched (for
+                  example a steady-state NamespaceBinding reconcile) keeps the previous
+                  value. Use it to correlate operator logs with dbaas-aggregator logs when
                   investigating issues for a specific resource.
                 type: string
               observedGeneration:

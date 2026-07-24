@@ -653,7 +653,10 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 		For(&dbaasv1.DatabaseSecretClaim{},
 			builder.WithPredicates(specOrRotationTriggerPredicate{})).
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue siblings that share spec.secretName when any DatabaseSecretClaim
 		// in the namespace is created, deleted, or has a spec change. This lets
 		// a loser CR recover automatically once the older claimant is removed or

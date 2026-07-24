@@ -93,6 +93,16 @@ const (
 	// (ExternalDatabase, InternalDatabase, or DatabaseAccessPolicy). Type: Warning.
 	EventReasonBindingBlocked = "BindingBlocked"
 
+	// ReasonBindingReleased is the Ready condition reason set when the operator
+	// removed its protection finalizer but another controller's finalizer keeps
+	// the NamespaceBinding alive. Condition-only — no event is emitted.
+	ReasonBindingReleased = "BindingReleased"
+
+	// ReasonOwnershipCheckError is the Ready condition reason set on a deleting
+	// NamespaceBinding when listing the potentially blocking resources failed.
+	// Transient — the controller retries with backoff. Not emitted as an event.
+	ReasonOwnershipCheckError = "OwnershipCheckError"
+
 	// EventReasonSecretCreated is emitted when a DatabaseSecretClaim successfully
 	// creates the target Kubernetes Secret with connection properties for the
 	// first time. Subsequent content changes (e.g. rotation) use SecretRotated.

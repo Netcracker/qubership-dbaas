@@ -65,6 +65,9 @@ rules:
     resources: [ namespacebindings ]
     verbs: [ get, list, watch, patch ]
   - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ namespacebindings/status ]
+    verbs: [ get, update, patch ]
+  - apiGroups: [ dbaas.netcracker.com ]
     resources: [ namespacebindings/finalizers ]
     verbs: [ update ]
   # No Secret rule here: the operator holds NO cluster-wide Secret RBAC. Secret access is granted
