@@ -83,28 +83,22 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	recordReconcileTrigger(controllerDAP, trigger)
 
-	// Snapshot for the status patch at the end of reconcile.
 	original := dp.DeepCopy()
 
-	// Always patch status on exit, even if reconcile fails.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dp, original, &retErr,
 			func(_ *dbaasv1.DatabaseAccessPolicy, retErr error) bool { return retErr == nil },
 			"DatabaseAccessPolicy")
 	}()
 
-	// Mark as Processing while we work.
 	dp.Status.Phase = dbaasv1.PhaseProcessing
 
-	// ── Pre-flight validation ─────────────────────────────────────────────────
 	// Field-level constraints (microserviceName, services[].name/roles, policy[].type/defaultRole)
 	// are enforced by CRD admission. Only the cross-field constraint below cannot be expressed in schema.
 
 	if len(dp.Spec.Services) == 0 && len(dp.Spec.Policy) == 0 {
 		return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, "spec: at least one of 'services' or 'policy' must be set")
 	}
-
-	// ── Call aggregator ───────────────────────────────────────────────────────
 
 	payload := r.buildPayload(dp)
 	dp.Status.LastRequestID = requestID
@@ -152,9 +146,7 @@ func (r *DatabaseAccessPolicyReconciler) buildPayload(dp *dbaasv1.DatabaseAccess
 	}
 }
 
-// SetupWithManager sets up the controller with the Manager.
-// GenerationChangedPredicate ensures reconcile fires only on spec changes,
-// not on the controller's own status updates.
+// SetupWithManager registers watches for spec changes and NamespaceBinding fan-out.
 func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseAccessPolicy{},

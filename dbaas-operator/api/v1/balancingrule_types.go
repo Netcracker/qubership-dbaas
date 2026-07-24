@@ -31,16 +31,16 @@ const (
 	// balancing rules in the operator namespace.
 	PermanentBalancingRuleName = "permanent-balancing-rules"
 
-	// MicroserviceBalancingRuleFinalizer lets the operator disable the
-	// previously applied microservice rule in dbaas-aggregator before deletion.
+	// MicroserviceBalancingRuleFinalizer lets the operator disable aggregator-side
+	// microservice rules before deletion.
 	MicroserviceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/microservicebalancingrules-cleanup"
 
-	// NamespaceBalancingRuleFinalizer lets the operator delete the previously
-	// applied namespace rules in dbaas-aggregator before deletion.
+	// NamespaceBalancingRuleFinalizer lets the operator delete aggregator-side
+	// namespace rules before deletion.
 	NamespaceBalancingRuleFinalizer = "platform.dbaas.netcracker.com/namespacebalancingrules-cleanup"
 
-	// PermanentBalancingRuleFinalizer lets the operator delete the previously
-	// applied permanent rule in dbaas-aggregator before deletion.
+	// PermanentBalancingRuleFinalizer lets the operator delete aggregator-side
+	// permanent rules before deletion.
 	PermanentBalancingRuleFinalizer = "platform.dbaas.netcracker.com/permanentbalancingrules-cleanup"
 )
 

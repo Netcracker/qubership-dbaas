@@ -46,8 +46,7 @@ type ChangedSource interface {
 }
 
 // RotationPoller periodically pulls the aggregator's changed-databases feed and
-// wakes the affected DatabaseSecretClaim reconciles. It replaces the inbound
-// rotation webhook.
+// wakes the affected DatabaseSecretClaim reconciles.
 //
 // Correctness does not depend on the poller catching every change: the operator's
 // startup full reconcile syncs all CRs against current state, and the per-CR

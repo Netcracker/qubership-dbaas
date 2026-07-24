@@ -22,10 +22,8 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/status,verbs=get;update;patch
-// permanentbalancingrules is operator-namespace-only (informer scoped to CLOUD_NAMESPACE).
-// The namespace= field makes controller-gen emit a namespaced Role (kustomize substitutes the
-// namespace) bound by the RoleBinding in config/rbac/role_binding.yaml — matching the
-// production helm Role, not a ClusterRole.
+// permanentbalancingrules is operator-namespace-only; namespace= makes
+// controller-gen emit namespaced RBAC instead of a ClusterRole.
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules,verbs=get;list;watch;patch,namespace=system
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/finalizers,verbs=update,namespace=system
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/status,verbs=get;update;patch,namespace=system
@@ -217,18 +215,14 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
 	}
 
-	// Delete rules no longer present in spec. cleanupSupersededNamespaceRules
-	// prunes each successfully-deleted entry from status.AppliedRules, so a
-	// mid-list delete failure leaves the still-live rules recorded — preventing
-	// orphans on a later reconcile/delete that iterates status.AppliedRules.
+	// Prune removed rules before applying desired rules. A mid-list delete failure
+	// leaves still-live rules in status so later reconciles can retry cleanup.
 	if err := r.cleanupSupersededNamespaceRules(ctx, rule); err != nil {
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
 
-	// Seed the applied set from the (now-pruned) status, preserving insertion
-	// order. A failure partway through apply must not drop rules that are still
-	// live aggregator-side: an entry is upserted only after a successful apply,
-	// so status.AppliedRules always reflects what the aggregator currently holds.
+	// Seed the applied set from status, preserving insertion order. A failed apply
+	// must not drop rules that are still live aggregator-side.
 	applied := make(map[string]dbaasv1.NamespaceBalancingRuleAppliedRule, len(rule.Status.AppliedRules))
 	appliedOrder := make([]string, 0, len(rule.Status.AppliedRules))
 	for _, a := range rule.Status.AppliedRules {
@@ -285,11 +279,8 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// PermanentBalancingRule is an operator-namespace-only resource and is
-	// intentionally decoupled from NamespaceBinding. The manager's informer is
-	// scoped to CLOUD_NAMESPACE, so only CRs in the operator namespace reach this
-	// reconcile; validatePermanentRule re-checks metadata.namespace defensively.
-	// Neither the CR's own namespace nor its target namespaces require a binding.
+	// PermanentBalancingRule is operator-namespace-only and does not require a
+	// NamespaceBinding for either the CR namespace or target namespaces.
 	recordReconcileTrigger(controllerPBR, triggerSpecChange)
 
 	if !rule.DeletionTimestamp.IsZero() {
@@ -368,9 +359,8 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 		return err
 	}
 
-	// PermanentBalancingRule is operator-namespace-only and decoupled from
-	// NamespaceBinding, so it has no binding watch. Its informer is scoped to
-	// CLOUD_NAMESPACE by the manager's cache options.
+	// PermanentBalancingRule has no NamespaceBinding watch because it is scoped to
+	// the operator namespace by the manager cache.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.PermanentBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
@@ -480,11 +470,9 @@ func (r *BalancingRuleReconciler) cleanupSupersededMicroserviceRules(
 	return nil
 }
 
-// cleanupSupersededNamespaceRules deletes rules recorded in status but no longer
-// present in spec. Each successfully-deleted entry is pruned from
-// status.AppliedRules immediately; on the first failed delete it returns,
-// leaving the not-yet-deleted (still live aggregator-side) rules recorded so a
-// subsequent reconcile retries them rather than orphaning them.
+// cleanupSupersededNamespaceRules deletes status-recorded rules that are absent
+// from spec. Failed deletes leave the rule recorded so later reconciles retry
+// instead of orphaning aggregator-side state.
 func (r *BalancingRuleReconciler) cleanupSupersededNamespaceRules(
 	ctx context.Context,
 	rule *dbaasv1.NamespaceBalancingRule,
