@@ -537,8 +537,8 @@ func pollProgressMessage(resp *aggregatorclient.DeclarativeResponse) string {
 	return pollConditionText(resp, "")
 }
 
-// SetupWithManager registers watches for spec changes, polling requeues, and
-// NamespaceBinding fan-out.
+// SetupWithManager registers watches for spec changes and NamespaceBinding fan-out.
+// Timer-based polling requeues bypass watch predicates.
 func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.InternalDatabase{},

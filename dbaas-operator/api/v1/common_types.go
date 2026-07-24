@@ -158,7 +158,8 @@ type OperatorStatus struct {
 	// deletion is deferred, BindingReleased after its protection finalizer is
 	// removed, and OwnershipCheckError when listing blocking resources fails.
 	// Stalled=True marks a permanent error that will not retry until the spec changes;
-	// Stalled=False marks a transient error that the controller retries automatically.
+	// Stalled=False means the resource is not permanently stalled and is used for
+	// successful, ongoing, and retriable states.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
