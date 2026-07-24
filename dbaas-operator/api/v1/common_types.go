@@ -55,7 +55,7 @@ type Classifier struct {
 	// tenantId is the tenant identifier for multi-tenant deployments.
 	// Only relevant when scope="tenant".
 	// +optional
-	TenantId string `json:"tenantId,omitempty"`
+	TenantID string `json:"tenantId,omitempty"`
 
 	// customKeys is an optional nested map for adapter-specific or
 	// application-specific identifiers (e.g. logicalDBName).
@@ -96,7 +96,15 @@ type Classifier struct {
 // ExternalDatabase and DatabaseAccessPolicy never transition into WaitingForDependency —
 // their reconcile flows are fully synchronous.
 //
-// +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
+// Phase is an observational summary for humans, not an API contract: it exists so
+// that `kubectl get` can show a single readable column, which conditions cannot
+// provide (JSONPath selects, it cannot branch). Conditions are the source of
+// truth — automation must read status.conditions, never status.phase.
+//
+// Deliberately not constrained by a CEL/OpenAPI enum. A closed enum on a status
+// field means that shipping a new phase value before the updated CRD reaches the
+// cluster makes the API server reject the whole status write — which would drop
+// the conditions in the same request and leave the resource unobservable.
 type Phase string
 
 const (
@@ -128,8 +136,10 @@ const (
 
 // OperatorStatus contains common status fields shared by all dbaas operator resources.
 type OperatorStatus struct {
-	// phase represents the current processing phase of the resource.
-	// +kubebuilder:default=Unknown
+	// phase is a human-readable summary of the conditions below, provided so that
+	// `kubectl get` can show one column. Do not automate against it — read
+	// conditions instead. Not defaulted by the API server: status is owned by the
+	// controller, which always sets phase alongside the conditions.
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
 
@@ -143,26 +153,26 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Condition types used by all dbaas operator resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase):
-	//   - "Ready"   — True when the resource was successfully processed by
-	//                 dbaas-aggregator for the current generation.
-	//                 ExternalDatabase: reason "DatabaseRegistered" on success.
-	//                 DatabaseAccessPolicy: reason "PolicyApplied" on success.
-	//                 InternalDatabase: reason "DatabaseProvisioned" on success;
-	//                   reason "ProvisioningStarted" while the async operation is in progress.
-	//                 False on any error; see Reason for the error category.
-	//   - "Stalled" — True when the error is permanent and the controller will
-	//                 not retry until the spec is changed (e.g. InvalidSpec,
-	//                 AggregatorRejected). False for transient errors that are
-	//                 retried automatically (e.g. SecretError, AggregatorError,
-	//                 Unauthorized, ProvisioningStarted).
+	// Ready is True when the current generation was successfully processed;
+	// False on any error, with Reason carrying the error category. Success
+	// reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
+	// (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
+	// ProvisioningStarted while the async operation runs), BindingRegistered
+	// (NamespaceBinding; BindingBlocked while deletion is deferred,
+	// BindingReleased once only other controllers' finalizers keep the object
+	// alive, OwnershipCheckError when listing blocking resources fails).
+	// Stalled=True marks a permanent error; the controller does not retry
+	// until the spec changes. Stalled=False covers successful, ongoing, and
+	// retriable states.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-	// Use this value to correlate operator logs with dbaas-aggregator logs when
+	// lastRequestId is the X-Request-Id of the most recent reconcile attempt
+	// that wrote this status; a reconcile that leaves the status untouched (for
+	// example a steady-state NamespaceBinding reconcile) keeps the previous
+	// value. Use it to correlate operator logs with dbaas-aggregator logs when
 	// investigating issues for a specific resource.
 	// +optional
 	LastRequestID string `json:"lastRequestId,omitempty"`

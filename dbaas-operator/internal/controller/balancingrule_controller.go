@@ -22,10 +22,8 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/status,verbs=get;update;patch
-// permanentbalancingrules is operator-namespace-only (informer scoped to CLOUD_NAMESPACE).
-// The namespace= field makes controller-gen emit a namespaced Role (kustomize substitutes the
-// namespace) bound by the RoleBinding in config/rbac/role_binding.yaml — matching the
-// production helm Role, not a ClusterRole.
+// permanentbalancingrules is operator-namespace-only; namespace= makes
+// controller-gen emit namespaced RBAC instead of a ClusterRole.
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules,verbs=get;list;watch;patch,namespace=system
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/finalizers,verbs=update,namespace=system
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/status,verbs=get;update;patch,namespace=system
@@ -132,8 +130,7 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), rule, original, &retErr,
 			func(rule *dbaasv1.MicroserviceBalancingRule, _ error) bool {
-				return rule.Status.Phase == dbaasv1.PhaseSucceeded ||
-					rule.Status.Phase == dbaasv1.PhaseInvalidConfiguration
+				return isTerminal(rule.Status.Conditions, rule.Generation)
 			},
 			"MicroserviceBalancingRule")
 	}()
@@ -204,8 +201,7 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), rule, original, &retErr,
 			func(rule *dbaasv1.NamespaceBalancingRule, _ error) bool {
-				return rule.Status.Phase == dbaasv1.PhaseSucceeded ||
-					rule.Status.Phase == dbaasv1.PhaseInvalidConfiguration
+				return isTerminal(rule.Status.Conditions, rule.Generation)
 			},
 			"NamespaceBalancingRule")
 	}()
@@ -219,18 +215,14 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
 	}
 
-	// Delete rules no longer present in spec. cleanupSupersededNamespaceRules
-	// prunes each successfully-deleted entry from status.AppliedRules, so a
-	// mid-list delete failure leaves the still-live rules recorded — preventing
-	// orphans on a later reconcile/delete that iterates status.AppliedRules.
+	// Prune removed rules before applying desired rules. A mid-list delete failure
+	// leaves still-live rules in status so later reconciles can retry cleanup.
 	if err := r.cleanupSupersededNamespaceRules(ctx, rule); err != nil {
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
 
-	// Seed the applied set from the (now-pruned) status, preserving insertion
-	// order. A failure partway through apply must not drop rules that are still
-	// live aggregator-side: an entry is upserted only after a successful apply,
-	// so status.AppliedRules always reflects what the aggregator currently holds.
+	// Seed the applied set from status, preserving insertion order. A failed apply
+	// must not drop rules that are still live aggregator-side.
 	applied := make(map[string]dbaasv1.NamespaceBalancingRuleAppliedRule, len(rule.Status.AppliedRules))
 	appliedOrder := make([]string, 0, len(rule.Status.AppliedRules))
 	for _, a := range rule.Status.AppliedRules {
@@ -287,11 +279,8 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// PermanentBalancingRule is an operator-namespace-only resource and is
-	// intentionally decoupled from NamespaceBinding. The manager's informer is
-	// scoped to CLOUD_NAMESPACE, so only CRs in the operator namespace reach this
-	// reconcile; validatePermanentRule re-checks metadata.namespace defensively.
-	// Neither the CR's own namespace nor its target namespaces require a binding.
+	// PermanentBalancingRule is operator-namespace-only and does not require a
+	// NamespaceBinding for either the CR namespace or target namespaces.
 	recordReconcileTrigger(controllerPBR, triggerSpecChange)
 
 	if !rule.DeletionTimestamp.IsZero() {
@@ -307,8 +296,7 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), rule, original, &retErr,
 			func(rule *dbaasv1.PermanentBalancingRule, _ error) bool {
-				return rule.Status.Phase == dbaasv1.PhaseSucceeded ||
-					rule.Status.Phase == dbaasv1.PhaseInvalidConfiguration
+				return isTerminal(rule.Status.Conditions, rule.Generation)
 			},
 			"PermanentBalancingRule")
 	}()
@@ -347,7 +335,10 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 		For(&dbaasv1.MicroserviceBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueMicroserviceRulesForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueMicroserviceRulesForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("microservicebalancingrule").
 		Complete(reconcile.Func(r.ReconcileMicroservice)); err != nil {
@@ -358,16 +349,18 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 		For(&dbaasv1.NamespaceBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueNamespaceRulesForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueNamespaceRulesForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("namespacebalancingrule").
 		Complete(reconcile.Func(r.ReconcileNamespace)); err != nil {
 		return err
 	}
 
-	// PermanentBalancingRule is operator-namespace-only and decoupled from
-	// NamespaceBinding, so it has no binding watch. Its informer is scoped to
-	// CLOUD_NAMESPACE by the manager's cache options.
+	// PermanentBalancingRule has no NamespaceBinding watch because it is scoped to
+	// the operator namespace by the manager cache.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.PermanentBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
@@ -437,10 +430,10 @@ func (r *BalancingRuleReconciler) reconcilePermanentDelete(
 ) error {
 	if controllerutil.ContainsFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer) {
 		for _, applied := range rule.Status.AppliedRules {
-			if applied.DbType == "" || len(applied.Namespaces) == 0 {
+			if applied.DBType == "" || len(applied.Namespaces) == 0 {
 				continue
 			}
-			if err := r.deletePermanentTargets(ctx, applied.DbType, applied.Namespaces); err != nil {
+			if err := r.deletePermanentTargets(ctx, applied.DBType, applied.Namespaces); err != nil {
 				r.Recorder.Eventf(rule, corev1.EventTypeWarning, EventReasonAggregatorError,
 					"failed to delete permanent balancing rule during deletion: %s (requestId=%s)",
 					err, requestID)
@@ -477,11 +470,9 @@ func (r *BalancingRuleReconciler) cleanupSupersededMicroserviceRules(
 	return nil
 }
 
-// cleanupSupersededNamespaceRules deletes rules recorded in status but no longer
-// present in spec. Each successfully-deleted entry is pruned from
-// status.AppliedRules immediately; on the first failed delete it returns,
-// leaving the not-yet-deleted (still live aggregator-side) rules recorded so a
-// subsequent reconcile retries them rather than orphaning them.
+// cleanupSupersededNamespaceRules deletes status-recorded rules that are absent
+// from spec. Failed deletes leave the rule recorded so later reconciles retry
+// instead of orphaning aggregator-side state.
 func (r *BalancingRuleReconciler) cleanupSupersededNamespaceRules(
 	ctx context.Context,
 	rule *dbaasv1.NamespaceBalancingRule,
@@ -530,14 +521,14 @@ func (r *BalancingRuleReconciler) cleanupSupersededPermanentRules(
 ) error {
 	desired := desiredPermanentByDbType(rule.Spec.Rules)
 	for _, applied := range rule.Status.AppliedRules {
-		if applied.DbType == "" || len(applied.Namespaces) == 0 {
+		if applied.DBType == "" || len(applied.Namespaces) == 0 {
 			continue
 		}
-		removed := differenceStrings(applied.Namespaces, desired[strings.ToLower(applied.DbType)])
+		removed := differenceStrings(applied.Namespaces, desired[strings.ToLower(applied.DBType)])
 		if len(removed) == 0 {
 			continue
 		}
-		if err := r.deletePermanentTargets(ctx, applied.DbType, removed); err != nil {
+		if err := r.deletePermanentTargets(ctx, applied.DBType, removed); err != nil {
 			return err
 		}
 	}
@@ -576,7 +567,7 @@ func (r *BalancingRuleReconciler) deletePermanentTargets(
 	namespaces []string,
 ) error {
 	reqBody := []aggregatorclient.PermanentBalancingRuleDeleteRequest{{
-		DbType:     dbType,
+		DBType:     dbType,
 		Namespaces: namespaces,
 	}}
 	aggStart := time.Now()
@@ -703,7 +694,7 @@ func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.PermanentB
 	}
 	seen := map[string]struct{}{}
 	for i, item := range rule.Spec.Rules {
-		if strings.TrimSpace(item.DbType) == "" {
+		if strings.TrimSpace(item.DBType) == "" {
 			return fmt.Sprintf("spec.rules[%d].dbType must not be blank", i)
 		}
 		if strings.TrimSpace(item.PhysicalDatabaseID) == "" {
@@ -713,9 +704,9 @@ func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.PermanentB
 			if strings.TrimSpace(namespace) == "" {
 				return fmt.Sprintf("spec.rules[%d].namespaces[%d] must not be blank", i, j)
 			}
-			key := strings.ToLower(item.DbType) + "\x00" + namespace
+			key := strings.ToLower(item.DBType) + "\x00" + namespace
 			if _, ok := seen[key]; ok {
-				return fmt.Sprintf("spec.rules contains duplicate namespace %q for dbType %q", namespace, item.DbType)
+				return fmt.Sprintf("spec.rules contains duplicate namespace %q for dbType %q", namespace, item.DBType)
 			}
 			seen[key] = struct{}{}
 		}
@@ -807,7 +798,7 @@ func permanentRequestsFromSpec(
 	reqs := make([]aggregatorclient.PermanentBalancingRuleRequest, 0, len(rules))
 	for _, item := range rules {
 		reqs = append(reqs, aggregatorclient.PermanentBalancingRuleRequest{
-			DbType:             item.DbType,
+			DBType:             item.DBType,
 			PhysicalDatabaseID: item.PhysicalDatabaseID,
 			Namespaces:         item.Namespaces,
 		})
@@ -854,7 +845,7 @@ func appliedPermanentRulesFromSpec(
 	applied := make([]dbaasv1.PermanentBalancingRuleAppliedRule, 0, len(rules))
 	for _, rule := range rules {
 		applied = append(applied, dbaasv1.PermanentBalancingRuleAppliedRule{
-			DbType:     rule.DbType,
+			DBType:     rule.DBType,
 			Namespaces: append([]string(nil), rule.Namespaces...),
 		})
 	}
@@ -873,7 +864,7 @@ func desiredMicroserviceByType(rules []dbaasv1.MicroserviceBalancingRuleItem) ma
 func desiredPermanentByDbType(rules []dbaasv1.PermanentBalancingRuleItem) map[string][]string {
 	desired := make(map[string][]string, len(rules))
 	for _, rule := range rules {
-		key := strings.ToLower(rule.DbType)
+		key := strings.ToLower(rule.DBType)
 		desired[key] = append(desired[key], rule.Namespaces...)
 	}
 	return desired

@@ -48,7 +48,7 @@ func TestClassifierFlatMap_OptionalScalarsWhenSet(t *testing.T) {
 		MicroserviceName: "svc",
 		Scope:            "tenant",
 		Namespace:        "ns",
-		TenantId:         "t-1",
+		TenantID:         "t-1",
 	})
 	want := map[string]any{
 		"microserviceName": "svc",

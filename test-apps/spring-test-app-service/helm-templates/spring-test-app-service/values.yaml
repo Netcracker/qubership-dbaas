@@ -18,6 +18,10 @@ LOG_LEVEL: info
 # REST fallback target. The mounted secret is consulted first; the integration test sets this
 # to a bogus host to prove the service keeps working without dbaas-aggregator.
 API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
+# Direct-M2M phase toggle. When true, the pod mounts a `dbaas`-audience projected token, the client
+# switches to the M2M OkHttp flavor (basic-auth off), and calls API_DBAAS_ADDRESS directly with a
+# Bearer. Default false keeps the mounted-secret / REST-fallback phases unchanged.
+M2M_ENABLED: false
 # Caps the JVM heap to a fraction of the container memory limit.
 JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
 

@@ -32,6 +32,10 @@ linters:
       rules:
         - name: comment-spacings
         - name: import-shadowing
+        # Keeps Go initialisms uppercase (ID, DB, URL, API). The CR types mirror
+        # the aggregator's Java DTOs, so JSON tags stay camelCase (tenantId,
+        # dbType) — only the Go identifiers are covered by this rule.
+        - name: var-naming
     modernize:
       disable:
         - omitzero

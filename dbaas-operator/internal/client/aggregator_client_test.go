@@ -42,7 +42,7 @@ func minimalExtDBRequest() *ExternalDatabaseRequest {
 	return &ExternalDatabaseRequest{
 		Classifier:           map[string]any{"namespace": "test"},
 		Type:                 dbTypePostgresql,
-		DbName:               "test-db",
+		DBName:               "test-db",
 		ConnectionProperties: []map[string]string{{"role": "admin"}},
 	}
 }
@@ -232,7 +232,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 	req := &ExternalDatabaseRequest{
 		Classifier:                 map[string]any{"namespace": "ns", "microserviceName": "svc"},
 		Type:                       dbTypePostgresql,
-		DbName:                     "mydb",
+		DBName:                     "mydb",
 		ConnectionProperties:       []map[string]string{{"role": "admin", "host": "pg:5432"}},
 		UpdateConnectionProperties: true,
 	}
@@ -245,7 +245,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
-	if got.Type != dbTypePostgresql || got.DbName != "mydb" || !got.UpdateConnectionProperties {
+	if got.Type != dbTypePostgresql || got.DBName != "mydb" || !got.UpdateConnectionProperties {
 		t.Errorf("body mismatch: %+v", got)
 	}
 }
@@ -325,7 +325,7 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.RegisterExternalDatabase(ctx, "ns", minimalExtDBRequest())
 	if err == nil {
-		t.Error("expected error on cancelled context, got nil")
+		t.Error("expected error on canceled context, got nil")
 	}
 }
 
@@ -477,7 +477,7 @@ func TestDeleteNamespaceBalancingRule_ContextCancellation(t *testing.T) {
 
 	c := newClient("http://127.0.0.1", staticToken("test-token"))
 	if err := c.DeleteNamespaceBalancingRule(ctx, "payments", "pg-fast"); err == nil {
-		t.Fatal("expected error on cancelled context, got nil")
+		t.Fatal("expected error on canceled context, got nil")
 	}
 }
 
@@ -498,7 +498,7 @@ func TestApplyPermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) 
 
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.ApplyPermanentBalancingRules(context.Background(), []PermanentBalancingRuleRequest{{
-		DbType:             dbTypePostgresql,
+		DBType:             dbTypePostgresql,
 		PhysicalDatabaseID: "postgresql-prod-a",
 		Namespaces:         []string{"payments", "orders"},
 	}})
@@ -534,7 +534,7 @@ func TestDeletePermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T)
 
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.DeletePermanentBalancingRules(context.Background(), []PermanentBalancingRuleDeleteRequest{{
-		DbType:     dbTypePostgresql,
+		DBType:     dbTypePostgresql,
 		Namespaces: []string{"payments"},
 	}})
 	if err != nil {
@@ -547,7 +547,7 @@ func TestDeletePermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T)
 	if gotPath != wantPath {
 		t.Errorf("path: got %q, want %q", gotPath, wantPath)
 	}
-	if len(got) != 1 || got[0].DbType != dbTypePostgresql || got[0].Namespaces[0] != "payments" {
+	if len(got) != 1 || got[0].DBType != dbTypePostgresql || got[0].Namespaces[0] != "payments" {
 		t.Fatalf("body mismatch: %+v", got)
 	}
 }

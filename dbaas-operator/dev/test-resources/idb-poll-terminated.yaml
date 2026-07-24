@@ -4,7 +4,7 @@
 # No apply-rule → default 202 with trackingId="tracking-idb-poll-terminated"
 # poll-rules.json key: "tracking-idb-poll-terminated" → TERMINATED
 #
-# Expected behaviour (new):
+# Expected behavior (new):
 #   Phase=WaitingForDependency → Phase=BackingOff (OperationTerminated, Stalled=False)
 #   trackingID cleared → next reconcile resubmits → Phase=WaitingForDependency again
 #   The operator retries continuously (NOT stuck in InvalidConfiguration).

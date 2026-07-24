@@ -41,8 +41,23 @@ type NamespaceBindingSpec struct {
 	OperatorNamespace string `json:"operatorNamespace"`
 }
 
+// NamespaceBindingStatus defines the observed state of NamespaceBinding.
+//
+// Only the owning operator instance (the one whose CLOUD_NAMESPACE equals
+// spec.operatorNamespace) writes this status. Foreign instances never touch the
+// object, so a binding whose operatorNamespace matches no running operator
+// keeps an empty status: no conditions and no observedGeneration long after
+// creation mean no operator instance has claimed the binding — check
+// spec.operatorNamespace for a typo.
+type NamespaceBindingStatus struct {
+	OperatorStatus `json:",inline"`
+}
+
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=namespacebindings,singular=namespacebinding,shortName=dbnb,categories=dbaas
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="OperatorNamespace",type=string,JSONPath=".spec.operatorNamespace"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'binding'",message="NamespaceBinding name must be 'binding'"
@@ -52,12 +67,22 @@ type NamespaceBindingSpec struct {
 // While a NamespaceBinding exists the operator will reconcile dbaas workload
 // resources in that namespace.
 // Deleting the NamespaceBinding releases ownership; the finalizer prevents deletion
-// while blocking workload resources still exist in the namespace.
+// while blocking workload resources still exist in the namespace. While deletion
+// is deferred, the Ready condition (reason BindingBlocked) lists the resource
+// kinds that still block it; once the operator removes its finalizer, reason
+// BindingReleased marks a binding kept alive only by other controllers' finalizers.
 type NamespaceBinding struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec NamespaceBindingSpec `json:"spec"`
+
+	// +optional
+	Status NamespaceBindingStatus `json:"status,omitempty"`
+}
+
+func (nb *NamespaceBinding) SetObservedGeneration(generation int64) {
+	nb.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:object:root=true

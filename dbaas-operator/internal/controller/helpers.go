@@ -29,6 +29,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -116,8 +117,8 @@ func enqueueForBindingList[L client.ObjectList](
 	return reqs
 }
 
-// requestIDFromContext extracts the X-Request-Id string from ctx.
-// Raising a panic if it can't fetch it
+// requestIDFromContext returns the reconcile request ID from ctx.
+// It panics if the reconcile context was not initialized.
 func requestIDFromContext(ctx context.Context) string {
 	xrid, err := xrequestid.Of(ctx)
 	if err != nil {
@@ -134,21 +135,11 @@ func initReconcileContext(ctx context.Context) (context.Context, string) {
 	return ctxmanager.InitContext(ctx, map[string]any{xRequestID: id}), id
 }
 
-// checkOwnership checks whether namespace is owned by this operator instance.
-// Returns (true, {}, nil) when reconciliation should proceed.
-// Returns (false, result, nil) when the caller should return result immediately.
-// Returns (false, {}, err) on a hard lookup error.
-//
-// State semantics and requeue strategy:
-//
-//	Unknown  — transient; no cache entry (startup race or post-Forget).
-//	           Requeue quickly so the CR is retried once the cache settles.
-//	Unbound  — live GET confirmed no NamespaceBinding exists.  Requeue at a
-//	           long interval as a safety net: if the NamespaceBinding →
-//	           workloads fan-out loses its trigger due to a transient LIST
-//	           error, the periodic requeue here ensures the CR is eventually
-//	           reconciled after the binding is created and SetOwner is called.
-//	Foreign  — binding belongs to another operator instance; no requeue.
+// checkOwnership returns whether reconciliation should proceed for namespace.
+// Unknown ownership requeues quickly; Unbound requeues at a long interval as a
+// safety net against lost NamespaceBinding→workload fan-out triggers (the
+// interval is long so permanently-unbound namespaces cause no churn); Foreign
+// returns without requeue.
 func checkOwnership(ctx context.Context, resolver *ownership.OwnershipResolver, namespace, name, kind string) (bool, ctrl.Result, error) {
 	mine, err := resolver.IsMyNamespace(ctx, namespace)
 	if err != nil {
@@ -249,13 +240,10 @@ func invalidSpec[P ~string](
 	return ctrl.Result{}, nil
 }
 
-// handleAggregatorError maps a non-nil error from any aggregator call to the
-// appropriate phase/conditions and emits a Kubernetes event.
-// It is the shared implementation used by all three controllers.
-//
-//   - 401                   → BackingOff  (transient, requeue)
-//   - 400/403/409/410/422   → InvalidConfiguration (permanent, no requeue)
-//   - 5xx / network         → BackingOff  (transient, requeue)
+// handleAggregatorError maps an aggregator failure to status, event, and retry behavior:
+//   - 401 → BackingOff (transient, retry)
+//   - 400/403/409/410/422 → InvalidConfiguration (permanent, no retry)
+//   - 5xx/network → BackingOff (transient, retry)
 func handleAggregatorError[P ~string](
 	phase *P,
 	conditions *[]metav1.Condition,
@@ -330,10 +318,19 @@ func patchStatusOnExit[T interface {
 		setObservedGeneration(obj)
 	}
 
-	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
-		log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
-		*retErr = errors.Join(*retErr, patchErr)
+	patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original))
+	if patchErr == nil {
+		return
 	}
+	if apierrors.IsNotFound(patchErr) {
+		// The reconcile may have released the object's last finalizer, letting a
+		// pending deletion complete before this deferred patch ran. A vanished
+		// object has no status to report — not an error.
+		log.InfoC(ctx, "skipping %v status patch: object is gone", objectType)
+		return
+	}
+	log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
+	*retErr = errors.Join(*retErr, patchErr)
 }
 
 func setObservedGeneration[T interface {
@@ -341,4 +338,39 @@ func setObservedGeneration[T interface {
 	SetObservedGeneration(int64)
 }](obj T) {
 	obj.SetObservedGeneration(obj.GetGeneration())
+}
+
+// conditionTrueForGeneration reports whether the condition of the given type
+// is True and was recorded for generation or newer. A True condition left over
+// from an earlier generation does not count: conditions persist across
+// reconciles, so after a spec change the controller must re-earn the condition
+// for the new generation.
+func conditionTrueForGeneration(conditions []metav1.Condition, condType string, generation int64) bool {
+	c := apimeta.FindStatusCondition(conditions, condType)
+	return c != nil &&
+		c.Status == metav1.ConditionTrue &&
+		c.ObservedGeneration >= generation
+}
+
+// isTerminal reports whether the controller has finished with the resource for
+// the given generation: either it was processed successfully (Ready=True) or
+// it hit a permanent error that will not be retried until the spec changes
+// (Stalled=True), and the terminal condition was recorded for that generation
+// or newer. The generation check is what makes the predicate safe as the
+// shouldObserve gate in patchStatusOnExit: a reconcile that exits early
+// without touching conditions (for example on a benign create/update race)
+// still carries the previous generation's Ready=True, and without the check
+// the exit patch would stamp status.observedGeneration for a spec it never
+// finished processing. The former phase-based predicate was immune to this
+// because phase was reset to Processing at the start of every reconcile.
+func isTerminal(conditions []metav1.Condition, generation int64) bool {
+	return conditionTrueForGeneration(conditions, conditionTypeReady, generation) ||
+		conditionTrueForGeneration(conditions, conditionTypeStalled, generation)
+}
+
+// isReadyForGeneration reports whether Ready=True was recorded for generation
+// or newer, so callers can tell "successfully reconciled the current spec"
+// from "succeeded once, but the spec has changed since".
+func isReadyForGeneration(conditions []metav1.Condition, generation int64) bool {
+	return conditionTrueForGeneration(conditions, conditionTypeReady, generation)
 }

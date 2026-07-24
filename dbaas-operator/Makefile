@@ -50,6 +50,23 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+# The chart ships its own copy of every CRD so it can gate them on
+# DBAAS_OPERATOR_ENABLED. Each template is exactly the generated CRD wrapped in
+# that conditional, so it is derived — never edit the files under
+# helm-templates/dbaas-operator/templates/crd-*.yaml by hand. Depends on
+# manifests so the copy can never be made from a stale config/crd/bases.
+# The rm gives the sync delete semantics: dropping a CRD from the API removes
+# its chart template instead of leaving an orphan that keeps installing it.
+.PHONY: sync-helm-crds
+sync-helm-crds: manifests ## Regenerate the Helm CRD templates from config/crd/bases.
+	@rm -f helm-templates/dbaas-operator/templates/crd-*.yaml
+	@for f in config/crd/bases/*.yaml; do \
+		kind=$$(basename "$$f" .yaml | sed 's/^dbaas\.netcracker\.com_//'); \
+		out="helm-templates/dbaas-operator/templates/crd-$$kind.yaml"; \
+		{ echo '{{- if .Values.DBAAS_OPERATOR_ENABLED }}'; cat "$$f"; echo '{{- end }}'; } > "$$out"; \
+	done
+	@echo "Synced $$(ls config/crd/bases/*.yaml | wc -l | tr -d ' ') Helm CRD templates"
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...

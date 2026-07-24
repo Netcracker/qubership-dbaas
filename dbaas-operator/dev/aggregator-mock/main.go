@@ -87,7 +87,7 @@ import (
 //
 // For 2xx codes TmfCode/Reason/Message are ignored (no error body is returned).
 // For 4xx/5xx codes omitted fields produce empty strings in the JSON output,
-// which faithfully reproduces aggregator behaviour for codes without an ErrorCode.
+// which faithfully reproduces aggregator behavior for codes without an ErrorCode.
 type MockRule struct {
 	HTTPCode int    `json:"httpCode"`
 	TmfCode  string `json:"tmfCode,omitempty"` // e.g. "CORE-DBAAS-4010"
@@ -153,7 +153,7 @@ var (
 // mirror the operator's ChangedDatabaseRef, so an entry serializes straight onto
 // the wire. lastRotatedAt is an RFC3339 timestamp.
 type ChangedEntry struct {
-	Id            string         `json:"id"`
+	ID            string         `json:"id"`
 	Namespace     string         `json:"namespace"`
 	Type          string         `json:"type"`
 	LastRotatedAt string         `json:"lastRotatedAt"`
@@ -162,7 +162,7 @@ type ChangedEntry struct {
 
 // dbStore is the mock's in-memory record of databases materialized via the get-or-create
 // call (PUT .../databases). It lets get-by-classifier emulate the real aggregator's
-// lazy-tenant behaviour: a tenant database exists only after it has been created, so a
+// lazy-tenant behavior: a tenant database exists only after it has been created, so a
 // DatabaseSecretClaim for a not-yet-materialized tenant gets a 404 (DatabaseNotFound) —
 // exactly what the operator's pinned-tenant materialization is there to prevent. State is
 // per-process and lost on restart.
@@ -294,7 +294,7 @@ func loadChanged(path string) []ChangedEntry {
 	log.Printf("loaded %d changed entries from %q", len(entries), path)
 	for _, e := range entries {
 		log.Printf("  changed: id=%q namespace=%q type=%q lastRotatedAt=%q classifier=%v",
-			e.Id, e.Namespace, e.Type, e.LastRotatedAt, e.Classifier)
+			e.ID, e.Namespace, e.Type, e.LastRotatedAt, e.Classifier)
 	}
 	return entries
 }
@@ -435,19 +435,19 @@ func handleExternalDB(
 	namespace := m[1]
 
 	var req struct {
-		DbName string `json:"dbName"`
+		DBName string `json:"dbName"`
 	}
 	_ = json.Unmarshal(body, &req)
 
 	rule := defaultRule
-	if req.DbName != "" {
-		if matched, ok := rules[req.DbName]; ok {
+	if req.DBName != "" {
+		if matched, ok := rules[req.DBName]; ok {
 			log.Printf("  → rule match dbName=%q → httpCode=%d  namespace=%q",
-				req.DbName, matched.HTTPCode, namespace)
+				req.DBName, matched.HTTPCode, namespace)
 			rule = matched
 		} else {
 			log.Printf("  → no rule for dbName=%q, using default httpCode=%d  namespace=%q",
-				req.DbName, defaultRule.HTTPCode, namespace)
+				req.DBName, defaultRule.HTTPCode, namespace)
 		}
 	} else {
 		log.Printf("  → register external DB  namespace=%q  httpCode=%d (no dbName in body)", namespace, rule.HTTPCode)
@@ -463,7 +463,7 @@ func handleExternalDB(
 
 // handleApply serves POST /api/declarations/v1/apply.
 //
-// Behaviour by subKind (when no rule matches):
+// Behavior by subKind (when no rule matches):
 //   - "DbPolicy"             → 200 COMPLETED (synchronous)
 //   - "DatabaseDeclaration"  → 202 IN_PROGRESS with deterministic trackingId
 //
@@ -488,7 +488,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 			writeTmfError(w, rule)
 			return
 		}
-		// 2xx rule: honour the exact code.
+		// 2xx rule: honor the exact code.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(rule.HTTPCode)
 		writeJSON(w, map[string]any{
@@ -498,7 +498,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 		return
 	}
 
-	// Default behaviour depends on subKind.
+	// Default behavior depends on subKind.
 	if req.SubKind == "DatabaseDeclaration" {
 		// InternalDatabase is always async: return 202 with a deterministic trackingId.
 		trackingID := "tracking-" + msName
@@ -619,10 +619,10 @@ func handleChanged(w http.ResponseWriter, r *http.Request, changed []ChangedEntr
 	for _, e := range changed {
 		t, perr := parseTS(e.LastRotatedAt)
 		if perr != nil {
-			log.Printf("  → changed feed: skipping entry id=%q with bad lastRotatedAt=%q: %v", e.Id, e.LastRotatedAt, perr)
+			log.Printf("  → changed feed: skipping entry id=%q with bad lastRotatedAt=%q: %v", e.ID, e.LastRotatedAt, perr)
 			continue
 		}
-		if t.After(since) || (t.Equal(since) && e.Id > sinceID) {
+		if t.After(since) || (t.Equal(since) && e.ID > sinceID) {
 			items = append(items, e)
 		}
 	}
@@ -630,7 +630,7 @@ func handleChanged(w http.ResponseWriter, r *http.Request, changed []ChangedEntr
 		ti, _ := parseTS(items[i].LastRotatedAt)
 		tj, _ := parseTS(items[j].LastRotatedAt)
 		if ti.Equal(tj) {
-			return items[i].Id < items[j].Id
+			return items[i].ID < items[j].ID
 		}
 		return ti.Before(tj)
 	})
@@ -900,8 +900,8 @@ func highWaterMark(changed []ChangedEntry) any {
 		if err != nil {
 			continue
 		}
-		if !found || t.After(maxT) || (t.Equal(maxT) && e.Id > maxID) {
-			maxT, maxID, found = t, e.Id, true
+		if !found || t.After(maxT) || (t.Equal(maxT) && e.ID > maxID) {
+			maxT, maxID, found = t, e.ID, true
 		}
 	}
 	if !found {

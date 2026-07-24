@@ -64,7 +64,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 				Scope:            "service",
 			},
 			Type:   "postgresql",
-			DbName: "testdb",
+			DBName: "testdb",
 			ConnectionProperties: []dbaasv1.ConnectionProperty{
 				{
 					Role: "admin",
@@ -550,7 +550,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 		})
 	})
 
-	Context("duplicate name in credentialsSecretRef.keys (defence-in-depth)", func() {
+	Context("duplicate name in credentialsSecretRef.keys (defense-in-depth)", func() {
 		It("sets Phase=InvalidConfiguration, InvalidSpec, message mentions duplicate name", func() {
 			spec := baseSpec()
 			spec.ConnectionProperties[0].CredentialsSecretRef = &dbaasv1.CredentialsSecretRef{
@@ -1075,7 +1075,7 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 			Spec: dbaasv1.ExternalDatabaseSpec{
 				Classifier:           dbaasv1.Classifier{Namespace: ns, MicroserviceName: "svc", Scope: "service"},
 				Type:                 "postgresql",
-				DbName:               "testdb",
+				DBName:               "testdb",
 				ConnectionProperties: []dbaasv1.ConnectionProperty{{Role: "admin"}},
 			},
 		}
@@ -1175,7 +1175,7 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 	//
 	//  2. A rate limiter created with the parameters used by --backoff-base-delay
 	//     and --backoff-max-delay exhibits true exponential doubling.  This serves
-	//     as a living spec for the BackingOff retry behaviour visible to operators.
+	//     as a living spec for the BackingOff retry behavior visible to operators.
 
 	It("registers the controller with a custom exponential rate limiter", func() {
 		// Create a throw-away manager backed by the same envtest API server.
@@ -1204,7 +1204,7 @@ var _ = Describe("ExternalDatabase Controller — rate limiter", func() {
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 
-		// Verify the exponential doubling behaviour of the rate limiter we
+		// Verify the exponential doubling behavior of the rate limiter we
 		// injected.  This is the contract that BackingOff retries rely on:
 		// each consecutive failure doubles the wait time up to --backoff-max-delay.
 		//

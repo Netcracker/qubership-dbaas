@@ -54,7 +54,22 @@ if kind get clusters 2>/dev/null | grep -qx "${KIND_CLUSTER}"; then
   warn "Cluster '${KIND_CLUSTER}' already exists — skipping creation."
 else
   info "Creating kind cluster '${KIND_CLUSTER}'..."
-  kind create cluster --name "${KIND_CLUSTER}"
+  TMP_KIND_CONFIG="$(mktemp)"
+  trap 'rm -f "${TMP_KIND_CONFIG}"' EXIT
+  cat <<'EOF_KIND' > "${TMP_KIND_CONFIG}"
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    apiServer:
+      extraArgs:
+        - name: enable-admission-plugins
+          value: NodeRestriction,OwnerReferencesPermissionEnforcement
+EOF_KIND
+  kind create cluster --name "${KIND_CLUSTER}" --config "${TMP_KIND_CONFIG}"
+  rm -f "${TMP_KIND_CONFIG}"
+  trap - EXIT
 fi
 
 kubectl config use-context "kind-${KIND_CLUSTER}" &>/dev/null || \

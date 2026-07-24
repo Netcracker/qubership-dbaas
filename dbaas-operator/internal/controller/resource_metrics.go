@@ -355,6 +355,16 @@ func (c *resourceMetricsCollector) collectNamespaceBindings(ctx context.Context,
 			item.Name,
 			state,
 		)
+		// Status gauges only for bindings this instance owns — only the owning
+		// instance writes NamespaceBinding status, so a foreign binding's status
+		// is another instance's (or nobody's) data. Ownership comes from the
+		// binding's own spec, not the resolver cache: the binding IS the source
+		// the cache is built from. Deletion state is deliberately not emitted
+		// under dbaas_resource_deletion_state — dbaas_namespace_binding_state
+		// already carries it (deleting_with_finalizer).
+		if item.Spec.OperatorNamespace == c.operatorNamespace {
+			collectOperatorStatus(ch, resourceKindNamespaceBinding, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
+		}
 	}
 }
 

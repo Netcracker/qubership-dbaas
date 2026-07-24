@@ -509,7 +509,7 @@
                        "id":  16,
                        "type":  "timeseries",
                        "title":  "Async Completion Rate by Outcome",
-                       "description":  "Rate of async operations completing per second, split by result (success / failed / terminated). Terminated means the aggregator cancelled and the operator will resubmit.",
+                       "description":  "Rate of async operations completing per second, split by result (success / failed / terminated). Terminated means the aggregator canceled and the operator will resubmit.",
                        "gridPos":  {
                                        "h":  8,
                                        "w":  12,

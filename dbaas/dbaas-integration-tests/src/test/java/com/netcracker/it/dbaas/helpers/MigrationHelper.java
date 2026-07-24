@@ -7,7 +7,11 @@ import com.mongodb.client.MongoDatabase;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.response.MigrationResult;
 import com.netcracker.it.dbaas.exceptions.CannotConnect;
+import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.SecretVolumeSource;
+import io.fabric8.kubernetes.api.model.Volume;
+import io.fabric8.kubernetes.api.model.VolumeMount;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +19,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -45,10 +50,8 @@ public class MigrationHelper {
             .build();
 
     private static final String DBAAS_METADATA = "_dbaas_metadata";
-    private static final List<String> ADAPTER_CREDS_SECRET_NAMES = List.of(
-            "dbaas-adapter-credentials",
-            "dbaas-aggregator-credentials.v1" // for MongoDB
-    );
+    private static final String AGGREGATOR_CREDS_SECRET_NAME = "dbaas-aggregator-credentials.v1";
+    private static final String ADAPTER_CREDS_MOUNT_DIR = "dbaas-adapter-credentials";
     public static final String CONNECTION_PROPERTIES = "connectionProperties";
 
     public static final String BASE_MIGRATE_API = "api/v3/dbaas/migration/databases";
@@ -133,19 +136,29 @@ public class MigrationHelper {
                         "Could not find adapter pod for service " + adapterServiceName
                                 + " in namespace: " + adapterNamespace));
 
-        String username = readFirstAvailableSecretFromEnv(
-                adapterPod,
-                adapterNamespace,
-                List.of("DBAAS_ADAPTER_API_USER", "DBAAS_AGGREGATOR_USERNAME")
-        ).orElseGet(() -> readFromAggregatorCredentialsSecret(adapterNamespace, "username"));
+        String username = readAdapterCredential(adapterPod, adapterNamespace, "username",
+                List.of("DBAAS_ADAPTER_API_USER", "DBAAS_AGGREGATOR_USERNAME"));
 
-        String password = readFirstAvailableSecretFromEnv(
-                adapterPod,
-                adapterNamespace,
-                List.of("DBAAS_ADAPTER_API_PASSWORD", "DBAAS_AGGREGATOR_PASSWORD")
-        ).orElseGet(() -> readFromAggregatorCredentialsSecret(adapterNamespace, "password"));
+        String password = readAdapterCredential(adapterPod, adapterNamespace, "password",
+                List.of("DBAAS_ADAPTER_API_PASSWORD", "DBAAS_AGGREGATOR_PASSWORD"));
 
         return username + ":" + password;
+    }
+
+    /**
+     * Reads one basic-auth credential of the adapter API. Adapters expose these credentials in one of three ways,
+     * depending on their version: through secret-backed environment variables, through a mounted credentials secret,
+     * or through the shared aggregator credentials secret.
+     */
+    private String readAdapterCredential(Pod pod, String namespace, String key, List<String> envNames) {
+        return readFirstAvailableSecretFromEnv(pod, namespace, envNames)
+                .or(() -> readFromMountedCredentialsSecret(pod, namespace, key))
+                .or(() -> readSecretKey(namespace, AGGREGATOR_CREDS_SECRET_NAME, key))
+                .orElseThrow(() -> new RuntimeException(
+                        "Could not read adapter credential '" + key + "' in namespace " + namespace
+                                + ": none of the environment variables " + envNames + " is backed by a secret,"
+                                + " the pod has no '" + ADAPTER_CREDS_MOUNT_DIR + "' volume mount,"
+                                + " and secret '" + AGGREGATOR_CREDS_SECRET_NAME + "' holds no such key"));
     }
 
     private Optional<String> readFirstAvailableSecretFromEnv(Pod pod, String namespace, List<String> envNames) {
@@ -158,15 +171,30 @@ public class MigrationHelper {
         return Optional.empty();
     }
 
-    private String readFromAggregatorCredentialsSecret(String namespace, String key) {
-        for (String secretName : ADAPTER_CREDS_SECRET_NAMES) {
-            var secret = helperV3.getKubernetesClientSecret(namespace, secretName);
-            if (secret != null && secret.getData() != null && secret.getData().containsKey(key)) {
-                return new String(Base64.getDecoder().decode(secret.getData().get(key)));
-            }
+    /**
+     * Resolves the secret behind the adapter credentials volume mount and reads a key from it. The secret name is
+     * taken from the pod spec rather than hard-coded, because it differs between adapters.
+     */
+    private Optional<String> readFromMountedCredentialsSecret(Pod pod, String namespace, String key) {
+        Container container = pod.getSpec().getContainers().getFirst();
+        return container.getVolumeMounts().stream()
+                .filter(mount -> StringUtils.removeEnd(mount.getMountPath(), "/").endsWith(ADAPTER_CREDS_MOUNT_DIR))
+                .map(VolumeMount::getName)
+                .findFirst()
+                .flatMap(volumeName -> pod.getSpec().getVolumes().stream()
+                        .filter(volume -> volumeName.equals(volume.getName()))
+                        .findFirst())
+                .map(Volume::getSecret)
+                .map(SecretVolumeSource::getSecretName)
+                .flatMap(secretName -> readSecretKey(namespace, secretName, key));
+    }
+
+    private Optional<String> readSecretKey(String namespace, String secretName, String key) {
+        var secret = helperV3.getKubernetesClientSecret(namespace, secretName);
+        if (secret == null || secret.getData() == null || !secret.getData().containsKey(key)) {
+            return Optional.empty();
         }
-        throw new RuntimeException("Key '" + key + "' not found in any of secrets " + ADAPTER_CREDS_SECRET_NAMES
-                + " in namespace " + namespace);
+        return Optional.of(new String(Base64.getDecoder().decode(secret.getData().get(key))));
     }
 
     public DatabaseResponse prepareMigratedExternalToInternalPostgresDatabase(String sourceNamespace,

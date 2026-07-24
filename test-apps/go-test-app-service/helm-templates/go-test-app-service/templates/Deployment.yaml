@@ -22,6 +22,9 @@ spec:
         app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
         app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     spec:
+      # Dedicated ServiceAccount so its projected token identifies this app to the aggregator
+      # (sub = system:serviceaccount:<ns>:go-test-app-service) in the direct-M2M phase.
+      serviceAccountName: '{{ .Values.SERVICE_NAME }}'
       nodeSelector:
         {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS }}'
       securityContext:
@@ -35,6 +38,18 @@ spec:
           secret:
             secretName: '{{ .secretName }}'
         {{- end }}
+        {{- end }}
+        # Direct-M2M phase: a Kubernetes projected service-account token scoped to the `dbaas`
+        # audience. The DBaaS base client reads it from /var/run/secrets/tokens/dbaas/token and
+        # sends it as a Bearer straight to the aggregator (no dbaas-agent).
+        {{- if .Values.M2M_ENABLED }}
+        - name: dbaas-m2m-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: dbaas
+                  expirationSeconds: 3600
+                  path: token
         {{- end }}
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
@@ -51,6 +66,12 @@ spec:
               value: '{{ lower .Values.LOG_LEVEL }}'
             - name: DBAAS_AGENT
               value: '{{ .Values.DBAAS_AGENT }}'
+            # Direct aggregator URL for the M2M phase (koanf key api.dbaas.address). When
+            # KUBERNETES_M2M_ENABLED=true and this is set, the base client calls it directly.
+            - name: API_DBAAS_ADDRESS
+              value: '{{ .Values.API_DBAAS_ADDRESS }}'
+            - name: KUBERNETES_M2M_ENABLED
+              value: '{{ .Values.M2M_ENABLED | default false }}'
             - name: BASECLIENT_RETRY_MAX_ATTEMPTS
               value: '{{ .Values.BASECLIENT_RETRY_MAX_ATTEMPTS }}'
             - name: BASECLIENT_RETRY_DELAY_MS
@@ -66,6 +87,11 @@ spec:
               mountPath: /etc/secrets/dbaas-secrets/{{ .secretName }}
               readOnly: true
             {{- end }}
+            {{- end }}
+            {{- if .Values.M2M_ENABLED }}
+            - name: dbaas-m2m-token
+              mountPath: /var/run/secrets/tokens/dbaas
+              readOnly: true
             {{- end }}
           livenessProbe:
             httpGet:

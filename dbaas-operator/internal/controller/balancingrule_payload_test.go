@@ -51,15 +51,15 @@ var _ = Describe("BalancingRule payload helpers", func() {
 
 	It("builds permanent rule requests from spec", func() {
 		got := permanentRequestsFromSpec([]dbaasv1.PermanentBalancingRuleItem{
-			{DbType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{nsPayments, "orders"}},
-			{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
+			{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{nsPayments, "orders"}},
+			{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
 		})
 
 		Expect(got).To(HaveLen(2))
-		Expect(got[0].DbType).To(Equal("mongodb"))
+		Expect(got[0].DBType).To(Equal("mongodb"))
 		Expect(got[0].PhysicalDatabaseID).To(Equal("mongodb-prod-a"))
 		Expect(got[0].Namespaces).To(Equal([]string{nsPayments, "orders"}))
-		Expect(got[1].DbType).To(Equal("cassandra"))
+		Expect(got[1].DBType).To(Equal("cassandra"))
 		Expect(got[1].PhysicalDatabaseID).To(Equal("cassandra-prod-a"))
 	})
 
@@ -213,7 +213,7 @@ var _ = Describe("BalancingRule payload helpers", func() {
 		Expect(gotMethod).To(Equal(http.MethodDelete))
 		Expect(gotPath).To(Equal("/api/v3/dbaas/balancing/rules/permanent"))
 		Expect(got).To(HaveLen(1))
-		Expect(got[0].DbType).To(Equal("cassandra"))
+		Expect(got[0].DBType).To(Equal("cassandra"))
 		Expect(got[0].Namespaces).To(Equal([]string{"blue", "green"}))
 	})
 
@@ -236,10 +236,10 @@ var _ = Describe("BalancingRule payload helpers", func() {
 		}
 		rule := &dbaasv1.PermanentBalancingRule{}
 		rule.Spec.Rules = []dbaasv1.PermanentBalancingRuleItem{
-			{DbType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
+			{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
 		}
 		rule.Status.AppliedRules = []dbaasv1.PermanentBalancingRuleAppliedRule{
-			{DbType: "cassandra", Namespaces: []string{"blue", "green"}},
+			{DBType: "cassandra", Namespaces: []string{"blue", "green"}},
 		}
 
 		Expect(reconciler.cleanupSupersededPermanentRules(ctx, rule)).To(Succeed())

@@ -17,6 +17,9 @@ limitations under the License.
 package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims,verbs=get;list;watch;patch
+// The finalizers permission lets SetControllerReference create Secret owner references with
+// blockOwnerDeletion=true when OwnerReferencesPermissionEnforcement is enabled.
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
 //
 // Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
@@ -113,26 +116,22 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		// Stamp observedGeneration on terminal states only. Successful
 		// reconciles now carry a safety-net RequeueAfter, so the result's
 		// requeue delay can no longer distinguish "done" from "retrying";
-		// gate on the phase instead. Succeeded and InvalidConfiguration are
-		// terminal (the generation has been fully processed); BackingOff is
-		// not (still polling on a transient error).
+		// gate on the conditions instead. Ready=True and Stalled=True are
+		// terminal (the generation has been fully processed); a transient
+		// error leaves both false (still polling).
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecretClaim, retErr error) bool {
-				return retErr == nil &&
-					(obj.Status.Phase == dbaasv1.PhaseSucceeded ||
-						obj.Status.Phase == dbaasv1.PhaseInvalidConfiguration)
+				return retErr == nil && isTerminal(obj.Status.Conditions, obj.Generation)
 			},
 			"DatabaseSecretClaim")
 	}()
 
 	s.Status.Phase = dbaasv1.PhaseProcessing
 
-	// ── Pre-flight validations (spec + sibling/Secret ownership) ──────────────
 	if res, stop, err := r.preflightValidate(ctx, s); stop {
 		return res, err
 	}
 
-	// ── Step 7: call aggregator ───────────────────────────────────────────────
 	aggReq := &aggregatorclient.GetByClassifierRequest{
 		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		OriginService: s.Labels["app.kubernetes.io/name"],
@@ -144,11 +143,9 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 	if err != nil {
 		return r.handleAggregatorErr(ctx, s, err, requestID)
 	}
-	// Success — drop the DatabaseNotFound wait marker so the timeout state
-	// (if previously reached) is cleared.
+	// Success clears any DatabaseNotFound wait marker.
 	s.Status.FirstNotFoundAt = nil
 
-	// ── Step 8: validate connectionProperties ─────────────────────────────────
 	// An empty connectionProperties map on HTTP 200 is not expected from a healthy
 	// aggregator+adapter pair (the aggregator throws on missing role rather than
 	// returning an empty payload). Treat it as transient — a momentary inconsistency
@@ -163,7 +160,6 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 	}
 
-	// ── Step 9 / write Secret ─────────────────────────────────────────────────
 	secretData, err := buildSecretData(s, dbResp)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -246,18 +242,11 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	return ctrl.Result{}, false, nil
 }
 
-// writeSecret persists secretData into the target Kubernetes Secret following
-// the Step 9.1–9.4 race-aware sequence:
-//
-//	9.1 Try Create. On success → mark CR Succeeded.
-//	9.2 On AlreadyExists, re-fetch the Secret. On NotFound (deletion race),
-//	    retry Create inline so the next reconcile does not need another
-//	    aggregator round-trip.
-//	9.3 If the existing Secret is owned by another resource → SecretConflict.
-//	9.4 Otherwise Update idempotently. On NotFound (GC race), recreate the
-//	    Secret and mark Succeeded if the recreate Create returns nil.
-//
-// All success paths emit a Normal SecretCreated event and mark the CR succeeded.
+// writeSecret converges the target Secret in four steps:
+//  1. Try Create.
+//  2. On AlreadyExists, re-fetch and retry Create after a deletion race.
+//  3. Reject an existing Secret owned by another resource.
+//  4. Otherwise update idempotently, recreating after a garbage-collection race.
 func (r *DatabaseSecretClaimReconciler) writeSecret(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
@@ -265,7 +254,6 @@ func (r *DatabaseSecretClaimReconciler) writeSecret(
 	secretKey types.NamespacedName,
 	requestID string,
 ) (ctrl.Result, error) {
-	// Step 9.1 — TRY CREATE.
 	newSecret, err := r.buildOwnedSecret(s, secretData)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -281,7 +269,6 @@ func (r *DatabaseSecretClaimReconciler) writeSecret(
 		return ctrl.Result{}, err
 	}
 
-	// Step 9.2 — AlreadyExists → RE-FETCH.
 	existing := &corev1.Secret{}
 	if err := r.Get(ctx, secretKey, existing); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -303,19 +290,15 @@ func (r *DatabaseSecretClaimReconciler) writeSecret(
 		return ctrl.Result{}, err
 	}
 
-	// Step 9.3 — OWNER CONFLICT CHECK.
 	if conflict, msg := r.ownerConflict(s, existing); conflict {
 		return r.markSecretConflict(ctx, s, msg)
 	}
 
-	// Step 9.4 — UPDATE (idempotent).
 	return r.updateOwnedSecret(ctx, s, existing, secretData, requestID)
 }
 
-// updateOwnedSecret performs the idempotent Update step (9.4) on a Secret that
-// we have just confirmed is already owned by s (the Step 9.3 ownerConflict
-// check passed). It recreates the Secret if the Update fails with NotFound (GC
-// raced between fetch and update).
+// updateOwnedSecret updates a Secret already confirmed to be owned by s. It
+// recreates the Secret if the Update races with garbage collection.
 //
 // When the existing Secret already carries exactly the credentials and managed
 // labels we would write, the Update is skipped entirely: a rotation-triggered
@@ -334,7 +317,6 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 	secretData map[string][]byte,
 	requestID string,
 ) (ctrl.Result, error) {
-	// No-op fast path: already in the desired state.
 	if secretUpToDate(s, existing, secretData) {
 		log.InfoC(ctx, "DatabaseSecretClaim already up-to-date, skipping Secret write name=%s secretName=%s", s.Name, s.Spec.SecretName)
 		// Steady state: report the SecretUpToDate Ready reason, emit no event, and
@@ -345,8 +327,8 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
 
-	// Distinguish a credential change (rotation) from a metadata.json / label
-	// backfill: only the former advances LastRotatedAt and emits SecretRotated.
+	// Only credential changes advance LastRotatedAt and emit SecretRotated;
+	// metadata.json or label backfills do not.
 	// existing.Data is the pre-update content; secretData is the desired content.
 	credentialsChanged := !bytes.Equal(
 		existing.Data[secretKeyConnectionProperties],
@@ -410,10 +392,8 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 }
 
 // secretUpToDate reports whether the existing Secret already carries exactly
-// the connection-properties data and operator-managed labels that a write
-// would set. The ownerReference is not checked here because updateOwnedSecret
-// is only reached after the Step 9.3 ownerConflict check confirmed s controls
-// the Secret.
+// the connection-properties data and operator-managed labels that a write would set.
+// Ownership is checked before this helper is called.
 func secretUpToDate(s *dbaasv1.DatabaseSecretClaim, existing *corev1.Secret, desired map[string][]byte) bool {
 	if !maps.EqualFunc(existing.Data, desired, bytes.Equal) {
 		return false
@@ -547,7 +527,7 @@ type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
 	Type       string         `json:"type"`
 	UserRole   string         `json:"userRole,omitempty"`
-	Id         string         `json:"id,omitempty"`
+	ID         string         `json:"id,omitempty"`
 	Name       string         `json:"name,omitempty"`
 	Namespace  string         `json:"namespace,omitempty"`
 	Settings   map[string]any `json:"settings,omitempty"`
@@ -568,7 +548,7 @@ func buildSecretData(s *dbaasv1.DatabaseSecretClaim, dbResp *aggregatorclient.Da
 		Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		Type:       s.Spec.Type,
 		UserRole:   s.Spec.UserRole,
-		Id:         dbResp.Id,
+		ID:         dbResp.ID,
 		Name:       dbResp.Name,
 		Namespace:  dbResp.Namespace,
 		Settings:   dbResp.Settings,
@@ -603,9 +583,7 @@ func isOlderClaimant(a, b *dbaasv1.DatabaseSecretClaim) bool {
 // only mutates an annotation, which does not bump generation, so a rotation
 // would otherwise be filtered out and never reconciled.
 //
-// Create and Delete fall through to the embedded predicate.Funcs defaults
-// (both return true), preserving the standard behaviour for new and removed
-// CRs. Only Update is customised.
+// Only Update is customized; Create and Delete use predicate.Funcs defaults.
 type specOrRotationTriggerPredicate struct{ predicate.Funcs }
 
 func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
@@ -619,7 +597,7 @@ func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
 		e.ObjectNew.GetAnnotations()[dbaasv1.AnnotationRotationTrigger]
 }
 
-// SetupWithManager sets up the controller with the Manager.
+// SetupWithManager registers indexes and watches for DatabaseSecretClaim reconciliation.
 func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
@@ -652,7 +630,10 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 		For(&dbaasv1.DatabaseSecretClaim{},
 			builder.WithPredicates(specOrRotationTriggerPredicate{})).
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue siblings that share spec.secretName when any DatabaseSecretClaim
 		// in the namespace is created, deleted, or has a spec change. This lets
 		// a loser CR recover automatically once the older claimant is removed or
@@ -710,7 +691,7 @@ func (r *DatabaseSecretClaimReconciler) triggerForSecretClaim(key string, s *dba
 		return triggerNamespaceBindingChange
 	case r.consumeSiblingTrigger(key):
 		return triggerSiblingSecretClaim
-	case s.Status.ObservedGeneration >= s.Generation && s.Status.Phase == dbaasv1.PhaseSucceeded:
+	case isReadyForGeneration(s.Status.Conditions, s.Generation):
 		return triggerSafetyNet
 	default:
 		return triggerSpecChange

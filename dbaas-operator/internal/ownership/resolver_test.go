@@ -213,68 +213,71 @@ var _ = Describe("OwnershipResolver", func() {
 	})
 
 	Describe("KindChecker", func() {
-		It("returns false when namespace is empty", func() {
+		It("reports nothing when namespace is empty", func() {
 			cl := fake.NewClientBuilder().WithScheme(newScheme()).Build()
 			checker := ownership.NewKindChecker(
 				cl,
+				"NamespaceBinding",
 				func() *dbaasv1.NamespaceBindingList { return &dbaasv1.NamespaceBindingList{} },
 			)
-			blocking, err := checker.HasBlockingResources(ctx, ns1)
+			kinds, err := checker.BlockingKinds(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(blocking).To(BeFalse())
+			Expect(kinds).To(BeEmpty())
 		})
 
-		It("returns true when objects exist in the namespace", func() {
+		It("reports its kind when objects exist in the namespace", func() {
 			cl := fake.NewClientBuilder().
 				WithScheme(newScheme()).
 				WithObjects(makeBinding(ns1, myNS)).
 				Build()
 			checker := ownership.NewKindChecker(
 				cl,
+				"NamespaceBinding",
 				func() *dbaasv1.NamespaceBindingList { return &dbaasv1.NamespaceBindingList{} },
 			)
-			blocking, err := checker.HasBlockingResources(ctx, ns1)
+			kinds, err := checker.BlockingKinds(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(blocking).To(BeTrue())
+			Expect(kinds).To(Equal([]string{"NamespaceBinding"}))
 		})
 	})
 
 	Describe("CompositeChecker", func() {
-		makeChecker := func(result bool) ownership.BlockingResourceChecker {
-			return &fixedChecker{result: result}
+		makeChecker := func(kinds ...string) ownership.BlockingResourceChecker {
+			return &fixedChecker{kinds: kinds}
 		}
 
-		It("returns false when all checkers return false", func() {
-			composite := ownership.NewCompositeChecker(makeChecker(false), makeChecker(false))
-			blocking, err := composite.HasBlockingResources(ctx, ns1)
+		It("reports nothing when all checkers report nothing", func() {
+			composite := ownership.NewCompositeChecker(makeChecker(), makeChecker())
+			kinds, err := composite.BlockingKinds(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(blocking).To(BeFalse())
+			Expect(kinds).To(BeEmpty())
 		})
 
-		It("returns true as soon as any checker returns true (short-circuit)", func() {
-			composite := ownership.NewCompositeChecker(makeChecker(false), makeChecker(true))
-			blocking, err := composite.HasBlockingResources(ctx, ns1)
+		It("concatenates the kinds from every checker in registration order", func() {
+			composite := ownership.NewCompositeChecker(
+				makeChecker(), makeChecker("InternalDatabase"), makeChecker("DatabaseSecretClaim"))
+			kinds, err := composite.BlockingKinds(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(blocking).To(BeTrue())
+			Expect(kinds).To(Equal([]string{"InternalDatabase", "DatabaseSecretClaim"}))
 		})
 
 		It("supports Add after construction", func() {
 			composite := ownership.NewCompositeChecker()
-			composite.Add(makeChecker(true))
-			blocking, err := composite.HasBlockingResources(ctx, ns1)
+			composite.Add(makeChecker("ExternalDatabase"))
+			kinds, err := composite.BlockingKinds(ctx, ns1)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(blocking).To(BeTrue())
+			Expect(kinds).To(Equal([]string{"ExternalDatabase"}))
 		})
 	})
 })
 
-// fixedChecker is a BlockingResourceChecker that always returns the same result.
+// fixedChecker is a BlockingResourceChecker that always reports the same kinds.
 type fixedChecker struct {
-	result bool
+	kinds []string
 }
 
-func (f *fixedChecker) HasBlockingResources(_ context.Context, _ string) (bool, error) {
-	return f.result, nil
+func (f *fixedChecker) BlockingKinds(_ context.Context, _ string) ([]string, error) {
+	return f.kinds, nil
 }
 
 // Ensure fixedChecker implements the interface.

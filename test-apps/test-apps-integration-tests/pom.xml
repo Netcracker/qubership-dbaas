@@ -18,6 +18,10 @@
         <fabric8.version>7.5.2</fabric8.version>
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven.test.failure.ignore>true</maven.test.failure.ignore>
+        <!-- Surefire 3.x has no user property for reportsDirectory, so route it through a Maven
+             property. The CI workflow overrides it per pass to keep one pass's reports from
+             overwriting another's. -->
+        <surefire.reportsDirectory>${project.build.directory}/surefire-reports</surefire.reportsDirectory>
     </properties>
 
     <dependencies>
@@ -61,6 +65,7 @@
                     <skipTests>${skipIT}</skipTests>
                     <trimStackTrace>false</trimStackTrace>
                     <testFailureIgnore>${maven.test.failure.ignore}</testFailureIgnore>
+                    <reportsDirectory>${surefire.reportsDirectory}</reportsDirectory>
                     <argLine>
                         --add-opens=java.base/java.lang=ALL-UNNAMED
                         --add-opens=java.base/java.lang.reflect=ALL-UNNAMED

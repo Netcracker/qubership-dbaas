@@ -1266,10 +1266,10 @@ var _ = Describe("DatabaseSecretClaim Controller — classifier+type field index
 	Context("dbaasv1.ClassifierIndexKey() canonicalization", func() {
 		It("produces the same key for the same classifier content", func() {
 			c1 := dbaasv1.Classifier{
-				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
+				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantID: "t1",
 			}
 			c2 := dbaasv1.Classifier{
-				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantId: "t1",
+				MicroserviceName: "svc-a", Scope: "service", Namespace: "team-x", TenantID: "t1",
 			}
 			Expect(dbaasv1.ClassifierIndexKey(c1, "postgresql")).To(Equal(dbaasv1.ClassifierIndexKey(c2, "postgresql")))
 		})
@@ -1484,7 +1484,7 @@ var _ = Describe("DatabaseSecretClaim Controller — buildSecretData", func() {
 	// fullResp mirrors a complete aggregator DatabaseResponseV3SingleCP.
 	fullResp := func() *aggregatorclient.DatabaseResponseSingleCP {
 		return &aggregatorclient.DatabaseResponseSingleCP{
-			Id:                   "db-123",
+			ID:                   "db-123",
 			Name:                 "dbaas_svc_xyz",
 			Namespace:            "team-a",
 			Type:                 "postgresql",

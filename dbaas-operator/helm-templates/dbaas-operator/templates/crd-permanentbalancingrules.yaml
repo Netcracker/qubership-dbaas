@@ -23,6 +23,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -61,15 +64,18 @@ spec:
                     rule entry.
                   properties:
                     dbType:
-                      description: dbType is the database engine type this rule applies
-                        to, e.g. "postgresql" or "mongodb".
+                      description: |-
+                        dbType is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
+                        The Pattern rejects a whitespace-only value, which MinLength alone accepts.
                       minLength: 1
+                      pattern: \S
                       type: string
                     namespaces:
                       description: namespaces is the list of namespaces where the
                         permanent rule applies.
                       items:
                         minLength: 1
+                        pattern: \S
                         type: string
                       minItems: 1
                       type: array
@@ -82,6 +88,7 @@ spec:
                         the rule, not that this identifier was resolved to a registered physical
                         database.
                       minLength: 1
+                      pattern: \S
                       type: string
                   required:
                   - dbType
@@ -126,19 +133,17 @@ spec:
               conditions:
                 description: |-
                   conditions represent the current state of the resource.
-                  Condition types used by all dbaas operator resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase):
-                    - "Ready"   — True when the resource was successfully processed by
-                                  dbaas-aggregator for the current generation.
-                                  ExternalDatabase: reason "DatabaseRegistered" on success.
-                                  DatabaseAccessPolicy: reason "PolicyApplied" on success.
-                                  InternalDatabase: reason "DatabaseProvisioned" on success;
-                                    reason "ProvisioningStarted" while the async operation is in progress.
-                                  False on any error; see Reason for the error category.
-                    - "Stalled" — True when the error is permanent and the controller will
-                                  not retry until the spec is changed (e.g. InvalidSpec,
-                                  AggregatorRejected). False for transient errors that are
-                                  retried automatically (e.g. SecretError, AggregatorError,
-                                  Unauthorized, ProvisioningStarted).
+                  Ready is True when the current generation was successfully processed;
+                  False on any error, with Reason carrying the error category. Success
+                  reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
+                  (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
+                  ProvisioningStarted while the async operation runs), BindingRegistered
+                  (NamespaceBinding; BindingBlocked while deletion is deferred,
+                  BindingReleased once only other controllers' finalizers keep the object
+                  alive, OwnershipCheckError when listing blocking resources fails).
+                  Stalled=True marks a permanent error; the controller does not retry
+                  until the spec changes. Stalled=False covers successful, ongoing, and
+                  retriable states.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -199,8 +204,10 @@ spec:
                 x-kubernetes-list-type: map
               lastRequestId:
                 description: |-
-                  lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-                  Use this value to correlate operator logs with dbaas-aggregator logs when
+                  lastRequestId is the X-Request-Id of the most recent reconcile attempt
+                  that wrote this status; a reconcile that leaves the status untouched (for
+                  example a steady-state NamespaceBinding reconcile) keeps the previous
+                  value. Use it to correlate operator logs with dbaas-aggregator logs when
                   investigating issues for a specific resource.
                 type: string
               observedGeneration:
@@ -214,21 +221,19 @@ spec:
                 format: int64
                 type: integer
               phase:
-                default: Unknown
-                description: phase represents the current processing phase of the
-                  resource.
-                enum:
-                - Unknown
-                - Processing
-                - WaitingForDependency
-                - Succeeded
-                - BackingOff
-                - InvalidConfiguration
+                description: |-
+                  phase is a human-readable summary of the conditions below, provided so that
+                  `kubectl get` can show one column. Do not automate against it — read
+                  conditions instead. Not defaulted by the API server: status is owned by the
+                  controller, which always sets phase alongside the conditions.
                 type: string
             type: object
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: PermanentBalancingRule name must be 'permanent-balancing-rules'
+          rule: self.metadata.name == 'permanent-balancing-rules'
     served: true
     storage: true
     subresources:

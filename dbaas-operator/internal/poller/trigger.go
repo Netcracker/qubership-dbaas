@@ -14,10 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package poller pulls rotation events from dbaas-aggregator and wakes the
-// affected DatabaseSecretClaim reconciles. It replaces the former inbound
-// rotation webhook: instead of the aggregator pushing notifications, the
-// operator's leader polls the aggregator's changed-databases feed.
+// Package poller pulls rotation events from dbaas-aggregator's changed-databases
+// feed and wakes the affected DatabaseSecretClaim reconciles.
 package poller
 
 import (
@@ -109,7 +107,7 @@ func classifierFromMap(m map[string]any) (dbaasv1.Classifier, error) {
 		case "namespace":
 			c.Namespace, _ = v.(string)
 		case "tenantId":
-			c.TenantId, _ = v.(string)
+			c.TenantID, _ = v.(string)
 		case "customKeys":
 			obj, ok := v.(map[string]any)
 			if !ok {

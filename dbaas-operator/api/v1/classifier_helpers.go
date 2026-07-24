@@ -74,8 +74,8 @@ func ClassifierFlatMap(c Classifier) map[string]any {
 	if c.Namespace != "" {
 		m["namespace"] = c.Namespace
 	}
-	if c.TenantId != "" {
-		m["tenantId"] = c.TenantId
+	if c.TenantID != "" {
+		m["tenantId"] = c.TenantID
 	}
 	if len(c.CustomKeys) > 0 {
 		customKeys := make(map[string]any, len(c.CustomKeys))
