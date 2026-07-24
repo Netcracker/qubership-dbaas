@@ -242,8 +242,11 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	return ctrl.Result{}, false, nil
 }
 
-// writeSecret creates or updates the target Secret while tolerating create/update
-// races. Ownership is checked after re-fetch so another owner cannot be overwritten.
+// writeSecret converges the target Secret in four steps:
+//  1. Try Create.
+//  2. On AlreadyExists, re-fetch and retry Create after a deletion race.
+//  3. Reject an existing Secret owned by another resource.
+//  4. Otherwise update idempotently, recreating after a garbage-collection race.
 func (r *DatabaseSecretClaimReconciler) writeSecret(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
