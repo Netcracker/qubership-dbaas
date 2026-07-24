@@ -7,7 +7,6 @@ import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtensio
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v1.BackupStatus;
 import com.netcracker.it.dbaas.entity.backup.v1.RestoreStatus;
-import com.netcracker.it.dbaas.entity.backup.v3.Status;
 import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
@@ -36,9 +35,9 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.helpers.BGHelper.TEST_NAMESPACE_CANDIDATE;
+import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_NAMESPACE_PATTERN;
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
@@ -1427,33 +1426,35 @@ public class OperatorIT extends AbstractIT {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
                     String secretName = generateName();
+
                     var sourceClassifier = new ClassifierBuilder().ms(microserviceName).ns(sourceNamespace).build();
+                    helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
 
-                    try {
-                        helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
+                    var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
+                    helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
 
-                        var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build();
-                        helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
+                    var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
-                        var databaseSecretCR = buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE);
-                        var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
-                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
 
-                        String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
+                    var backupRequest = new BackupRequestBuilder()
+                            .filterCriteria(fc -> fc.include(f -> f.ms(microserviceName).ns(sourceNamespace)))
+                            .build();
+                    var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+                    assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
 
-                        var namespaceBackup = backupHelperV3.collectBackup(helperV3.getBackupDaemonAuthorization(), sourceNamespace, false);
-                        assertTrue(namespaceBackup.canRestore(), "backup must be in restorable state");
+                    var restoreRequest = new RestoreRequestBuilder()
+                            .mapping(m -> m.ns(sourceNamespace, NAMESPACE))
+                            .build();
+                    var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+                    assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
 
-                        var namespaceRestoreResult = backupHelperV3.restoreBackup(helperV3.getBackupDaemonAuthorization(), namespaceBackup, NAMESPACE);
-                        assertEquals(Status.SUCCESS, namespaceRestoreResult.getStatus(), "restore must succeed");
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
 
-                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
-
-                        String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
-                        assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
-                    } finally {
-                        deleteDb(sourceClassifier, POSTGRES_TYPE);
-                    }
+                    String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
+                    assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
                 }
 
                 @Test
@@ -1755,34 +1756,36 @@ public class OperatorIT extends AbstractIT {
                     String microserviceName = generateName();
                     String secretName = generateName();
                     String tenantId = generateName();
+
                     var sourceClassifier = new ClassifierBuilder().ms(microserviceName).ns(sourceNamespace).tenant().tenantId(tenantId).build();
+                    helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
 
-                    try {
-                        helperV3.createDatabase(sourceClassifier, POSTGRES_TYPE, 201);
+                    var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
+                    helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
 
-                        var targetClassifier = new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).tenant().tenantId(tenantId).build();
-                        helperV3.createDatabase(targetClassifier, POSTGRES_TYPE, 201);
+                    var databaseSecretCR = asTenant(
+                            buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
+                    var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
-                        var databaseSecretCR = asTenant(
-                                buildDatabaseSecretClaimCR(dbSecretCRName, microserviceName, microserviceName, NAMESPACE, secretName, "", POSTGRES_TYPE), tenantId);
-                        var createdDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
-                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, createdDatabaseSecretClaimCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+                    String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
 
-                        String passwordBefore = extractPasswordFromSecret(getSecret(secretName));
+                    var backupRequest = new BackupRequestBuilder()
+                            .filterCriteria(fc -> fc.include(f -> f.ms(microserviceName).ns(sourceNamespace)))
+                            .build();
+                    var backupResponse = backupHelperV1.runBackupAndWait(backupRequest, false);
+                    assertEquals(BackupStatus.COMPLETED, backupResponse.getStatus());
 
-                        var namespaceBackup = backupHelperV3.collectBackup(helperV3.getBackupDaemonAuthorization(), sourceNamespace, false);
-                        assertTrue(namespaceBackup.canRestore(), "backup must be in restorable state");
+                    var restoreRequest = new RestoreRequestBuilder()
+                            .mapping(m -> m.ns(sourceNamespace, NAMESPACE))
+                            .build();
+                    var restoreResponse = backupHelperV1.runRestoreAndWait(backupRequest.getBackupName(), restoreRequest, false);
+                    assertEquals(RestoreStatus.COMPLETED, restoreResponse.getStatus());
 
-                        var namespaceRestoreResult = backupHelperV3.restoreBackup(helperV3.getBackupDaemonAuthorization(), namespaceBackup, NAMESPACE);
-                        assertEquals(Status.SUCCESS, namespaceRestoreResult.getStatus(), "restore must succeed");
+                    waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
 
-                        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR, PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
-
-                        String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
-                        assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
-                    } finally {
-                        deleteDb(sourceClassifier, POSTGRES_TYPE);
-                    }
+                    String passwordAfter = extractPasswordFromSecret(getSecret(secretName));
+                    assertNotEquals(passwordBefore, passwordAfter, "secret password must change after cross-namespace restore");
                 }
 
                 @Test
@@ -2324,13 +2327,20 @@ public class OperatorIT extends AbstractIT {
     }
 
     private static void deleteAllLogicalDatabases() throws IOException {
-        var logicalDbs = helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).stream()
-                .filter(db -> NAMESPACE_PATTERN.matcher((String) db.getClassifier().get("microserviceName")).matches())
-                .toList();
+        helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(NAMESPACE_PATTERN);
+        helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(TEST_NAMESPACE_PATTERN);
 
-        for (DatabaseV3 logicalDb : logicalDbs) {
-            deleteDb(logicalDb.getClassifier(), logicalDb.getType());
-        }
+        List<DatabaseV3> logicalDbs;
+        do {
+            // limit 20 DBs, let's repeat the check to be sure that we delete all DBs
+            logicalDbs = helperV3.findLogicalDatabasesByNamespaces(List.of(NAMESPACE)).stream()
+                    .filter(db -> NAMESPACE_PATTERN.matcher((String) db.getClassifier().get("microserviceName")).matches())
+                    .toList();
+
+            for (DatabaseV3 logicalDb : logicalDbs) {
+                deleteDb(logicalDb.getClassifier(), logicalDb.getType());
+            }
+        } while (!logicalDbs.isEmpty());
     }
 
     private static void deleteDb(Map<String, Object> classifier, String type) throws IOException {

@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.5.6-0.20260723073104-deedb69e4d2d
-	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.4.3
+	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.4.5
 	github.com/netcracker/qubership-core-lib-go/v3 v3.13.1
 	github.com/uptrace/bun v1.2.18
 )
@@ -35,7 +35,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.3 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 )

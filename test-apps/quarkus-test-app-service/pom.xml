@@ -20,7 +20,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.version>3.33.1</quarkus.platform.version>
+        <quarkus.platform.version>3.33.2.1</quarkus.platform.version>
         <!-- Pin to the unique snapshot published from the throwaway branch (throwaway/quarkus-mounted-secret-publish)
              so a master rebuild of 10.1.3-SNAPSHOT does NOT overwrite the mounted-secret artifacts.
              Revert to the released version once the feature lands. -->

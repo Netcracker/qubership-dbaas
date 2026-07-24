@@ -246,7 +246,7 @@ func invalidSpec[P ~string](
 ) (ctrl.Result, error) {
 	log.InfoC(ctx, "invalid spec reason=%v", msg)
 	markPermanentFailure(phase, conditions, generation, EventReasonInvalidSpec, msg)
-	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonInvalidSpec, msg)
+	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonInvalidSpec, "%s", msg)
 	return ctrl.Result{}, nil
 }
 

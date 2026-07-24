@@ -40,6 +40,25 @@ spec:
               - name: dbaas-global-permissions-configuration-volume
                 secret:
                     secretName: 'dbaas-global-permissions-configuration-secret'
+              - name: pod-secrets
+                projected:
+                    sources:
+                    -   secret:
+                            name: 'dbaas-storage-credentials'
+                            items:
+                            -   key: username
+                                path: POSTGRES_USER
+                            -   key: password
+                                path: POSTGRES_PASSWORD
+                            -   key: database
+                                path: POSTGRES_DATABASE
+                    -   secret:
+                            name: '{{ .Values.SERVICE_NAME }}-encryption-secret'
+                            items:
+                            -   key: sym-key
+                                path: SYM_KEY
+                            -   key: default-key
+                                path: KS_DEFAULT_KEY
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
@@ -65,6 +84,9 @@ spec:
                     readOnly: true
                 -   name: dbaas-global-permissions-configuration-volume
                     mountPath: '{{ .Values.DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION }}'
+                    readOnly: true
+                -   name: pod-secrets
+                    mountPath: /etc/secrets/pod-secrets
                     readOnly: true
             {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
                 -   name: tmp
@@ -97,16 +119,6 @@ spec:
                     value: {{ $sha1sum }}
                 -   name: DBAAS_SECURITY_CONFIGURATION_LOCATION
                     value: '{{ .Values.DBAAS_SECURITY_CONFIGURATION_LOCATION }}'
-                -   name: SYM_KEY
-                    valueFrom:
-                        secretKeyRef:
-                            name: '{{ .Values.SERVICE_NAME }}-encryption-secret'
-                            key: 'sym-key'
-                -   name: KS_DEFAULT_KEY
-                    valueFrom:
-                        secretKeyRef:
-                            name: '{{ .Values.SERVICE_NAME }}-encryption-secret'
-                            key: 'default-key'
                 -   name: DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES
                     value: '{{ .Values.DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES }}'
                 -   name: DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED
@@ -121,21 +133,6 @@ spec:
                     value: '{{ .Values.POSTGRES_HOST }}'
                 -   name: POSTGRES_PORT
                     value: '{{ .Values.POSTGRES_PORT }}'
-                -   name: POSTGRES_USER
-                    valueFrom:
-                        secretKeyRef:
-                            name: 'dbaas-storage-credentials'
-                            key: 'username'
-                -   name: POSTGRES_PASSWORD
-                    valueFrom:
-                        secretKeyRef:
-                            name: 'dbaas-storage-credentials'
-                            key: 'password'
-                -   name: POSTGRES_DATABASE
-                    valueFrom:
-                        secretKeyRef:
-                            name: 'dbaas-storage-credentials'
-                            key: 'database'
                 -   name: CLOUD_PUBLIC_HOST
                     value: '{{ .Values.CLOUD_PUBLIC_HOST }}'
                 -   name: PRODUCTION_MODE
