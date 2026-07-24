@@ -125,8 +125,10 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
 
     public void deleteById(UUID databaseId) {
         log.debug("delete database by id = {}", databaseId);
+        // Delete from Postgres outside the monitor; hold the monitor only for the H2 mirror, matching
+        // deleteAll() below. DBAAS_REPOSITORIES_MUTEX guards the H2 cache and must never wrap a Postgres write.
+        databasesRepository.deleteById(databaseId);
         synchronized (getMutex()) {
-            databasesRepository.deleteById(databaseId);
             h2DatabaseRepository.deleteById(databaseId);
             h2DatabaseRepository.flush();
         }

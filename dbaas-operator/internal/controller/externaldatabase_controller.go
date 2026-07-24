@@ -179,10 +179,10 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return handleAggregatorError(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, r.Recorder, edb, aggErr, requestID)
 	}
 
-	log.InfoC(ctx, "external database registered successfully. type: %v, dbName: %v", edb.Spec.Type, edb.Spec.DbName)
+	log.InfoC(ctx, "external database registered successfully. type: %v, dbName: %v", edb.Spec.Type, edb.Spec.DBName)
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
-		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DbName)
+		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DBName)
 	// Periodically re-reconcile so a change to a referenced credentials Secret is picked up
 	// without a Secret watch (the operator holds only namespaced Secret RBAC).
 	return ctrl.Result{RequeueAfter: r.ResyncInterval}, nil
@@ -212,7 +212,7 @@ func (r *ExternalDatabaseReconciler) buildRequest(
 		// controller already validates that a non-empty value equals metadata.namespace.
 		Classifier:                 dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(edb.Spec.Classifier, edb.Namespace)),
 		Type:                       edb.Spec.Type,
-		DbName:                     edb.Spec.DbName,
+		DBName:                     edb.Spec.DBName,
 		ConnectionProperties:       connProps,
 		UpdateConnectionProperties: true,
 	}, nil
@@ -278,7 +278,7 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 		}
 	}
 
-	// Defence-in-depth duplicate name check — CRD CEL validation should catch this
+	// Defense-in-depth duplicate name check — CRD CEL validation should catch this
 	// first, but we guard here too in case validation is bypassed.
 	seen := make(map[string]string, len(ref.Keys))
 	for _, km := range ref.Keys {
@@ -321,8 +321,8 @@ func (r *ExternalDatabaseReconciler) applySecretCredentials(
 // generation and would otherwise be filtered out.
 //
 // Create and Delete fall through to the embedded predicate.Funcs defaults
-// (both return true), preserving standard behaviour for new and removed CRs.
-// Only Update is customised.
+// (both return true), preserving standard behavior for new and removed CRs.
+// Only Update is customized.
 type specOrRefreshTriggerPredicate struct{ predicate.Funcs }
 
 func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
@@ -347,7 +347,7 @@ func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
 // periodic resync (ResyncInterval) via RequeueAfter on a successful reconcile, or
 // immediately via the refresh annotation above.
 //
-// opts allows callers to customise the controller's behaviour — most notably
+// opts allows callers to customize the controller's behavior — most notably
 // the RateLimiter, which controls the exponential backoff applied when
 // Reconcile returns an error (BackingOff phase).  Pass
 // ctrlcontroller.Options{} to keep the controller-runtime defaults.
@@ -363,7 +363,10 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("externaldatabase").
 		Complete(r)

@@ -376,7 +376,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 	tenantSpec := func(tenantID string) dbaasv1.InternalDatabaseSpec {
 		spec := baseSpec()
 		spec.Classifier.Scope = "tenant"
-		spec.Classifier.TenantId = tenantID
+		spec.Classifier.TenantID = tenantID
 		return spec
 	}
 

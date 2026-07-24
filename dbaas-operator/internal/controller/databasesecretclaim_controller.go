@@ -17,6 +17,9 @@ limitations under the License.
 package controller
 
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims,verbs=get;list;watch;patch
+// The finalizers permission lets SetControllerReference create Secret owner references with
+// blockOwnerDeletion=true when OwnerReferencesPermissionEnforcement is enabled.
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
 //
 // Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
@@ -113,14 +116,12 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		// Stamp observedGeneration on terminal states only. Successful
 		// reconciles now carry a safety-net RequeueAfter, so the result's
 		// requeue delay can no longer distinguish "done" from "retrying";
-		// gate on the phase instead. Succeeded and InvalidConfiguration are
-		// terminal (the generation has been fully processed); BackingOff is
-		// not (still polling on a transient error).
+		// gate on the conditions instead. Ready=True and Stalled=True are
+		// terminal (the generation has been fully processed); a transient
+		// error leaves both false (still polling).
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecretClaim, retErr error) bool {
-				return retErr == nil &&
-					(obj.Status.Phase == dbaasv1.PhaseSucceeded ||
-						obj.Status.Phase == dbaasv1.PhaseInvalidConfiguration)
+				return retErr == nil && isTerminal(obj.Status.Conditions, obj.Generation)
 			},
 			"DatabaseSecretClaim")
 	}()
@@ -547,7 +548,7 @@ type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
 	Type       string         `json:"type"`
 	UserRole   string         `json:"userRole,omitempty"`
-	Id         string         `json:"id,omitempty"`
+	ID         string         `json:"id,omitempty"`
 	Name       string         `json:"name,omitempty"`
 	Namespace  string         `json:"namespace,omitempty"`
 	Settings   map[string]any `json:"settings,omitempty"`
@@ -568,7 +569,7 @@ func buildSecretData(s *dbaasv1.DatabaseSecretClaim, dbResp *aggregatorclient.Da
 		Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
 		Type:       s.Spec.Type,
 		UserRole:   s.Spec.UserRole,
-		Id:         dbResp.Id,
+		ID:         dbResp.ID,
 		Name:       dbResp.Name,
 		Namespace:  dbResp.Namespace,
 		Settings:   dbResp.Settings,
@@ -604,8 +605,8 @@ func isOlderClaimant(a, b *dbaasv1.DatabaseSecretClaim) bool {
 // would otherwise be filtered out and never reconciled.
 //
 // Create and Delete fall through to the embedded predicate.Funcs defaults
-// (both return true), preserving the standard behaviour for new and removed
-// CRs. Only Update is customised.
+// (both return true), preserving the standard behavior for new and removed
+// CRs. Only Update is customized.
 type specOrRotationTriggerPredicate struct{ predicate.Funcs }
 
 func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
@@ -652,7 +653,10 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 		For(&dbaasv1.DatabaseSecretClaim{},
 			builder.WithPredicates(specOrRotationTriggerPredicate{})).
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue siblings that share spec.secretName when any DatabaseSecretClaim
 		// in the namespace is created, deleted, or has a spec change. This lets
 		// a loser CR recover automatically once the older claimant is removed or
@@ -710,7 +714,7 @@ func (r *DatabaseSecretClaimReconciler) triggerForSecretClaim(key string, s *dba
 		return triggerNamespaceBindingChange
 	case r.consumeSiblingTrigger(key):
 		return triggerSiblingSecretClaim
-	case s.Status.ObservedGeneration >= s.Generation && s.Status.Phase == dbaasv1.PhaseSucceeded:
+	case isReadyForGeneration(s.Status.Conditions, s.Generation):
 		return triggerSafetyNet
 	default:
 		return triggerSpecChange

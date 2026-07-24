@@ -102,13 +102,13 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	original := dd.DeepCopy()
 
-	// Stamp observedGeneration only when reaching a terminal state.
-	// WaitingForDependency/BackingOff are not terminal — don't stamp.
+	// Stamp observedGeneration only when reaching a terminal state: Ready=True
+	// (provisioned) or Stalled=True (permanent error). A pending async operation
+	// or a transient error leaves both false — don't stamp.
 	defer func() {
 		patchStatusOnExit(ctx, r.Status(), dd, original, &retErr,
 			func(dd *dbaasv1.InternalDatabase, _ error) bool {
-				return dd.Status.Phase == dbaasv1.PhaseSucceeded ||
-					dd.Status.Phase == dbaasv1.PhaseInvalidConfiguration
+				return isTerminal(dd.Status.Conditions, dd.Generation)
 			},
 			"InternalDatabase")
 	}()
@@ -234,7 +234,7 @@ func (r *InternalDatabaseReconciler) buildPayload(dd *dbaasv1.InternalDatabase) 
 // API materializes the database exactly as the first runtime tenant connection would, after which the
 // claim resolves. No-op for service scope or a tenant declaration without a pinned tenantId.
 func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx context.Context, dd *dbaasv1.InternalDatabase) error {
-	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantId == "" {
+	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantID == "" {
 		return nil
 	}
 	req := &aggregatorclient.CreateDatabaseRequest{
@@ -243,7 +243,7 @@ func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx conte
 		OriginService: dd.Spec.Classifier.MicroserviceName,
 	}
 	log.InfoC(ctx, "materializing pinned tenant database tenantId=%v microserviceName=%v",
-		dd.Spec.Classifier.TenantId, dd.Spec.Classifier.MicroserviceName)
+		dd.Spec.Classifier.TenantID, dd.Spec.Classifier.MicroserviceName)
 	start := time.Now()
 	err := r.Aggregator.CreateDatabase(ctx, dd.Namespace, req)
 	recordAggregatorCall(controllerIDB, operationCreateDatabase, start, err)
@@ -550,7 +550,10 @@ func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
+			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
+			// The binding status is written by its own controller; only create, delete,
+			// and spec changes can affect ownership, so status-only updates are ignored.
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("internaldatabase").
 		Complete(r)

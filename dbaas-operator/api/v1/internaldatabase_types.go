@@ -58,7 +58,7 @@ type InternalDatabaseSpec struct {
 	// Required keys: microserviceName, scope.
 	// Immutable after creation — changing the classifier of an existing
 	// InternalDatabase would switch the CR onto a different database while
-	// the controller's status (trackingID, observedGeneration) still references
+	// the controller's status (trackingId, observedGeneration) still references
 	// the original one. To rebind to a different database, delete and recreate
 	// the CR.
 	// +kubebuilder:validation:Required
@@ -105,17 +105,17 @@ type InternalDatabaseSpec struct {
 type InternalDatabaseStatus struct {
 	OperatorStatus `json:",inline"`
 
-	// trackingID is the identifier returned by dbaas-aggregator when a database
+	// trackingId is the identifier returned by dbaas-aggregator when a database
 	// provisioning operation is started asynchronously (HTTP 202). The controller
 	// stores it here and uses it to poll the operation status on subsequent reconciles.
 	// Cleared once the operation reaches a terminal state (Completed or Failed).
 	// +optional
-	TrackingID string `json:"trackingID,omitempty"`
+	TrackingID string `json:"trackingId,omitempty"`
 
 	// pendingOperationGeneration stores the .metadata.generation at which the
-	// current trackingID was obtained. The controller uses this to detect spec
+	// current trackingId was obtained. The controller uses this to detect spec
 	// changes that occur while an async operation is in progress: if the current
-	// generation differs from pendingOperationGeneration, the stale trackingID is
+	// generation differs from pendingOperationGeneration, the stale trackingId is
 	// cleared and the operation is re-submitted.
 	// Zero means no pending async operation.
 	// +optional
@@ -126,6 +126,7 @@ type InternalDatabaseStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,path=internaldatabases,singular=internaldatabase,shortName=dbidb,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="MicroserviceName",type="string",JSONPath=".spec.classifier.microserviceName"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"

@@ -89,7 +89,7 @@ func loadAggregatorCredentials(log logging.Logger, dir string) (username, passwo
 // events on "..data". Direct Write events on users.json are also handled for
 // local-dev mounts.
 //
-// The function blocks until ctx is cancelled. Errors starting the watcher are logged
+// The function blocks until ctx is canceled. Errors starting the watcher are logged
 // and treated as non-fatal (credential auto-reload is simply disabled).
 func watchCredentials(ctx context.Context, log logging.Logger, dir string, client credentialsSetter) error {
 	watcher, err := fsnotify.NewWatcher()

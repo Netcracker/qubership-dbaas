@@ -55,7 +55,7 @@ type Classifier struct {
 	// tenantId is the tenant identifier for multi-tenant deployments.
 	// Only relevant when scope="tenant".
 	// +optional
-	TenantId string `json:"tenantId,omitempty"`
+	TenantID string `json:"tenantId,omitempty"`
 
 	// customKeys is an optional nested map for adapter-specific or
 	// application-specific identifiers (e.g. logicalDBName).
@@ -96,7 +96,15 @@ type Classifier struct {
 // ExternalDatabase and DatabaseAccessPolicy never transition into WaitingForDependency —
 // their reconcile flows are fully synchronous.
 //
-// +kubebuilder:validation:Enum=Unknown;Processing;WaitingForDependency;Succeeded;BackingOff;InvalidConfiguration
+// Phase is an observational summary for humans, not an API contract: it exists so
+// that `kubectl get` can show a single readable column, which conditions cannot
+// provide (JSONPath selects, it cannot branch). Conditions are the source of
+// truth — automation must read status.conditions, never status.phase.
+//
+// Deliberately not constrained by a CEL/OpenAPI enum. A closed enum on a status
+// field means that shipping a new phase value before the updated CRD reaches the
+// cluster makes the API server reject the whole status write — which would drop
+// the conditions in the same request and leave the resource unobservable.
 type Phase string
 
 const (
@@ -128,8 +136,10 @@ const (
 
 // OperatorStatus contains common status fields shared by all dbaas operator resources.
 type OperatorStatus struct {
-	// phase represents the current processing phase of the resource.
-	// +kubebuilder:default=Unknown
+	// phase is a human-readable summary of the conditions below, provided so that
+	// `kubectl get` can show one column. Do not automate against it — read
+	// conditions instead. Not defaulted by the API server: status is owned by the
+	// controller, which always sets phase alongside the conditions.
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
 
@@ -150,6 +160,13 @@ type OperatorStatus struct {
 	//                 DatabaseAccessPolicy: reason "PolicyApplied" on success.
 	//                 InternalDatabase: reason "DatabaseProvisioned" on success;
 	//                   reason "ProvisioningStarted" while the async operation is in progress.
+	//                 NamespaceBinding: reason "BindingRegistered" on success;
+	//                   reason "BindingBlocked" while deletion is deferred by
+	//                   remaining workload resources (the message lists their kinds);
+	//                   reason "BindingReleased" once the operator removed its
+	//                   finalizer and only other controllers' finalizers keep the
+	//                   object alive; reason "OwnershipCheckError" when listing
+	//                   the potentially blocking resources failed (retried).
 	//                 False on any error; see Reason for the error category.
 	//   - "Stalled" — True when the error is permanent and the controller will
 	//                 not retry until the spec is changed (e.g. InvalidSpec,
@@ -161,8 +178,10 @@ type OperatorStatus struct {
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-	// Use this value to correlate operator logs with dbaas-aggregator logs when
+	// lastRequestId is the X-Request-Id of the most recent reconcile attempt
+	// that wrote this status; a reconcile that leaves the status untouched (for
+	// example a steady-state NamespaceBinding reconcile) keeps the previous
+	// value. Use it to correlate operator logs with dbaas-aggregator logs when
 	// investigating issues for a specific resource.
 	// +optional
 	LastRequestID string `json:"lastRequestId,omitempty"`

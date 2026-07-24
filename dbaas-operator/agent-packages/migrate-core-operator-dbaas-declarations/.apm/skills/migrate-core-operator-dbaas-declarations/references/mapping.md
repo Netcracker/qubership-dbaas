@@ -1,0 +1,105 @@
+# DBaaS CR migration mapping
+
+Use this reference to convert old DBaaS declarative formats to the dedicated dbaas-operator CRDs.
+
+## Source formats
+
+Legacy JSON:
+
+- common filename: `dbaas-configuration.json`; locate it by content regardless of its parent directory
+- database declarations: `{"apiVersion":"nc.core.dbaas/v3","kind":"DatabaseDeclaration","declarations":[...]}`
+- policies: `{"apiVersion":"nc.core.dbaas/v3","kind":"DbPolicy"}` or `{"kind":"dbPolicy"}`
+- files may also contain a top-level JSON array mixing both declaration types
+
+Old generic YAML CR:
+
+- `apiVersion: core.netcracker.com/v1`
+- `kind: DBaaS`
+- `subKind: DatabaseDeclaration` or `subKind: DbPolicy`
+- declaration body under `spec`
+- Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions or include lines under
+  labels. Quote template scalar values or use the converter's Helm fallback, then review the output.
+
+Target CRDs:
+
+- `apiVersion: dbaas.netcracker.com/v1`
+- `kind: InternalDatabase`
+- `kind: DatabaseAccessPolicy`
+
+## DatabaseDeclaration to InternalDatabase
+
+Each old database declaration becomes one `InternalDatabase`.
+
+| Old field | New field | Notes |
+| --- | --- | --- |
+| `declarations[]` | one CR per item | split the list; append the item index when a multi-item wrapper has one parent name |
+| `kind: DatabaseDeclaration` | `kind: InternalDatabase` | remove old `kind` and `subKind` |
+| `spec.classifierConfig.classifier` or `classifierConfig.classifier` | `spec.classifier` | unwrap `classifierConfig` |
+| `classifier.microserviceName` | `spec.classifier.microserviceName` | preserve Helm templates |
+| `classifier.scope` | `spec.classifier.scope` | required |
+| `classifier.namespace` | omit | the operator derives it from `metadata.namespace`; preserve `sourceClassifier.namespace` separately |
+| `classifier.tenantId` | `spec.classifier.tenantId` | a concrete tenant triggers eager materialization; omission leaves only the tenant-agnostic template |
+| `classifier.customKeys` | `spec.classifier.customKeys` | preserve nested JSON/YAML values |
+| other top-level classifier keys | `spec.classifier.extraKeys` | use for legacy open classifier keys such as `transactional` |
+| `type` | `spec.type` | required |
+| `lazy` | `spec.lazy` | coerce string `"true"`/`"false"`; flag other non-booleans; do not combine `true` with clone |
+| `settings` | `spec.settings` | verify target schema; flag non-string values if CRD requires string values |
+| `namePrefix` | `spec.namePrefix` | optional |
+| `versioningConfig` | `spec.versioningConfig` | marks configuration/versioned database |
+| `initialInstantiation` | `spec.initialInstantiation` | optional |
+| `initialInstantiation.sourceClassifier` | `spec.initialInstantiation.sourceClassifier` | convert classifier keys; its `microserviceName` must equal the target classifier owner |
+
+Do not keep old `spec.classifierConfig`. The dbaas-operator controller re-wraps `spec.classifier` into the aggregator
+wire shape.
+
+## DbPolicy to DatabaseAccessPolicy
+
+Each old DB policy becomes one `DatabaseAccessPolicy`.
+
+| Old field | New field | Notes |
+| --- | --- | --- |
+| `kind: DbPolicy` or `kind: dbPolicy` | `kind: DatabaseAccessPolicy` | remove old `kind` and `subKind` |
+| `services` | `spec.services` | preserve list order |
+| `policy` | `spec.policy` | preserve roles and database types |
+| `disableGlobalPermissions` | `spec.disableGlobalPermissions` | coerce string `"false"`/`"true"` to boolean when safe |
+| owning service name | `spec.microserviceName` | required by new CRD; derive from service context or ask |
+
+Preferred derivation order for `spec.microserviceName`:
+
+1. explicit user-provided service name
+2. existing `spec.microserviceName` if the source already has it
+3. Helm label `metadata.labels.app.kubernetes.io/instance`
+4. Helm expression `{{ .Values.SERVICE_NAME }}` for chart-local declarations
+5. service/chart folder name, if clearly the owning service
+
+## Metadata
+
+Use `metadata.name` values that are stable and DNS-label compatible. Examples:
+
+- `db-declaration-1` -> `internaldatabase-1` or a domain-specific name such as `service-db`
+- `db-policy-1` -> `database-access-policy` or `fiber-admin-role`
+
+For a multi-item `declarations[]` wrapper with one `metadata.name`, append each declaration index to the parent name.
+
+Use `metadata.namespace` from the old generic CR if present. For Helm charts, preserve:
+
+```yaml
+namespace: "{{ .Values.NAMESPACE }}"
+```
+
+Do not copy status blocks. Do not copy old generic CR labels unless the target deployment tooling still requires them.
+
+## Validation checklist
+
+- Ensure no output manifest has `kind: DBaaS`.
+- Ensure no `InternalDatabase` has `spec.classifierConfig`.
+- Omit target `spec.classifier.namespace`; the operator derives it from `metadata.namespace`.
+- Ensure every `InternalDatabase` has `spec.classifier.microserviceName`, `spec.classifier.scope`, and `spec.type`.
+- Ensure every `DatabaseAccessPolicy` has `spec.microserviceName` and at least one of `spec.services` or `spec.policy`.
+- Flag a `lazy` value that is not boolean after coercing string `"true"`/`"false"`.
+- Flag `lazy: true` combined with `initialInstantiation.approach: clone`.
+- Flag `initialInstantiation.approach: clone` without `sourceClassifier`.
+- Fill a missing `sourceClassifier.microserviceName` from the target classifier and flag any explicit mismatch.
+- Reject cross-service clones: source and target `microserviceName` values must be identical.
+- Flag `settings` values that are not strings when the target CRD schema is `map[string]string`.
+- Preserve `versioningConfig.approach: clone` or `new`; this is what marks configuration/versioned databases.

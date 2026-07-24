@@ -23,6 +23,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -61,15 +64,18 @@ spec:
                     rule entry.
                   properties:
                     dbType:
-                      description: dbType is the database engine type this rule applies
-                        to, e.g. "postgresql" or "mongodb".
+                      description: |-
+                        dbType is the database engine type this rule applies to, e.g. "postgresql" or "mongodb".
+                        The Pattern rejects a whitespace-only value, which MinLength alone accepts.
                       minLength: 1
+                      pattern: \S
                       type: string
                     namespaces:
                       description: namespaces is the list of namespaces where the
                         permanent rule applies.
                       items:
                         minLength: 1
+                        pattern: \S
                         type: string
                       minItems: 1
                       type: array
@@ -82,6 +88,7 @@ spec:
                         the rule, not that this identifier was resolved to a registered physical
                         database.
                       minLength: 1
+                      pattern: \S
                       type: string
                   required:
                   - dbType
@@ -133,6 +140,13 @@ spec:
                                   DatabaseAccessPolicy: reason "PolicyApplied" on success.
                                   InternalDatabase: reason "DatabaseProvisioned" on success;
                                     reason "ProvisioningStarted" while the async operation is in progress.
+                                  NamespaceBinding: reason "BindingRegistered" on success;
+                                    reason "BindingBlocked" while deletion is deferred by
+                                    remaining workload resources (the message lists their kinds);
+                                    reason "BindingReleased" once the operator removed its
+                                    finalizer and only other controllers' finalizers keep the
+                                    object alive; reason "OwnershipCheckError" when listing
+                                    the potentially blocking resources failed (retried).
                                   False on any error; see Reason for the error category.
                     - "Stalled" — True when the error is permanent and the controller will
                                   not retry until the spec is changed (e.g. InvalidSpec,
@@ -199,8 +213,10 @@ spec:
                 x-kubernetes-list-type: map
               lastRequestId:
                 description: |-
-                  lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-                  Use this value to correlate operator logs with dbaas-aggregator logs when
+                  lastRequestId is the X-Request-Id of the most recent reconcile attempt
+                  that wrote this status; a reconcile that leaves the status untouched (for
+                  example a steady-state NamespaceBinding reconcile) keeps the previous
+                  value. Use it to correlate operator logs with dbaas-aggregator logs when
                   investigating issues for a specific resource.
                 type: string
               observedGeneration:
@@ -214,21 +230,19 @@ spec:
                 format: int64
                 type: integer
               phase:
-                default: Unknown
-                description: phase represents the current processing phase of the
-                  resource.
-                enum:
-                - Unknown
-                - Processing
-                - WaitingForDependency
-                - Succeeded
-                - BackingOff
-                - InvalidConfiguration
+                description: |-
+                  phase is a human-readable summary of the conditions below, provided so that
+                  `kubectl get` can show one column. Do not automate against it — read
+                  conditions instead. Not defaulted by the API server: status is owned by the
+                  controller, which always sets phase alongside the conditions.
                 type: string
             type: object
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: PermanentBalancingRule name must be 'permanent-balancing-rules'
+          rule: self.metadata.name == 'permanent-balancing-rules'
     served: true
     storage: true
     subresources:

@@ -36,7 +36,7 @@ const DefaultLimit = 500
 const zeroUUID = "00000000-0000-0000-0000-000000000000"
 
 func epochCursor() aggregatorclient.ChangeCursor {
-	return aggregatorclient.ChangeCursor{LastRotatedAt: time.Unix(0, 0).UTC(), Id: zeroUUID}
+	return aggregatorclient.ChangeCursor{LastRotatedAt: time.Unix(0, 0).UTC(), ID: zeroUUID}
 }
 
 // ChangedSource is the subset of the aggregator client the poller depends on.
@@ -74,7 +74,7 @@ type RotationPoller struct {
 // cursor owner drives the fan-out.
 func (p *RotationPoller) NeedLeaderElection() bool { return true }
 
-// Start runs the poll loop until ctx is cancelled. It implements manager.Runnable.
+// Start runs the poll loop until ctx is canceled. It implements manager.Runnable.
 func (p *RotationPoller) Start(ctx context.Context) error {
 	limit := p.Limit
 	if limit <= 0 {
@@ -116,7 +116,7 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 		}
 		if resp.HighWaterMark != nil {
 			log.InfoC(ctx, "Rotation poller seeded cursor lastRotatedAt=%v id=%s",
-				resp.HighWaterMark.LastRotatedAt.UTC(), resp.HighWaterMark.Id)
+				resp.HighWaterMark.LastRotatedAt.UTC(), resp.HighWaterMark.ID)
 			return resp.HighWaterMark
 		}
 		c := epochCursor()
@@ -141,11 +141,11 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 		// Items are ordered by (lastRotatedAt, id) ascending; advance the cursor
 		// unconditionally so a per-namespace list error (logged above) does not
 		// stall it — the safety-net reconcile heals any skipped fan-out.
-		advanced = &aggregatorclient.ChangeCursor{LastRotatedAt: it.LastRotatedAt, Id: it.Id}
+		advanced = &aggregatorclient.ChangeCursor{LastRotatedAt: it.LastRotatedAt, ID: it.ID}
 	}
 	if len(resp.Items) > 0 {
 		log.InfoC(ctx, "Rotation poller processed changes count=%d cursor=(%v,%s)",
-			len(resp.Items), advanced.LastRotatedAt.UTC(), advanced.Id)
+			len(resp.Items), advanced.LastRotatedAt.UTC(), advanced.ID)
 	}
 	return advanced
 }

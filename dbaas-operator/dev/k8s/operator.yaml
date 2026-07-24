@@ -22,6 +22,7 @@ rules:
       - databasesecretclaims/status
       - databaseaccesspolicies/status
       - externaldatabases/status
+      - namespacebindings/status
     verbs: [get, update, patch]
   # permanentbalancingrules are operator-namespace-only (informer scoped to the
   # operator namespace) — their RBAC is namespaced, in the Role below, not here.
@@ -35,8 +36,11 @@ rules:
       - microservicebalancingrules/status
       - namespacebalancingrules/status
     verbs: [get, update, patch]
+  # databasesecretclaims/finalizers is required because SetControllerReference creates
+  # the Secret ownerReference with blockOwnerDeletion=true.
   - apiGroups: [dbaas.netcracker.com]
     resources:
+      - databasesecretclaims/finalizers
       - microservicebalancingrules/finalizers
       - namespacebalancingrules/finalizers
     verbs: [update]
