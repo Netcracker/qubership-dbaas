@@ -29,6 +29,7 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -117,6 +118,7 @@ func enqueueForBindingList[L client.ObjectList](
 }
 
 // requestIDFromContext returns the reconcile request ID from ctx.
+// It panics if the reconcile context was not initialized.
 func requestIDFromContext(ctx context.Context) string {
 	xrid, err := xrequestid.Of(ctx)
 	if err != nil {
@@ -236,8 +238,10 @@ func invalidSpec[P ~string](
 	return ctrl.Result{}, nil
 }
 
-// handleAggregatorError maps an aggregator call failure to phase, conditions,
-// event, and retry behavior for controllers that call dbaas-aggregator.
+// handleAggregatorError maps an aggregator failure to status, event, and retry behavior:
+//   - 401 -> BackingOff (transient, retry)
+//   - 400/403/409/410/422 -> InvalidConfiguration (permanent, no retry)
+//   - 5xx/network -> BackingOff (transient, retry)
 func handleAggregatorError[P ~string](
 	phase *P,
 	conditions *[]metav1.Condition,
@@ -312,10 +316,19 @@ func patchStatusOnExit[T interface {
 		setObservedGeneration(obj)
 	}
 
-	if patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original)); patchErr != nil {
-		log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
-		*retErr = errors.Join(*retErr, patchErr)
+	patchErr := statusWriter.Patch(ctx, obj, client.MergeFrom(original))
+	if patchErr == nil {
+		return
 	}
+	if apierrors.IsNotFound(patchErr) {
+		// The reconcile may have released the object's last finalizer, letting a
+		// pending deletion complete before this deferred patch ran. A vanished
+		// object has no status to report — not an error.
+		log.InfoC(ctx, "skipping %v status patch: object is gone", objectType)
+		return
+	}
+	log.ErrorC(ctx, "patch %v status: %v", objectType, patchErr)
+	*retErr = errors.Join(*retErr, patchErr)
 }
 
 func setObservedGeneration[T interface {

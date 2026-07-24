@@ -154,6 +154,9 @@ type OperatorStatus struct {
 
 	// conditions represent the current state of the resource.
 	// Ready describes whether the current generation was successfully processed.
+	// NamespaceBinding uses BindingRegistered on success, BindingBlocked while
+	// deletion is deferred, BindingReleased after its protection finalizer is
+	// removed, and OwnershipCheckError when listing blocking resources fails.
 	// Stalled=True marks a permanent error that will not retry until the spec changes;
 	// Stalled=False marks a transient error that the controller retries automatically.
 	// +optional
@@ -161,8 +164,10 @@ type OperatorStatus struct {
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// lastRequestId is the X-Request-Id of the most recent reconcile attempt.
-	// Use this value to correlate operator logs with dbaas-aggregator logs when
+	// lastRequestId is the X-Request-Id of the most recent reconcile attempt
+	// that wrote this status; a reconcile that leaves the status untouched (for
+	// example a steady-state NamespaceBinding reconcile) keeps the previous
+	// value. Use it to correlate operator logs with dbaas-aggregator logs when
 	// investigating issues for a specific resource.
 	// +optional
 	LastRequestID string `json:"lastRequestId,omitempty"`

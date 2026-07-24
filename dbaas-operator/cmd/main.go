@@ -208,12 +208,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	edbChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
-	dpChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} })
-	ddChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} })
-	microserviceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} })
-	namespaceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} })
-	dsChecker := ownership.NewKindChecker(mgr.GetClient(), func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} })
+	edbChecker := ownership.NewKindChecker(mgr.GetClient(), "ExternalDatabase", func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
+	dpChecker := ownership.NewKindChecker(mgr.GetClient(), "DatabaseAccessPolicy", func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} })
+	ddChecker := ownership.NewKindChecker(mgr.GetClient(), "InternalDatabase", func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} })
+	microserviceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), "MicroserviceBalancingRule", func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} })
+	namespaceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), "NamespaceBalancingRule", func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} })
+	dsChecker := ownership.NewKindChecker(mgr.GetClient(), "DatabaseSecretClaim", func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} })
 	// PermanentBalancingRule is intentionally excluded: it is an operator-namespace
 	// resource decoupled from NamespaceBinding, so it never blocks a (tenant)
 	// NamespaceBinding deletion.

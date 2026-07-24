@@ -107,10 +107,14 @@ The operator publishes two families of metrics:
 
 These gauges are emitted **only for resources in namespaces owned by this operator instance**
 (`PermanentBalancingRule` is read from the operator's own namespace; `NamespaceBinding` is reported
-for all namespaces with a `state` label). They are derived from the CR object state the operator has
-listed/cached — `status` (phase, conditions, observed generation, rotation timestamps), `spec`
-(desired balancing-rule targets, `NamespaceBinding` ownership), and `metadata`
+for all namespaces with a `state` label, and additionally emits the phase / condition /
+observed-generation-lag gauges for bindings whose `spec.operatorNamespace` is this instance — only
+the owning instance writes `NamespaceBinding` status). They are derived from the CR object state the
+operator has listed/cached — `status` (phase, conditions, observed generation, rotation timestamps),
+`spec` (desired balancing-rule targets, `NamespaceBinding` ownership), and `metadata`
 (`deletionTimestamp`, finalizers) — **not** from an independent read-back of dbaas-aggregator.
+`dbaas_resource_deletion_state` is not emitted for `NamespaceBinding`: its deletion progress is
+already carried by `dbaas_namespace_binding_state` (`deleting_with_finalizer`).
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
