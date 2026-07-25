@@ -6,6 +6,7 @@
 - [High-Level Architecture](#high-level-architecture)
 - [Prerequisites and Installation](#prerequisites-and-installation)
 - [API Endpoints](#api-endpoints)
+  - [Common Response Handling](#common-response-handling)
   - [ExternalDatabase Registration Endpoint](#externaldatabase-registration-endpoint)
   - [DatabaseAccessPolicy Apply Endpoint](#databaseaccesspolicy-apply-endpoint)
   - [InternalDatabase Apply Endpoint](#internaldatabase-apply-endpoint)
@@ -26,6 +27,7 @@
     - [Permission Reference](#permission-reference)
   - [Secret Access (Namespaced)](#secret-access-namespaced)
 - [Custom Resources](#custom-resources)
+  - [Common Status Model](#common-status-model)
   - [NamespaceBinding](#namespacebinding)
     - [Resource Fields](#namespacebinding-resource-fields)
     - [How It Works](#how-namespacebinding-works)
@@ -86,7 +88,7 @@ following custom resources (CRs):
 | `DatabaseSecretClaim` | `dbaas.netcracker.com/v1` | Namespaced | Materializes a managed database's connection credentials into a Kubernetes Secret and keeps it in sync as they rotate |
 | `MicroserviceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-microservice physical database placement rules in a business namespace |
 | `NamespaceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-namespace physical database placement rules in a business namespace |
-| `PermanentBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares permanent placement rules. **Operator-namespace-only** (informer scoped to `CLOUD_NAMESPACE`); decoupled from `NamespaceBinding` — targets any business namespaces |
+| `PermanentBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares permanent placement rules targeting any business namespaces. Lives in the operator namespace only — see [PermanentBalancingRule scope](#pbr-scope) |
 
 ---
 
@@ -210,6 +212,26 @@ Every request carries a fixed **30 s** timeout and the client performs **no retr
 surfaced to the reconciler, which retries according to the [Reconcile Backoff](#reconcile-backoff) policy. Neither the
 timeout nor the retry behavior is configurable.
 
+### Common Response Handling
+
+These outcomes are the same for every **CR-driven** endpoint below and are not repeated in the
+per-endpoint tables; each of those tables lists only the responses whose meaning is specific to that
+endpoint. They do **not** apply to the
+[rotation poller's changed-databases feed](#rotation-poller-changed-databases-feed), which drives no CR
+status at all: a `401`, `5xx`, or network error there is logged, the cursor is left where it was, and the
+request is repeated on the next tick — no CR moves to `BackingOff` and none reports `Unauthorized`.
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
+| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
+| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
+
+`400`, `403`, `409`, `410`, and `422` are the permanent set: they yield `InvalidConfiguration` with
+`Ready=False`, `Stalled=True`, and reason `AggregatorRejected`. The per-endpoint tables still list them,
+because what each code *means* differs by endpoint. **Any other 4xx** — `404` included, unless an endpoint
+below gives it a specific meaning — is treated as transient and handled like a `5xx`.
+
 ### ExternalDatabase Registration Endpoint
 
 **`PUT /api/v3/dbaas/{namespace}/databases/registration/externally_manageable`**
@@ -226,12 +248,9 @@ if it does not exist, or updates the connection properties if it does.
 |-----------|-----------|-----------------|
 | `200 OK` / `201 Created` | Successfully registered or updated | `Succeeded` — `Ready=True` |
 | `400` | Invalid classifier (missing required fields) | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
 | `403` | `tenantId` in classifier does not match JWT | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `409` | Database exists but is not externally managed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
 | `410` / `422` | Aggregator-side spec rejection (rare for this endpoint, but handled the same as 400/403/409) | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
-| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
 ### DatabaseAccessPolicy Apply Endpoint
 
@@ -246,9 +265,6 @@ the payload `metadata`, not in the spec body.
 |-----------|-----------|-----------------|
 | `200 OK` | Policy applied successfully | `Succeeded` — `Ready=True`, reason `PolicyApplied` |
 | `400` / `403` / `409` / `410` / `422` | Invalid or permanently rejected policy spec | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `401` | Missing or invalid auth token | `BackingOff` — retried, reason `Unauthorized` |
-| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
-| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
 ### InternalDatabase Apply Endpoint
 
@@ -267,9 +283,6 @@ operator then polls (see the next endpoint).
 | `200 OK` | Provisioned synchronously | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned` |
 | `202 Accepted` | Async operation accepted; response carries `trackingId` | `WaitingForDependency` — reason `ProvisioningStarted`; the controller persists `status.trackingId` and polls the operation-status endpoint |
 | `400` / `403` / `409` / `410` / `422` | Invalid or permanently rejected declaration | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
-| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
-| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
 See [InternalDatabase Status Reference](#internaldatabase-status-reference) for the full phase model.
 
@@ -311,7 +324,6 @@ the operator materializes into the target Secret. The same call is re-issued whe
 | `200 OK` (empty `connectionProperties` for the role) | Role not yet provisioned | `BackingOff` — retried, reason `EmptyConnectionProperties` |
 | `404` + `CORE-DBAAS-4006` | Database not yet registered | `BackingOff` — retried, reason `DatabaseNotFound` (switches to `DatabaseNotFoundTimeout` after a prolonged wait) |
 | `400` / `403` / `409` / `410` / `422` | Invalid classifier or permanent rejection | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
 | `5xx` / `404` (no TMF body) / Network error | Aggregator error / unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
 A pre-flight failure where the target Secret is owned by a different resource yields reason `SecretConflict` without
@@ -332,9 +344,6 @@ microservices` entries (cleanup), then re-applies the desired list.
 |-----------|-----------|-----------------|
 | `200 OK` / `201 Created` | Rules applied | `Succeeded` — `Ready=True`, reason `BalancingRuleApplied` |
 | `400` / `403` / `409` / `410` / `422` | Invalid or rejected rule set | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
-| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
-| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
 ### NamespaceBalancingRule Endpoints
 
@@ -351,18 +360,15 @@ Entries removed from the spec — and all entries on CR deletion — are removed
 | `200 OK` / `201 Created` (`PUT`) | Rule applied | `Succeeded` — `Ready=True`, reason `BalancingRuleApplied` |
 | `200` / `204` / `404` (`DELETE`) | Rule removed (or already absent) | Cleanup succeeds; reconcile continues |
 | `400` / `403` / `409` / `410` / `422` | Invalid or rejected rule | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
-| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
-| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
 ### PermanentBalancingRule Endpoints
 
 **`PUT` / `DELETE /api/v3/dbaas/balancing/rules/permanent`**
 
-Cluster-scoped aggregator endpoint (no `{namespace}` segment). The CR itself is **operator-namespace-only** and
-**decoupled from `NamespaceBinding`**: the reconciler sends the full desired list (`dbType`, `physicalDatabaseId`,
-`namespaces`) with a `PUT` directly — it does **not** require the target namespaces to be owned (the aggregator is the
-authority on targets). Removed entries — and all entries on CR deletion — are removed with the `DELETE` variant.
+Cluster-scoped aggregator endpoint (no `{namespace}` segment). The reconciler sends the full desired list
+(`dbType`, `physicalDatabaseId`, `namespaces`) with a `PUT`. Removed entries — and all entries on CR
+deletion — are removed with the `DELETE` variant. See [PermanentBalancingRule scope](#pbr-scope) for where
+the CR must live and why its target namespaces need no binding.
 
 **Possible responses and operator behavior:**
 
@@ -371,13 +377,6 @@ authority on targets). Removed entries — and all entries on CR deletion — ar
 | `200 OK` / `201 Created` (`PUT`) | Rules applied | `Succeeded` — `Ready=True`, reason `BalancingRuleApplied` |
 | `200` / `204` (`DELETE`) | Rules removed | Cleanup succeeds; reconcile continues |
 | `400` / `403` / `409` / `410` / `422` | Invalid or rejected rule set | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
-| `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
-| `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
-| Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
-
-> A `PermanentBalancingRule` created outside the operator namespace is **silently ignored** — the operator's informer is
-> scoped to `CLOUD_NAMESPACE`, so it never reconciles such a CR. Deploy it only in the operator namespace. See
-> [Balancing Rule Lifecycle and Cleanup](#balancing-rule-lifecycle-and-cleanup).
 
 ### Rotation Poller Changed-Databases Feed
 
@@ -500,8 +499,8 @@ the exception**: the operator holds no cluster-wide `secrets` permission — Sec
 
 Three things are scoped to the operator's own namespace and so use a namespace-scoped `Role` (sufficient and more
 secure): leader-election leases, Kubernetes Events, and **`permanentbalancingrules`** — the latter because it is an
-operator-namespace-only resource whose informer is scoped to `CLOUD_NAMESPACE`, so the operator never watches it
-cluster-wide.
+resource that is only ever reconciled in the operator's own namespace, so the operator never watches it
+cluster-wide — see [PermanentBalancingRule scope](#pbr-scope).
 
 #### RBAC Manifests (Source of Truth)
 
@@ -636,6 +635,63 @@ name:
 | `NamespaceBalancingRule` | `dbnbr` | `PHASE`, `READY`, `AGE` |
 | `PermanentBalancingRule` | `dbpbr` | `PHASE`, `READY`, `AGE` |
 
+### Common Status Model
+
+Every kind reports state the same way. This section defines the shared parts; each kind's own **Status
+Reference** below lists only what is specific to it.
+
+**`status.phase`** — human-readable summary for `kubectl get`. Read `status.conditions` for automation:
+phase summarizes them and carries no information they do not already have.
+
+| Phase | Meaning |
+|-------|---------|
+| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
+| `Processing` | Controller is actively reconciling (transient) |
+| `Succeeded` | The desired state was reached — see each kind for what that means |
+| `BackingOff` | Transient error — retried, in most cases with [exponential backoff](#reconcile-backoff) |
+| `InvalidConfiguration` | Permanent error — will not retry until the spec is changed |
+
+`InternalDatabase` adds `WaitingForDependency` while an asynchronous provisioning operation is in flight.
+
+**`status.conditions`** — canonical machine-readable state. Use these for automation and alerting.
+
+| Condition | `True` | `False` |
+|-----------|--------|---------|
+| `Ready` | The current generation was processed successfully | Processing failed — check `Reason` and `Message` |
+| `Stalled` | Permanent error: the spec must be corrected, and the controller will not retry on its own | Not permanently stalled. This is the normal value on success as well as during a transient failure, so it does **not** by itself mean anything is being retried — read it together with `Ready` |
+
+`LastTransitionTime` is preserved when `Status` (`True`/`False`) has not changed — a change in `Reason` or
+`Message` at the same `Status` does not reset it.
+
+**Shared reason vocabulary** — every kind can report these; kind-specific reasons are listed with the kind.
+
+| Reason | Applied to | Meaning |
+|--------|-----------|---------|
+| `Succeeded` | `Stalled=False` (on success) | Not stalled; the last operation succeeded |
+| `InvalidSpec` | `Ready=False`, `Stalled=True` | Controller-side validation failed before calling the aggregator |
+| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned `401` |
+| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned `400`, `403`, `409`, `410`, or `422` — permanent spec issue |
+| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned `5xx`, or the call failed at the network level |
+
+**Diagnostic rules:**
+
+- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
+- **`Ready=False` + `Stalled=False`** — transient; the controller is retrying. See
+  [Reconcile Backoff](#reconcile-backoff) for which paths back off and which re-poll at a fixed interval.
+- **`Ready=True` + `Stalled=False`** — the steady state, not a retry. Nothing is scheduled beyond the
+  kind's own resync or watch events: every kind re-reconciles on a spec change, the binding-gated workload
+  kinds also on a `NamespaceBinding` event, an `ExternalDatabase` on its periodic resync, and a
+  `DatabaseSecretClaim` on a rotation trigger or its hourly safety net. `PermanentBalancingRule` has no
+  `NamespaceBinding` watch at all — see [PermanentBalancingRule scope](#pbr-scope).
+- **`status.lastRequestId`** — correlate operator logs with dbaas-aggregator logs. `DatabaseSecretClaim` is
+  the exception: it never writes this field — see its
+  [Status Reference](#databasesecretclaim-status-reference).
+
+**`status.observedGeneration`** — the generation the controller last finished processing. If
+`metadata.generation > status.observedGeneration`, the current spec has not been fully processed yet. It is
+stamped when a reconcile reaches a terminal outcome — success or a permanent (`Stalled=True`) failure — and
+is left behind on a transient failure.
+
 ### NamespaceBinding
 
 `NamespaceBinding` is a coordination resource that declares that a namespace belongs to a particular operator instance.
@@ -669,7 +725,7 @@ spec:
 The operator runs cluster-wide and watches all namespaces. Before reconciling a workload resource — `ExternalDatabase`,
 `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, or
 `NamespaceBalancingRule` — it checks whether the resource's namespace is owned by this operator instance.
-(`PermanentBalancingRule` is **exempt**: it is operator-namespace-only and decoupled from `NamespaceBinding` — see its
+(`PermanentBalancingRule` is **exempt** — see [PermanentBalancingRule scope](#pbr-scope) and its
 [endpoint section](#permanentbalancingrule-endpoints).)
 
 Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing
@@ -718,12 +774,15 @@ because deleting the binding would orphan those resources.
 
 | Situation | Result |
 |-----------|--------|
-| Namespace still contains any operator-managed workload — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, or `NamespaceBalancingRule` (`PermanentBalancingRule` never blocks — it is operator-namespace-only) | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted and the `Ready` condition lists the blocking kinds |
+| Namespace still contains any operator-managed workload — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, or `NamespaceBalancingRule` (`PermanentBalancingRule` never blocks — see [its scope](#pbr-scope)) | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted and the `Ready` condition lists the blocking kinds |
 | No blocking workload resources remain | Finalizer is removed; Kubernetes completes the deletion |
 
 #### NamespaceBinding Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbnb`; read `status.conditions` for automation.
+Shared phases, conditions, and reasons are described in [Common Status Model](#common-status-model).
+`NamespaceBinding` never sets `Stalled=True`, and it uses its own reason vocabulary:
+`BindingRegistered`, `BindingBlocked`, `BindingReleased`, and `OwnershipCheckError` (all condition-only —
+`BindingRegistered` and `BindingBlocked` are also emitted as events).
 
 **Only the owning operator instance writes this status** — the one whose `CLOUD_NAMESPACE` equals
 `spec.operatorNamespace`. Foreign instances never touch the object. A binding whose
@@ -742,6 +801,9 @@ and no `observedGeneration` long after creation mean no instance has claimed the
 `status.observedGeneration` is stamped only when the binding is `Ready` for the current generation.
 Deletion bumps the generation, so a blocked deletion keeps `observedGeneration` at the pre-deletion
 value — `metadata.generation > status.observedGeneration` is a quick "deletion is pending" signal.
+
+The status patch is skipped entirely when the computed status is byte-identical to the stored one, so
+`status.lastRequestId` on a `NamespaceBinding` is refreshed only when something else in the status changes.
 
 #### NamespaceBinding Usage Examples
 
@@ -1034,48 +1096,14 @@ CR created / spec changed / periodic resync (re-reads Secrets)
 
 #### ExternalDatabase Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbedb`.
-Read `status.conditions` for automation: phase summarizes them and carries no information they do not
-already have.
-
-| Phase | Meaning |
-|-------|---------|
-| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
-| `Processing` | Controller is actively reconciling (transient) |
-| `Succeeded` | Successfully registered with dbaas-aggregator |
-| `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
-| `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
-
-**`status.conditions`** — canonical machine-readable state. Use these for automation and alerting.
-
-`LastTransitionTime` is preserved when `Status` (True/False) has not changed — a change in `Reason` or `Message` at the
-same `Status` does not reset the transition time.
-
-**`Ready`** — is the database registered?
-
-| Status | Meaning |
-|--------|---------|
-| `True` | Successfully registered for the current generation |
-| `False` | Registration failed — check `Reason` and `Message` |
-
-**`Stalled`** — will retrying help?
-
-| Status | Meaning |
-|--------|---------|
-| `True` | Permanent error — the spec must be corrected; the controller will not retry |
-| `False` | Transient error or success — the controller retries automatically |
-
-**Reason vocabulary:**
+Shared phases, conditions, reasons, and diagnostic rules are described in
+[Common Status Model](#common-status-model). `Succeeded` here means the database is registered with
+dbaas-aggregator. Kind-specific reasons:
 
 | Reason | Applied to | Meaning |
 |--------|-----------|---------|
 | `DatabaseRegistered` | `Ready=True` | Successfully registered with dbaas-aggregator |
-| `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
-| `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed before calling aggregator |
-| `SecretError` | `Ready=False`, `Stalled=False` | Failed to resolve credentials from a referenced Kubernetes Secret. Sub-categories visible via the `dbaas_secret_resolution_errors_total{reason=...}` metric: `secret_not_found`, `key_missing`, `key_empty`, `forbidden` (RBAC denial), `secret_read_failed` (other API / I/O errors). |
-| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
-| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 — permanent spec issue |
-| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, or network error |
+| `SecretError` | `Ready=False`, `Stalled=False` | Failed to resolve credentials from a referenced Kubernetes Secret. Sub-categories are visible through the `dbaas_secret_resolution_errors_total{reason=...}` metric: `secret_not_found`, `key_missing`, `key_empty`, `forbidden` (RBAC denial), `secret_read_failed` (other API or I/O errors). |
 
 **Full state matrix:**
 
@@ -1089,14 +1117,10 @@ same `Status` does not reset the transition time.
 | Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
 
-**Diagnostic rules:**
+See [Diagnostic rules](#common-status-model) for reading these conditions.
 
-- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`** — wait. The controller is retrying automatically.
-- **`status.lastRequestId`** — use this value to correlate operator logs with dbaas-aggregator logs.
-
-**`status.observedGeneration`** is set only when the controller exits cleanly (no requeue). If `metadata.generation >
-status.observedGeneration`, the current spec has not been fully processed yet.
+**`status.observedGeneration`** is stamped whenever the reconcile returns without an error — on success and
+on a permanent (`Stalled=True`) failure alike. A transient failure returns an error and leaves it behind.
 
 #### ExternalDatabase Usage Examples
 
@@ -1268,42 +1292,15 @@ CR created / spec changed
 
 #### DatabaseAccessPolicy Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbdap`.
-Read `status.conditions` for automation: phase summarizes them and carries no information they do not
-already have.
-
-| Phase | Meaning |
-|-------|---------|
-| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
-| `Processing` | Controller is actively reconciling (transient) |
-| `Succeeded` | Policy successfully applied via dbaas-aggregator |
-| `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
-| `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
-
-**`Ready`** — is the policy applied?
-
-| Status | Meaning |
-|--------|---------|
-| `True` | Successfully applied for the current generation |
-| `False` | Apply failed — check `Reason` and `Message` |
-
-**`Stalled`** — will retrying help?
-
-| Status | Meaning |
-|--------|---------|
-| `True` | Permanent error — the spec must be corrected; the controller will not retry |
-| `False` | Transient error or success — the controller retries automatically |
-
-**Reason vocabulary:**
+Shared phases, conditions, reasons, and diagnostic rules are described in
+[Common Status Model](#common-status-model). `Succeeded` here means the policy was applied through
+dbaas-aggregator. Kind-specific reasons:
 
 | Reason | Applied to | Meaning |
 |--------|-----------|---------|
-| `PolicyApplied` | `Ready=True` | Policy successfully applied via dbaas-aggregator |
-| `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
-| `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed — both `services` and `policy` are empty |
-| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
-| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 — permanent spec issue |
-| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, or network error |
+| `PolicyApplied` | `Ready=True` | Policy successfully applied through dbaas-aggregator |
+
+`InvalidSpec` has a single cause for this kind: both `services` and `policy` are empty.
 
 **Full state matrix:**
 
@@ -1315,11 +1312,7 @@ already have.
 | Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
 
-**Diagnostic rules:**
-
-- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`** — wait. The controller is retrying automatically.
-- **`status.lastRequestId`** — use this value to correlate operator logs with dbaas-aggregator logs.
+See [Diagnostic rules](#common-status-model) for reading these conditions.
 
 #### DatabaseAccessPolicy Usage Examples
 
@@ -1566,18 +1559,10 @@ This materializes the database exactly as the tenant's first runtime connection 
 
 #### InternalDatabase Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get dbidb`.
-Read `status.conditions` for automation: phase summarizes them and carries no information they do not
-already have.
-
-| Phase | Meaning |
-|-------|---------|
-| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
-| `Processing` | Controller is actively reconciling (transient) |
-| `WaitingForDependency` | Async provisioning in progress; controller is polling the aggregator |
-| `Succeeded` | Operation completed successfully |
-| `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
-| `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
+Shared phases, conditions, reasons, and diagnostic rules are described in
+[Common Status Model](#common-status-model). This kind adds one phase, `WaitingForDependency` — an async
+provisioning operation is in flight and the controller is polling the aggregator — and `Succeeded` means
+that operation completed.
 
 **`status.trackingId`** — aggregator-assigned tracking ID for an in-flight async operation.
 
@@ -1592,20 +1577,20 @@ the new spec. It is reset to `0` together with `trackingId` whenever the operati
 (`COMPLETED`/`FAILED`) or the tracking is cleared (`TERMINATED`/`404`); `0` therefore means "no pending async
 operation".
 
-**`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as `ExternalDatabase`.
-
-**Reason vocabulary:**
+**Kind-specific reasons** (in addition to the [shared vocabulary](#common-status-model)):
 
 | Reason | Applied to | Meaning |
 |--------|-----------|---------|
-| `DatabaseProvisioned` | `Ready=True` | Operation completed (`200 OK` synchronous or polled `COMPLETED`) |
-| `Succeeded` | `Stalled=False` (on success) | Not stalled; last operation succeeded |
-| `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed before calling aggregator |
+| `DatabaseProvisioned` | `Ready=True` | Operation completed (`200 OK` synchronous, or polled `COMPLETED`) |
 | `ProvisioningStarted` | `Ready=False`, `Stalled=False` | `202 Accepted` received; async polling in progress |
-| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned 401 |
-| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned 400 / 403 / 409 / 410 / 422 on submit, or returned `FAILED` on poll — permanent spec issue |
-| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned 5xx, polling 404 (trackingId expired), or network error |
 | `OperationTerminated` | `Ready=False`, `Stalled=False` | Poll returned `TERMINATED` (aggregator restart or admin cancellation). The stale `trackingId` is cleared and the controller resubmits on the next reconcile |
+
+For this kind `AggregatorRejected` also covers a polled `FAILED`, and `AggregatorError` also covers a
+polling `404` (expired `trackingId`).
+
+> While an operation is `IN_PROGRESS`, the poll refreshes only the `Ready` condition. A `Stalled` condition
+> left by an earlier transient error keeps its previous reason and message until the operation reaches a
+> terminal state.
 
 **Full state matrix:**
 
@@ -1624,14 +1609,10 @@ operation".
 | Poll → 404 (trackingId expired) | `BackingOff` | `False` | `AggregatorError` | `False` | cleared (resubmits) |
 | Poll → 401 / 5xx / network | `BackingOff` | `False` | `Unauthorized` / `AggregatorError` | `False` | preserved (keeps polling) |
 
-**Diagnostic rules:**
+**Diagnostic rules** — in addition to the [shared rules](#common-status-model):
 
-- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`, phase=`WaitingForDependency`** — async provisioning is still running; the
-  controller polls every 5 seconds.
-- **`Stalled=False` + `Ready=False`, phase=`BackingOff`** — transient error, controller is retrying with exponential
-  backoff.
-- **`status.lastRequestId`** — correlate operator logs with aggregator logs.
+- **`Ready=False` with phase `WaitingForDependency`** — not an error: async provisioning is still running and
+  the controller polls every 5 seconds. Only phase `BackingOff` means a failed call is being retried.
 
 #### InternalDatabase Usage Examples
 
@@ -1755,7 +1736,15 @@ database is created and a physical database must be selected.
 |------|------------------------|--------------------|------------------|
 | `MicroserviceBalancingRule` | `microservice-balancing-rules` | Business namespace (ownership-gated) | Per-microservice placement rules for that namespace |
 | `NamespaceBalancingRule` | `namespace-balancing-rules` | Business namespace (ownership-gated) | Per-namespace placement rules for that namespace |
-| `PermanentBalancingRule` | `permanent-balancing-rules` | **Operator namespace only** (`CLOUD_NAMESPACE`); informer scoped there, decoupled from `NamespaceBinding` | Permanent placement rules targeting any business namespaces |
+| `PermanentBalancingRule` | `permanent-balancing-rules` | **Operator namespace only** — see the note below | Permanent placement rules targeting any business namespaces |
+
+<a id="pbr-scope"></a>
+> **`PermanentBalancingRule` scope.** The informer for this kind is scoped to `CLOUD_NAMESPACE`, so only a CR
+> in the operator's own namespace is ever reconciled; one created anywhere else is never delivered to the
+> reconciler and keeps an empty status. Because it is namespace-scoped that way, it needs only a namespaced
+> `Role` rather than a `ClusterRole`, it is exempt from the `NamespaceBinding` ownership gate, and it never
+> blocks a binding's deletion. Its *target* namespaces need no binding either — the aggregator is the
+> authority on those. The rest of this document links here instead of repeating the rule.
 
 Any other `metadata.name` is rejected **at admission** by a root-level CRD CEL rule (`self.metadata.name ==
 '<fixed-name>'`), so `kubectl apply` fails and no CR is created — there is no object to carry an `InvalidConfiguration`
@@ -1844,7 +1833,7 @@ spec:
 | Field | Required | Description |
 |-------|:--------:|-------------|
 | `metadata.name` | Yes | Must be `permanent-balancing-rules`. |
-| `metadata.namespace` | Yes | Must be the operator namespace (`CLOUD_NAMESPACE`), not a business namespace. The informer is scoped to the operator namespace, so a CR created anywhere else is **never reconciled at all**: it stays with an empty status and no events, and the aggregator is never called. Do not expect an `InvalidConfiguration` status — there is no reconcile to write one. (The controller carries a matching namespace check as defense in depth, but it can only run for objects the informer delivers.) |
+| `metadata.namespace` | Yes | Must be the operator namespace (`CLOUD_NAMESPACE`), not a business namespace. A CR created anywhere else is **never reconciled at all** and keeps an empty status — do not expect an `InvalidConfiguration`, since there is no reconcile to write one. See [PermanentBalancingRule scope](#pbr-scope). |
 | `spec.rules` | Yes | Non-empty list of permanent balancing entries. |
 | `spec.rules[].dbType` | Yes | Database type. |
 | `spec.rules[].physicalDatabaseId` | Yes | Target physical database identifier. |
@@ -1862,8 +1851,7 @@ Common flow:
 1. Read the singleton CR.
 2. Check ownership:
    - Microservice and namespace rules require a `NamespaceBinding` in the CR namespace.
-   - Permanent rules skip the ownership check entirely: their informer is scoped to the operator namespace (so only
-     operator-namespace CRs are ever reconciled), and they place no ownership requirement on their target namespaces.
+   - Permanent rules skip the ownership check entirely — see [PermanentBalancingRule scope](#pbr-scope).
 3. Validate the fixed name and `spec.rules` (for permanent rules, also that `metadata.namespace` is the operator
    namespace).
 4. Apply the desired rule data to dbaas-aggregator.
@@ -1894,25 +1882,14 @@ rule CRs have completed.
 
 #### Balancing Rule Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get`.
-Read `status.conditions` for automation: phase summarizes them and carries no information they do not
-already have.
-
-| Phase | Meaning |
-|-------|---------|
-| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
-| `Processing` | Controller is actively reconciling. |
-| `Succeeded` | Rules were applied successfully. |
-| `BackingOff` | Transient aggregator/auth/network error; controller retries with exponential backoff. |
-| `InvalidConfiguration` | Permanent spec error; requires user action before success. |
+Shared phases, conditions, reasons, and diagnostic rules are described in
+[Common Status Model](#common-status-model). `Succeeded` here means the desired rules were applied to
+dbaas-aggregator.
 
 > **No status is written during deletion.** All three deletion paths return before the deferred status
 > patch is installed, so a CR stuck in `Terminating` because aggregator cleanup keeps failing still shows
 > its pre-deletion `phase` and conditions. The failure surfaces only as a Warning `AggregatorError` event
 > and a backoff retry.
-
-**`status.conditions`** — canonical machine-readable state. Same `Ready`/`Stalled` structure as
-[ExternalDatabase](#externaldatabase-status-reference).
 
 **`status.appliedRules`**
 
@@ -1926,23 +1903,14 @@ state later. It is **not** a full echo of the spec — two of the three kinds re
 | `NamespaceBalancingRule` | `name`, `type`, `physicalDatabaseId`, `order` | — |
 | `PermanentBalancingRule` | `dbType`, `namespaces` | `physicalDatabaseId` |
 
-**Reason vocabulary**
+**Kind-specific reason** (in addition to the [shared vocabulary](#common-status-model)):
 
 | Reason | Applied to | Meaning |
 |--------|-----------|---------|
-| `BalancingRuleApplied` | `Ready` | Desired balancing rules were successfully applied to dbaas-aggregator. |
-| `Succeeded` | `Stalled` | Set alongside `BalancingRuleApplied` — the resource is not permanently stalled. |
-| `InvalidSpec` | `Ready`, `Stalled` | Controller-side validation failed before calling the aggregator. |
-| `AggregatorRejected` | `Ready`, `Stalled` | Aggregator returned a permanent rejection such as `400`, `403`, `409`, `410`, or `422`. |
-| `Unauthorized` | `Ready` | Aggregator returned `401`; usually token or auth configuration. |
-| `AggregatorError` | `Ready` | Aggregator returned `5xx` or the request failed due to network or I/O error. |
+| `BalancingRuleApplied` | `Ready=True` | Desired balancing rules were successfully applied to dbaas-aggregator. |
 
-**Diagnostic rules:**
+**Diagnostic rules** — in addition to the [shared rules](#common-status-model):
 
-- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`** — transient; the controller retries with
-  [exponential backoff](#reconcile-backoff). Use `status.lastRequestId` to correlate operator logs with
-  dbaas-aggregator logs.
 - **CR stuck in `Terminating`** — the cleanup call keeps failing. Check the CR's Warning events, and confirm
   the namespace still has a `NamespaceBinding` owned by this operator: ownership is checked *before* the
   deletion branch, so a `MicroserviceBalancingRule` or `NamespaceBalancingRule` whose binding was removed
@@ -2255,17 +2223,13 @@ for not reimplementing — and not having to keep coherent — the aggregator's 
 
 #### DatabaseSecretClaim Status Reference
 
-**`status.phase`** — human-readable summary for `kubectl get databasesecretclaim`.
-Read `status.conditions` for automation: phase summarizes them and carries no information they do not
-already have.
+Shared phases, conditions, reasons, and diagnostic rules are described in
+[Common Status Model](#common-status-model). `Succeeded` here means the target Secret is present and
+current. Two phase behaviors are specific to this kind:
 
-| Phase | Meaning |
-|-------|---------|
-| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
-| `Processing` | Controller is actively reconciling (transient) |
-| `Succeeded` | The target Secret is present and current |
-| `BackingOff` | Transient error. `Unauthorized` and `AggregatorError` retry with [exponential backoff](#reconcile-backoff); `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` instead re-poll at a **fixed 5-second interval** that never widens |
-| `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
+| Phase | Kind-specific behavior |
+|-------|------------------------|
+| `BackingOff` | `Unauthorized` and `AggregatorError` retry with [exponential backoff](#reconcile-backoff), but `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` re-poll at a **fixed 5-second interval** that never widens. |
 | `Processing` (stuck) | A Kubernetes API error while reading or writing the target Secret — including `forbidden` from missing [namespaced Secret RBAC](#secret-access-namespaced) — returns before any condition is written. The CR keeps `phase: Processing` with no `Ready` condition and no event; the reconcile is retried with exponential backoff. Check the operator log. |
 
 **`status.firstNotFoundAt`** — timestamp of the first `DatabaseNotFound` (404) response in the current streak. Set on
@@ -2278,23 +2242,20 @@ database eventually appears.
 Advanced only when the Secret bytes actually change (rotation or first fill of an adopted Secret); no-op reconciles and
 the initial creation do **not** advance it.
 
-**`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as the other resources.
-
-**Reason vocabulary:**
+**Kind-specific reasons** (in addition to the [shared vocabulary](#common-status-model)):
 
 | Reason | Applied to | Meaning |
 |--------|-----------|---------|
 | `SecretCreated` | `Ready=True` | Secret present and current — initial creation or recreation after a deletion race |
 | `SecretRotated` | `Ready=True` | The Secret's content was just changed (credential rotation or first fill of an adopted Secret) |
 | `SecretUpToDate` | `Ready=True` | Steady-state confirmation — the Secret already matched the desired content (no-op), or a metadata/label backfill rewrote it without a credential change. No event is emitted and `lastRotatedAt` is not advanced |
-| `InvalidSpec` | `Ready=False`, `Stalled=True` | Local validation failed: `classifier.namespace` mismatch or missing `app.kubernetes.io/name` label |
 | `SecretConflict` | `Ready=False`, `Stalled=True` | The target Secret is owned by another resource, or another `DatabaseSecretClaim` claims the same `secretName` |
 | `EmptyConnectionProperties` | `Ready=False`, `Stalled=False` | Aggregator returned `200` with an empty `connectionProperties` map — treated as transient and retried |
 | `DatabaseNotFound` | `Ready=False`, `Stalled=False` | Aggregator returned `404`/`CORE-DBAAS-4006` — the database is not yet registered; retried |
 | `DatabaseNotFoundTimeout` | `Ready=False`, `Stalled=False` | The `DatabaseNotFound` streak exceeded the timeout (≈10 min) — polling continues but the per-cycle Warning events stop; likely a wrong classifier |
-| `Unauthorized` | `Ready=False`, `Stalled=False` | Aggregator returned `401` |
-| `AggregatorRejected` | `Ready=False`, `Stalled=True` | Aggregator returned `400` / `403` / `409` / `410` / `422` — permanent spec issue |
-| `AggregatorError` | `Ready=False`, `Stalled=False` | Aggregator returned `5xx`, a `404` without a TMF body (blue-green: no active namespace), or a network error |
+
+For this kind `InvalidSpec` covers a `classifier.namespace` mismatch or a missing `app.kubernetes.io/name`
+label, and `AggregatorError` also covers a `404` without a TMF body (blue-green: no active namespace).
 
 **Full state matrix:**
 
@@ -2314,11 +2275,11 @@ the initial creation do **not** advance it.
 | Secret metadata/label backfill (no credential change) | `Succeeded` | `True` | `SecretUpToDate` | `False` |
 | Secret content changed (rotation) | `Succeeded` | `True` | `SecretRotated` | `False` |
 
-**Diagnostic rules:**
+**Diagnostic rules** — in addition to the [shared rules](#common-status-model):
 
-- **`Stalled=True`** — fix the spec (or the conflicting sibling / pre-existing Secret). The controller will not retry on
-  its own.
-- **`Stalled=False` + `Ready=False`** — transient; the controller retries. Note the two retry regimes above: the
+- **`Stalled=True`** — besides a spec error, this also covers a conflicting sibling claim or a pre-existing
+  Secret owned by something else.
+- **`Stalled=False` + `Ready=False`** — note the two retry regimes above: the
   not-found family re-polls every 5 seconds indefinitely rather than backing off. A persistent `DatabaseNotFound`
   usually means the `InternalDatabase` for this classifier has not provisioned yet — or the classifier is wrong (watch
   for `DatabaseNotFoundTimeout`).
