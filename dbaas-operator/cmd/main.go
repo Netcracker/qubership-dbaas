@@ -132,8 +132,8 @@ func main() {
 		aggregator = aggregatorclient.NewAggregatorClient(aggregatorURL)
 		setupLog.Infof("dbaas-aggregator client configured url=%v auth=m2m-token", aggregatorURL)
 	} else {
-		// Basic Auth: read username/password from the mounted operator credentials
-		// Secret (dbaas-operator-aggregator-credentials at securityDir).
+		// Basic Auth: read username/password from users.json in the aggregator-created
+		// dbaas-security-configuration-secret, mounted at securityDir.
 		username, password := loadAggregatorCredentials(setupLog, securityDir)
 		aggregator = aggregatorclient.NewBasicAuthClient(aggregatorURL, username, password)
 		// Reload credentials on Secret rotation without a pod restart.

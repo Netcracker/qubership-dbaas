@@ -21,7 +21,7 @@ All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` 
 
 The operator authenticates to dbaas-aggregator in one of two modes, selected by `KUBERNETES_M2M_ENABLED` and **must match the aggregator's setting**:
 
-- `false` (default) — HTTP Basic Auth, using credentials from the chart-created `dbaas-operator-aggregator-credentials` Secret;
+- `false` (default) — HTTP Basic Auth, using the `dbaas-operator` entry of `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security`;
 - `true` — a Kubernetes projected service-account token (Bearer / M2M).
 
 Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](docs/howto/DBaaS%20Operator.md#configuration-parameters) for the full list.

@@ -4,6 +4,7 @@
 
 - [Overview](#overview)
 - [High-Level Architecture](#high-level-architecture)
+- [Prerequisites and Installation](#prerequisites-and-installation)
 - [API Endpoints](#api-endpoints)
   - [ExternalDatabase Registration Endpoint](#externaldatabase-registration-endpoint)
   - [DatabaseAccessPolicy Apply Endpoint](#databaseaccesspolicy-apply-endpoint)
@@ -15,10 +16,15 @@
   - [PermanentBalancingRule Endpoints](#permanentbalancingrule-endpoints)
   - [Rotation Poller Changed-Databases Feed](#rotation-poller-changed-databases-feed)
 - [Authentication: Basic Auth or M2M Token](#authentication-basic-auth-or-m2m-token)
+  - [Basic Auth (Default)](#basic-auth-default)
+  - [M2M Token](#m2m-token-kubernetes_m2m_enabledtrue)
 - [RBAC and Required Permissions](#rbac-and-required-permissions)
   - [Default Installation](#default-installation)
   - [Restricted Environment](#restricted-environment)
-  - [Secret access (namespaced)](#secret-access-namespaced)
+    - [Why Cluster-Scoped RBAC Is Needed](#why-cluster-scoped-rbac-is-needed)
+    - [RBAC Manifests (Source of Truth)](#rbac-manifests-source-of-truth)
+    - [Permission Reference](#permission-reference)
+  - [Secret Access (Namespaced)](#secret-access-namespaced)
 - [Custom Resources](#custom-resources)
   - [NamespaceBinding](#namespacebinding)
     - [Resource Fields](#namespacebinding-resource-fields)
@@ -28,6 +34,7 @@
     - [Usage Examples](#namespacebinding-usage-examples)
   - [ExternalDatabase](#externaldatabase)
     - [Resource Fields](#externaldatabase-resource-fields)
+    - [Classifier → Aggregator Wire Mapping](#classifier--aggregator-wire-mapping)
     - [How It Works](#how-externaldatabase-works)
     - [Status Reference](#externaldatabase-status-reference)
     - [Usage Examples](#externaldatabase-usage-examples)
@@ -39,10 +46,11 @@
   - [InternalDatabase](#internaldatabase)
     - [Resource Fields](#internaldatabase-resource-fields)
     - [How It Works](#how-internaldatabase-works)
-    - [Tenant database materialization](#tenant-database-materialization)
+    - [Tenant Database Materialization](#tenant-database-materialization)
     - [Status Reference](#internaldatabase-status-reference)
     - [Usage Examples](#internaldatabase-usage-examples)
-  - [Balancing Rule CRDs](#balancing-rule-crds)
+  - [Balancing Rule CRDs](#balancing-rule-crds) — `MicroserviceBalancingRule`, `NamespaceBalancingRule`,
+    `PermanentBalancingRule`
     - [Resource Fields](#balancing-rule-resource-fields)
     - [How Balancing Rules Work](#how-balancing-rules-work)
     - [Lifecycle and Cleanup](#balancing-rule-lifecycle-and-cleanup)
@@ -54,14 +62,20 @@
     - [Rotation Polling](#rotation-polling)
     - [Status Reference](#databasesecretclaim-status-reference)
     - [Usage Examples](#databasesecretclaim-usage-examples)
+- [Kubernetes Events](#kubernetes-events)
 - [Configuration Parameters](#configuration-parameters)
+  - [Ports and Probes](#ports-and-probes)
+  - [Startup Flags](#startup-flags)
   - [Reconcile Backoff](#reconcile-backoff)
 
+**Related documents:** [DBaaS Operator Metrics](../monitoring/DBaaS%20Operator%20Metrics.md) ·
+[Migrating declarations from Core Operator](migrate-declarations-from-core-operator.md)
 ---
 
 ## Overview
 
-DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. It runs cluster-wide and manages the following custom resources:
+DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. It runs cluster-wide and manages the
+following custom resources (CRs):
 
 | Custom Resource | API Group | Scope | Purpose |
 |-----------------|-----------|-------|---------|
@@ -69,6 +83,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 | `ExternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Registers a pre-existing database with dbaas-aggregator |
 | `DatabaseAccessPolicy` | `dbaas.netcracker.com/v1` | Namespaced | Declares database role assignments for microservices in a namespace |
 | `InternalDatabase` | `dbaas.netcracker.com/v1` | Namespaced | Declares a logical database that dbaas-aggregator should provision and manage |
+| `DatabaseSecretClaim` | `dbaas.netcracker.com/v1` | Namespaced | Materializes a managed database's connection credentials into a Kubernetes Secret and keeps it in sync as they rotate |
 | `MicroserviceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-microservice physical database placement rules in a business namespace |
 | `NamespaceBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares per-namespace physical database placement rules in a business namespace |
 | `PermanentBalancingRule` | `dbaas.netcracker.com/v1` | Namespaced | Declares permanent placement rules. **Operator-namespace-only** (informer scoped to `CLOUD_NAMESPACE`); decoupled from `NamespaceBinding` — targets any business namespaces |
@@ -77,7 +92,7 @@ DBaaS Operator is a Kubernetes operator that integrates with dbaas-aggregator. I
 
 ## High-Level Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ dbaas-operator Pod  —  runs cluster-wide; pod in the dbaas-system namespace │
 │                                                                             │
@@ -113,10 +128,58 @@ Workload CRs by namespace:
 - The operator runs **cluster-wide** — no static `--watch-namespaces` list.
 - Namespace ownership is determined dynamically via `NamespaceBinding` CRs.
 - Workload CRs in namespaces without a matching `NamespaceBinding` are silently skipped.
-- Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time. The operator does **not** watch Secrets — each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`), which re-reads the referenced Secrets and so picks up credential rotations without a spec change. (`DatabaseSecretClaim` rotation is driven separately by the leader's changed-databases-feed poller.)
-- Secret access is **namespaced**, not cluster-wide: the `ClusterRole` carries no `secrets` permission. Each namespace the operator works in grants Secret access via a small `Role` + `RoleBinding` provisioned alongside its `NamespaceBinding` — see [Secret access (namespaced)](#secret-access-namespaced).
-- Authentication to dbaas-aggregator is dual-mode (`KUBERNETES_M2M_ENABLED`): HTTP Basic Auth by default, or a projected service-account token (M2M) when enabled — see [Authentication](#authentication-basic-auth-or-m2m-token).
-- Resource-identity fields on all workload CRs are immutable after creation (enforced by CRD CEL rules) — to retarget a CR at a different database, microservice, or operator instance, delete and recreate it. See the per-resource sections for the exact set of immutable fields.
+- Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time. The operator does **not** watch
+  Secrets — each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`,
+  default `10m`), which re-reads the referenced Secrets and so picks up credential rotations without a spec change.
+  (`DatabaseSecretClaim` rotation is driven separately by the leader's changed-databases-feed poller.)
+- Secret access is **namespaced**, not cluster-wide: the `ClusterRole` carries no `secrets` permission. Each namespace
+  the operator works in grants Secret access via a small `Role` + `RoleBinding` provisioned alongside its
+  `NamespaceBinding` — see [Secret access (namespaced)](#secret-access-namespaced).
+- Authentication to dbaas-aggregator is dual-mode (`KUBERNETES_M2M_ENABLED`): HTTP Basic Auth by default, or a projected
+  service-account token (M2M) when enabled — see [Authentication](#authentication-basic-auth-or-m2m-token).
+- Resource-identity fields on all workload CRs are immutable after creation (enforced by CRD CEL rules) — to retarget a
+  CR at a different database, microservice, or operator instance, delete and recreate it. See the per-resource sections
+  for the exact set of immutable fields.
+
+---
+
+## Prerequisites and Installation
+
+**Prerequisites**
+
+- Kubernetes 1.25 or newer — the CRDs rely on CEL validation rules (`x-kubernetes-validations`).
+- A reachable dbaas-aggregator. In the default Basic Auth mode the operator must run **in the same namespace
+  as dbaas-aggregator**: the chart mounts `dbaas-security-configuration-secret` by name from the pod's own
+  namespace, so if the aggregator chart has not created it there, the pod never starts (`FailedMount`).
+  A Secret that exists but carries no `dbaas-operator` entry is a different failure — the operator logs a
+  fatal error and exits.
+- The `monitoring.coreos.com` and `integreatly.org` CRDs when `MONITORING_ENABLED` is left at its default
+  `true`; otherwise set it to `false`.
+
+**Installation**
+
+The operator ships as part of the DBaaS Helm chart. Two values are load-bearing and have no usable defaults:
+
+```bash
+helm upgrade --install <release> helm-templates/dbaas-operator \
+  -f helm-templates/dbaas-operator/resource-profiles/<profile>.yaml \
+  --set DBAAS_OPERATOR_ENABLED=true \
+  --set NAMESPACE=<operator-namespace>
+```
+
+- `DBAAS_OPERATOR_ENABLED=true` — with the default `false` the chart renders only a placeholder ConfigMap.
+- `NAMESPACE` — the templates read `.Values.NAMESPACE`, not `.Release.Namespace`; see
+  [Restricted Environment](#restricted-environment) for what goes wrong when it is left at `default`.
+- A resource profile supplies `CPU_REQUEST`/`CPU_LIMIT`, which are absent from `values.yaml`.
+
+After installing, grant per-namespace Secret access for every namespace the operator will manage — see
+[Secret access (namespaced)](#secret-access-namespaced).
+
+**Upgrade**
+
+The CRDs ship as chart templates gated on `DBAAS_OPERATOR_ENABLED`, so `helm upgrade` also upgrades them,
+and setting that value back to `false` **deletes the CRDs and every CR they define**. Treat it as a
+destructive operation rather than a way to pause the operator; scale the Deployment to zero instead.
 
 ---
 
@@ -138,15 +201,24 @@ The operator calls the following dbaas-aggregator endpoints:
 | `DELETE` | `/api/v3/dbaas/balancing/rules/permanent` | `PermanentBalancingRule` reconciler | Remove previously applied permanent balancing rules during update or deletion |
 | `GET` | `/api/v3/dbaas/databases/changed` | Rotation poller (leader-only) | Pull databases whose credentials changed (rotation/restore) since a keyset cursor |
 
-All calls are **outbound**; the operator exposes no inbound endpoint. Most are synchronous; the declarative `apply` endpoint may return `202 Accepted` with a `trackingId` for asynchronous provisioning (polled via the operation-status endpoint). Each endpoint is detailed below.
+All calls are **outbound**; the operator exposes no inbound API endpoint (its only listeners are `/metrics` and the
+health probes — see [Ports and Probes](#ports-and-probes)). Most are synchronous; the declarative `apply` endpoint may
+return `202 Accepted` with a `trackingId` for asynchronous provisioning (polled via the operation-status endpoint). Each
+endpoint is detailed below.
+
+Every request carries a fixed **30 s** timeout and the client performs **no retries of its own** — a failed call is
+surfaced to the reconciler, which retries according to the [Reconcile Backoff](#reconcile-backoff) policy. Neither the
+timeout nor the retry behavior is configurable.
 
 ### ExternalDatabase Registration Endpoint
 
 **`PUT /api/v3/dbaas/{namespace}/databases/registration/externally_manageable`**
 
-The `{namespace}` segment is taken from `spec.classifier.namespace` if that field is set; otherwise from `metadata.namespace`.
+The `{namespace}` segment is taken from `spec.classifier.namespace` if that field is set; otherwise from
+`metadata.namespace`.
 
-The operator always sends `updateConnectionProperties: true`, which means the request creates the database registration if it does not exist, or updates the connection properties if it does.
+The operator always sends `updateConnectionProperties: true`, which means the request creates the database registration
+if it does not exist, or updates the connection properties if it does.
 
 **Possible responses and operator behavior:**
 
@@ -165,7 +237,8 @@ The operator always sends `updateConnectionProperties: true`, which means the re
 
 **`POST /api/declarations/v1/apply`**
 
-The operator posts a declarative payload with `subKind: DbPolicy`. The `microserviceName` from the CR spec is sent in the payload `metadata`, not in the spec body.
+The operator posts a declarative payload with `subKind: DbPolicy`. The `microserviceName` from the CR spec is sent in
+the payload `metadata`, not in the spec body.
 
 **Possible responses and operator behavior:**
 
@@ -181,7 +254,11 @@ The operator posts a declarative payload with `subKind: DbPolicy`. The `microser
 
 **`POST /api/declarations/v1/apply`**
 
-The same declarative endpoint as above, but the `InternalDatabase` reconciler posts `kind: DBaaS`, `subKind: DatabaseDeclaration`. The CR `spec` (classifier, `type`, `settings`, `versioningConfig`, `initialInstantiation`) is forwarded as the payload `spec`; `microserviceName` is carried in the payload `metadata`. Unlike `DbPolicy`, provisioning a database may be **synchronous or asynchronous**: a `202 Accepted` carries a `trackingId` that the operator then polls (see the next endpoint).
+The same declarative endpoint as above, but the `InternalDatabase` reconciler posts `kind: DBaaS`, `subKind:
+DatabaseDeclaration`. The CR `spec` (classifier, `type`, `settings`, `versioningConfig`, `initialInstantiation`) is
+forwarded as the payload `spec`; `microserviceName` is carried in the payload `metadata`. Unlike `DbPolicy`,
+provisioning a database may be **synchronous or asynchronous**: a `202 Accepted` carries a `trackingId` that the
+operator then polls (see the next endpoint).
 
 **Possible responses and operator behavior:**
 
@@ -200,7 +277,10 @@ See [InternalDatabase Status Reference](#internaldatabase-status-reference) for 
 
 **`GET /api/declarations/v1/operation/{trackingId}/status`**
 
-After a `202 Accepted` from the apply endpoint, the controller polls this endpoint with the returned `{trackingId}` (persisted in `status.trackingId`) every `pollRequeueAfter` until the operation reaches a terminal state. The response body carries a `status` (`TaskState`) field — `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` / `FAILED` / `TERMINATED` — so outcomes are driven by that value as well as by the HTTP code.
+After a `202 Accepted` from the apply endpoint, the controller polls this endpoint with the returned `{trackingId}`
+(persisted in `status.trackingId`) every `pollRequeueAfter` until the operation reaches a terminal state. The response
+body carries a `status` (`TaskState`) field — `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` / `FAILED` / `TERMINATED` — so
+outcomes are driven by that value as well as by the HTTP code.
 
 **Possible responses and operator behavior:**
 
@@ -218,7 +298,10 @@ After a `202 Accepted` from the apply endpoint, the controller polls this endpoi
 
 **`POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}`**
 
-The `{namespace}` segment is taken from `spec.classifier.namespace` (defaulting to `metadata.namespace`); `{type}` is `spec.type`. The reconciler posts the CR `classifier`, the `app.kubernetes.io/name` label as `originService`, and `spec.userRole`. The aggregator resolves the **effective role** and returns the database's `connectionProperties`, which the operator materialises into the target Secret. The same call is re-issued when the rotation poller signals a change.
+The `{namespace}` segment is taken from `spec.classifier.namespace` (defaulting to `metadata.namespace`); `{type}` is
+`spec.type`. The reconciler posts the CR `classifier`, the `app.kubernetes.io/name` label as `originService`, and
+`spec.userRole`. The aggregator resolves the **effective role** and returns the database's `connectionProperties`, which
+the operator materializes into the target Secret. The same call is re-issued when the rotation poller signals a change.
 
 **Possible responses and operator behavior:**
 
@@ -231,13 +314,17 @@ The `{namespace}` segment is taken from `spec.classifier.namespace` (defaulting 
 | `401` | Missing or invalid credentials | `BackingOff` — retried, reason `Unauthorized` |
 | `5xx` / `404` (no TMF body) / Network error | Aggregator error / unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
-A pre-flight failure where the target Secret is owned by a different resource yields reason `SecretConflict` without contacting the aggregator. See [DatabaseSecretClaim → How It Works](#how-databasesecretclaim-works) for the content-aware Secret update and [Rotation Polling](#rotation-polling) for how rotations trigger a re-fetch.
+A pre-flight failure where the target Secret is owned by a different resource yields reason `SecretConflict` without
+contacting the aggregator. See [DatabaseSecretClaim → How It Works](#how-databasesecretclaim-works) for the
+content-aware Secret update and [Rotation Polling](#rotation-polling) for how rotations trigger a re-fetch.
 
 ### MicroserviceBalancingRule Endpoint
 
 **`PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices`**
 
-The `{namespace}` segment is the CR's `metadata.namespace`. The reconciler sends the full desired rule set (`type`, `rules[].label`, `microservices`). On item removal it first applies an empty rule set for the dropped `type + microservices` entries (cleanup), then re-applies the desired list.
+The `{namespace}` segment is the CR's `metadata.namespace`. The reconciler sends the full desired rule set (`type`,
+`rules[].label`, `microservices`). On item removal it first applies an empty rule set for the dropped `type +
+microservices` entries (cleanup), then re-applies the desired list.
 
 **Possible responses and operator behavior:**
 
@@ -253,7 +340,9 @@ The `{namespace}` segment is the CR's `metadata.namespace`. The reconciler sends
 
 **`PUT` / `DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}`**
 
-The `{namespace}` segment is the CR's `metadata.namespace`. Each entry in `spec.rules` is applied by name with a `PUT`. Entries removed from the spec — and all entries on CR deletion — are removed with the corresponding `DELETE`. `status.appliedRules` records what the operator last applied so it knows what to delete.
+The `{namespace}` segment is the CR's `metadata.namespace`. Each entry in `spec.rules` is applied by name with a `PUT`.
+Entries removed from the spec — and all entries on CR deletion — are removed with the corresponding `DELETE`.
+`status.appliedRules` records what the operator last applied so it knows what to delete.
 
 **Possible responses and operator behavior:**
 
@@ -270,7 +359,10 @@ The `{namespace}` segment is the CR's `metadata.namespace`. Each entry in `spec.
 
 **`PUT` / `DELETE /api/v3/dbaas/balancing/rules/permanent`**
 
-Cluster-scoped aggregator endpoint (no `{namespace}` segment). The CR itself is **operator-namespace-only** and **decoupled from `NamespaceBinding`**: the reconciler sends the full desired list (`dbType`, `physicalDatabaseId`, `namespaces`) with a `PUT` directly — it does **not** require the target namespaces to be owned (the aggregator is the authority on targets). Removed entries — and all entries on CR deletion — are removed with the `DELETE` variant.
+Cluster-scoped aggregator endpoint (no `{namespace}` segment). The CR itself is **operator-namespace-only** and
+**decoupled from `NamespaceBinding`**: the reconciler sends the full desired list (`dbType`, `physicalDatabaseId`,
+`namespaces`) with a `PUT` directly — it does **not** require the target namespaces to be owned (the aggregator is the
+authority on targets). Removed entries — and all entries on CR deletion — are removed with the `DELETE` variant.
 
 **Possible responses and operator behavior:**
 
@@ -283,13 +375,21 @@ Cluster-scoped aggregator endpoint (no `{namespace}` segment). The CR itself is 
 | `5xx` | Aggregator error | `BackingOff` — retried, reason `AggregatorError` |
 | Network error | Aggregator unreachable | `BackingOff` — retried, reason `AggregatorError` |
 
-> A `PermanentBalancingRule` created outside the operator namespace is **silently ignored** — the operator's informer is scoped to `CLOUD_NAMESPACE`, so it never reconciles such a CR. Deploy it only in the operator namespace. See [Balancing Rule Lifecycle and Cleanup](#balancing-rule-lifecycle-and-cleanup).
+> A `PermanentBalancingRule` created outside the operator namespace is **silently ignored** — the operator's informer is
+> scoped to `CLOUD_NAMESPACE`, so it never reconciles such a CR. Deploy it only in the operator namespace. See
+> [Balancing Rule Lifecycle and Cleanup](#balancing-rule-lifecycle-and-cleanup).
 
 ### Rotation Poller Changed-Databases Feed
 
 **`GET /api/v3/dbaas/databases/changed?sinceTs={iso}&sinceId={uuid}&limit={n}`**
 
-A leader-only background loop (the **rotation poller**) pulls this **cluster-scoped** feed every `DBAAS_ROTATION_POLL_INTERVAL` (default `30s`); it requires the `CLUSTER_OPERATOR` role. The first (since-less) call returns only the feed's high-water mark to seed the keyset cursor `(lastRotatedAt, id)`; subsequent calls return databases whose credentials changed strictly after the cursor. For each returned database the poller stamps the `dbaas.netcracker.com/rotation-trigger` annotation on the matching `DatabaseSecretClaim` CR(s), which then re-fetch via the connection-lookup endpoint. This feed drives **no CR phase directly** — it is infrastructure, so failures are logged and retried on the next tick.
+A leader-only background loop (the **rotation poller**) pulls this **cluster-scoped** feed every
+`DBAAS_ROTATION_POLL_INTERVAL` (default `30s`); it requires the `CLUSTER_OPERATOR` role. The first (since-less) call
+returns only the feed's high-water mark to seed the keyset cursor `(lastRotatedAt, id)`; subsequent calls return
+databases whose credentials changed strictly after the cursor. For each returned database the poller stamps the
+`dbaas.netcracker.com/rotation-trigger` annotation on the matching `DatabaseSecretClaim` CR(s), which then re-fetch via
+the connection-lookup endpoint. This feed drives **no CR phase directly** — it is infrastructure, so failures are logged
+and retried on the next tick.
 
 **Possible responses and poller behavior:**
 
@@ -304,25 +404,38 @@ See [DatabaseSecretClaim → Rotation Polling](#rotation-polling) for the full c
 
 ## Authentication: Basic Auth or M2M Token
 
-The operator authenticates to dbaas-aggregator in one of two mutually exclusive modes, selected by the `KUBERNETES_M2M_ENABLED` environment variable. **The operator's setting must match the aggregator's `KUBERNETES_M2M_ENABLED`** — when the aggregator has M2M disabled it rejects Bearer tokens outright (`401`), so an operator configured for M2M against a non-M2M aggregator fails every call.
+The operator authenticates to dbaas-aggregator in one of two mutually exclusive modes, selected by the
+`KUBERNETES_M2M_ENABLED` environment variable. **The operator's setting must match the aggregator's
+`KUBERNETES_M2M_ENABLED`** — when the aggregator has M2M disabled it rejects Bearer tokens outright (`401`), so an
+operator configured for M2M against a non-M2M aggregator fails every call.
 
 | `KUBERNETES_M2M_ENABLED` | Mode | Credential sent |
-|---|---|---|
+|--------------------------|------|-----------------|
 | `false` (**default**) | HTTP **Basic Auth** | `Authorization: Basic <base64(username:password)>` |
 | `true` | **M2M** Bearer token | `Authorization: Bearer <projected SA token, audience=dbaas>` |
 
-### Basic Auth (default)
+### Basic Auth (Default)
 
-- The aggregator's Helm chart auto-generates the `dbaas-operator` user password at deploy time and stores it — together with all other aggregator users — in `dbaas-security-configuration-secret` (key `users.json`). No external credential input is required.
-- The operator chart mounts `dbaas-security-configuration-secret` at `/etc/dbaas/security`. At startup the operator parses `users.json` and extracts the entry for the hardcoded username `dbaas-operator`; if the entry is absent it logs a fatal error and exits.
-- A filesystem watcher reloads `users.json` whenever the mounted Secret changes, so a password rotation is applied **without a pod restart** (the value is swapped atomically; there is no other caching).
-- **Aggregator side:** the `dbaas-operator` user is included in `users.json` with the `DB_CLIENT` and `CLUSTER_OPERATOR` roles automatically — no manual credential configuration is needed on either side.
+- The aggregator's Helm chart auto-generates the `dbaas-operator` user password at deploy time and stores it — together
+  with all other aggregator users — in `dbaas-security-configuration-secret` (key `users.json`). No external credential
+  input is required.
+- The operator chart mounts `dbaas-security-configuration-secret` at `/etc/dbaas/security`. At startup the operator
+  parses `users.json` and extracts the entry for the hardcoded username `dbaas-operator`; if the entry is absent it logs
+  a fatal error and exits.
+- A filesystem watcher reloads `users.json` whenever the mounted Secret changes, so a password rotation is applied
+  **without a pod restart** (the value is swapped atomically; there is no other caching).
+- **Aggregator side:** the `dbaas-operator` user is included in `users.json` with the `DB_CLIENT` and `CLUSTER_OPERATOR`
+  roles automatically — no manual credential configuration is needed on either side.
 
-### M2M token (`KUBERNETES_M2M_ENABLED=true`)
+### M2M Token (`KUBERNETES_M2M_ENABLED=true`)
 
-- A projected service-account token (`audience=dbaas`, `expirationSeconds=600`) is mounted at `/var/run/secrets/tokens/dbaas/token`.
-- Kubernetes rotates the token automatically before it expires; the operator reads it from disk on **every** outbound request (no client-side caching), so rotation is fully transparent with no pod restart.
-- **Aggregator side:** the aggregator must accept tokens with `audience=dbaas` and validate them against the Kubernetes token review API, and the operator's service account must map to the `CLUSTER_OPERATOR` (and `DB_CLIENT`) roles in the aggregator's service-account-roles configuration.
+- A projected service-account token (`audience=dbaas`, `expirationSeconds=600`) is mounted at
+  `/var/run/secrets/tokens/dbaas/token`.
+- Kubernetes rotates the token automatically before it expires; the operator reads it from disk on **every** outbound
+  request (no client-side caching), so rotation is fully transparent with no pod restart.
+- **Aggregator side:** the aggregator must accept tokens with `audience=dbaas` and validate them against the Kubernetes
+  token review API, and the operator's service account must map to the `CLUSTER_OPERATOR` (and `DB_CLIENT`) roles in the
+  aggregator's service-account-roles configuration.
 
 Volume configuration (M2M mode, from the Deployment):
 
@@ -343,13 +456,20 @@ containers:
         readOnly: true
 ```
 
-> **No inbound endpoint** — the operator does not expose any authenticated HTTP endpoint; all dbaas-aggregator traffic is **outbound** (see [API Endpoints](#api-endpoints)). Credential rotations are picked up by **polling** the aggregator, not pushed to the operator — see [Rotation Polling](#rotation-polling).
+> **No inbound API endpoint** — the operator exposes no authenticated HTTP endpoint; the only listeners are `/metrics`
+> and the health probes (see [Ports and Probes](#ports-and-probes)). All dbaas-aggregator traffic is **outbound** (see
+> [API Endpoints](#api-endpoints)). Credential rotations are picked up by **polling** the aggregator, not pushed to the
+> operator — see [Rotation Polling](#rotation-polling).
 
 ---
 
 ## RBAC and Required Permissions
 
-The operator needs a `ServiceAccount`, a `ClusterRole`, a `ClusterRoleBinding`, a namespace-scoped `Role`, and a `RoleBinding` to function correctly. By default the Helm chart creates all of these automatically. In environments where cluster-scoped resources cannot be created, set `restrictedEnvironment: true` — the chart will then create only the `ServiceAccount`, the namespace-scoped `Role`, and the `RoleBinding`, skipping the `ClusterRole`/`ClusterRoleBinding`, which must be applied manually using the manifests below.
+The operator needs a `ServiceAccount`, a `ClusterRole`, a `ClusterRoleBinding`, a namespace-scoped `Role`, and a
+`RoleBinding` to function correctly. By default the Helm chart creates all of these automatically. In environments where
+cluster-scoped resources cannot be created, set `restrictedEnvironment: true` — the chart will then create only the
+`ServiceAccount`, the namespace-scoped `Role`, and the `RoleBinding`, skipping the `ClusterRole`/`ClusterRoleBinding`,
+which must be applied manually using the manifests below.
 
 ### Default Installation
 
@@ -359,49 +479,75 @@ When `restrictedEnvironment: false` (the default), the chart creates:
 |----------|------|-------|---------|
 | `ServiceAccount` | `dbaas-operator` | Namespaced (operator namespace) | Pod identity |
 | `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs across all namespaces (**no `secrets`** — Secret access is namespaced, see below) |
-| `ClusterRoleBinding` | `dbaas-operator` | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
-| `Role` | `dbaas-operator` | Namespaced (operator namespace) | Leader election leases and event recording |
+| `ClusterRoleBinding` | `dbaas-operator-<NAMESPACE>` (e.g. `dbaas-operator-dbaas-system`, truncated to 63 characters) | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
+| `Role` | `dbaas-operator` | Namespaced (operator namespace) | Leader-election leases, event recording, and `permanentbalancingrules` |
 | `RoleBinding` | `dbaas-operator` | Namespaced (operator namespace) | Binds `Role` to the `ServiceAccount` |
 
-Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader election leases and Kubernetes Events are always written to the operator's own namespace, so they use a namespace-scoped `Role`.
+Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader election leases and
+Kubernetes Events are always written to the operator's own namespace, so they use a namespace-scoped `Role`.
 
 ### Restricted Environment
 
-When `restrictedEnvironment: true`, only the `ServiceAccount`, `Role`, and `RoleBinding` are created by the chart. You must create the `ClusterRole` and `ClusterRoleBinding` manually before starting the operator.
+When `restrictedEnvironment: true`, only the `ServiceAccount`, `Role`, and `RoleBinding` are created by the chart. You
+must create the `ClusterRole` and `ClusterRoleBinding` manually before starting the operator.
 
-#### Why cluster-scoped RBAC is needed
+#### Why Cluster-Scoped RBAC Is Needed
 
-The operator runs cluster-wide and watches dbaas CRs in all namespaces. Namespace-scoped `Role`/`RoleBinding` cannot grant access to resources across multiple namespaces, so a `ClusterRole` is required for the dbaas CRs. **Secrets are the exception**: the operator holds no cluster-wide `secrets` permission — Secret access is granted per namespace (see [Secret access (namespaced)](#secret-access-namespaced)).
+The operator runs cluster-wide and watches dbaas CRs in all namespaces. Namespace-scoped `Role`/`RoleBinding` cannot
+grant access to resources across multiple namespaces, so a `ClusterRole` is required for the dbaas CRs. **Secrets are
+the exception**: the operator holds no cluster-wide `secrets` permission — Secret access is granted per namespace (see
+[Secret access (namespaced)](#secret-access-namespaced)).
 
-Three things are scoped to the operator's own namespace and so use a namespace-scoped `Role` (sufficient and more secure): leader-election leases, Kubernetes Events, and **`permanentbalancingrules`** — the latter because it is an operator-namespace-only resource whose informer is scoped to `CLOUD_NAMESPACE`, so the operator never watches it cluster-wide.
+Three things are scoped to the operator's own namespace and so use a namespace-scoped `Role` (sufficient and more
+secure): leader-election leases, Kubernetes Events, and **`permanentbalancingrules`** — the latter because it is an
+operator-namespace-only resource whose informer is scoped to `CLOUD_NAMESPACE`, so the operator never watches it
+cluster-wide.
 
-#### RBAC manifests (source of truth)
+#### RBAC Manifests (Source of Truth)
 
-The chart renders the RBAC objects from the templates below, which are kept in
-sync with the controllers' `+kubebuilder:rbac` markers by `make manifests`. They
-are the single source of truth and are intentionally **not** reproduced inline
-here (so this doc never drifts from the code):
+The chart renders the RBAC objects from the templates below. They are the single
+source of truth and are intentionally **not** reproduced inline here (so this doc
+never drifts from the code):
 
-- [`ClusterRole.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas CRs (no `secrets`)
-- [`ClusterRoleBinding.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/ClusterRoleBinding.yaml) — binds the `ClusterRole` to the `ServiceAccount`
-- [`Role.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/Role.yaml) — operator-namespace-only access: leader-election leases, Events, and `permanentbalancingrules`
-- [`RoleBinding.yaml`](../../dbaas-operator/helm-templates/dbaas-operator/templates/RoleBinding.yaml) — binds the `Role` to the `ServiceAccount`
+- [`ClusterRole.yaml`](../../helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas
+  CRs (no `secrets`)
+- [`ClusterRoleBinding.yaml`](../../helm-templates/dbaas-operator/templates/ClusterRoleBinding.yaml) — binds the
+  `ClusterRole` to the `ServiceAccount`
+- [`Role.yaml`](../../helm-templates/dbaas-operator/templates/Role.yaml) — operator-namespace-only access:
+  leader-election leases, Events, and `permanentbalancingrules`
+- [`RoleBinding.yaml`](../../helm-templates/dbaas-operator/templates/RoleBinding.yaml) — binds the `Role` to the
+  `ServiceAccount`
+
+The Helm RBAC templates are **hand-maintained**: `make manifests` regenerates only
+[`config/rbac/role.yaml`](../../config/rbac/role.yaml) from the controllers' `+kubebuilder:rbac`
+markers, and `make sync-helm-crds` regenerates only the CRD templates. Keep the chart
+templates in step with `config/rbac/role.yaml` by hand when the markers change.
 
 The cluster-scoped templates are gated on `not restrictedEnvironment`, so with
 `restrictedEnvironment: true` the chart skips the `ClusterRole`/`ClusterRoleBinding`
 (the `ServiceAccount`/`Role`/`RoleBinding` are still created). Render the two
 cluster-scoped objects from the chart and apply them manually before starting the
-operator — this also fills in the real operator namespace for the binding subject:
+operator:
 
 ```bash
 helm template <release> helm-templates/dbaas-operator \
-  --namespace <operator-namespace> \
+  -f helm-templates/dbaas-operator/resource-profiles/dev.yaml \
+  --set NAMESPACE=<operator-namespace> \
   --set DBAAS_OPERATOR_ENABLED=true --set restrictedEnvironment=false \
   -s templates/ClusterRole.yaml -s templates/ClusterRoleBinding.yaml \
   | kubectl apply -f -
 ```
 
-#### Permission reference
+Both extra arguments are load-bearing:
+
+- `--set NAMESPACE=<operator-namespace>` is what fills in the binding subject. The templates read
+  `.Values.NAMESPACE` (default `default`), **not** `.Release.Namespace`, so passing only `--namespace`
+  binds the `ClusterRole` to a `ServiceAccount` in `default` and the operator silently reconciles nothing.
+- `-f .../resource-profiles/<profile>.yaml` supplies `CPU_REQUEST`/`CPU_LIMIT`, which live in the resource
+  profiles rather than `values.yaml`. Helm renders every template before `-s` filters the output, so without
+  a profile the whole command aborts in `HorizontalPodAutoscaler.yaml` with `decimal division by 0`.
+
+#### Permission Reference
 
 The tables below explain *why* each permission is needed; the authoritative rule
 set is the linked templates above (and the `+kubebuilder:rbac` markers they are
@@ -430,7 +576,8 @@ generated from).
 | `dbaas.netcracker.com` | `namespacebalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `namespacebalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 
-> **Secrets are not in the `ClusterRole`** — Secret access is namespaced (see [Secret access (namespaced)](#secret-access-namespaced) below).
+> **Secrets are not in the `ClusterRole`** — Secret access is namespaced (see [Secret access
+> (namespaced)](#secret-access-namespaced) below).
 
 **Role** (operator namespace only):
 
@@ -442,31 +589,57 @@ generated from).
 | `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 
-> **Note:** If you set `K8S_EVENTS_ENABLED=false` (the default), you may omit the `events` rule from the `Role`. If you set `LEADER_ELECT=false`, you may omit the `leases` rule, but this is only safe when running a single replica.
+> **Note:** The chart omits the `events` rule automatically when `K8S_EVENTS_ENABLED=false` (the default); the advice to
+> drop it applies to hand-written `Role` manifests. The `leases` rule is **not** gated — it is always rendered. With
+> `LEADER_ELECT=false` you may omit it from a hand-written `Role`, but that is only safe when running a single replica.
 
-### Secret access (namespaced)
+### Secret Access (Namespaced)
 
-The operator holds **no cluster-wide `secrets` permission** — its `ClusterRole` grants access only to dbaas CRs. This keeps Secret access least-privilege: the operator reads its own aggregator credentials from a mounted volume (`/etc/dbaas/security`), not the Kubernetes API, so it needs no Secret RBAC merely to start.
+The operator holds **no cluster-wide `secrets` permission** — its `ClusterRole` grants access only to dbaas CRs. This
+keeps Secret access least-privilege: the operator reads its own aggregator credentials from a mounted volume
+(`/etc/dbaas/security`), not the Kubernetes API, so it needs no Secret RBAC merely to start.
 
-Secret access is granted **per namespace**, by a `Role` + `RoleBinding` installed alongside that namespace's `NamespaceBinding`:
+Secret access is granted **per namespace**, by a `Role` + `RoleBinding` installed alongside that namespace's
+`NamespaceBinding`:
 
 | API group | Resource | Verbs | Why it is needed |
 |-----------|----------|-------|-----------------|
 | `""` (core) | `secrets` | `get`, `create`, `update`, `patch` | `get`: read the credential Secret referenced by an `ExternalDatabase`, and read back the Secret managed by a `DatabaseSecretClaim`. `create`/`update`/`patch`: materialize and keep the `DatabaseSecretClaim` Secret in sync. **No `list`/`watch`** — the operator runs no Secret informer. **No `delete`** — owned Secrets are garbage-collected via `ownerReferences`. |
 
-- The `Role` and `RoleBinding` live in the **business** namespace; the `RoleBinding` subject is the operator's `ServiceAccount` (`dbaas-operator`) in the **operator** namespace.
-- Without them, `ExternalDatabase` (reads a referenced credential Secret) and `DatabaseSecretClaim` (creates the owned Secret) fail with `forbidden`.
-- The operator's own namespace needs this bundle **only if it also hosts workload CRs** (i.e. it has its own `NamespaceBinding`); leader-election leases, Events, and `permanentbalancingrules` there do not require Secret access.
+- The `Role` and `RoleBinding` live in the **business** namespace; the `RoleBinding` subject is the operator's
+  `ServiceAccount` (`dbaas-operator`) in the **operator** namespace.
+- Without them, `ExternalDatabase` (reads a referenced credential Secret) and `DatabaseSecretClaim` (creates the owned
+  Secret) fail with `forbidden`.
+- The operator's own namespace needs this bundle **only if it also hosts workload CRs** (i.e. it has its own
+  `NamespaceBinding`); leader-election leases, Events, and `permanentbalancingrules` there do not require Secret access.
 
-A ready-to-apply bundle for one namespace — `NamespaceBinding` + `Role` + `RoleBinding` — is in [`config/samples/namespaced-secret-rbac.yaml`](../../dbaas-operator/config/samples/namespaced-secret-rbac.yaml). Apply it for each namespace the operator manages.
+A ready-to-apply bundle for one namespace — `NamespaceBinding` + `Role` + `RoleBinding` — is in
+[`config/samples/namespaced-secret-rbac.yaml`](../../config/samples/namespaced-secret-rbac.yaml). Apply it for each
+namespace the operator manages.
 
 ---
 
 ## Custom Resources
 
+All eight kinds are namespaced, expose a `status` subresource, and belong to the `dbaas` category, so
+`kubectl get dbaas -n <namespace>` lists every DBaaS CR in a namespace at once. Each kind also has a short
+name:
+
+| Kind | Short name | Print columns |
+|------|-----------|---------------|
+| `NamespaceBinding` | `dbnb` | `PHASE`, `READY`, `OPERATORNAMESPACE`, `AGE` |
+| `ExternalDatabase` | `dbedb` | `PHASE`, `READY`, `TYPE`, `DBNAME`, `AGE` |
+| `DatabaseAccessPolicy` | `dbdap` | `PHASE`, `READY`, `MICROSERVICENAME`, `AGE` |
+| `InternalDatabase` | `dbidb` | `PHASE`, `READY`, `MICROSERVICENAME`, `TYPE`, `AGE` |
+| `DatabaseSecretClaim` | `dbdsc` | `PHASE`, `READY`, `TYPE`, `AGE` |
+| `MicroserviceBalancingRule` | `dbmbr` | `PHASE`, `READY`, `AGE` |
+| `NamespaceBalancingRule` | `dbnbr` | `PHASE`, `READY`, `AGE` |
+| `PermanentBalancingRule` | `dbpbr` | `PHASE`, `READY`, `AGE` |
+
 ### NamespaceBinding
 
-`NamespaceBinding` is a coordination resource that declares that a namespace belongs to a particular operator instance. It has no representation in dbaas-aggregator — it is a Kubernetes-only concept.
+`NamespaceBinding` is a coordination resource that declares that a namespace belongs to a particular operator instance.
+It has no representation in dbaas-aggregator — it is a Kubernetes-only concept.
 
 #### NamespaceBinding Resource Fields
 
@@ -493,12 +666,18 @@ spec:
 
 #### How NamespaceBinding Works
 
-The operator runs cluster-wide and watches all namespaces. Before reconciling a workload resource — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, or `NamespaceBalancingRule` — it checks whether the resource's namespace is owned by this operator instance. (`PermanentBalancingRule` is **exempt**: it is operator-namespace-only and decoupled from `NamespaceBinding` — see its [endpoint section](#permanentbalancingrule-endpoints).)
+The operator runs cluster-wide and watches all namespaces. Before reconciling a workload resource — `ExternalDatabase`,
+`InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, or
+`NamespaceBalancingRule` — it checks whether the resource's namespace is owned by this operator instance.
+(`PermanentBalancingRule` is **exempt**: it is operator-namespace-only and decoupled from `NamespaceBinding` — see its
+[endpoint section](#permanentbalancingrule-endpoints).)
 
-Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing `spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable. The resolver returns one of four states (the same states tabulated below):
+Ownership is determined by looking for a `NamespaceBinding` named `binding` in the same namespace and comparing
+`spec.operatorNamespace` with the operator's own `CLOUD_NAMESPACE` environment variable. The resolver returns one of
+four states (the same states tabulated below):
 
-```
-Any of the 7 workload CRs above triggers a reconcile
+```text
+Any of the 6 binding-gated workload CRs above triggers a reconcile
          │
          ▼
   Resolve ownership of the CR's namespace
@@ -513,11 +692,15 @@ Any of the 7 workload CRs above triggers a reconcile
          └── Mine    — operatorNamespace = CLOUD_NAMESPACE ───────────▶ Proceed with reconcile
 ```
 
-When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all binding-gated workload CRs in that namespace — so existing `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, and `NamespaceBalancingRule` are reconciled immediately without requiring a spec change. (`PermanentBalancingRule` has no binding watch — it is decoupled.)
+When a `NamespaceBinding` is created or updated, the operator automatically re-enqueues all binding-gated workload CRs
+in that namespace — so existing `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`,
+`MicroserviceBalancingRule`, and `NamespaceBalancingRule` are reconciled immediately without requiring a spec change.
+(`PermanentBalancingRule` has no binding watch — it is decoupled.)
 
 | Cache state | Meaning | Operator action |
 |-------------|---------|-----------------|
-| `Unknown` | No cache entry yet (startup or transient) | Requeue after 30 seconds |
+| `Unknown` | No cache entry **and** none could be established — a narrow race after the cache entry was evicted. On an ordinary cache miss the resolver performs a live `GET` of the binding and records `Mine`, `Foreign`, or `Unbound` instead, so this state is rare | Requeue after 30 seconds |
+| *(lookup error)* | The live `GET` failed with anything other than `NotFound` | Reconcile returns the error; retried with [exponential backoff](#reconcile-backoff), status untouched |
 | `Unbound` | No `NamespaceBinding` in this namespace | Requeue after 5 minutes (safety net) |
 | `Foreign` | Binding belongs to a different operator | Skip, no requeue |
 | `Mine` | Binding matches this operator | Proceed with reconcile |
@@ -526,15 +709,16 @@ When a `NamespaceBinding` is created or updated, the operator automatically re-e
 
 When a `NamespaceBinding` is reconciled, the operator adds the finalizer:
 
-```
+```text
 platform.dbaas.netcracker.com/binding-protection
 ```
 
-This finalizer prevents the `NamespaceBinding` from being deleted while workload resources still exist in the namespace, because deleting the binding would orphan those resources.
+This finalizer prevents the `NamespaceBinding` from being deleted while workload resources still exist in the namespace,
+because deleting the binding would orphan those resources.
 
 | Situation | Result |
 |-----------|--------|
-| Namespace still contains any operator-managed workload — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, or a balancing-rule CR | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted and the `Ready` condition lists the blocking kinds |
+| Namespace still contains any operator-managed workload — `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`, `MicroserviceBalancingRule`, or `NamespaceBalancingRule` (`PermanentBalancingRule` never blocks — it is operator-namespace-only) | Finalizer is kept; deletion is blocked; a `BindingBlocked` warning event is emitted and the `Ready` condition lists the blocking kinds |
 | No blocking workload resources remain | Finalizer is removed; Kubernetes completes the deletion |
 
 #### NamespaceBinding Status Reference
@@ -621,11 +805,12 @@ kubectl get dbnb binding -n my-namespace -o jsonpath='{.status.conditions[?(@.ty
 
 ### ExternalDatabase
 
-`ExternalDatabase` registers a pre-existing database instance with dbaas-aggregator. The database must already exist in the DBMS — the operator does not provision it.
+`ExternalDatabase` registers a pre-existing database instance with dbaas-aggregator. The database must already exist in
+the DBMS — the operator does not provision it.
 
 Short name: `dbedb`
 
-`kubectl get dbedb` columns: `PHASE`, `TYPE`, `DBNAME`, `AGE`
+`kubectl get dbedb` columns: `PHASE`, `READY`, `TYPE`, `DBNAME`, `AGE`
 
 #### ExternalDatabase Resource Fields
 
@@ -674,7 +859,7 @@ spec:
 | `customKeys` | No | Adapter-specific identifiers (e.g. `logicalDBName`), emitted as a **nested** `customKeys` object on the wire (`classifier.customKeys.*`). Values can be any valid JSON type (string, number, boolean, nested object, array); not validated by the aggregator. See the mapping rules below. |
 | `extraKeys` | No | Arbitrary additional identity fields **flattened onto the classifier top level** (legacy open-classifier compatibility — see the mapping rules below). The reserved keys `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are not allowed — the controller rejects the spec with `InvalidConfiguration`. |
 
-##### Classifier → aggregator wire mapping
+##### Classifier → Aggregator Wire Mapping
 
 The aggregator declares the classifier as `SortedMap<String, Object>` and stores
 it as JSONB, so the wire format supports any JSON value — including nested
@@ -771,7 +956,8 @@ the controller sends the following `classifier` to dbaas-aggregator:
 | `credentialsSecretRef` | No | Reference to a Kubernetes Secret containing credentials. Secret must be in the same namespace as the CR. |
 | `extraProperties` | No | Free-form map of additional adapter-specific connection properties (e.g., `host`, `port`, `sslMode`). |
 
-**Priority when building the aggregator request:** `role` and Secret credentials always override matching keys in `extraProperties`.
+**Priority when building the aggregator request:** `role` and Secret credentials always override matching keys in
+`extraProperties`.
 
 **`credentialsSecretRef` fields:**
 
@@ -782,9 +968,15 @@ the controller sends the following `classifier` to dbaas-aggregator:
 | `keys[].key` | Yes | Key in `Secret.data` to read (e.g., `db-user`) |
 | `keys[].name` | Yes | Target field name in the aggregator request (e.g., `username`) |
 
-> **Credential rotation:** the operator does **not** watch Secrets. Each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`); every reconcile re-reads the referenced Secrets and pushes any changed credentials to dbaas-aggregator without a manual spec change. So a credential rotation is picked up within one resync interval rather than instantly. Secret bodies are not cached — they are fetched from the API server only at reconcile time.
+> **Credential rotation:** the operator does **not** watch Secrets. Each `ExternalDatabase` is re-reconciled on a
+> periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`); every reconcile re-reads the referenced
+> Secrets and pushes any changed credentials to dbaas-aggregator without a manual spec change. So a credential rotation
+> is picked up within one resync interval rather than instantly. Secret bodies are not cached — they are fetched from
+> the API server only at reconcile time.
 
-> **Force an immediate refresh:** to apply a referenced-Secret change at once (instead of waiting for the resync), change the `dbaas.netcracker.com/refresh` annotation on the CR — the controller reconciles immediately, re-reads the Secret, and re-registers with dbaas-aggregator. Use a changing value (e.g. a timestamp) so the underlying watch fires:
+> **Force an immediate refresh:** to apply a referenced-Secret change at once (instead of waiting for the resync),
+> change the `dbaas.netcracker.com/refresh` annotation on the CR — the controller reconciles immediately, re-reads the
+> Secret, and re-registers with dbaas-aggregator. Use a changing value (e.g. a timestamp) so the underlying watch fires:
 
 ```bash
 kubectl annotate externaldatabase <name> dbaas.netcracker.com/refresh="$(date +%s)" --overwrite
@@ -796,8 +988,11 @@ A reconcile is triggered when any of the following happens:
 
 - The CR is created.
 - The CR spec changes (i.e., `metadata.generation` increments).
-- The periodic resync fires (every `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`). Each reconcile re-reads the referenced Secrets, so a credential rotation is picked up on the next resync — the operator does **not** watch Secrets, so the reaction is bounded by this interval rather than instant.
-- The `dbaas.netcracker.com/refresh` annotation changes — a manual escape hatch to apply a referenced-Secret change at once, without waiting for the resync (see below).
+- The periodic resync fires (every `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, default `10m`). Each reconcile re-reads
+  the referenced Secrets, so a credential rotation is picked up on the next resync — the operator does **not** watch
+  Secrets, so the reaction is bounded by this interval rather than instant.
+- The `dbaas.netcracker.com/refresh` annotation changes — a manual escape hatch to apply a referenced-Secret change at
+  once, without waiting for the resync (see below).
 - The covering `NamespaceBinding` is created or updated (e.g., the namespace is being claimed for the first time).
 
 On each reconcile, the controller:
@@ -808,7 +1003,7 @@ On each reconcile, the controller:
 4. Sends a `PUT` request to dbaas-aggregator to register or update the database.
 5. Updates `status.phase` and `status.conditions` based on the outcome.
 
-```
+```text
 CR created / spec changed / periodic resync (re-reads Secrets)
         │
         ▼
@@ -845,7 +1040,7 @@ already have.
 
 | Phase | Meaning |
 |-------|---------|
-| `Unknown` | CR just created, not yet processed |
+| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
 | `Processing` | Controller is actively reconciling (transient) |
 | `Succeeded` | Successfully registered with dbaas-aggregator |
 | `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
@@ -853,7 +1048,8 @@ already have.
 
 **`status.conditions`** — canonical machine-readable state. Use these for automation and alerting.
 
-`LastTransitionTime` is preserved when `Status` (True/False) has not changed — a change in `Reason` or `Message` at the same `Status` does not reset the transition time.
+`LastTransitionTime` is preserved when `Status` (True/False) has not changed — a change in `Reason` or `Message` at the
+same `Status` does not reset the transition time.
 
 **`Ready`** — is the database registered?
 
@@ -899,7 +1095,8 @@ already have.
 - **`Stalled=False` + `Ready=False`** — wait. The controller is retrying automatically.
 - **`status.lastRequestId`** — use this value to correlate operator logs with dbaas-aggregator logs.
 
-**`status.observedGeneration`** is set only when the controller exits cleanly (no requeue). If `metadata.generation > status.observedGeneration`, the current spec has not been fully processed yet.
+**`status.observedGeneration`** is set only when the controller exits cleanly (no requeue). If `metadata.generation >
+status.observedGeneration`, the current spec has not been fully processed yet.
 
 #### ExternalDatabase Usage Examples
 
@@ -955,8 +1152,8 @@ spec:
 
 ```bash
 kubectl get dbedb -n my-namespace
-# NAME                    PHASE       TYPE         DBNAME              AGE
-# my-postgres-external    Succeeded   postgresql   my_application_db   2m
+# NAME                    PHASE       READY   TYPE         DBNAME              AGE
+# my-postgres-external    Succeeded   True    postgresql   my_application_db   2m
 
 kubectl describe dbedb my-postgres-external -n my-namespace
 ```
@@ -977,11 +1174,13 @@ kubectl get dbedb my-postgres-external -n my-namespace -o jsonpath='{.status.las
 
 ### DatabaseAccessPolicy
 
-`DatabaseAccessPolicy` declares the database role assignments for microservices in a namespace. The operator forwards this declaration to dbaas-aggregator, which applies the role grants when provisioning or connecting databases for those microservices.
+`DatabaseAccessPolicy` declares the database role assignments for microservices in a namespace. The operator forwards
+this declaration to dbaas-aggregator, which applies the role grants when provisioning or connecting databases for those
+microservices.
 
 Short name: `dbdap`
 
-`kubectl get dbdap` columns: `PHASE`, `MICROSERVICENAME`, `AGE`
+`kubectl get dbdap` columns: `PHASE`, `READY`, `MICROSERVICENAME`, `AGE`
 
 #### DatabaseAccessPolicy Resource Fields
 
@@ -1012,7 +1211,7 @@ spec:
 
 | Field | Required | Mutable | Description |
 |-------|:--------:|:-------:|-------------|
-| `spec.microserviceName` | Yes | **No** | The microservice that owns this policy. Sent as `metadata.microserviceName` in the aggregator payload. Immutable after creation (CRD CEL rule `self == oldSelf`): repointing the same CR at a different microservice would silently rewrite role grants under the original K8s object and lose the audit link to who created the policy. Create a new CR for a different service. |
+| `spec.microserviceName` | Yes | **No** | The microservice that owns this policy. Sent as `metadata.microserviceName` in the aggregator payload. Immutable after creation (CRD CEL rule `self == oldSelf`): repointing the same CR at a different microservice would silently rewrite role grants under the original Kubernetes object and lose the audit link to who created the policy. Create a new CR for a different service. |
 | `spec.services` | At least one of `services` or `policy` | Yes | Per-microservice role assignments. |
 | `spec.policy` | At least one of `services` or `policy` | Yes | Default role rules per database type, applied to services not listed in `services`. |
 | `spec.disableGlobalPermissions` | No | Yes | When `true`, opts out of dbaas-aggregator's default global permission grants. Defaults to `false`. |
@@ -1032,7 +1231,8 @@ spec:
 | `defaultRole` | Yes | Role assigned to any microservice not explicitly listed in `services`. |
 | `additionalRole` | No | Extra roles that may be granted beyond `defaultRole`. Interpretation is adapter-specific. |
 
-> **Constraint:** at least one of `spec.services` or `spec.policy` must be non-empty. A CR with both fields absent is rejected by the controller with `InvalidSpec` before the aggregator is contacted.
+> **Constraint:** at least one of `spec.services` or `spec.policy` must be non-empty. A CR with both fields absent is
+> rejected by the controller with `InvalidSpec` before the aggregator is contacted.
 
 #### How DatabaseAccessPolicy Works
 
@@ -1043,7 +1243,7 @@ Each time the spec changes (i.e., `metadata.generation` increments), the control
 3. Sends a `POST /api/declarations/v1/apply` request to dbaas-aggregator with `subKind: DbPolicy`.
 4. Updates `status.phase` and `status.conditions` based on the outcome.
 
-```
+```text
 CR created / spec changed
         │
         ▼
@@ -1074,7 +1274,7 @@ already have.
 
 | Phase | Meaning |
 |-------|---------|
-| `Unknown` | CR just created, not yet processed |
+| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
 | `Processing` | Controller is actively reconciling (transient) |
 | `Succeeded` | Policy successfully applied via dbaas-aggregator |
 | `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
@@ -1160,8 +1360,8 @@ spec:
 
 ```bash
 kubectl get dbdap -n my-namespace
-# NAME        PHASE       MICROSERVICENAME   AGE
-# my-policy   Succeeded   my-service         1m
+# NAME        PHASE       READY   MICROSERVICENAME   AGE
+# my-policy   Succeeded   True    my-service         1m
 
 kubectl describe dbdap my-policy -n my-namespace
 ```
@@ -1180,13 +1380,17 @@ kubectl get dbdap my-policy -n my-namespace -o jsonpath='{.status.lastRequestId}
 
 ### InternalDatabase
 
-`InternalDatabase` declares a logical database that dbaas-aggregator should provision and manage on behalf of the owning microservice. Unlike `ExternalDatabase`, the database does **not** need to exist in advance — the aggregator creates it (and, depending on the configured adapter, the underlying physical DB / user / schema).
+`InternalDatabase` declares a logical database that dbaas-aggregator should provision and manage on behalf of the owning
+microservice. Unlike `ExternalDatabase`, the database does **not** need to exist in advance — the aggregator creates it
+(and, depending on the configured adapter, the underlying physical DB / user / schema).
 
-Provisioning is **asynchronous**: the aggregator returns `202 Accepted` with a `trackingId`, and the operator polls the operation status until it reaches a terminal state.
+Provisioning may be **synchronous or asynchronous**: the aggregator either completes the apply and returns `200 OK`, or
+returns `202 Accepted` with a `trackingId`, in which case the operator polls the operation status until it reaches a
+terminal state.
 
 Short name: `dbidb`
 
-`kubectl get dbidb` columns: `PHASE`, `MICROSERVICENAME`, `TYPE`, `AGE`
+`kubectl get dbidb` columns: `PHASE`, `READY`, `MICROSERVICENAME`, `TYPE`, `AGE`
 
 #### InternalDatabase Resource Fields
 
@@ -1222,11 +1426,11 @@ spec:
 
 **`spec.classifier`** — uniquely identifies the database in dbaas-aggregator.
 
-| Key | Required | Notes |
+| Field | Required | Notes |
 |-----|:--------:|-------|
 | `microserviceName` | Yes | Name of the owning microservice |
 | `scope` | Yes | `service` or `tenant` |
-| `namespace` | No | If set, must equal `metadata.namespace` — controller-side validation; mismatch causes `InvalidConfiguration`/`InvalidSpec`. If absent, the aggregator uses `metadata.namespace` from the request |
+| `namespace` | No | If set, must equal `metadata.namespace` — controller-side validation; mismatch causes `InvalidConfiguration`/`InvalidSpec`. If absent, the **operator** defaults it to `metadata.namespace` before sending; the aggregator requires a namespace in the classifier and rejects one without it |
 | `tenantId` | No | Only meaningful when `scope=tenant`. **When absent**, the declaration is a tenant-agnostic template — the aggregator applies it to tenants already registered in the namespace and materializes a per-tenant database lazily, on each tenant's first runtime connection. **When set**, the operator additionally eagerly materializes that concrete tenant's database after the declarative apply — see [Tenant database materialization](#tenant-database-materialization) |
 | `customKeys` | No | Adapter-specific identifiers, emitted as a **nested** `customKeys` object on the wire (`classifier.customKeys.*`). Values can be any JSON type (string, number, boolean, nested object). Not validated by the aggregator — passed through as-is |
 | `extraKeys` | No | Arbitrary additional identity fields **flattened onto the classifier top level** (legacy open-classifier compatibility). The reserved keys `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are not allowed — the controller rejects the spec with `InvalidConfiguration`. Both the operator and every consuming dbaas-client must produce the same keys/values for identity to match |
@@ -1243,7 +1447,12 @@ spec:
 | `spec.versioningConfig` | No | Yes | Strategy for blue-green database versioning. If absent → `versioningType=static`. If present → `versioningType=version` |
 | `spec.initialInstantiation` | No | Yes | Initial database creation strategy. If absent → `approach=new` |
 
-> **Note on `spec.classifier` immutability** — the CEL rule is a strict structural equality check (`self == oldSelf`). Once the CR is created, the exact shape of the classifier is frozen: you can neither add an optional sub-field that was omitted (e.g. `namespace`, `tenantId`, `customKeys`) nor remove one that was present. The same caveat applies as for `ExternalDatabase.spec.classifier` — see the immutability note in that section for the practical implications (the controller still defaults `classifier.namespace` to `metadata.namespace` when the field is absent, so the aggregator receives the right namespace either way).
+> **Note on `spec.classifier` immutability** — the CEL rule is a strict structural equality check (`self == oldSelf`).
+> Once the CR is created, the exact shape of the classifier is frozen: you can neither add an optional sub-field that
+> was omitted (e.g. `namespace`, `tenantId`, `customKeys`) nor remove one that was present. The same caveat applies as
+> for `ExternalDatabase.spec.classifier` — see the immutability note in that section for the practical implications (the
+> controller still defaults `classifier.namespace` to `metadata.namespace` when the field is absent, so the aggregator
+> receives the right namespace either way).
 
 **`spec.versioningConfig` fields:**
 
@@ -1258,7 +1467,10 @@ spec:
 | `approach` | No | `clone` (clone from `sourceClassifier`) or `new` (create an empty database). Default behavior when the field is absent is `new` |
 | `sourceClassifier` | Required when `approach=clone` | Classifier of the source database to clone from. **Constraint:** `sourceClassifier.microserviceName` must equal `classifier.microserviceName` (enforced by the controller) |
 
-> **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingId` and polls until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingId` and start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
+> **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingId` and polls
+> until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and
+> `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingId` and
+> start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
 
 #### How InternalDatabase Works
 
@@ -1267,14 +1479,17 @@ A reconcile is triggered when any of the following happens:
 - The CR is created.
 - The CR spec changes (i.e., `metadata.generation` increments).
 - The covering `NamespaceBinding` is created or updated.
-- A polling cycle: while an async operation is in progress (`status.trackingId` is set), the controller re-enqueues itself every 5 seconds.
+- A polling cycle: while an async operation is in progress (`status.trackingId` is set), the controller re-enqueues
+  itself every 5 seconds.
 
 The reconcile loop has two branches:
 
-- **SUBMIT** — no pending `trackingId`. Validates the spec, builds the declarative payload, sends `POST /api/declarations/v1/apply` with `subKind=DatabaseDeclaration`.
-- **POLL** — `status.trackingId` present. Sends `GET /api/declarations/v1/operation/{trackingId}/status` and reacts to the returned task state.
+- **SUBMIT** — no pending `trackingId`. Validates the spec, builds the declarative payload, sends `POST
+  /api/declarations/v1/apply` with `subKind=DatabaseDeclaration`.
+- **POLL** — `status.trackingId` present. Sends `GET /api/declarations/v1/operation/{trackingId}/status` and reacts to
+  the returned task state.
 
-```
+```text
 CR created / spec changed
         │
         ▼
@@ -1316,13 +1531,20 @@ CR created / spec changed
 > `200 OK` and `COMPLETED` paths) is preceded by a get-or-create that materializes the concrete
 > tenant database — see [Tenant database materialization](#tenant-database-materialization) below.
 
-#### Tenant database materialization
+#### Tenant Database Materialization
 
-A `scope=tenant` declaration is, by default, a **tenant-agnostic template**: the aggregator drops `tenantId` when it stores a tenant declaration and provisions a concrete per-tenant database only when that tenant first connects at runtime (plus for tenants already registered in the namespace). A freshly declared tenant that has never connected therefore has **no database** — and a `DatabaseSecretClaim` for `{scope=tenant, tenantId}` would call the [connection-lookup endpoint](#databasesecretclaim-connection-lookup-endpoint), get `DatabaseNotFound`, and wait indefinitely.
+A `scope=tenant` declaration is, by default, a **tenant-agnostic template**: the aggregator drops `tenantId` when it
+stores a tenant declaration and provisions a concrete per-tenant database only when that tenant first connects at
+runtime (plus for tenants already registered in the namespace). A freshly declared tenant that has never connected
+therefore has **no database** — and a `DatabaseSecretClaim` for `{scope=tenant, tenantId}` would call the
+[connection-lookup endpoint](#databasesecretclaim-connection-lookup-endpoint), get `DatabaseNotFound`, and wait
+indefinitely.
 
-When the classifier **pins a concrete `tenantId`**, the operator closes that gap. After the declarative apply succeeds — on both the synchronous `200 OK` and the asynchronous `COMPLETED` paths — and **before** marking the CR `Succeeded`, it issues a get-or-create for that exact tenant database:
+When the classifier **pins a concrete `tenantId`**, the operator closes that gap. After the declarative apply succeeds —
+on both the synchronous `200 OK` and the asynchronous `COMPLETED` paths — and **before** marking the CR `Succeeded`, it
+issues a get-or-create for that exact tenant database:
 
-```
+```text
 PUT /api/v3/dbaas/{namespace}/databases
   {
     "classifier": { …, "scope": "tenant", "tenantId": "<tenantId>" },
@@ -1331,12 +1553,16 @@ PUT /api/v3/dbaas/{namespace}/databases
   }
 ```
 
-This materializes the database exactly as the tenant's first runtime connection would, so a matching `DatabaseSecretClaim` resolves immediately instead of waiting on `DatabaseNotFound`. The call is:
+This materializes the database exactly as the tenant's first runtime connection would, so a matching
+`DatabaseSecretClaim` resolves immediately instead of waiting on `DatabaseNotFound`. The call is:
 
-- **scoped** — a no-op for `scope=service`, or for a tenant declaration **without** a pinned `tenantId` (the tenant-agnostic template behavior is unchanged);
+- **scoped** — a no-op for `scope=service`, or for a tenant declaration **without** a pinned `tenantId` (the
+  tenant-agnostic template behavior is unchanged);
 - **idempotent** — get-or-create returns the existing database on subsequent reconciles;
-- **gating** — if it fails, the CR does **not** become `Succeeded`: a transient/5xx failure surfaces as `BackingOff` and is retried on the next reconcile, exactly like the `apply` call;
-- **observable** — recorded on `dbaas_aggregator_requests_total` and `dbaas_aggregator_request_duration_seconds` under `operation="create_database"`.
+- **gating** — if it fails, the CR does **not** become `Succeeded`: a transient/5xx failure surfaces as `BackingOff` and
+  is retried on the next reconcile, exactly like the `apply` call;
+- **observable** — recorded on `dbaas_aggregator_requests_total` and `dbaas_aggregator_request_duration_seconds` under
+  `operation="create_database"`.
 
 #### InternalDatabase Status Reference
 
@@ -1346,7 +1572,7 @@ already have.
 
 | Phase | Meaning |
 |-------|---------|
-| `Unknown` | CR just created, not yet processed |
+| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
 | `Processing` | Controller is actively reconciling (transient) |
 | `WaitingForDependency` | Async provisioning in progress; controller is polling the aggregator |
 | `Succeeded` | Operation completed successfully |
@@ -1356,10 +1582,15 @@ already have.
 **`status.trackingId`** — aggregator-assigned tracking ID for an in-flight async operation.
 
 - Set when `POST /api/declarations/v1/apply` returns `202 Accepted`.
-- Cleared when polling completes (`COMPLETED`, `FAILED`) or the operation must be re-submitted (`TERMINATED`, `404 Not Found`).
+- Cleared when polling completes (`COMPLETED`, `FAILED`) or the operation must be re-submitted (`TERMINATED`, `404 Not
+  Found`).
 - While `trackingId` is non-empty, every reconcile goes through the POLL branch (no resubmission).
 
-**`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingId` was set. If a newer `generation` is observed during a reconcile, the stale `trackingId` is discarded and the operation is re-submitted with the new spec. It is reset to `0` together with `trackingId` whenever the operation reaches a terminal state (`COMPLETED`/`FAILED`) or the tracking is cleared (`TERMINATED`/`404`); `0` therefore means "no pending async operation".
+**`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingId` was set. If a newer
+`generation` is observed during a reconcile, the stale `trackingId` is discarded and the operation is re-submitted with
+the new spec. It is reset to `0` together with `trackingId` whenever the operation reaches a terminal state
+(`COMPLETED`/`FAILED`) or the tracking is cleared (`TERMINATED`/`404`); `0` therefore means "no pending async
+operation".
 
 **`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as `ExternalDatabase`.
 
@@ -1396,8 +1627,10 @@ already have.
 **Diagnostic rules:**
 
 - **`Stalled=True`** — fix the spec. The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`, phase=`WaitingForDependency`** — async provisioning is still running; the controller polls every 5 seconds.
-- **`Stalled=False` + `Ready=False`, phase=`BackingOff`** — transient error, controller is retrying with exponential backoff.
+- **`Stalled=False` + `Ready=False`, phase=`WaitingForDependency`** — async provisioning is still running; the
+  controller polls every 5 seconds.
+- **`Stalled=False` + `Ready=False`, phase=`BackingOff`** — transient error, controller is retrying with exponential
+  backoff.
 - **`status.lastRequestId`** — correlate operator logs with aggregator logs.
 
 #### InternalDatabase Usage Examples
@@ -1433,7 +1666,9 @@ spec:
   type: postgresql
 ```
 
-After the declarative apply, the operator get-or-creates the `{scope=tenant, tenantId: acme}` database, so a `DatabaseSecretClaim` with the same classifier resolves without waiting on `DatabaseNotFound` — see [Tenant database materialization](#tenant-database-materialization).
+After the declarative apply, the operator get-or-creates the `{scope=tenant, tenantId: acme}` database, so a
+`DatabaseSecretClaim` with the same classifier resolves without waiting on `DatabaseNotFound` — see [Tenant database
+materialization](#tenant-database-materialization).
 
 **Clone from an existing database:**
 
@@ -1481,9 +1716,9 @@ spec:
 
 ```bash
 kubectl get dbidb -n my-namespace
-# NAME              PHASE                  MICROSERVICENAME   TYPE         AGE
-# my-app-db         Succeeded              payments           postgresql   2m
-# my-app-db-clone   WaitingForDependency   payments           postgresql   10s
+# NAME              PHASE                  READY   MICROSERVICENAME   TYPE         AGE
+# my-app-db         Succeeded              True    my-service         postgresql   2m
+# my-app-db-clone   WaitingForDependency   False   my-service         postgresql   10s
 ```
 
 **Watch async progress:**
@@ -1510,7 +1745,11 @@ kubectl get dbidb my-app-db -n my-namespace -o jsonpath='{.status.lastRequestId}
 
 ### Balancing Rule CRDs
 
-The operator exposes three balancing rule CRDs. Each CR stores a **list** of rule entries, and each kind is intentionally a singleton within its allowed scope. The operator validates the Kubernetes resource and reconciles the desired rule list into dbaas-aggregator. The two business-namespace CRDs are gated on `NamespaceBinding` ownership; `PermanentBalancingRule` is not (see below). dbaas-aggregator remains the runtime source of truth when a logical database is created and a physical database must be selected.
+The operator exposes three balancing rule CRDs. Each CR stores a **list** of rule entries, and each kind is
+intentionally a singleton within its allowed scope. The operator validates the Kubernetes resource and reconciles the
+desired rule list into dbaas-aggregator. The two business-namespace CRDs are gated on `NamespaceBinding` ownership;
+`PermanentBalancingRule` is not (see below). dbaas-aggregator remains the runtime source of truth when a logical
+database is created and a physical database must be selected.
 
 | Kind | Fixed `metadata.name` | Where the CR lives | What it controls |
 |------|------------------------|--------------------|------------------|
@@ -1518,7 +1757,11 @@ The operator exposes three balancing rule CRDs. Each CR stores a **list** of rul
 | `NamespaceBalancingRule` | `namespace-balancing-rules` | Business namespace (ownership-gated) | Per-namespace placement rules for that namespace |
 | `PermanentBalancingRule` | `permanent-balancing-rules` | **Operator namespace only** (`CLOUD_NAMESPACE`); informer scoped there, decoupled from `NamespaceBinding` | Permanent placement rules targeting any business namespaces |
 
-Any other `metadata.name` is rejected by the controller as `InvalidConfiguration` / `InvalidSpec`. For the two business-namespace CRDs, use one CR per business namespace and edit `spec.rules` to add, update, or remove entries. For permanent rules, use one CR in the operator namespace.
+Any other `metadata.name` is rejected **at admission** by a root-level CRD CEL rule (`self.metadata.name ==
+'<fixed-name>'`), so `kubectl apply` fails and no CR is created — there is no object to carry an `InvalidConfiguration`
+status. The controller repeats the check as defence in depth. For the two business-namespace CRDs, use one CR per
+business namespace and edit `spec.rules` to add, update, or remove entries. For permanent rules, use one CR in the
+operator namespace.
 
 #### Balancing Rule Resource Fields
 
@@ -1576,7 +1819,10 @@ spec:
 | `spec.rules[].physicalDatabaseId` | Yes | Target physical database identifier. |
 | `spec.rules[].order` | Yes | Rule priority for the same namespace and database type. Higher `order` wins in the aggregator. |
 
-`order` is mandatory so rule priority is explicit. Without it, omitted values would default to `0`, which makes rule precedence easy to change accidentally and makes duplicate priorities harder to detect. The controller rejects duplicate `type + order` pairs within the singleton CR; cross-CR order conflicts are ultimately enforced by the aggregator with `409 Conflict`.
+`order` is mandatory so rule priority is explicit. Without it, omitted values would default to `0`, which makes rule
+precedence easy to change accidentally and makes duplicate priorities harder to detect. The controller rejects duplicate
+`type + order` pairs within the singleton CR; cross-CR order conflicts are ultimately enforced by the aggregator with
+`409 Conflict`.
 
 **`PermanentBalancingRule`**
 
@@ -1608,15 +1854,18 @@ Within one CR, the same `dbType + namespace` pair cannot appear more than once.
 
 #### How Balancing Rules Work
 
-A reconcile is triggered when a balancing rule CR is created, updated, deleted, or re-enqueued after a relevant `NamespaceBinding` change.
+A reconcile is triggered when a balancing rule CR is created, updated, deleted, or re-enqueued after a relevant
+`NamespaceBinding` change.
 
 Common flow:
 
 1. Read the singleton CR.
 2. Check ownership:
    - Microservice and namespace rules require a `NamespaceBinding` in the CR namespace.
-   - Permanent rules skip the ownership check entirely: their informer is scoped to the operator namespace (so only operator-namespace CRs are ever reconciled), and they place no ownership requirement on their target namespaces.
-3. Validate the fixed name and `spec.rules` (for permanent rules, also that `metadata.namespace` is the operator namespace).
+   - Permanent rules skip the ownership check entirely: their informer is scoped to the operator namespace (so only
+     operator-namespace CRs are ever reconciled), and they place no ownership requirement on their target namespaces.
+3. Validate the fixed name and `spec.rules` (for permanent rules, also that `metadata.namespace` is the operator
+   namespace).
 4. Apply the desired rule data to dbaas-aggregator.
 5. Update `status.phase`, `status.conditions`, `status.lastRequestId`, and `status.appliedRules`.
 6. Emit Kubernetes Events when enabled.
@@ -1631,7 +1880,8 @@ Aggregator calls by kind:
 
 #### Balancing Rule Lifecycle and Cleanup
 
-`status.appliedRules` records what the operator last successfully applied to the aggregator. This allows the controller to detect removed entries and clean up aggregator-side state when a supported cleanup API exists.
+`status.appliedRules` records what the operator last successfully applied to the aggregator. This allows the controller
+to detect removed entries and clean up aggregator-side state.
 
 | Kind | On create/update | On item removal from `spec.rules` | On CR deletion |
 |------|------------------|------------------------------------|----------------|
@@ -1639,7 +1889,8 @@ Aggregator calls by kind:
 | `NamespaceBalancingRule` | Adds a finalizer, applies each desired namespace rule by name, and stores applied entries. | Calls `DELETE /api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` for removed applied rule names, then applies the new desired list. | Finalizer deletes all applied namespace rules before Kubernetes removes the CR. |
 | `PermanentBalancingRule` | Adds a finalizer, applies the full desired list (no target-ownership check), stores applied `dbType + namespaces`. | Sends cleanup through `DELETE /api/v3/dbaas/balancing/rules/permanent` for removed applied entries, then applies the new desired list. | Finalizer deletes all applied permanent entries before Kubernetes removes the CR. |
 
-For blue-green cleanup, keep the old operator running until any finalizers on microservice, namespace, and permanent rule CRs have completed.
+For blue-green cleanup, keep the old operator running until any finalizers on microservice, namespace, and permanent
+rule CRs have completed.
 
 #### Balancing Rule Status Reference
 
@@ -1649,25 +1900,53 @@ already have.
 
 | Phase | Meaning |
 |-------|---------|
-| `Unknown` | CR just created, not yet processed. |
+| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
 | `Processing` | Controller is actively reconciling. |
 | `Succeeded` | Rules were applied successfully. |
 | `BackingOff` | Transient aggregator/auth/network error; controller retries with exponential backoff. |
-| `InvalidConfiguration` | Permanent spec or cleanup limitation; requires user action before success. |
+| `InvalidConfiguration` | Permanent spec error; requires user action before success. |
+
+> **No status is written during deletion.** All three deletion paths return before the deferred status
+> patch is installed, so a CR stuck in `Terminating` because aggregator cleanup keeps failing still shows
+> its pre-deletion `phase` and conditions. The failure surfaces only as a Warning `AggregatorError` event
+> and a backoff retry.
+
+**`status.conditions`** — canonical machine-readable state. Same `Ready`/`Stalled` structure as
+[ExternalDatabase](#externaldatabase-status-reference).
 
 **`status.appliedRules`**
 
-`status.appliedRules` is controller-owned bookkeeping. Users edit `spec.rules`; the operator writes `status.appliedRules` after successful reconcile so it can compare desired state with previously applied state later.
+`status.appliedRules` is controller-owned bookkeeping. Users edit `spec.rules`; the operator writes
+`status.appliedRules` after a successful reconcile so it can compare desired state with previously applied
+state later. It is **not** a full echo of the spec — two of the three kinds record a subset:
+
+| Kind | Recorded per entry | Not recorded |
+|------|--------------------|--------------|
+| `MicroserviceBalancingRule` | `type`, `microservices` | `label` |
+| `NamespaceBalancingRule` | `name`, `type`, `physicalDatabaseId`, `order` | — |
+| `PermanentBalancingRule` | `dbType`, `namespaces` | `physicalDatabaseId` |
 
 **Reason vocabulary**
 
-| Reason | Meaning |
-|--------|---------|
-| `BalancingRuleApplied` | Desired balancing rules were successfully applied to dbaas-aggregator. |
-| `InvalidSpec` | Controller-side validation failed before calling aggregator. |
-| `AggregatorRejected` | Aggregator returned a permanent rejection such as `400`, `403`, `409`, `410`, or `422`. |
-| `Unauthorized` | Aggregator returned `401`; usually token/auth configuration. |
-| `AggregatorError` | Aggregator returned `5xx` or the request failed due to network/I/O. |
+| Reason | Applied to | Meaning |
+|--------|-----------|---------|
+| `BalancingRuleApplied` | `Ready` | Desired balancing rules were successfully applied to dbaas-aggregator. |
+| `Succeeded` | `Stalled` | Set alongside `BalancingRuleApplied` — the resource is not permanently stalled. |
+| `InvalidSpec` | `Ready`, `Stalled` | Controller-side validation failed before calling the aggregator. |
+| `AggregatorRejected` | `Ready`, `Stalled` | Aggregator returned a permanent rejection such as `400`, `403`, `409`, `410`, or `422`. |
+| `Unauthorized` | `Ready` | Aggregator returned `401`; usually token or auth configuration. |
+| `AggregatorError` | `Ready` | Aggregator returned `5xx` or the request failed due to network or I/O error. |
+
+**Diagnostic rules:**
+
+- **`Stalled=True`** — fix the spec. The controller will not retry on its own.
+- **`Stalled=False` + `Ready=False`** — transient; the controller retries with
+  [exponential backoff](#reconcile-backoff). Use `status.lastRequestId` to correlate operator logs with
+  dbaas-aggregator logs.
+- **CR stuck in `Terminating`** — the cleanup call keeps failing. Check the CR's Warning events, and confirm
+  the namespace still has a `NamespaceBinding` owned by this operator: ownership is checked *before* the
+  deletion branch, so a `MicroserviceBalancingRule` or `NamespaceBalancingRule` whose binding was removed
+  first can never release its cleanup finalizer.
 
 #### Balancing Rule Usage Examples
 
@@ -1724,7 +2003,8 @@ spec:
       order: 20
 ```
 
-**Permanent balancing singleton in the operator namespace** (no `NamespaceBinding` needed — neither for its own namespace nor for the target namespaces; it must live in the operator namespace, here `dbaas-system`):
+**Permanent balancing singleton in the operator namespace** (no `NamespaceBinding` needed — neither for its own
+namespace nor for the target namespaces; it must live in the operator namespace, here `dbaas-system`):
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
@@ -1751,13 +2031,21 @@ kubectl get permanentbalancingrule permanent-balancing-rules -n dbaas-system -o 
 
 ### DatabaseSecretClaim
 
-`DatabaseSecretClaim` requests credentials for a database already managed by dbaas-aggregator and materializes them into a named Kubernetes `Secret` in the same namespace. The operator does **not** provision the database — it looks the database up by classifier and writes the returned `connectionProperties` into the target Secret, keeping it in sync as credentials rotate.
+`DatabaseSecretClaim` requests credentials for a database already managed by dbaas-aggregator and materializes them into
+a named Kubernetes `Secret` in the same namespace. The operator does **not** provision the database — it looks the
+database up by classifier and writes the returned `connectionProperties` into the target Secret, keeping it in sync as
+credentials rotate.
 
-The Secret is created with an `ownerReference` to the CR, so deleting the `DatabaseSecretClaim` cascades to the materialized Secret.
+The Secret is created with an `ownerReference` to the CR, so deleting the `DatabaseSecretClaim` cascades to the
+materialized Secret.
 
-`kubectl get databasesecretclaim` columns: `PHASE`, `TYPE`, `AGE`
+`kubectl get databasesecretclaim` (short name `dbdsc`) columns: `PHASE`, `READY`, `TYPE`, `AGE`
 
-> **Required label** — `metadata.labels["app.kubernetes.io/name"]` must be set. Its value is sent as `originService` in the get-by-classifier request, which the aggregator uses to resolve the service's role grants (see [DatabaseAccessPolicy](#databaseaccesspolicy)). A CR without this label is rejected with `InvalidConfiguration`/`InvalidSpec` and the aggregator is never called. The check is enforced at the controller level (CEL validation of `metadata.labels` is not supported by controller-gen at the root schema).
+> **Required label** — `metadata.labels["app.kubernetes.io/name"]` must be set. Its value is sent as `originService` in
+> the get-by-classifier request, which the aggregator uses to resolve the service's role grants (see
+> [DatabaseAccessPolicy](#databaseaccesspolicy)). A CR without this label is rejected with
+> `InvalidConfiguration`/`InvalidSpec` and the aggregator is never called. The check is enforced at the controller level
+> (CEL validation of `metadata.labels` is not supported by controller-gen at the root schema).
 
 #### DatabaseSecretClaim Resource Fields
 
@@ -1784,7 +2072,8 @@ spec:
   secretName: my-app-db-secret     # required; name of the Secret to create/update
 ```
 
-**`spec.classifier`** — identifies the database in dbaas-aggregator. Same structure and semantics as [InternalDatabase](#internaldatabase-resource-fields).
+**`spec.classifier`** — identifies the database in dbaas-aggregator. Same structure and semantics as
+[InternalDatabase](#internaldatabase-resource-fields).
 
 **Top-level spec fields:**
 
@@ -1792,15 +2081,25 @@ spec:
 |-------|:--------:|:-------:|-------------|
 | `spec.classifier` | Yes | **No** | Database identity in dbaas-aggregator. Immutable after creation (CEL `self == oldSelf`): repointing at a different database would write foreign credentials under the same Secret while `status` still references the original. Delete and recreate the CR to rebind. |
 | `spec.type` | Yes | **No** | Database engine type (e.g., `postgresql`, `mongodb`). Immutable after creation. |
-| `spec.userRole` | No | **No** | Role/permission level of the requested credentials (e.g., `admin`, `ro`, `rw`). When absent, the aggregator resolves the effective role through `DatabaseAccessPolicy` (`defaultRole`) and the global permission registry. Immutable after creation. |
+| `spec.userRole` | No | **No** | Role/permission level of the requested credentials (e.g., `admin`, `ro`, `rw`). When absent, the aggregator resolves the effective role through `DatabaseAccessPolicy` (`defaultRole`) and the global permission registry. Immutable **once set**: the CEL rule fires only when the field is present in both the old and the new object, so it can still be added if it was omitted at creation, or removed — only changing one set value to another is rejected. |
 | `spec.secretName` | Yes | **No** | Name of the Kubernetes Secret the operator creates or updates in the CR's namespace. Immutable after creation — changing it would orphan the previously materialized Secret. Two `DatabaseSecretClaim` CRs in the same namespace must not target the same `secretName` (see the sibling-conflict tiebreak below). |
 
 The materialized Secret is of type `Opaque` and stores two keys:
 
-- **`connectionProperties.json`** — the aggregator's `connectionProperties` map serialized as JSON (credentials: `url`, `host`, `port`, `username`, `password`, `role`, …; the exact shape is adapter-specific).
-- **`metadata.json`** — a self-describing descriptor `{ classifier, type, userRole, id, name, namespace, settings }` that lets a consumer match the Secret to a database request without calling the aggregator (used by dbaas-client when it reads connection properties from a mounted Secret instead of REST). The `classifier`, `type`, and `userRole` form the **match key**: `classifier` is the same canonical flat map the operator sends to the aggregator (`namespace` defaulted to `metadata.namespace`, empty optional fields omitted); `userRole` mirrors `spec.userRole` (the *requested* role, not the role the aggregator resolved at runtime) and is omitted when empty. The `id`, `name`, `namespace`, and `settings` fields mirror the aggregator's `DatabaseResponseV3SingleCP` so the client can reconstruct a full `LogicalDb` from the mounted Secret; they are descriptive only (not part of the match key) and omitted when empty. `id` in particular may be absent — the aggregator returns it best-effort on a by-classifier lookup.
+- **`connectionProperties.json`** — the aggregator's `connectionProperties` map serialized as JSON (credentials: `url`,
+  `host`, `port`, `username`, `password`, `role`, …; the exact shape is adapter-specific).
+- **`metadata.json`** — a self-describing descriptor `{ classifier, type, userRole, id, name, namespace, settings }`
+  that lets a consumer match the Secret to a database request without calling the aggregator (used by dbaas-client when
+  it reads connection properties from a mounted Secret instead of REST). The `classifier`, `type`, and `userRole` form
+  the **match key**: `classifier` is the same canonical flat map the operator sends to the aggregator (`namespace`
+  defaulted to `metadata.namespace`, empty optional fields omitted); `userRole` mirrors `spec.userRole` (the *requested*
+  role, not the role the aggregator resolved at runtime) and is omitted when empty. The `id`, `name`, `namespace`, and
+  `settings` fields mirror the aggregator's `DatabaseResponseV3SingleCP` so the client can reconstruct a full
+  `LogicalDb` from the mounted Secret; they are descriptive only (not part of the match key) and omitted when empty.
+  `id` in particular may be absent — the aggregator returns it best-effort on a by-classifier lookup.
 
-The operator also stamps the labels `app.kubernetes.io/managed-by=dbaas-operator` and `app.kubernetes.io/name=<value from the CR>`.
+The operator also stamps the labels `app.kubernetes.io/managed-by=dbaas-operator` and `app.kubernetes.io/name=<value
+from the CR>`.
 
 #### How DatabaseSecretClaim Works
 
@@ -1809,11 +2108,14 @@ A reconcile is triggered when any of the following happens:
 - The CR is created.
 - The CR spec changes (`metadata.generation` increments).
 - The covering `NamespaceBinding` is created or updated.
-- Another `DatabaseSecretClaim` in the namespace sharing the same `spec.secretName` is created, deleted, or changed (sibling-conflict recovery).
-- The rotation poller patches the `dbaas.netcracker.com/rotation-trigger` annotation (credential rotation — see [Rotation Polling](#rotation-polling) below).
-- A safety-net re-poll: every successful reconcile re-enqueues itself after 1 hour to recover from any missed rotation event.
+- Another `DatabaseSecretClaim` in the namespace sharing the same `spec.secretName` is created, deleted, or changed
+  (sibling-conflict recovery).
+- The rotation poller patches the `dbaas.netcracker.com/rotation-trigger` annotation (credential rotation — see
+  [Rotation Polling](#rotation-polling) below).
+- A safety-net re-poll: every successful reconcile re-enqueues itself after 1 hour to recover from any missed rotation
+  event.
 
-```
+```text
 CR created / spec changed / rotation-trigger annotation changed
         │
         ▼
@@ -1855,12 +2157,22 @@ CR created / spec changed / rotation-trigger annotation changed
 
 Two behaviors are worth calling out:
 
-- **Content-aware update** — on a rotation-triggered reconcile the operator compares the existing Secret's `connectionProperties.json` (and managed labels) against what it would write. If they already match, it skips the write entirely: no Secret update, no event, `lastRotatedAt` unchanged. This avoids needlessly waking every pod that mounts the Secret (the kubelet reloads mounted Secrets on change). Only a genuine content change is written and reported as `SecretRotated`.
-- **Sibling-conflict tiebreak** — if two CRs in the namespace target the same `secretName`, the older one (by `creationTimestamp`, falling back to UID lexical order on a tie) wins and proceeds; the younger one moves to `SecretConflict`. The loser recovers automatically — without a spec change — once the winner is deleted or rebinds, because the controller watches sibling `DatabaseSecretClaim`s by `secretName`.
+- **Content-aware update** — on a rotation-triggered reconcile the operator compares the existing Secret's
+  `connectionProperties.json` (and managed labels) against what it would write. If they already match, it skips the
+  write entirely: no Secret update, no event, `lastRotatedAt` unchanged. This avoids needlessly waking every pod that
+  mounts the Secret (the kubelet reloads mounted Secrets on change). Only a genuine content change is written and
+  reported as `SecretRotated`.
+- **Sibling-conflict tiebreak** — if two CRs in the namespace target the same `secretName`, the older one (by
+  `creationTimestamp`, falling back to UID lexical order on a tie) wins and proceeds; the younger one moves to
+  `SecretConflict`. The loser recovers automatically — without a spec change — once the winner is deleted or rebinds,
+  because the controller watches sibling `DatabaseSecretClaim`s by `secretName`.
 
 ##### Rotation Polling
 
-When a credential is rotated on the aggregator side, the operator picks it up by **polling** — it is not pushed. The operator exposes no inbound endpoint; all dbaas-aggregator traffic is outbound (see [API Endpoints](#api-endpoints)). A leader-only background loop (the **rotation poller**) periodically reads the aggregator's changed-databases feed and stamps the rotation-trigger annotation on the affected `DatabaseSecretClaim` CRs, which wakes the reconciler.
+When a credential is rotated on the aggregator side, the operator picks it up by **polling** — it is not pushed. The
+operator exposes no inbound endpoint; all dbaas-aggregator traffic is outbound (see [API Endpoints](#api-endpoints)). A
+leader-only background loop (the **rotation poller**) periodically reads the aggregator's changed-databases feed and
+stamps the rotation-trigger annotation on the affected `DatabaseSecretClaim` CRs, which wakes the reconciler.
 
 | Aspect | Value |
 |--------|-------|
@@ -1872,7 +2184,7 @@ When a credential is rotated on the aggregator side, the operator picks it up by
 
 Flow:
 
-```
+```text
 [rotation poller — leader only, every DBAAS_ROTATION_POLL_INTERVAL]
         │  GET /api/v3/dbaas/databases/changed?sinceTs=&sinceId=   (outbound; Basic or M2M)
         ▼
@@ -1887,32 +2199,59 @@ Flow:
 [Kubernetes watch] ─ annotation change ─▶ reconciler runs ─▶ content-aware Secret update
 ```
 
-The poller **does not** reconcile directly — it only patches an annotation; the change propagates through the Kubernetes watch so the reconciler performs the actual Secret update. Because the poller and the reconcilers are both leader-gated, the trigger and the reconcile run on the same instance.
+The poller **does not** reconcile directly — it only patches an annotation; the change propagates through the Kubernetes
+watch so the reconciler performs the actual Secret update. Because the poller and the reconcilers are both leader-gated,
+the trigger and the reconcile run on the same instance.
 
-###### Why the lookup ignores `userRole`
+##### Why the Lookup Ignores `userRole`
 
-The cache index the poller queries is keyed by `(classifier, type)` **only** — it deliberately omits `userRole`. The changed-databases feed signals that a *database's* credentials changed, without naming which role rotated; and even if it did, the operator could not reliably map that role to specific CRs. This is a consequence of where role resolution happens.
+The cache index the poller queries is keyed by `(classifier, type)` **only** — it deliberately omits `userRole`. The
+changed-databases feed signals that a *database's* credentials changed, without naming which role rotated; and even if
+it did, the operator could not reliably map that role to specific CRs. This is a consequence of where role resolution
+happens.
 
-**The aggregator resolves the effective role at request time, not the operator.** When the operator calls get-by-classifier, it sends the CR's `spec.userRole` verbatim (which may be empty) together with `originService` (the `app.kubernetes.io/name` label). The aggregator then computes the *effective* role from inputs that live entirely on its side and can change without the `DatabaseSecretClaim` CR ever being touched:
+**The aggregator resolves the effective role at request time, not the operator.** When the operator calls
+get-by-classifier, it sends the CR's `spec.userRole` verbatim (which may be empty) together with `originService` (the
+`app.kubernetes.io/name` label). The aggregator then computes the *effective* role from inputs that live entirely on its
+side and can change without the `DatabaseSecretClaim` CR ever being touched:
 
-- **The `DatabaseAccessPolicy` for the microservice in that namespace.** For the requested `type` it carries a `defaultRole` and an optional `additionalRole` list:
-  - When `spec.userRole` is empty, the effective role becomes the policy's `defaultRole` — which may be any role name the platform team configured, not necessarily `admin`.
-  - When `spec.userRole` is set, it is accepted only if it appears in `additionalRole` (or equals `defaultRole`); the matched value, lower-cased, becomes the effective role.
-- **Whether the request is first-party or cross-service.** If `originService` equals the classifier's `microserviceName`, the policy path above applies. If it is a *different* service (e.g., a CDC consumer reading another service's database), the aggregator instead matches `originService` against the policy's `services` grants, and the effective role is whichever granted role matches the request.
-- **The global permission registry**, consulted as a fallback when no policy entry matches and global permissions are not disabled — again defaulting `userRole` to `admin` only when nothing else resolves.
+- **The `DatabaseAccessPolicy` for the microservice in that namespace.** For the requested `type` it carries a
+  `defaultRole` and an optional `additionalRole` list:
+  - When `spec.userRole` is empty, the effective role becomes the policy's `defaultRole` — which may be any role name
+    the platform team configured, not necessarily `admin`.
+  - When `spec.userRole` is set, it is accepted only if it appears in `additionalRole` (or equals `defaultRole`); the
+    matched value, lower-cased, becomes the effective role.
+- **Whether the request is first-party or cross-service.** If `originService` equals the classifier's
+  `microserviceName`, the policy path above applies. If it is a *different* service (e.g., a CDC consumer reading
+  another service's database), the aggregator instead matches `originService` against the policy's `services` grants,
+  and the effective role is whichever granted role matches the request.
+- **The global permission registry**, consulted as a fallback when no policy entry matches and global permissions are
+  not disabled — again defaulting `userRole` to `admin` only when nothing else resolves.
 
 (The aggregator-side logic is `DatabaseRolesService.getSupportRole`.)
 
 **Two consequences for the operator:**
 
-1. The same `spec.userRole` on two CRs can resolve to two different effective roles, and an empty `spec.userRole` can resolve to *anything* the policy dictates. There is no static, CR-local function from `spec.userRole` to the aggregator's effective role.
-2. A `DatabaseAccessPolicy` edit changes the effective role of existing `DatabaseSecretClaim` CRs **without** changing those CRs — so any operator-side mapping would have to be invalidated and recomputed every time a policy changes, duplicating the aggregator's resolution and racing its cache.
+1. The same `spec.userRole` on two CRs can resolve to two different effective roles, and an empty `spec.userRole` can
+   resolve to *anything* the policy dictates. There is no static, CR-local function from `spec.userRole` to the
+   aggregator's effective role.
+2. A `DatabaseAccessPolicy` edit changes the effective role of existing `DatabaseSecretClaim` CRs **without** changing
+   those CRs — so any operator-side mapping would have to be invalidated and recomputed every time a policy changes,
+   duplicating the aggregator's resolution and racing its cache.
 
-Matching a specific rotated role to the affected CRs would require the operator to replicate all of the above. Rather than do that, **the poller wakes every `DatabaseSecretClaim` that shares the changed database's `(classifier, type)`, regardless of role.** Each woken CR then re-fetches its own credentials through get-by-classifier — where the aggregator performs the authoritative role resolution — and the [content-aware update](#how-databasesecretclaim-works) writes nothing when the returned credentials are unchanged. So CRs bound to a role other than the one that rotated perform a cheap no-op; only the CR(s) whose effective role actually changed get a Secret write and a `SecretRotated` event.
+Matching a specific rotated role to the affected CRs would require the operator to replicate all of the above. Rather
+than do that, **the poller wakes every `DatabaseSecretClaim` that shares the changed database's `(classifier, type)`,
+regardless of role.** Each woken CR then re-fetches its own credentials through get-by-classifier — where the aggregator
+performs the authoritative role resolution — and the [content-aware update](#how-databasesecretclaim-works) writes
+nothing when the returned credentials are unchanged. So CRs bound to a role other than the one that rotated perform a
+cheap no-op; only the CR(s) whose effective role actually changed get a Secret write and a `SecretRotated` event.
 
-The over-fetch is bounded and cheap: a classifier is typically referenced by 1–3 `DatabaseSecretClaim` CRs (one per role), each costing one get-by-classifier round-trip and no Secret churn on a no-op. Trading a couple of redundant reads for not reimplementing — and not having to keep coherent — the aggregator's role-resolution rules is the right balance.
+The over-fetch is bounded and cheap: a classifier is typically referenced by 1–3 `DatabaseSecretClaim` CRs (one per
+role), each costing one get-by-classifier round-trip and no Secret churn on a no-op. Trading a couple of redundant reads
+for not reimplementing — and not having to keep coherent — the aggregator's role-resolution rules is the right balance.
 
-> Anything a poll misses — e.g. a rotation that commits with an out-of-order timestamp below the advanced cursor — is caught by the startup full reconcile (on start / leader failover) and the 1-hour per-CR safety-net requeue.
+> Anything a poll misses — e.g. a rotation that commits with an out-of-order timestamp below the advanced cursor — is
+> caught by the startup full reconcile (on start / leader failover) and the 1-hour per-CR safety-net requeue.
 
 #### DatabaseSecretClaim Status Reference
 
@@ -1922,15 +2261,22 @@ already have.
 
 | Phase | Meaning |
 |-------|---------|
-| `Unknown` | CR just created, not yet processed |
+| *(empty)* | CR just created; the controller has not written status yet — `kubectl get` shows a blank `PHASE`. The `dbaas_resource_phase` metric reports it as `phase="Unknown"`. |
 | `Processing` | Controller is actively reconciling (transient) |
 | `Succeeded` | The target Secret is present and current |
-| `BackingOff` | Transient error — retrying with exponential backoff (see [Reconcile Backoff](#reconcile-backoff)) |
+| `BackingOff` | Transient error. `Unauthorized` and `AggregatorError` retry with [exponential backoff](#reconcile-backoff); `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` instead re-poll at a **fixed 5-second interval** that never widens |
 | `InvalidConfiguration` | Permanent error — will not retry until spec is changed |
+| `Processing` (stuck) | A Kubernetes API error while reading or writing the target Secret — including `forbidden` from missing [namespaced Secret RBAC](#secret-access-namespaced) — returns before any condition is written. The CR keeps `phase: Processing` with no `Ready` condition and no event; the reconcile is retried with exponential backoff. Check the operator log. |
 
-**`status.firstNotFoundAt`** — timestamp of the first `DatabaseNotFound` (404) response in the current streak. Set on the first 404, cleared on any successful aggregator response. Used to detect a CR that has been waiting too long for its database to appear (e.g., a typo in `spec.classifier`): after a fixed timeout the Ready reason switches to `DatabaseNotFoundTimeout` and per-cycle Warning events stop, while polling continues so the CR self-heals if the database eventually appears.
+**`status.firstNotFoundAt`** — timestamp of the first `DatabaseNotFound` (404) response in the current streak. Set on
+the first 404, cleared on any successful aggregator response. Used to detect a CR that has been waiting too long for its
+database to appear (e.g., a typo in `spec.classifier`): after a fixed timeout the Ready reason switches to
+`DatabaseNotFoundTimeout` and per-cycle Warning events stop, while polling continues so the CR self-heals if the
+database eventually appears.
 
-**`status.lastRotatedAt`** — timestamp of the most recent connection-properties change written to the target Secret. Advanced only when the Secret bytes actually change (rotation or first fill of an adopted Secret); no-op reconciles and the initial creation do **not** advance it.
+**`status.lastRotatedAt`** — timestamp of the most recent connection-properties change written to the target Secret.
+Advanced only when the Secret bytes actually change (rotation or first fill of an adopted Secret); no-op reconciles and
+the initial creation do **not** advance it.
 
 **`status.conditions`** — canonical machine-readable state. Same `Ready` / `Stalled` structure as the other resources.
 
@@ -1970,10 +2316,16 @@ already have.
 
 **Diagnostic rules:**
 
-- **`Stalled=True`** — fix the spec (or the conflicting sibling / pre-existing Secret). The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`** — transient; the controller retries with exponential backoff. A persistent `DatabaseNotFound` usually means the `InternalDatabase` for this classifier has not provisioned yet — or the classifier is wrong (watch for `DatabaseNotFoundTimeout`).
+- **`Stalled=True`** — fix the spec (or the conflicting sibling / pre-existing Secret). The controller will not retry on
+  its own.
+- **`Stalled=False` + `Ready=False`** — transient; the controller retries. Note the two retry regimes above: the
+  not-found family re-polls every 5 seconds indefinitely rather than backing off. A persistent `DatabaseNotFound`
+  usually means the `InternalDatabase` for this classifier has not provisioned yet — or the classifier is wrong (watch
+  for `DatabaseNotFoundTimeout`).
 - **`status.lastRotatedAt`** — when this was last advanced tells you when credentials last actually changed.
-- **`status.lastRequestId`** — correlate operator logs with aggregator logs.
+- **Request correlation** — unlike the other kinds, the `DatabaseSecretClaim` reconciler does **not** write
+  `status.lastRequestId`. Correlate through the `requestId=` suffix carried by this CR's Kubernetes Events and by the
+  operator log lines for the reconcile.
 
 #### DatabaseSecretClaim Usage Examples
 
@@ -2002,8 +2354,8 @@ kubectl apply -f databasesecretclaim.yaml
 
 # Watch until the Secret is materialized
 kubectl get databasesecretclaim my-app-db-secret -n my-namespace -w
-# NAME               PHASE       TYPE         AGE
-# my-app-db-secret   Succeeded   postgresql   5s
+# NAME               PHASE       READY   TYPE         AGE
+# my-app-db-secret   Succeeded   True    postgresql   5s
 
 # Inspect the materialized Secret
 kubectl get secret my-app-db-secret -n my-namespace -o jsonpath='{.data.connectionProperties\.json}' | base64 -d | jq .
@@ -2014,36 +2366,86 @@ kubectl get databasesecretclaim my-app-db-secret -n my-namespace -o jsonpath='{.
 # Check conditions for the human-readable error message
 kubectl get databasesecretclaim my-app-db-secret -n my-namespace -o jsonpath='{.status.conditions}' | jq .
 
-# Use lastRequestId to correlate with aggregator logs
-kubectl get databasesecretclaim my-app-db-secret -n my-namespace -o jsonpath='{.status.lastRequestId}'
+# Correlate with aggregator logs through the requestId carried in the CR's events
+kubectl get events -n my-namespace --field-selector involvedObject.name=my-app-db-secret
 ```
+
+---
+
+## Kubernetes Events
+
+The operator emits Kubernetes Events on reconcile outcomes when `K8S_EVENTS_ENABLED=true`. With the default
+`false` every recorder is a no-op, so none of the events below appear in `kubectl describe`.
+
+**Normal**
+
+| Reason | Emitted when |
+|--------|--------------|
+| `DatabaseRegistered` | An `ExternalDatabase` was registered with dbaas-aggregator. |
+| `PolicyApplied` | A `DatabaseAccessPolicy` was applied. |
+| `ProvisioningStarted` | An `InternalDatabase` apply returned `202 Accepted`. |
+| `DatabaseProvisioned` | An `InternalDatabase` apply returned `200 OK`, or its async operation reached `COMPLETED`. |
+| `BalancingRuleApplied` | Any of the three balancing-rule kinds applied its rules. |
+| `BindingRegistered` | A `NamespaceBinding` received its protection finalizer for the first time. |
+| `SecretCreated` | A `DatabaseSecretClaim` created the target Secret, or recreated it after a deletion race. |
+| `SecretRotated` | A `DatabaseSecretClaim` wrote changed credentials (`connectionProperties.json` differs). |
+
+**Warning**
+
+| Reason | Emitted when |
+|--------|--------------|
+| `InvalidSpec` | Any controller-side pre-flight validation failed. |
+| `SecretError` | An `ExternalDatabase` credential Secret could not be read. |
+| `Unauthorized` | The aggregator returned `401`, on submit or on an `InternalDatabase` poll. |
+| `AggregatorRejected` | The aggregator returned `400`, `403`, `409`, `410`, or `422`, or an `InternalDatabase` operation reported `FAILED`. |
+| `AggregatorError` | The aggregator returned `5xx`, the call failed at the network level, an `InternalDatabase` poll returned `404`, or a balancing-rule cleanup call failed. |
+| `OperationTerminated` | An `InternalDatabase` operation reported `TERMINATED`; the operator resubmits. |
+| `BindingBlocked` | A `NamespaceBinding` deletion is deferred by remaining workload resources. |
+| `SecretConflict` | A `DatabaseSecretClaim` found the target Secret owned by another resource, or lost the sibling tiebreak. |
+| `EmptyConnectionProperties` | The aggregator returned `200 OK` with an empty connection-properties map. |
+| `DatabaseNotFound` | The aggregator returned `404` with `CORE-DBAAS-4006`; emitted once per poll cycle. |
+| `DatabaseNotFoundTimeout` | Emitted once, when a `DatabaseNotFound` streak crosses 10 minutes. |
+
+**Condition-only reasons** — these appear in `status.conditions` but are never emitted as events:
+`Succeeded`, `SecretUpToDate`, `BindingReleased`, and `OwnershipCheckError`.
 
 ---
 
 ## Configuration Parameters
 
-The following parameters control the operator's deployment and behavior. They are set as Helm values.
+The operator is configured from three places, which this section keeps separate because they are set
+differently: **Helm values** (rendered into the Deployment by the chart), **environment variables** read
+directly by the binary, and **startup flags** passed as container `args`.
 
-**Service parameters** — affect operator runtime behavior:
+**Service parameters** (Helm values) — affect operator runtime behavior:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `DBAAS_OPERATOR_ENABLED` | boolean | `false` | When `false`, no Kubernetes resources are created by the Helm chart (Deployment, RBAC, and CRDs are all skipped). Must be set to `true` to deploy the operator. |
-| `LEADER_ELECT` | boolean | `true` | Enables leader election. Required when running more than one replica to ensure only one active instance processes resources at a time. |
+| `DBAAS_OPERATOR_ENABLED` | boolean | `false` | When `false`, no operator resources are created by the Helm chart (Deployment, RBAC, CRDs, and monitoring objects are all skipped); only a placeholder `<SERVICE_NAME>-stub` ConfigMap is rendered. Must be set to `true` to deploy the operator. **The CRDs ship as chart templates**, so setting this back to `false` on an existing release deletes them along with every CR they define. |
+| `LEADER_ELECT` | boolean | `true` | Enables leader election; a truthy value makes the chart append the `--leader-elect` flag. Required when running more than one replica to ensure only one active instance processes resources at a time. The binary's own default is `false` — see [Startup flags](#startup-flags). |
 | `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
-| `DBAAS_AGGREGATOR_URL` | string | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (e.g. cross-cluster deployments). Read by the operator as an environment variable; not set by the Helm chart unless explicitly configured. |
-| `KUBERNETES_M2M_ENABLED` | boolean | `false` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `KUBERNETES_M2M_ENABLED`**. `false` (default): HTTP Basic Auth, with credentials from the chart-created `dbaas-operator-aggregator-credentials` Secret. `true`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
-| `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate `DatabaseSecretClaim` credential rotations. Empty uses the operator's built-in default (`30s`). |
-| `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30s`, `1m`) for `ExternalDatabase` CRs. The operator does not watch Secrets, so a referenced credential Secret change is picked up on the next resync rather than instantly. Empty uses the operator's built-in default (`10m`). |
-| `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`. |
+| `KUBERNETES_M2M_ENABLED` | boolean | `false` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `KUBERNETES_M2M_ENABLED`**. `false` (default): HTTP Basic Auth, with credentials read from `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security` (see [Authentication](#authentication-basic-auth-or-m2m-token)). `true`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
+| `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate `DatabaseSecretClaim` credential rotations. Empty uses the operator's built-in default (`30s`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
+| `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30s`, `1m`) for `ExternalDatabase` CRs. The operator does not watch Secrets, so a referenced credential Secret change is picked up on the next resync rather than instantly. Empty uses the operator's built-in default (`10m`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
+| `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`, `fatal`. Per-package overrides (`LOGGING_LEVEL_<PACKAGE>`, `LOG_LEVEL_PACKAGE_<PACKAGE>`) and `LOGGING_LEVEL_ROOT` take precedence over this value. |
 | `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
-| `MONITORING_ENABLED` | boolean | — | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Requires Platform System Monitor CRDs. |
+| `MONITORING_ENABLED` | boolean | `true` | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Because it defaults to `true`, enabling the operator also creates both objects — set it to `false` if the `monitoring.coreos.com` and `integreatly.org` CRDs are not installed, otherwise the release fails to apply. |
+
+**Environment variables read by the binary** — these are not Helm values; the chart either injects them
+or leaves them unset:
+
+| Variable | Source | Default | Description |
+|----------|--------|---------|-------------|
+| `CLOUD_NAMESPACE` | Injected by the chart from `metadata.namespace` (downward API) | none | **Required.** The operator logs an error and exits at startup if it is unset. Defines which `NamespaceBinding` CRs this instance owns (`spec.operatorNamespace == CLOUD_NAMESPACE`) and scopes the `PermanentBalancingRule` informer. |
+| `DBAAS_AGGREGATOR_URL` | Not exposed by the chart | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (for example, cross-cluster deployments). The chart has no value for it — `--set DBAAS_AGGREGATOR_URL=...` does nothing; patch the Deployment `env` block instead. |
 
 **Deployment parameters** — control pod scheduling and resources:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `PAAS_PLATFORM` | string | `KUBERNETES` | Target platform. Allowed values: `KUBERNETES`, `OPENSHIFT`. Controls security context settings. |
+| `NAMESPACE` | string | `default` | Namespace the chart renders into. Load-bearing beyond naming: the `ClusterRoleBinding` subject and the `ClusterRoleBinding` name are built from it, so it must be set explicitly (`--namespace` alone is not read by these templates). |
+| `IMAGE_REPOSITORY` / `TAG` | string | env-specific | Operator image and tag. |
+| `PAAS_PLATFORM` | string | `KUBERNETES` | Target platform. Allowed values: `KUBERNETES`, `OPENSHIFT`. Controls security-context settings and, together with `PAAS_VERSION`, the `HorizontalPodAutoscaler` API version. |
 | `REPLICAS` | integer | `1` | Number of operator pod replicas. Set `LEADER_ELECT=true` when using more than one. |
 | `CPU_REQUEST` / `CPU_LIMIT` | string | env-specific | Pod CPU resource requests and limits. |
 | `MEMORY_REQUEST` / `MEMORY_LIMIT` | string | env-specific | Pod memory resource requests and limits. |
@@ -2057,16 +2459,53 @@ The following parameters control the operator's deployment and behavior. They ar
 | `HPA_MAX_REPLICAS` | integer | — | Maximum number of replicas for HPA. |
 | `HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT` | integer | — | Target average CPU utilization (%) for HPA scale decisions. |
 
+See [`values.schema.json`](../../helm-templates/dbaas-operator/values.schema.json) for the full set of chart
+values, including the topology, deployment-strategy, and `HPA_SCALING_*` knobs not listed above.
+
+### Ports and Probes
+
+| Port | Container port name | Serves |
+|------|---------------------|--------|
+| `8080` | `metrics` | Prometheus `/metrics` (plain HTTP, no auth) — see [DBaaS Operator Metrics](../monitoring/DBaaS%20Operator%20Metrics.md) |
+| `8081` | `web` | Health probes: liveness `GET /healthz`, readiness `GET /readyz` |
+
+The liveness probe starts after `LIVENESS_PROBE_INITIAL_DELAY_SECONDS` (default `15`) and runs every 20 s; the
+readiness probe starts after 5 s and runs every 10 s. Both addresses are configurable through
+[startup flags](#startup-flags).
+
+### Startup Flags
+
+The chart hard-codes the container `args`; none of these flags has a Helm value. To change one, edit the
+Deployment template or patch the rendered Deployment.
+
+| Flag | Binary default | Description |
+|------|----------------|-------------|
+| `--http-bind-address` | `:8080` | Address of the HTTP server that hosts `/metrics`. |
+| `--health-probe-bind-address` | `:8081` | Address of the health-probe endpoints (`/healthz`, `/readyz`). |
+| `--leader-elect` | `false` | Enables leader election. The chart appends this flag when `LEADER_ELECT` is truthy, so a chart install has it on by default. |
+| `--backoff-base-delay` | `1s` | Initial retry delay after the first failure — see [Reconcile Backoff](#reconcile-backoff). |
+| `--backoff-max-delay` | `5m` | Maximum retry delay cap — see [Reconcile Backoff](#reconcile-backoff). |
+
 ### Reconcile Backoff
 
-When a reconcile attempt fails with a transient error (Secret not found, aggregator 5xx, network error, etc.), the controller does not retry immediately. It uses an **exponential backoff** rate limiter: the delay doubles on each consecutive failure for the same object, up to a configured maximum.
+When a reconcile attempt fails with a transient error (Secret not found, aggregator 5xx, network error, etc.), the
+controller does not retry immediately. It uses an **exponential backoff** rate limiter: the delay doubles on each
+consecutive failure for the same object, up to a configured maximum.
 
-This behavior is controlled by two operator startup flags, which can be set via `args` in the Deployment:
+This behavior is controlled by the two backoff [startup flags](#startup-flags): `--backoff-base-delay`
+(default `1s`) doubles on each consecutive failure for the same object, up to `--backoff-max-delay`
+(default `5m`). The chart exposes no values for them, so tuning means editing the Deployment `args`.
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--backoff-base-delay` | `1s` | Initial retry delay after the first failure. Doubles on each subsequent consecutive failure for the same object. |
-| `--backoff-max-delay` | `5m` | Maximum delay cap. Once reached, retries continue at this interval until the error is resolved. |
+**Backoff does not cover every retry.** Several paths requeue after a fixed interval with no error, which
+bypasses the rate limiter entirely:
+
+| Interval | Path |
+|----------|------|
+| 5 s | `InternalDatabase` async poll and `TERMINATED` resubmit; `DatabaseSecretClaim` `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` |
+| 1 s | `DatabaseSecretClaim` Secret create/update race reconverge |
+| 30 s / 5 min | Ownership `Unknown` / `Unbound` retries |
+| 10 min | `ExternalDatabase` resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`) |
+| 1 h | `DatabaseSecretClaim` rotation safety net |
 
 **Example sequence for a single object:**
 
@@ -2086,7 +2525,7 @@ The counter is reset when a reconcile succeeds — the next failure starts from 
 ```yaml
 args:
   - --health-probe-bind-address=:8081
-  - --metrics-bind-address=:8080
+  - --http-bind-address=:8080
   - --leader-elect
   - --backoff-base-delay=5s
   - --backoff-max-delay=10m

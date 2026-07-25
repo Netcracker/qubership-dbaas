@@ -75,11 +75,13 @@ type ConnectionProperty struct {
 //
 // The spec is sent as-is in the registration payload to dbaas-aggregator:
 //
-//	PUT /api/v3/dbaas/<namespace>/databases/<dbName>/externally_manageable
+//	PUT /api/v3/dbaas/<namespace>/databases/registration/externally_manageable
 type ExternalDatabaseSpec struct {
 	// classifier uniquely identifies the database in dbaas-aggregator.
 	// Required keys: microserviceName, scope.
-	// If scope=tenant — tenantId is also required.
+	// For scope=tenant the aggregator also requires tenantId; neither the CRD schema
+	// nor the controller pre-checks it, so a missing tenantId surfaces as an
+	// aggregator rejection (HTTP 400 -> AggregatorRejected).
 	// If namespace is set, it must equal metadata.namespace (controller-side check);
 	// if omitted, metadata.namespace is used for the aggregator URL.
 	// Immutable after creation.
