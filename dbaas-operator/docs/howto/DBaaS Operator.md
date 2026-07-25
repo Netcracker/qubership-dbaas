@@ -679,9 +679,10 @@ phase summarizes them and carries no information they do not already have.
 - **`Ready=False` + `Stalled=False`** — transient; the controller is retrying. See
   [Reconcile Backoff](#reconcile-backoff) for which paths back off and which re-poll at a fixed interval.
 - **`Ready=True` + `Stalled=False`** — the steady state, not a retry. Nothing is scheduled beyond the
-  kind's own resync or watch events: an `ExternalDatabase` re-reconciles on its periodic resync, a
-  `DatabaseSecretClaim` on a rotation trigger or its hourly safety net, and every kind on a spec change or
-  a `NamespaceBinding` event.
+  kind's own resync or watch events: every kind re-reconciles on a spec change, the binding-gated workload
+  kinds also on a `NamespaceBinding` event, an `ExternalDatabase` on its periodic resync, and a
+  `DatabaseSecretClaim` on a rotation trigger or its hourly safety net. `PermanentBalancingRule` has no
+  `NamespaceBinding` watch at all — see [PermanentBalancingRule scope](#pbr-scope).
 - **`status.lastRequestId`** — correlate operator logs with dbaas-aggregator logs. `DatabaseSecretClaim` is
   the exception: it never writes this field — see its
   [Status Reference](#databasesecretclaim-status-reference).
