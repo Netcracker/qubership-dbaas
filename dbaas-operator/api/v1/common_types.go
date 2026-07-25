@@ -46,7 +46,8 @@ type Classifier struct {
 	Scope string `json:"scope"`
 
 	// namespace is the Kubernetes namespace of the owning service.
-	// If omitted, the aggregator uses metadata.namespace from the request.
+	// If omitted, the operator defaults it to the CR's metadata.namespace before
+	// calling the aggregator, which requires a namespace in the classifier.
 	// If set, it must equal the CR's metadata.namespace — a mismatch causes
 	// InvalidConfiguration at the controller level.
 	// +optional
