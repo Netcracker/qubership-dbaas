@@ -1844,7 +1844,7 @@ spec:
 | Field | Required | Description |
 |-------|:--------:|-------------|
 | `metadata.name` | Yes | Must be `permanent-balancing-rules`. |
-| `metadata.namespace` | Yes | Must be the operator namespace (`CLOUD_NAMESPACE`), not a business namespace. The controller rejects any other namespace as `InvalidConfiguration`/`InvalidSpec`, and the informer only watches the operator namespace, so a CR created elsewhere is never reconciled. |
+| `metadata.namespace` | Yes | Must be the operator namespace (`CLOUD_NAMESPACE`), not a business namespace. The informer is scoped to the operator namespace, so a CR created anywhere else is **never reconciled at all**: it stays with an empty status and no events, and the aggregator is never called. Do not expect an `InvalidConfiguration` status — there is no reconcile to write one. (The controller carries a matching namespace check as defence in depth, but it can only run for objects the informer delivers.) |
 | `spec.rules` | Yes | Non-empty list of permanent balancing entries. |
 | `spec.rules[].dbType` | Yes | Database type. |
 | `spec.rules[].physicalDatabaseId` | Yes | Target physical database identifier. |
