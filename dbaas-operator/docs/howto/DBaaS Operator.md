@@ -214,8 +214,12 @@ timeout nor the retry behavior is configurable.
 
 ### Common Response Handling
 
-These outcomes are the same for every endpoint below and are not repeated in the per-endpoint tables. Each
-of those tables lists only the responses whose meaning is specific to that endpoint.
+These outcomes are the same for every **CR-driven** endpoint below and are not repeated in the
+per-endpoint tables; each of those tables lists only the responses whose meaning is specific to that
+endpoint. They do **not** apply to the
+[rotation poller's changed-databases feed](#rotation-poller-changed-databases-feed), which drives no CR
+status at all: a `401`, `5xx`, or network error there is logged, the cursor is left where it was, and the
+request is repeated on the next tick — no CR moves to `BackingOff` and none reports `Unauthorized`.
 
 | HTTP Code | Situation | Operator outcome |
 |-----------|-----------|-----------------|
@@ -654,7 +658,7 @@ phase summarizes them and carries no information they do not already have.
 | Condition | `True` | `False` |
 |-----------|--------|---------|
 | `Ready` | The current generation was processed successfully | Processing failed — check `Reason` and `Message` |
-| `Stalled` | Permanent error: the spec must be corrected, and the controller will not retry on its own | Transient error or success: the controller retries automatically |
+| `Stalled` | Permanent error: the spec must be corrected, and the controller will not retry on its own | Not permanently stalled. This is the normal value on success as well as during a transient failure, so it does **not** by itself mean anything is being retried — read it together with `Ready` |
 
 `LastTransitionTime` is preserved when `Status` (`True`/`False`) has not changed — a change in `Reason` or
 `Message` at the same `Status` does not reset it.
@@ -672,8 +676,12 @@ phase summarizes them and carries no information they do not already have.
 **Diagnostic rules:**
 
 - **`Stalled=True`** — fix the spec. The controller will not retry on its own.
-- **`Stalled=False` + `Ready=False`** — transient; the controller is retrying. See
+- **`Ready=False` + `Stalled=False`** — transient; the controller is retrying. See
   [Reconcile Backoff](#reconcile-backoff) for which paths back off and which re-poll at a fixed interval.
+- **`Ready=True` + `Stalled=False`** — the steady state, not a retry. Nothing is scheduled beyond the
+  kind's own resync or watch events: an `ExternalDatabase` re-reconciles on its periodic resync, a
+  `DatabaseSecretClaim` on a rotation trigger or its hourly safety net, and every kind on a spec change or
+  a `NamespaceBinding` event.
 - **`status.lastRequestId`** — correlate operator logs with dbaas-aggregator logs. `DatabaseSecretClaim` is
   the exception: it never writes this field — see its
   [Status Reference](#databasesecretclaim-status-reference).
