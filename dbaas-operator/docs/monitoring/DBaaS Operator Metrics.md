@@ -158,8 +158,10 @@ The dashboard exposes three variables:
 
 Every panel query is scoped by `cluster=~"$cluster"` and `namespace=~"$namespace"`. This allows one
 provisioned dashboard to switch between operator instances without changing its UID. The default
-range is the last 30 minutes and automatic refresh is disabled; refresh manually when testing a
-short-lived state such as deletion.
+range is the last 30 minutes and the dashboard refreshes every minute. This operational dashboard
+uses the monitoring design guide's explicit auto-refresh exception so that reconciliation lag,
+active errors, deletion state, and time-based health metrics stay current. With metrics scraped
+every 30 seconds, this issues one dashboard query refresh per two scrape cycles.
 
 **To open it:** in Grafana, open the **DBaaS Operator** dashboard (the name may differ per
 installation), select the **datasource**, **cluster**, and **DBaaS Operator Namespace**.
