@@ -143,16 +143,18 @@ title **"DBaaS Operator"**) from `templates/Dashboard.yaml`, gated on
 `DBAAS_OPERATOR_ENABLED && MONITORING_ENABLED` (chart defaults: `DBAAS_OPERATOR_ENABLED: false`,
 `MONITORING_ENABLED: true` — so it ships once the operator is enabled) and reconciled by the
 **Grafana Operator**. Its UID follows the monitoring convention
-`<dashboard-namespace>-dbaas-operator`; Helm derives it from `NAMESPACE` and truncates the namespace portion to keep the
-Grafana 40-character limit.
+`<namespace-prefix>-<namespace-hash>-dbaas-operator`; Helm derives it from `NAMESPACE`, keeps up
+to 18 characters as a readable prefix, and appends the first six characters of its SHA-256 hash
+to preserve uniqueness while staying within Grafana's 40-character UID limit.
 
 The dashboard exposes three variables:
 
-- **`datasource`** - Prometheus, VictoriaMetrics, or Promxy data source.
-- **`cluster`** - source Kubernetes cluster added by Promxy. `All` uses `.*`, which also matches
+- **`datasource`** — Prometheus, VictoriaMetrics, or Promxy data source.
+- **`cluster`** — source Kubernetes cluster added by Promxy. `All` uses `.*`, which also matches
   metrics without a `cluster` label when the dashboard uses Prometheus/VictoriaMetrics directly.
-- **`namespace`** - DBaaS Operator namespace discovered from
-  `dbaas_resource_collector_success`, restricted to the selected cluster.
+- **`namespace`** — DBaaS Operator namespace discovered from
+  `dbaas_resource_collector_success`, restricted to the selected cluster. It defaults to the
+  namespace of the chart installation that provisioned the dashboard.
 
 Every panel query is scoped by `cluster=~"$cluster"` and `namespace=~"$namespace"`. This allows one
 provisioned dashboard to switch between operator instances without changing its UID. The default

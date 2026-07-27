@@ -64,6 +64,11 @@
                                         "type":  "query"
                                     },
                                     {
+                                        "current":  {
+                                                        "selected":  true,
+                                                        "text":  "namespace-default-placeholder",
+                                                        "value":  "namespace-default-placeholder"
+                                                    },
                                         "datasource":  "$datasource",
                                         "definition":  "label_values(dbaas_resource_collector_success{cluster=~\"$cluster\"}, namespace)",
                                         "hide":  0,

@@ -1,6 +1,7 @@
 {{- if and .Values.DBAAS_OPERATOR_ENABLED .Values.MONITORING_ENABLED }}
-{{- $dashboardNamespace := .Values.NAMESPACE | trunc 25 | trimSuffix "-" }}
-{{- $dashboardUID := printf "%s-dbaas-operator" $dashboardNamespace }}
+{{- $namespaceHash := sha256sum .Values.NAMESPACE | trunc 6 }}
+{{- $dashboardNamespace := .Values.NAMESPACE | trunc 18 | trimSuffix "-" }}
+{{- $dashboardUID := printf "%s-%s-dbaas-operator" $dashboardNamespace $namespaceHash }}
 ---
 apiVersion: integreatly.org/v1alpha1
 kind: GrafanaDashboard
@@ -15,5 +16,5 @@ metadata:
     deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
 spec:
   name: dbaas-operator-dashboard.json
-  json: {{ .Files.Get "dashboards/dbaas-operator-dashboard.json" | toJson | replace "dashboard-uid-placeholder" $dashboardUID }}
+  json: {{ .Files.Get "dashboards/dbaas-operator-dashboard.json" | toJson | replace "dashboard-uid-placeholder" $dashboardUID | replace "namespace-default-placeholder" .Values.NAMESPACE }}
 {{- end }}
