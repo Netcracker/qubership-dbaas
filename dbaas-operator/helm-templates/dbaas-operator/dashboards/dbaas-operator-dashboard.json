@@ -8,8 +8,7 @@
                  "k8s"
              ],
     "schemaVersion":  39,
-    "version":  8,
-    "refresh":  "1m",
+    "version":  9,
     "time":  {
                  "from":  "now-30m",
                  "to":  "now"

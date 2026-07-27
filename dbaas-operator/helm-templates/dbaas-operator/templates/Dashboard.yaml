@@ -3,9 +3,9 @@
 {{- $dashboardNamespace := .Values.NAMESPACE | trunc 18 | trimSuffix "-" }}
 {{- $dashboardUID := printf "%s-%s-dbaas-operator" $dashboardNamespace $namespaceHash }}
 {{- /*
-The dashboard intentionally refreshes every minute because it presents operational health,
-reconciliation lag, and active error states. This is one query refresh per two 30-second
-metric scrapes, and the monitoring design guide permits auto-refresh when justified.
+Automatic refresh is intentionally disabled because it can hinder issue investigation by changing
+the displayed data while evidence is being inspected. Refresh the dashboard manually when updated
+metric samples are needed.
 */}}
 ---
 apiVersion: integreatly.org/v1alpha1
