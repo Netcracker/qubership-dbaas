@@ -14,6 +14,9 @@ This page documents the Prometheus metrics exposed by **dbaas-operator** and how
 - [Example PromQL queries](#example-promql-queries)
 - [Cardinality & high-availability notes](#cardinality--high-availability-notes)
 
+**Related documents:** [DBaaS Operator](../howto/DBaaS%20Operator.md) — custom resources, phases, and
+condition reasons behind these metrics.
+
 ---
 
 ## Where metrics are exposed
@@ -90,7 +93,7 @@ The operator publishes two families of metrics:
 | `dbaas_reconcile_trigger_total` | Counter | `controller`, `trigger` | Reconcile invocations broken down by what triggered them. Complements the framework's reconcile totals with the trigger dimension. |
 | `dbaas_aggregator_requests_total` | Counter | `controller`, `operation`, `result` | Calls to dbaas-aggregator by controller, operation, and outcome. The `result` label separates user errors (`spec_rejection`) from platform errors (`auth_error`, `server_error`). |
 | `dbaas_aggregator_request_duration_seconds` | Histogram | `controller`, `operation` | Latency of HTTP calls to dbaas-aggregator. Buckets: `0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30` s. |
-| `dbaas_async_operation_duration_seconds` | Histogram | `result` | End-to-end duration of asynchronous `InternalDatabase` provisioning, from async submit (HTTP 202) to the final poll outcome. Buckets: `1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200` s. |
+| `dbaas_async_operation_duration_seconds` | Histogram | `result` | End-to-end duration of asynchronous `InternalDatabase` provisioning, from async submit (HTTP 202) to the final poll outcome. Buckets: `1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200` s. The submit timestamp is held in operator memory, so an operation that was in flight across an operator restart or a leadership change is never observed — `_count` under-reports completions after a restart. |
 | `dbaas_secret_resolution_errors_total` | Counter | `namespace`, `reason` | Failures reading the credential `Secret` referenced by an `ExternalDatabase`, scoped to namespaces owned by this operator instance. A non-zero value means a database may be left without valid credentials — direct service impact. |
 
 > Histograms expose the usual `_bucket`, `_sum`, and `_count` series.
@@ -123,11 +126,11 @@ already carried by `dbaas_namespace_binding_state` (`deleting_with_finalizer`).
 | `dbaas_resource_observed_generation_lag` | Gauge | `kind`, `resource_namespace`, `name` | `metadata.generation − status.observedGeneration`. `> 0` means the latest spec has not been fully reconciled yet. |
 | `dbaas_resource_deletion_state` | Gauge | `kind`, `resource_namespace`, `name`, `state` | Emitted only while a resource is being deleted. `state` is `deleting` or `deleting_with_finalizer`. |
 | `dbaas_namespace_binding_state` | Gauge | `resource_namespace`, `name`, `state` | Current `NamespaceBinding` state from this operator's point of view: `mine`, `foreign`, `deleting`, `deleting_with_finalizer`. |
-| `dbaas_balancing_rule_desired_targets` | Gauge | `kind`, `resource_namespace`, `name`, `target_type` | Desired balancing-rule target count from `spec` (operator intent). |
-| `dbaas_balancing_rule_applied_targets` | Gauge | `kind`, `resource_namespace`, `name`, `target_type` | Applied balancing-rule target count recorded in `status` (last operator-applied state). |
+| `dbaas_balancing_rule_desired_targets` | Gauge | `kind`, `resource_namespace`, `name`, `target_type` | Desired balancing-rule target count from `spec` (operator intent). `kind` is limited to the three balancing-rule kinds. For `NamespaceBalancingRule` the value counts **rules**, not targets (`target_type="rule"`); `MicroserviceBalancingRule` counts microservices and `PermanentBalancingRule` counts namespaces. |
+| `dbaas_balancing_rule_applied_targets` | Gauge | `kind`, `resource_namespace`, `name`, `target_type` | Applied balancing-rule target count recorded in `status` (last operator-applied state). Same `kind` and `target_type` semantics as `dbaas_balancing_rule_desired_targets`. |
 | `dbaas_secret_claim_last_rotation_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp of the most recent connection-properties rotation applied by a `DatabaseSecretClaim`. Present only after the first rotation. |
 | `dbaas_secret_claim_first_not_found_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp when the current `DatabaseNotFound` streak started for a `DatabaseSecretClaim`. Present only while the claim's database is missing. |
-| `dbaas_resource_collector_success` | Gauge | `kind` | `1` if the latest resource-metrics collection for that CR kind succeeded, `0` if the list call failed. Watch for `0` — other resource-state series for that kind may be stale or missing. |
+| `dbaas_resource_collector_success` | Gauge | `kind` | `1` if the latest resource-metrics collection for that CR kind succeeded, `0` if the list call failed. It is also `0` for `PermanentBalancingRule` when the operator namespace is unknown — in that case the collector emits no PBR series at all and never attempts the list. Watch for `0` — other resource-state series for that kind may be stale or missing. |
 
 > **Caveat (balancing rules):** desired/applied target counts and applied state are operator
 > intent / last-applied snapshots. They do **not** prove the referenced physical database exists
@@ -139,18 +142,33 @@ already carried by `dbaas_namespace_binding_state` (`deleting_with_finalizer`).
 
 The chart ships a ready-made Grafana dashboard for these metrics. It is delivered as a
 `GrafanaDashboard` custom resource (`dbaas-operator-dashboard`, `integreatly.org/v1alpha1`, dashboard
-title **"DBaaS Operator"**) from `templates/Dashboard.yaml`, gated on
+title pattern `DBaaS Operator - <namespace>`) from `templates/Dashboard.yaml`, gated on
 `DBAAS_OPERATOR_ENABLED && MONITORING_ENABLED` (chart defaults: `DBAAS_OPERATOR_ENABLED: false`,
 `MONITORING_ENABLED: true` — so it ships once the operator is enabled) and reconciled by the
-**Grafana Operator**. The panel queries are pre-scoped to the operator's namespace at install time (the chart
-substitutes the operator `NAMESPACE` for the dashboard's `#namespace#` placeholder), so there is no
-namespace picker. The dashboard exposes one variable — **`datasource`** — to select the
-Prometheus/VictoriaMetrics data source.
+**Grafana Operator**. Its UID follows the monitoring convention
+`<namespace-prefix>-<namespace-hash>-dbaas-operator`; Helm derives it from `NAMESPACE`, keeps up
+to 18 characters as a readable prefix, and appends the first six characters of its SHA-256 hash
+to preserve uniqueness while staying within Grafana's 40-character UID limit.
 
-**To open it:** in Grafana, open the **DBaaS Operator** dashboard (the name may differ per
-installation), select the **datasource**, and set the time range.
+The dashboard exposes three variables:
 
-The dashboard is organized into rows that mirror the metric groups above.
+- **`datasource`** (shown as **Cloud**) — Prometheus, VictoriaMetrics, or Promxy data source.
+- **`cluster`** — source Kubernetes cluster added by Promxy. `All` uses `.*`, which also matches
+  metrics without a `cluster` label when the dashboard uses Prometheus/VictoriaMetrics directly.
+- **`namespace`** — DBaaS Operator namespace discovered from
+  `dbaas_resource_collector_success`, restricted to the selected cluster. It defaults to the
+  namespace of the chart installation that provisioned the dashboard.
+
+Every panel query is scoped by `cluster=~"$cluster"` and `namespace=~"$namespace"`. This allows one
+provisioned dashboard to switch between operator instances without changing its UID. The default
+range is the last 30 minutes and automatic refresh is disabled. This is intentional because
+automatic refresh can hinder issue investigation by changing the displayed data while evidence
+is being inspected. Refresh the dashboard manually when updated metric samples are needed.
+
+**To open it:** in Grafana, open `DBaaS Operator - <operator-namespace>`, then select **Cloud**,
+**Cluster**, and **DBaaS Operator Namespace**.
+The dashboard is organized into rows that mirror the metric groups above. `CR Health Overview`
+appears first and is expanded by default; all detailed rows are collapsed until needed.
 
 ### Credentials & Secret Resolution
 
@@ -202,9 +220,9 @@ The dashboard is organized into rows that mirror the metric groups above.
 
 | Panel | What it shows | Based on |
 |---|---|---|
-| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
+| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts. No data means no owned balancing-rule CRs currently exist. | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
 | NamespaceBinding States | NamespaceBindings by state (`mine` / `foreign` / `deleting` …) | `dbaas_namespace_binding_state` |
-| Resources being deleted | CRs stuck in deletion | `dbaas_resource_deletion_state` |
+| Resources being deleted | CRs currently in deletion. No data means no resources are being deleted. | `dbaas_resource_deletion_state` |
 
 ---
 
@@ -216,6 +234,9 @@ The dashboard is organized into rows that mirror the metric groups above.
 
 > The three balancing-rule kinds share one reconciler, so **aggregator-call** metrics group them
 > under `balancingrule`, while **reconcile-trigger** metrics use the per-kind names.
+>
+> `namespacebinding` is deliberately absent: the `NamespaceBinding` reconciler makes no aggregator calls
+> and records no trigger counters. The kind still appears in the resource-state metrics below.
 
 **`kind`** (CamelCase; resource-state metrics):
 `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`,
@@ -227,16 +248,24 @@ The dashboard is organized into rows that mirror the metric groups above.
 |---|---|
 | `spec_change` | The CR spec / generation changed. It is also the **default/catch-all** bucket: for `ExternalDatabase` it additionally counts the periodic resync (`ResyncInterval`) and `refresh`-annotation force-reconciles, since those are not classified as any of the more specific triggers below. |
 | `namespace_binding_change` | A `NamespaceBinding` change re-enqueued the CR |
-| `polling` | The rotation poller's changed-databases feed |
-| `rotation_trigger` | A rotation-trigger annotation was stamped |
-| `sibling_secret_claim_change` | A related `DatabaseSecretClaim` changed |
-| `safety_net` | Periodic safety-net re-reconcile |
+| `polling` | An `InternalDatabase` reconcile that polls an in-progress async provisioning operation (`status.trackingId` is set). Emitted only with `controller="internaldatabase"` — the rotation poller's feed shows up as `rotation_trigger` instead |
+| `rotation_trigger` | A rotation-trigger annotation was stamped — `databasesecretclaim` only |
+| `sibling_secret_claim_change` | A related `DatabaseSecretClaim` changed — `databasesecretclaim` only |
+| `safety_net` | Periodic safety-net re-reconcile — `databasesecretclaim` only |
+
+> Not every `controller` × `trigger` combination can occur. `namespace_binding_change` is emitted by every
+> binding-gated controller but never by `permanentbalancingrule`, which only ever reports `spec_change`.
+> All trigger counters are recorded **after** the ownership check, so reconciles of CRs in foreign or
+> unbound namespaces are not counted at all.
 
 **`operation`** (which aggregator call):
 `register_external_database`, `apply_config`, `poll_status`, `get_database_by_classifier`,
 `create_database`, `apply_microservice_balancing_rule`, `cleanup_microservice_balancing_rule`,
 `apply_namespace_balancing_rule`, `delete_namespace_balancing_rule`,
 `apply_permanent_balancing_rule`, `delete_permanent_balancing_rule`.
+
+The rotation poller's changed-databases feed (`GET /api/v3/dbaas/databases/changed`) has no `operation`
+value — it is not recorded in `dbaas_aggregator_requests_total` at all.
 
 `create_database` is the get-or-create call (`PUT /api/v3/dbaas/{ns}/databases`) the
 `InternalDatabase` controller issues to eagerly materialize the concrete
@@ -259,7 +288,9 @@ The dashboard is organized into rows that mirror the metric groups above.
 **`reason`** (secret resolution failures — `dbaas_secret_resolution_errors_total`):
 `secret_not_found`, `key_missing`, `key_empty`, `forbidden`, `secret_read_failed`.
 
-**`phase`** (resource phase): `Unknown`, `Processing`, `WaitingForDependency`, `Succeeded`, `BackingOff`, `InvalidConfiguration`. `WaitingForDependency` is used only by `InternalDatabase`, while it polls dbaas-aggregator for an in-progress async provisioning operation.
+**`phase`** (resource phase): `Unknown`, `Processing`, `WaitingForDependency`, `Succeeded`, `BackingOff`,
+`InvalidConfiguration`. `WaitingForDependency` is used only by `InternalDatabase`, while it polls dbaas-aggregator for
+an in-progress async provisioning operation.
 
 **`target_type`** (balancing rules): `microservice` (MicroserviceBalancingRule),
 `rule` (NamespaceBalancingRule), `namespace` (PermanentBalancingRule).

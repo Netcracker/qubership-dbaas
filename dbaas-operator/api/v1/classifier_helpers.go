@@ -85,9 +85,10 @@ func ClassifierFlatMap(c Classifier) map[string]any {
 		m["customKeys"] = customKeys
 	}
 	// extraKeys are flattened onto the top level (legacy open-classifier
-	// compatibility). Reserved keys are skipped defensively — CRD CEL
-	// validation already rejects them at admission, and the typed fields above
-	// always win so a stray reserved extraKey can never corrupt identity.
+	// compatibility). Reserved keys are skipped defensively: the controllers
+	// reject them during pre-flight validation (there is no CRD CEL rule for
+	// extraKeys), and the typed fields above always win, so a stray reserved
+	// extraKey can never corrupt identity.
 	for k, v := range c.ExtraKeys {
 		if _, reserved := reservedClassifierKeys[k]; reserved {
 			continue
@@ -98,9 +99,9 @@ func ClassifierFlatMap(c Classifier) map[string]any {
 }
 
 // reservedClassifierKeys are the top-level keys owned by the typed Classifier
-// fields. extraKeys may not shadow them (enforced by CRD CEL validation; the
-// check in ClassifierFlatMap is a defensive backstop for objects that bypass
-// admission).
+// fields. extraKeys may not shadow them: the controllers reject such a key during
+// pre-flight validation, and the check in ClassifierFlatMap is a defensive backstop
+// for objects that were admitted before that check existed.
 var reservedClassifierKeys = map[string]struct{}{
 	"microserviceName": {},
 	"scope":            {},

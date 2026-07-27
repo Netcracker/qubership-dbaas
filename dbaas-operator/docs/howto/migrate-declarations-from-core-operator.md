@@ -1,4 +1,7 @@
-# Migrating `DbPolicy` (now `DatabaseAccessPolicy`) and `DatabaseDeclaration` (now `InternalDatabase`) from Core Operator to DBaaS Operator
+# Migrating Declarations from Core Operator to DBaaS Operator
+
+This guide covers the two migrated kinds: `DbPolicy` (now `DatabaseAccessPolicy`) and
+`DatabaseDeclaration` (now `InternalDatabase`).
 
 The legacy **Core Operator** consumed DBaaS declarations as generic
 `kind: DBaaS` resources (with a `subKind`) and forwarded them to
@@ -34,7 +37,7 @@ behavior (role grants, provisioning, cloning) is unchanged.
 
 The legacy `subKind: DbPolicy` becomes the native CRD `kind: DatabaseAccessPolicy`.
 
-### Field mapping
+### DbPolicy field mapping
 
 | Old (`subKind: DbPolicy`) | New (`kind: DatabaseAccessPolicy`) |
 |---|---|
@@ -43,7 +46,7 @@ The legacy `subKind: DbPolicy` becomes the native CRD `kind: DatabaseAccessPolic
 | `spec.policy[].type` / `.defaultRole` / `.additionalRole[]` | `spec.policy[]` — unchanged |
 | — | `spec.disableGlobalPermissions` (new, optional, default `false`) |
 
-### Before (Core Operator)
+### DbPolicy before (Core Operator)
 
 ```yaml
 apiVersion: core.netcracker.com/v1
@@ -73,7 +76,7 @@ spec:
       additionalRole: []
 ```
 
-### After (DBaaS Operator)
+### DbPolicy after (DBaaS Operator)
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
@@ -112,7 +115,7 @@ single legacy resource could declare several databases. The new CRD describes
 **exactly one** database. **Split each entry of `spec.declarations[]` into its
 own `InternalDatabase` CR.**
 
-### Field mapping
+### DatabaseDeclaration field mapping
 
 | Old (`subKind: DatabaseDeclaration`) | New (`kind: InternalDatabase`) |
 |---|---|
@@ -129,7 +132,7 @@ own `InternalDatabase` CR.**
 | `initialInstantiation.sourceClassifier{...}` | `spec.initialInstantiation.sourceClassifier{...}` — now a full `Classifier` (add `microserviceName`) |
 | `declarations[].lazy` / `.settings` / `.namePrefix` | `spec.lazy` / `spec.settings` / `spec.namePrefix` |
 
-### Before (Core Operator)
+### DatabaseDeclaration before (Core Operator)
 
 ```yaml
 apiVersion: core.netcracker.com/v1
@@ -158,7 +161,7 @@ spec:
           scope: service
 ```
 
-### After (DBaaS Operator)
+### DatabaseDeclaration after (DBaaS Operator)
 
 One CR per `declarations[]` entry:
 
@@ -198,15 +201,18 @@ spec:
   `InternalDatabase.spec.classifier` + `spec.type` are immutable after
   creation (enforced by CEL validation). To repoint a CR at a different service
   or database, **delete and recreate** it rather than editing in place.
-- **`classifier.namespace`.** Optional. If omitted, the aggregator defaults it
-  to the CR's `metadata.namespace`. If you set it, it **must equal**
-  `metadata.namespace`, otherwise the controller reports `InvalidConfiguration`.
+- **`classifier.namespace`.** Optional. If omitted, the **operator** defaults it to the CR's
+  `metadata.namespace` before calling the aggregator, which requires a namespace in the classifier.
+  If you set it, it **must equal** `metadata.namespace`, otherwise the controller reports phase
+  `InvalidConfiguration` with reason `InvalidSpec`.
 - **Open-classifier (top-level) keys → `extraKeys`.** A legacy declaration that
   placed arbitrary identity fields at the classifier's *top level* (the open-classifier
   model) maps them to `spec.classifier.extraKeys` — a flat map merged onto the top level
   on the wire, distinct from the nested `customKeys`. The reserved keys
-  `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are rejected with
-  `InvalidConfiguration`. Because these fields are part of the database identity, **every
+  `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are rejected by the controller with
+  phase `InvalidConfiguration` and reason `InvalidSpec`. See
+  [Classifier → Aggregator Wire Mapping](DBaaS%20Operator.md#classifier--aggregator-wire-mapping) for the
+  full mapping. Because these fields are part of the database identity, **every
   consumer's dbaas-client must emit the same keys/values**, or the database (and its
   mounted Secret) won't be found.
 - **No more `subKind` / `spec.apiVersion`.** Remove both; they have no place in
@@ -221,12 +227,14 @@ spec:
   Omit `tenantId` to declare a template only.
 - **`clone` requires a source.** When `initialInstantiation.approach: clone`,
   `sourceClassifier` is required and `spec.lazy: true` is prohibited.
-- **DatabaseAccessPolicy needs `services` or `policy`.** At least one must be set; otherwise the CR
-  is rejected with `InvalidConfiguration`.
-- **Status & lifecycle.** Each CR now carries its own `status.phase`,
-  conditions, and `observedGeneration`; provisioning is asynchronous and the
-  controller polls the aggregator. See the runbook for the phase/condition
-  reference.
+- **DatabaseAccessPolicy needs `services` or `policy`.** At least one must be set; otherwise the
+  controller reports phase `InvalidConfiguration` with reason `InvalidSpec`. The CRD itself does not
+  enforce this, so the API server accepts the CR first.
+- **Status & lifecycle.** Each CR now carries its own `status.phase`, conditions, and
+  `observedGeneration`; provisioning may be synchronous or asynchronous, and the controller polls the
+  aggregator while an async operation is in flight. See
+  [InternalDatabase Status Reference](DBaaS%20Operator.md#internaldatabase-status-reference) for the
+  phase and condition reference.
 
 ---
 
