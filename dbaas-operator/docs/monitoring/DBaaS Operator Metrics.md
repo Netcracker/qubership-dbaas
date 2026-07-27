@@ -142,7 +142,7 @@ already carried by `dbaas_namespace_binding_state` (`deleting_with_finalizer`).
 
 The chart ships a ready-made Grafana dashboard for these metrics. It is delivered as a
 `GrafanaDashboard` custom resource (`dbaas-operator-dashboard`, `integreatly.org/v1alpha1`, dashboard
-title **"DBaaS Operator"**) from `templates/Dashboard.yaml`, gated on
+title pattern `DBaaS Operator - <namespace>`) from `templates/Dashboard.yaml`, gated on
 `DBAAS_OPERATOR_ENABLED && MONITORING_ENABLED` (chart defaults: `DBAAS_OPERATOR_ENABLED: false`,
 `MONITORING_ENABLED: true` — so it ships once the operator is enabled) and reconciled by the
 **Grafana Operator**. Its UID follows the monitoring convention
@@ -152,7 +152,7 @@ to preserve uniqueness while staying within Grafana's 40-character UID limit.
 
 The dashboard exposes three variables:
 
-- **`datasource`** — Prometheus, VictoriaMetrics, or Promxy data source.
+- **`datasource`** (shown as **Cloud**) — Prometheus, VictoriaMetrics, or Promxy data source.
 - **`cluster`** — source Kubernetes cluster added by Promxy. `All` uses `.*`, which also matches
   metrics without a `cluster` label when the dashboard uses Prometheus/VictoriaMetrics directly.
 - **`namespace`** — DBaaS Operator namespace discovered from
@@ -161,13 +161,12 @@ The dashboard exposes three variables:
 
 Every panel query is scoped by `cluster=~"$cluster"` and `namespace=~"$namespace"`. This allows one
 provisioned dashboard to switch between operator instances without changing its UID. The default
-range is the last 30 minutes and the dashboard refreshes every minute. This operational dashboard
-uses the monitoring design guide's explicit auto-refresh exception so that reconciliation lag,
-active errors, deletion state, and time-based health metrics stay current. With metrics scraped
-every 30 seconds, this issues one dashboard query refresh per two scrape cycles.
+range is the last 30 minutes and automatic refresh is disabled. This is intentional because
+automatic refresh can hinder issue investigation by changing the displayed data while evidence
+is being inspected. Refresh the dashboard manually when updated metric samples are needed.
 
-**To open it:** in Grafana, open the **DBaaS Operator** dashboard (the name may differ per
-installation), select the **datasource**, **cluster**, and **DBaaS Operator Namespace**.
+**To open it:** in Grafana, open `DBaaS Operator - <operator-namespace>`, then select **Cloud**,
+**Cluster**, and **DBaaS Operator Namespace**.
 The dashboard is organized into rows that mirror the metric groups above. `CR Health Overview`
 appears first and is expanded by default; all detailed rows are collapsed until needed.
 
