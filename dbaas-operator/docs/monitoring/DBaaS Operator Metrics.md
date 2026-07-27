@@ -145,15 +145,31 @@ The chart ships a ready-made Grafana dashboard for these metrics. It is delivere
 title **"DBaaS Operator"**) from `templates/Dashboard.yaml`, gated on
 `DBAAS_OPERATOR_ENABLED && MONITORING_ENABLED` (chart defaults: `DBAAS_OPERATOR_ENABLED: false`,
 `MONITORING_ENABLED: true` — so it ships once the operator is enabled) and reconciled by the
-**Grafana Operator**. The panel queries are pre-scoped to the operator's namespace at install time (the chart
-substitutes the operator `NAMESPACE` for the dashboard's `#namespace#` placeholder), so there is no
-namespace picker. The dashboard exposes one variable — **`datasource`** — to select the
-Prometheus/VictoriaMetrics data source.
+**Grafana Operator**. Its UID follows the monitoring convention
+`<namespace-prefix>-<namespace-hash>-dbaas-operator`; Helm derives it from `NAMESPACE`, keeps up
+to 18 characters as a readable prefix, and appends the first six characters of its SHA-256 hash
+to preserve uniqueness while staying within Grafana's 40-character UID limit.
+
+The dashboard exposes three variables:
+
+- **`datasource`** — Prometheus, VictoriaMetrics, or Promxy data source.
+- **`cluster`** — source Kubernetes cluster added by Promxy. `All` uses `.*`, which also matches
+  metrics without a `cluster` label when the dashboard uses Prometheus/VictoriaMetrics directly.
+- **`namespace`** — DBaaS Operator namespace discovered from
+  `dbaas_resource_collector_success`, restricted to the selected cluster. It defaults to the
+  namespace of the chart installation that provisioned the dashboard.
+
+Every panel query is scoped by `cluster=~"$cluster"` and `namespace=~"$namespace"`. This allows one
+provisioned dashboard to switch between operator instances without changing its UID. The default
+range is the last 30 minutes and the dashboard refreshes every minute. This operational dashboard
+uses the monitoring design guide's explicit auto-refresh exception so that reconciliation lag,
+active errors, deletion state, and time-based health metrics stay current. With metrics scraped
+every 30 seconds, this issues one dashboard query refresh per two scrape cycles.
 
 **To open it:** in Grafana, open the **DBaaS Operator** dashboard (the name may differ per
-installation), select the **datasource**, and set the time range.
-
-The dashboard is organized into rows that mirror the metric groups above.
+installation), select the **datasource**, **cluster**, and **DBaaS Operator Namespace**.
+The dashboard is organized into rows that mirror the metric groups above. `CR Health Overview`
+appears first and is expanded by default; all detailed rows are collapsed until needed.
 
 ### Credentials & Secret Resolution
 
@@ -205,9 +221,9 @@ The dashboard is organized into rows that mirror the metric groups above.
 
 | Panel | What it shows | Based on |
 |---|---|---|
-| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
+| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts. No data means no owned balancing-rule CRs currently exist. | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
 | NamespaceBinding States | NamespaceBindings by state (`mine` / `foreign` / `deleting` …) | `dbaas_namespace_binding_state` |
-| Resources being deleted | CRs stuck in deletion | `dbaas_resource_deletion_state` |
+| Resources being deleted | CRs currently in deletion. No data means no resources are being deleted. | `dbaas_resource_deletion_state` |
 
 ---
 
