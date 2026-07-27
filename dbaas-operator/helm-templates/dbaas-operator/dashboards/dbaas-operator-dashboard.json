@@ -1,5 +1,5 @@
 {
-    "title":  "DBaaS Operator",
+    "title":  "DBaaS Operator - namespace-default-placeholder",
     "uid":  "dashboard-uid-placeholder",
     "tags":  [
                  "dbaas",
@@ -8,7 +8,7 @@
                  "k8s"
              ],
     "schemaVersion":  39,
-    "version":  7,
+    "version":  8,
     "refresh":  "1m",
     "time":  {
                  "from":  "now-30m",
