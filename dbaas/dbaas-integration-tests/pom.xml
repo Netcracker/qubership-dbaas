@@ -24,7 +24,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.junit.cloudcore</groupId>
             <artifactId>cloud-core-extension</artifactId>
-            <version>8.9.3</version>
+            <version>8.9.4</version>
         </dependency>
 
         <dependency>
@@ -141,7 +141,7 @@
         <dependency>
             <groupId>at.yawk.lz4</groupId>
             <artifactId>lz4-java</artifactId>
-            <version>1.10.2</version>
+            <version>1.11.1</version>
         </dependency>
         <dependency>
             <groupId>com.arangodb</groupId>
@@ -166,7 +166,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>4.2.3</version>
+            <version>4.2.4</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>
