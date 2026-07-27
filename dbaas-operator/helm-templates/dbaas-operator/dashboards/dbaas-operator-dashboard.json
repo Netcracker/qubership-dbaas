@@ -8,7 +8,7 @@
                  "k8s"
              ],
     "schemaVersion":  39,
-    "version":  6,
+    "version":  7,
     "refresh":  "1m",
     "time":  {
                  "from":  "now-30m",
@@ -94,6 +94,150 @@
                    },
     "panels":  [
                    {
+                       "id":  19,
+                       "type":  "row",
+                       "title":  "CR Health Overview",
+                       "collapsed":  false,
+                       "gridPos":  {
+                                       "h":  1,
+                                       "w":  24,
+                                       "x":  0,
+                                       "y":  0
+                                   }
+                   },
+                   {
+                       "id":  20,
+                       "type":  "timeseries",
+                       "title":  "CRs by Current Phase",
+                       "description":  "Current phase for dbaas operator CRs. This is a current-state gauge, not a reconcile counter.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  1
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, phase) (max without (pod, instance) (dbaas_resource_phase{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
+                                           "legendFormat":  "{{kind}} / {{phase}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  21,
+                       "type":  "timeseries",
+                       "title":  "Unready CRs by Reason",
+                       "description":  "Current Ready=False/Unknown conditions by kind and reason. Reasons are intended to route ownership quickly.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  1
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, reason) (max without (pod, instance) (dbaas_resource_condition{cluster=~\"$cluster\",namespace=~\"$namespace\",condition=\"Ready\",status!=\"True\"}))",
+                                           "legendFormat":  "{{kind}} / {{reason}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  22,
+                       "type":  "timeseries",
+                       "title":  "CRs Waiting for Observed Generation",
+                       "description":  "Shows CRs whose metadata.generation is ahead of status.observedGeneration. This is convergence lag, not elapsed time.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  9
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (kind, resource_namespace, name) (max without (pod, instance) (dbaas_resource_observed_generation_lag{cluster=~\"$cluster\",namespace=~\"$namespace\"}) \u003e 0)",
+                                           "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "id":  23,
+                       "type":  "timeseries",
+                       "title":  "CR Metrics Collector Health",
+                       "description":  "A value of 0 means the custom CR-state collector failed to list that kind during scrape.",
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  9
+                                   },
+                       "datasource":  "$datasource",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "short",
+                                                            "custom":  {
+                                                                           "lineWidth":  2
+                                                                       }
+                                                        }
+                                       },
+                       "options":  {
+                                       "legend":  {
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom"
+                                                  }
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "min by (kind) (dbaas_resource_collector_success{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
+                                           "legendFormat":  "{{kind}}"
+                                       }
+                                   ]
+                   },
+                   {
                        "id":  1,
                        "type":  "row",
                        "title":  "Credentials \u0026 Secret Resolution",
@@ -102,7 +246,7 @@
                                        "h":  1,
                                        "w":  24,
                                        "x":  0,
-                                       "y":  0
+                                       "y":  17
                                    },
                        "panels":  [
                                       {
@@ -114,7 +258,7 @@
                                                           "h":  8,
                                                           "w":  24,
                                                           "x":  0,
-                                                          "y":  1
+                                                          "y":  18
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -164,7 +308,7 @@
                                                           "h":  8,
                                                           "w":  24,
                                                           "x":  0,
-                                                          "y":  9
+                                                          "y":  26
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -203,7 +347,7 @@
                                        "h":  1,
                                        "w":  24,
                                        "x":  0,
-                                       "y":  1
+                                       "y":  18
                                    },
                        "panels":  [
                                       {
@@ -215,7 +359,7 @@
                                                           "h":  8,
                                                           "w":  12,
                                                           "x":  0,
-                                                          "y":  2
+                                                          "y":  19
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -256,7 +400,7 @@
                                                           "h":  8,
                                                           "w":  12,
                                                           "x":  12,
-                                                          "y":  2
+                                                          "y":  19
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -383,7 +527,7 @@
                                        "h":  1,
                                        "w":  24,
                                        "x":  0,
-                                       "y":  2
+                                       "y":  19
                                    },
                        "panels":  [
                                       {
@@ -395,7 +539,7 @@
                                                           "h":  8,
                                                           "w":  12,
                                                           "x":  0,
-                                                          "y":  3
+                                                          "y":  20
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -442,7 +586,7 @@
                                                           "h":  8,
                                                           "w":  12,
                                                           "x":  12,
-                                                          "y":  3
+                                                          "y":  20
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -489,7 +633,7 @@
                                                           "h":  8,
                                                           "w":  24,
                                                           "x":  0,
-                                                          "y":  11
+                                                          "y":  28
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -536,7 +680,7 @@
                                                           "h":  8,
                                                           "w":  24,
                                                           "x":  0,
-                                                          "y":  20
+                                                          "y":  37
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -577,7 +721,7 @@
                                                           "h":  8,
                                                           "w":  24,
                                                           "x":  0,
-                                                          "y":  28
+                                                          "y":  45
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -659,7 +803,7 @@
                                        "h":  1,
                                        "w":  24,
                                        "x":  0,
-                                       "y":  3
+                                       "y":  20
                                    },
                        "panels":  [
                                       {
@@ -671,7 +815,7 @@
                                                           "h":  8,
                                                           "w":  24,
                                                           "x":  0,
-                                                          "y":  4
+                                                          "y":  21
                                                       },
                                           "datasource":  "$datasource",
                                           "fieldConfig":  {
@@ -696,150 +840,6 @@
                                                       ]
                                       }
                                   ]
-                   },
-                   {
-                       "id":  19,
-                       "type":  "row",
-                       "title":  "CR Health Overview",
-                       "collapsed":  false,
-                       "gridPos":  {
-                                       "h":  1,
-                                       "w":  24,
-                                       "x":  0,
-                                       "y":  4
-                                   }
-                   },
-                   {
-                       "id":  20,
-                       "type":  "timeseries",
-                       "title":  "CRs by Current Phase",
-                       "description":  "Current phase for dbaas operator CRs. This is a current-state gauge, not a reconcile counter.",
-                       "gridPos":  {
-                                       "h":  8,
-                                       "w":  12,
-                                       "x":  0,
-                                       "y":  5
-                                   },
-                       "datasource":  "$datasource",
-                       "fieldConfig":  {
-                                           "defaults":  {
-                                                            "unit":  "short",
-                                                            "custom":  {
-                                                                           "lineWidth":  2
-                                                                       }
-                                                        }
-                                       },
-                       "options":  {
-                                       "legend":  {
-                                                      "displayMode":  "list",
-                                                      "placement":  "bottom"
-                                                  }
-                                   },
-                       "targets":  [
-                                       {
-                                           "expr":  "sum by (kind, phase) (max without (pod, instance) (dbaas_resource_phase{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
-                                           "legendFormat":  "{{kind}} / {{phase}}"
-                                       }
-                                   ]
-                   },
-                   {
-                       "id":  21,
-                       "type":  "timeseries",
-                       "title":  "Unready CRs by Reason",
-                       "description":  "Current Ready=False/Unknown conditions by kind and reason. Reasons are intended to route ownership quickly.",
-                       "gridPos":  {
-                                       "h":  8,
-                                       "w":  12,
-                                       "x":  12,
-                                       "y":  5
-                                   },
-                       "datasource":  "$datasource",
-                       "fieldConfig":  {
-                                           "defaults":  {
-                                                            "unit":  "short",
-                                                            "custom":  {
-                                                                           "lineWidth":  2
-                                                                       }
-                                                        }
-                                       },
-                       "options":  {
-                                       "legend":  {
-                                                      "displayMode":  "list",
-                                                      "placement":  "bottom"
-                                                  }
-                                   },
-                       "targets":  [
-                                       {
-                                           "expr":  "sum by (kind, reason) (max without (pod, instance) (dbaas_resource_condition{cluster=~\"$cluster\",namespace=~\"$namespace\",condition=\"Ready\",status!=\"True\"}))",
-                                           "legendFormat":  "{{kind}} / {{reason}}"
-                                       }
-                                   ]
-                   },
-                   {
-                       "id":  22,
-                       "type":  "timeseries",
-                       "title":  "CRs Waiting for Observed Generation",
-                       "description":  "Shows CRs whose metadata.generation is ahead of status.observedGeneration. This is convergence lag, not elapsed time.",
-                       "gridPos":  {
-                                       "h":  8,
-                                       "w":  12,
-                                       "x":  0,
-                                       "y":  13
-                                   },
-                       "datasource":  "$datasource",
-                       "fieldConfig":  {
-                                           "defaults":  {
-                                                            "unit":  "short",
-                                                            "custom":  {
-                                                                           "lineWidth":  2
-                                                                       }
-                                                        }
-                                       },
-                       "options":  {
-                                       "legend":  {
-                                                      "displayMode":  "list",
-                                                      "placement":  "bottom"
-                                                  }
-                                   },
-                       "targets":  [
-                                       {
-                                           "expr":  "sum by (kind, resource_namespace, name) (max without (pod, instance) (dbaas_resource_observed_generation_lag{cluster=~\"$cluster\",namespace=~\"$namespace\"}) \u003e 0)",
-                                           "legendFormat":  "{{kind}} {{resource_namespace}}/{{name}}"
-                                       }
-                                   ]
-                   },
-                   {
-                       "id":  23,
-                       "type":  "timeseries",
-                       "title":  "CR Metrics Collector Health",
-                       "description":  "A value of 0 means the custom CR-state collector failed to list that kind during scrape.",
-                       "gridPos":  {
-                                       "h":  8,
-                                       "w":  12,
-                                       "x":  12,
-                                       "y":  13
-                                   },
-                       "datasource":  "$datasource",
-                       "fieldConfig":  {
-                                           "defaults":  {
-                                                            "unit":  "short",
-                                                            "custom":  {
-                                                                           "lineWidth":  2
-                                                                       }
-                                                        }
-                                       },
-                       "options":  {
-                                       "legend":  {
-                                                      "displayMode":  "list",
-                                                      "placement":  "bottom"
-                                                  }
-                                   },
-                       "targets":  [
-                                       {
-                                           "expr":  "min by (kind) (dbaas_resource_collector_success{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
-                                           "legendFormat":  "{{kind}}"
-                                       }
-                                   ]
                    },
                    {
                        "id":  24,

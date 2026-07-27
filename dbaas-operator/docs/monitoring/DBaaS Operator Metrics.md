@@ -166,7 +166,7 @@ every 30 seconds, this issues one dashboard query refresh per two scrape cycles.
 **To open it:** in Grafana, open the **DBaaS Operator** dashboard (the name may differ per
 installation), select the **datasource**, **cluster**, and **DBaaS Operator Namespace**.
 The dashboard is organized into rows that mirror the metric groups above. `CR Health Overview`
-is expanded by default as the landing overview; all detailed rows are collapsed until needed.
+appears first and is expanded by default; all detailed rows are collapsed until needed.
 
 ### Credentials & Secret Resolution
 
