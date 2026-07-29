@@ -5,8 +5,10 @@ on:
     secrets:
       EMAIL_PASSWORD:
         required: false
-        # Called workflows inherit vars but not secrets. A caller must pass `secrets: inherit`,
-        # otherwise the password arrives empty and the report email step fails (non-fatally).
+        # Called workflows inherit vars but not secrets, so a caller must pass this one explicitly:
+        #   secrets:
+        #     EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        # Without it the password arrives empty and the report email step fails (non-fatally).
         description: SMTP password used to email the test report.
   workflow_dispatch:
   schedule:
@@ -421,15 +423,19 @@ jobs:
         # report table. EXPECTED_GROUPS below must list exactly these names.
         run: |
           set -euo pipefail
+          shopt -s nullglob
           src=test-apps/test-apps-integration-tests/target/surefire-reports
           mkdir -p artifacts   # keep the report step's input directory present even if no pass ran
           for pair in "pass-a:pass-a-mounted-secret" \
                       "pass-b:pass-b-rest-fallback" \
                       "phase-c:phase-c-direct-m2m"; do
             from="${pair%%:*}"; to="${pair##*:}"
-            [ -d "$src/$from" ] || continue
+            # Copy only when the pass actually produced reports. Maven creates the directory before
+            # it writes anything, so copying an empty one would claim the pass ran.
+            xmls=("$src/$from"/TEST-*.xml)
+            [ "${#xmls[@]}" -gt 0 ] || continue
             mkdir -p "artifacts/$to/surefire-reports"
-            cp "$src/$from"/TEST-*.xml "artifacts/$to/surefire-reports/" 2>/dev/null || true
+            cp "${xmls[@]}" "artifacts/$to/surefire-reports/"
           done
           find artifacts -name 'TEST-*.xml' | sort
 

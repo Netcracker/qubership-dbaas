@@ -89,7 +89,10 @@ def collect_all() -> list[ModuleStats]:
     present = {}
     if ARTIFACTS_DIR.is_dir():
         for child in sorted(ARTIFACTS_DIR.iterdir()):
-            if child.is_dir() and (child / "surefire-reports").is_dir():
+            # A group counts as run only once it has produced a Surefire XML. Maven creates the
+            # reports directory before it writes anything, so an empty one means the tests died
+            # first — reporting that as zero failures would turn a dead pass into a green row.
+            if child.is_dir() and any((child / "surefire-reports").glob("TEST-*.xml")):
                 present[child.name] = parse_module(child)
     if not EXPECTED_GROUPS:
         return list(present.values())
