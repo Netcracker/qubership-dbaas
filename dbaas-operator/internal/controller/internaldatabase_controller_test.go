@@ -463,6 +463,90 @@ var _ = Describe("InternalDatabase Controller", func() {
 		})
 	})
 
+	Context("scope=tenant with a pinned tenantId — materialization returns 202", func() {
+		// The aggregator answers 202 while it is still creating the database, and the body
+		// carries no usable credentials. That is not an error: the CR must wait rather than
+		// go BackingOff, otherwise its DatabaseSecretClaims never get connection properties.
+
+		It("waits instead of failing, keeps trackingId empty, and retries on the next reconcile (synchronous apply)", func() {
+			createCode = http.StatusAccepted
+
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       tenantSpec("acme"),
+			})).To(Succeed())
+
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred(), "202 must not surface as a reconcile error")
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
+			Expect(dd.Status.TrackingID).To(BeEmpty(), "this endpoint returns no trackingId to poll")
+
+			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonProvisioningStarted))
+			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse), "waiting is not a permanent failure")
+
+			// Without a trackingId the retry repeats the whole submit path.
+			applyCountBefore := createReqCount
+			_, _, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(createReqCount).To(Equal(applyCountBefore+1), "get-or-create must be retried")
+			Expect(capturedApplyBody).NotTo(BeEmpty(), "the idempotent apply is repeated too")
+
+			// Once the database is ready the CR converges.
+			createCode = http.StatusOK
+			dd, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+		})
+
+		It("waits the same way when the apply completed asynchronously", func() {
+			applyCode = http.StatusAccepted
+			applyBody = `{"trackingId":"track-202"}`
+			createCode = http.StatusAccepted
+
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       tenantSpec("acme"),
+			})).To(Succeed())
+
+			// First reconcile: async apply accepted, tracking stored, nothing materialized yet.
+			dd, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dd.Status.TrackingID).To(Equal("track-202"))
+			Expect(createReqCount).To(Equal(0))
+
+			// Second reconcile: the operation reports COMPLETED, materialization answers 202.
+			pollCode = http.StatusOK
+			pollBody = statusCompleted
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
+			Expect(dd.Status.TrackingID).To(BeEmpty(), "the completed operation's tracking is cleared")
+			Expect(createReqCount).To(Equal(1))
+
+			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonProvisioningStarted))
+
+			// The retry goes through the submit path again and converges once ready.
+			createCode = http.StatusOK
+			applyCode = http.StatusOK
+			applyBody = statusCompleted
+			dd, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(createReqCount).To(Equal(2))
+		})
+	})
+
 	Context("scope=tenant with a pinned tenantId — materialization fails", func() {
 		It("does not mark Succeeded and requeues with an error", func() {
 			createCode = http.StatusInternalServerError

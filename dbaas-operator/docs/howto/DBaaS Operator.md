@@ -1565,9 +1565,16 @@ This materializes the database exactly as the tenant's first runtime connection 
 #### InternalDatabase Status Reference
 
 Shared phases, conditions, reasons, and diagnostic rules are described in
-[Common Status Model](#common-status-model). This kind adds one phase, `WaitingForDependency` — an async
-provisioning operation is in flight and the controller is polling the aggregator — and `Succeeded` means
-that operation completed.
+[Common Status Model](#common-status-model). This kind adds one phase, `WaitingForDependency`, which has
+**two** causes:
+
+- the declarative apply returned `202 Accepted` and the controller is polling the operation
+  (`status.trackingId` is set), or
+- the apply is done but the pinned-tenant get-or-create returned `202` — the database is still being
+  created, and `status.trackingId` is **empty** because that endpoint issues none (see
+  [Tenant Database Materialization](#tenant-database-materialization)).
+
+`Succeeded` means both steps finished.
 
 **`status.trackingId`** — aggregator-assigned tracking ID for an in-flight async operation.
 
@@ -1575,6 +1582,9 @@ that operation completed.
 - Cleared when polling completes (`COMPLETED`, `FAILED`) or the operation must be re-submitted (`TERMINATED`, `404 Not
   Found`).
 - While `trackingId` is non-empty, every reconcile goes through the POLL branch (no resubmission).
+- An **empty** `trackingId` together with `WaitingForDependency` is not an inconsistency: it is the
+  tenant-materialization wait, which has nothing to poll and instead repeats the idempotent apply +
+  get-or-create every 5 s.
 
 **`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingId` was set. If a newer
 `generation` is observed during a reconcile, the stale `trackingId` is discarded and the operation is re-submitted with
@@ -1587,7 +1597,7 @@ operation".
 | Reason | Applied to | Meaning |
 |--------|-----------|---------|
 | `DatabaseProvisioned` | `Ready=True` | Operation completed (`200 OK` synchronous, or polled `COMPLETED`) |
-| `ProvisioningStarted` | `Ready=False`, `Stalled=False` | `202 Accepted` received; async polling in progress |
+| `ProvisioningStarted` | `Ready=False`, `Stalled=False` | A `202 Accepted` is outstanding: either the declarative apply is being polled (`trackingId` set), or the pinned-tenant get-or-create is still creating the database (`trackingId` empty) |
 | `OperationTerminated` | `Ready=False`, `Stalled=False` | Poll returned `TERMINATED` (aggregator restart or admin cancellation). The stale `trackingId` is cleared and the controller resubmits on the next reconcile |
 
 For this kind `AggregatorRejected` also covers a polled `FAILED`, and `AggregatorError` also covers a
@@ -1605,7 +1615,9 @@ polling `404` (expired `trackingId`).
 | POST → 401 | `BackingOff` | `False` | `Unauthorized` | `False` | — |
 | POST → 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` | — |
 | POST → 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` | — |
-| POST → 200 OK (sync) | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | — |
+| POST → 200 OK (sync), materialization 200/201 or not needed | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | — |
+| Apply done, tenant materialization → 202 | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | **empty** |
+| Apply done, tenant materialization → 4xx/5xx | `BackingOff` / `InvalidConfiguration` | `False` | `AggregatorError` / `AggregatorRejected` | `False` / `True` | — |
 | POST → 202 Accepted | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | set |
 | Poll → IN_PROGRESS | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | set |
 | Poll → COMPLETED | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | cleared |
@@ -1616,8 +1628,12 @@ polling `404` (expired `trackingId`).
 
 **Diagnostic rules** — in addition to the [shared rules](#common-status-model):
 
-- **`Ready=False` with phase `WaitingForDependency`** — not an error: async provisioning is still running and
-  the controller polls every 5 seconds. Only phase `BackingOff` means a failed call is being retried.
+- **`Ready=False` with phase `WaitingForDependency`** — not an error: something is still provisioning and the
+  controller re-checks every 5 seconds. Only phase `BackingOff` means a failed call is being retried.
+  Read `status.trackingId` to tell the two waits apart: **set** means the declarative operation is being
+  polled; **empty** means the pinned-tenant database is still being created and the controller repeats the
+  apply + get-or-create. An empty `trackingId` here is expected — that endpoint returns none. If the wait
+  does not clear, look at the tenant database on the aggregator side rather than at the CR.
 
 #### InternalDatabase Usage Examples
 
