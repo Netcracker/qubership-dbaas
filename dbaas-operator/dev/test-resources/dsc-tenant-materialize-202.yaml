@@ -1,0 +1,28 @@
+# DatabaseSecretClaim — tenant scope; consumes the database that
+# idb-tenant-materialize-202.yaml materializes asynchronously.
+#
+# The claim's classifier matches idb-tenant-materialize-202's:
+#   {microserviceName: tenant-svc-202, scope: tenant, tenantId: acme-202, namespace: test-ns}.
+# While the mock is still answering 202 the database is NOT recorded, so get-by-classifier
+# answers 404 and the claim waits. Once the InternalDatabase reaches Succeeded the database
+# exists and the operator writes the Secret "dsc-tenant-materialize-202-secret" — this is the
+# step that used to be blocked forever, leaving pods on FailedMount.
+#
+# The app.kubernetes.io/name label is REQUIRED — its value is sent as originService.
+# See dev/e2e-tenant-materialize-202.sh for the end-to-end check.
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: dsc-tenant-materialize-202
+  namespace: test-ns
+  labels:
+    app.kubernetes.io/name: tenant-svc-202
+spec:
+  type: postgresql
+  userRole: admin
+  secretName: dsc-tenant-materialize-202-secret
+  classifier:
+    microserviceName: tenant-svc-202
+    scope: tenant
+    tenantId: acme-202
+    namespace: test-ns

@@ -60,7 +60,9 @@ limitations under the License.
 //	                      it to materialize the concrete {scope=tenant, tenantId} database
 //	                      for a tenant declaration that pins a tenantId
 //	                      (default: /config/create-db-rules.json). Missing = not an error;
-//	                      no rule → 200 with a synthetic database descriptor.
+//	                      no rule → 200 with a synthetic database descriptor. A rule may set
+//	                      "pendingCalls": N to answer 202 Accepted the first N times, which
+//	                      reproduces the aggregator creating the database asynchronously.
 package main
 
 import (
@@ -93,6 +95,37 @@ type MockRule struct {
 	TmfCode  string `json:"tmfCode,omitempty"` // e.g. "CORE-DBAAS-4010"
 	Reason   string `json:"reason,omitempty"`
 	Message  string `json:"message,omitempty"`
+	// PendingCalls makes the get-or-create endpoint answer 202 Accepted that many times
+	// before creating the database for real. It reproduces the aggregator's asynchronous
+	// creation: the 202 body carries no usable credentials, so a client must retry.
+	PendingCalls int `json:"pendingCalls,omitempty"`
+}
+
+// pendingCounter tracks how many 202 answers are still owed per rule key.
+type pendingCounter struct {
+	mu   sync.Mutex
+	left map[string]int
+}
+
+func newPendingCounter(rules map[string]MockRule) *pendingCounter {
+	left := make(map[string]int, len(rules))
+	for k, r := range rules {
+		if r.PendingCalls > 0 {
+			left[k] = r.PendingCalls
+		}
+	}
+	return &pendingCounter{left: left}
+}
+
+// consume reports whether this call must still answer 202, decrementing the counter.
+func (p *pendingCounter) consume(key string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.left[key] <= 0 {
+		return false
+	}
+	p.left[key]--
+	return true
 }
 
 // MockPollRule describes the poll response for a specific trackingId.
@@ -329,6 +362,7 @@ func handler(
 	// store records databases materialized via PUT .../databases so get-by-classifier
 	// can emulate the real aggregator's lazy-tenant 404 before materialization.
 	store := newDBStore()
+	pending := newPendingCounter(createDbRules)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		body := logRequest(r)
 
@@ -353,7 +387,7 @@ func handler(
 			handleGetByClassifier(w, r, body, gbcRules, store)
 
 		case reCreateDB.MatchString(r.URL.Path) && r.Method == http.MethodPut:
-			handleCreateDatabase(w, r, body, createDbRules, store)
+			handleCreateDatabase(w, r, body, createDbRules, store, pending)
 
 		case reMicroserviceBalancingRule.MatchString(r.URL.Path) && r.Method == http.MethodPut:
 			handleMicroserviceBalancingRule(w, r)
@@ -739,7 +773,7 @@ func defaultConnProps(role string) map[string]any {
 // inspects only the status code, so a minimal descriptor is enough.
 func handleCreateDatabase(
 	w http.ResponseWriter, r *http.Request, body []byte,
-	createDbRules map[string]MockRule, store *dbStore,
+	createDbRules map[string]MockRule, store *dbStore, pending *pendingCounter,
 ) {
 	m := reCreateDB.FindStringSubmatch(r.URL.Path)
 	namespace := m[1]
@@ -756,6 +790,15 @@ func handleCreateDatabase(
 		key, _ = req.Classifier["microserviceName"].(string)
 	}
 	tenantID, _ := req.Classifier["tenantId"].(string)
+
+	if pending != nil && pending.consume(key) {
+		log.Printf("  → create database originService=%q tenantId=%q namespace=%q → 202 (still creating)",
+			key, tenantID, namespace)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		writeAcceptedDatabase(w, namespace, req.Type, req.Classifier)
+		return
+	}
 
 	if rule, ok := createDbRules[key]; ok {
 		log.Printf("  → create database originService=%q tenantId=%q namespace=%q → httpCode=%d (rule)",
@@ -793,6 +836,23 @@ func writeCreatedDatabase(w http.ResponseWriter, namespace, dbType, originServic
 		"namespace":            namespace,
 		"type":                 dbType,
 		"connectionProperties": defaultConnProps("admin"),
+	})
+}
+
+// writeAcceptedDatabase writes the body the aggregator returns with 202 Accepted: the database
+// is still being created, so it has no id, no name, and connectionProperties carry the requested
+// role with a null password. A client that mistakes this for success ends up with no credentials.
+func writeAcceptedDatabase(w http.ResponseWriter, namespace, dbType string, classifier map[string]any) {
+	writeJSON(w, map[string]any{
+		"id":         nil,
+		"name":       nil,
+		"classifier": classifier,
+		"namespace":  namespace,
+		"type":       dbType,
+		"connectionProperties": map[string]any{
+			"password": nil,
+			"role":     "admin",
+		},
 	})
 }
 
