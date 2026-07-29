@@ -1091,3 +1091,56 @@ func TestGetOperationStatus_EmptyBodyIsZeroValue(t *testing.T) {
 		t.Errorf("expected zero-value DeclarativeResponse, got %+v", got)
 	}
 }
+
+// TestCreateDatabase_StatusHandling covers the three outcomes of the tenant-materialization call.
+// A 202 means the aggregator started creating the database asynchronously and its body carries no
+// usable credentials yet, so it must be reported as pending rather than as success or as an error —
+// treating it as an error left tenant InternalDatabases stuck in BackingOff and their
+// DatabaseSecretClaims without a Secret.
+func TestCreateDatabase_StatusHandling(t *testing.T) {
+	tests := []struct {
+		name        string
+		status      int
+		body        string
+		wantPending bool
+		wantErr     bool
+	}{
+		{name: "ready", status: http.StatusOK, body: `{"name":"db"}`},
+		{name: "created", status: http.StatusCreated, body: `{"name":"db"}`},
+		{
+			name:        "accepted, still provisioning",
+			status:      http.StatusAccepted,
+			body:        `{"classifier":{"scope":"tenant","tenantId":"acme"},"connectionProperties":{"password":null,"role":"admin"}}`,
+			wantPending: true,
+		},
+		{name: "rejected", status: http.StatusBadRequest, body: `{"message":"bad classifier"}`, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPut {
+					t.Errorf("method = %s, want PUT", r.Method)
+				}
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+
+			pending, err := NewBasicAuthClient(srv.URL, "dbaas-operator", "s3cr3t").CreateDatabase(
+				context.Background(), "ns", &CreateDatabaseRequest{Type: "postgresql"})
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected an error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if pending != tt.wantPending {
+				t.Errorf("pending = %v, want %v", pending, tt.wantPending)
+			}
+		})
+	}
+}

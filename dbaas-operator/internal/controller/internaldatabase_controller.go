@@ -176,9 +176,15 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 
 	// HTTP 200 OK — synchronous completion.
 	log.InfoC(ctx, "database provisioned synchronously. microserviceName = %v", dd.Spec.Classifier.MicroserviceName)
-	if err := r.materializeTenantDatabaseIfPinned(ctx, dd); err != nil {
+	pending, err := r.materializeTenantDatabaseIfPinned(ctx, dd)
+	if err != nil {
 		log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
 		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+	}
+	if pending {
+		log.InfoC(ctx, "tenant database creation accepted, not ready yet; will retry")
+		markTenantMaterializationPending(dd)
+		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 	}
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
@@ -232,9 +238,9 @@ func (r *InternalDatabaseReconciler) buildPayload(dd *dbaasv1.InternalDatabase) 
 // read-only get-by-classifier and waits forever (DatabaseNotFound). Calling the get-or-create database
 // API materializes the database exactly as the first runtime tenant connection would, after which the
 // claim resolves. No-op for service scope or a tenant declaration without a pinned tenantId.
-func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx context.Context, dd *dbaasv1.InternalDatabase) error {
+func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx context.Context, dd *dbaasv1.InternalDatabase) (bool, error) {
 	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantID == "" {
-		return nil
+		return false, nil
 	}
 	req := &aggregatorclient.CreateDatabaseRequest{
 		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(dd.Spec.Classifier, dd.Namespace)),
@@ -244,9 +250,22 @@ func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx conte
 	log.InfoC(ctx, "materializing pinned tenant database tenantId=%v microserviceName=%v",
 		dd.Spec.Classifier.TenantID, dd.Spec.Classifier.MicroserviceName)
 	start := time.Now()
-	err := r.Aggregator.CreateDatabase(ctx, dd.Namespace, req)
+	pending, err := r.Aggregator.CreateDatabase(ctx, dd.Namespace, req)
 	recordAggregatorCall(controllerIDB, operationCreateDatabase, start, err)
-	return err
+	return pending, err
+}
+
+// markTenantMaterializationPending records that the aggregator accepted the tenant database
+// creation but has not finished it (HTTP 202). There is no trackingId to poll — that endpoint
+// returns none — so the CR stays on the submit path and the next reconcile simply repeats the
+// idempotent apply + get-or-create until the database answers with credentials.
+func markTenantMaterializationPending(dd *dbaasv1.InternalDatabase) {
+	dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
+	setCondition(&dd.Status.Conditions, dd.Generation,
+		conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted,
+		"tenant database creation accepted; waiting for it to become available")
+	setCondition(&dd.Status.Conditions, dd.Generation,
+		conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
 }
 
 // toWireSpec converts a InternalDatabaseSpec (CRD shape) into the wire format
@@ -481,9 +500,15 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 			trackingID, dd.Spec.Classifier.MicroserviceName)
 		clearPendingOperation(dd)
 		r.observeAsyncCompletion(dd, resultSuccess)
-		if err := r.materializeTenantDatabaseIfPinned(ctx, dd); err != nil {
+		pending, err := r.materializeTenantDatabaseIfPinned(ctx, dd)
+		if err != nil {
 			log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
 			return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		}
+		if pending {
+			log.InfoC(ctx, "tenant database creation accepted, not ready yet; will retry")
+			markTenantMaterializationPending(dd)
+			return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
 		}
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,

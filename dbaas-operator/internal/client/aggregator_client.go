@@ -246,14 +246,22 @@ func (c *AggregatorClient) RegisterExternalDatabase(ctx context.Context, namespa
 // CreateDatabase materializes (get-or-create) a logical database for the given classifier at
 // PUT /api/v3/dbaas/{namespace}/databases — the same call a microservice's dbaas client makes at
 // runtime. The operator uses it to eagerly create a concrete {scope=tenant, tenantId} database that
-// the declarative tenant InternalDatabase does not materialize on its own. The call is synchronous
-// for the postgresql-family adapters used here (the response body — the database descriptor — is not
-// needed, only the success status). Returns *AggregatorError on non-2xx.
-func (c *AggregatorClient) CreateDatabase(ctx context.Context, namespace string, req *CreateDatabaseRequest) error {
-	_, err := c.doRequest(ctx, http.MethodPut,
+// the declarative tenant InternalDatabase does not materialize on its own.
+//
+// The aggregator answers 200/201 when the database is ready and 202 Accepted when it started
+// creating it asynchronously — in that case the body carries no usable credentials (password is
+// null and the requested role is absent), so the caller must retry rather than treat the call as
+// done. pending reports that case; the response body is otherwise not needed.
+//
+// Returns *AggregatorError on any other non-2xx.
+func (c *AggregatorClient) CreateDatabase(ctx context.Context, namespace string, req *CreateDatabaseRequest) (pending bool, err error) {
+	resp, err := c.doRequest(ctx, http.MethodPut,
 		fmt.Sprintf("/api/v3/dbaas/%s/databases", namespace), req, nil,
-		http.StatusOK, http.StatusCreated)
-	return err
+		http.StatusOK, http.StatusCreated, http.StatusAccepted)
+	if err != nil {
+		return false, err
+	}
+	return resp.StatusCode() == http.StatusAccepted, nil
 }
 
 // ApplyMicroserviceBalancingRules sends on-microservice balancing rules to
