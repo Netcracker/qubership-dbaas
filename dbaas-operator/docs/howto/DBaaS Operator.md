@@ -1617,7 +1617,9 @@ polling `404` (expired `trackingId`).
 | POST → 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` | — |
 | POST → 200 OK (sync), materialization 200/201 or not needed | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | — |
 | Apply done, tenant materialization → 202 | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | **empty** |
-| Apply done, tenant materialization → 4xx/5xx | `BackingOff` / `InvalidConfiguration` | `False` | `AggregatorError` / `AggregatorRejected` | `False` / `True` | — |
+| Apply done, tenant materialization → 401 | `BackingOff` | `False` | `Unauthorized` | `False` | — |
+| Apply done, tenant materialization → 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` | — |
+| Apply done, tenant materialization → 5xx / other 4xx / network | `BackingOff` | `False` | `AggregatorError` | `False` | — |
 | POST → 202 Accepted | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | set |
 | Poll → IN_PROGRESS | `WaitingForDependency` | `False` | `ProvisioningStarted` | `False` | set |
 | Poll → COMPLETED | `Succeeded` | `True` | `DatabaseProvisioned` | `False` | cleared |
