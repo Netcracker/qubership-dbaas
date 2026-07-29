@@ -194,7 +194,7 @@ The operator calls the following dbaas-aggregator endpoints:
 | `PUT` | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable` | `ExternalDatabase` reconciler | Register or update an externally managed database |
 | `POST` | `/api/declarations/v1/apply` | `DatabaseAccessPolicy` and `InternalDatabase` reconcilers | Apply a declarative database role policy (`subKind=DbPolicy`) or database declaration (`subKind=DatabaseDeclaration`) |
 | `GET` | `/api/declarations/v1/operation/{trackingId}/status` | `InternalDatabase` reconciler | Poll the status of an asynchronous provisioning operation |
-| `PUT` | `/api/v3/dbaas/{namespace}/databases` | `InternalDatabase` reconciler (tenant declarations with a pinned `tenantId`) | Get-or-create the concrete `{scope=tenant, tenantId}` database after the declarative apply — see [Tenant database materialization](#tenant-database-materialization) |
+| `PUT` | `/api/v3/dbaas/{namespace}/databases` | `InternalDatabase` reconciler (tenant declarations with a pinned `tenantId`) | Get-or-create the concrete `{scope=tenant, tenantId}` database after the declarative apply. Answers `202` while it is still creating the database — see [Tenant database materialization](#tenant-database-materialization) |
 | `POST` | `/api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}` | `DatabaseSecretClaim` reconciler (and rotation-poller fan-out) | Fetch the connection properties of a registered database |
 | `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices` | `MicroserviceBalancingRule` reconciler | Apply the microservice balancing rule set for a business namespace |
 | `PUT` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` | `NamespaceBalancingRule` reconciler | Create or update one named namespace balancing rule |
@@ -1552,6 +1552,11 @@ This materializes the database exactly as the tenant's first runtime connection 
 - **scoped** — a no-op for `scope=service`, or for a tenant declaration **without** a pinned `tenantId` (the
   tenant-agnostic template behavior is unchanged);
 - **idempotent** — get-or-create returns the existing database on subsequent reconciles;
+- **possibly asynchronous** — the aggregator answers `200`/`201` when the database is ready, and `202 Accepted` when it
+  only started creating it. A `202` body carries no usable credentials (`password: null`, requested role absent), so
+  the operator treats it as *not done*: the CR goes to `WaitingForDependency` with `Ready=False` / reason
+  `ProvisioningStarted` and is re-tried every 5 s until the database answers with credentials. There is no `trackingId`
+  for this endpoint, so the retry repeats the idempotent apply + get-or-create rather than polling;
 - **gating** — if it fails, the CR does **not** become `Succeeded`: a transient/5xx failure surfaces as `BackingOff` and
   is retried on the next reconcile, exactly like the `apply` call;
 - **observable** — recorded on `dbaas_aggregator_requests_total` and `dbaas_aggregator_request_duration_seconds` under
