@@ -2,6 +2,12 @@ name: Sample Services Integration Tests
 
 on:
   workflow_call:
+    secrets:
+      EMAIL_PASSWORD:
+        required: false
+        # Called workflows inherit vars but not secrets. A caller must pass `secrets: inherit`,
+        # otherwise the password arrives empty and the report email step fails (non-fatally).
+        description: SMTP password used to email the test report.
   workflow_dispatch:
   schedule:
     - cron: "0 2 * * *"  # Daily at 02:00 UTC
@@ -317,6 +323,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Surefire reports
+        id: upload_surefire
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -407,23 +414,67 @@ jobs:
           path: diagnostics/**
           if-no-files-found: ignore
 
-      - name: Fail job if sample service tests failed
+      - name: Aggregate Surefire reports
         if: always()
+        # build-test-report.py reads <ARTIFACTS_DIR>/<group>/surefire-reports/TEST-*.xml and uses the
+        # directory name as the row label, so each pass is copied under a name that reads well in the
+        # report table. EXPECTED_GROUPS below must list exactly these names.
         run: |
-          shopt -s nullglob
-          # Check every pass separately, and require reports from each one. A missing set means the
-          # pass never ran or wrote elsewhere — treat both as failures, or a broken pass stays green.
-          rc=0
-          for pass in pass-a pass-b phase-c; do
-            reports=(test-apps/test-apps-integration-tests/target/surefire-reports/"$pass"/TEST-*.xml)
-            if [ "${#reports[@]}" -eq 0 ]; then
-              echo "::error::No Surefire XML reports were generated for $pass"
-              rc=1
-              continue
-            fi
-            if grep -E 'failures="[1-9]|errors="[1-9]' "${reports[@]}" >/dev/null 2>&1; then
-              echo "::error::Sample service integration tests failed in $pass"
-              rc=1
-            fi
+          set -euo pipefail
+          src=test-apps/test-apps-integration-tests/target/surefire-reports
+          mkdir -p artifacts   # keep the report step's input directory present even if no pass ran
+          for pair in "pass-a:pass-a-mounted-secret" \
+                      "pass-b:pass-b-rest-fallback" \
+                      "phase-c:phase-c-direct-m2m"; do
+            from="${pair%%:*}"; to="${pair##*:}"
+            [ -d "$src/$from" ] || continue
+            mkdir -p "artifacts/$to/surefire-reports"
+            cp "$src/$from"/TEST-*.xml "artifacts/$to/surefire-reports/" 2>/dev/null || true
           done
-          exit $rc
+          find artifacts -name 'TEST-*.xml' | sort
+
+      - name: Build test report
+        id: build_report
+        if: always()
+        env:
+          ARTIFACTS_DIR: artifacts
+          OUTPUT_FILE: report.md
+          REPORT_LABEL: Sample services integration tests
+          GROUP_LABEL: Pass
+          # A pass with no reports never ran — it must show up in the report and fail the job,
+          # otherwise a pass that died during deploy would leave the run looking green.
+          EXPECTED_GROUPS: pass-a-mounted-secret,pass-b-rest-fallback,phase-c-direct-m2m
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: python3 .github/scripts/build-test-report.py
+
+      - name: Email test report
+        if: always() && steps.build_report.outcome == 'success'
+        continue-on-error: true
+        # Pinned to the commit that adds email-action (#782); no release tag includes it yet.
+        uses: Netcracker/qubership-workflow-hub/actions/email-action@f4a2c6f57cfdd620676d0dc7321491b33d7c214b
+        env:
+          EMAIL_SMTP_HOST: ${{ vars.EMAIL_SMTP_HOST }}
+          EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          EMAIL_USERNAME: ${{ vars.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ vars.EMAIL_TO }}
+        with:
+          subject: ${{ steps.build_report.outputs.title }}
+          # convert-markdown only applies to html-body (dawidd6/action-send-mail
+          # renders markdown→HTML for the html part); body stays as the plain-text fallback.
+          body: file://report.md
+          html-body: file://report.md
+          convert-markdown: "true"
+
+      - name: Fail job if sample service tests failed
+        # The report is the single gate: it fails on a failed test AND on a pass that produced no
+        # reports at all ("no-tests" when every pass is missing).
+        if: always() && steps.build_report.outputs.status != 'success'
+        run: |
+          echo "::error::Sample service integration tests did not pass (status=${{ steps.build_report.outputs.status }}, failed tests=${{ steps.build_report.outputs.failed_count }})"
+          exit 1

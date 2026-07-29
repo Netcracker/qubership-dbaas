@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a markdown summary of Surefire reports for posting to a GitHub Issue."""
+"""Build a markdown summary of Surefire reports for a GitHub Issue comment or a report email."""
 import html
 import os
 import xml.etree.ElementTree as ET
@@ -14,6 +14,13 @@ BRANCH = os.environ.get("BRANCH", "")
 COMMIT_SHA = os.environ.get("COMMIT_SHA", "")[:7]
 RUN_NUMBER = os.environ.get("RUN_NUMBER", "")
 MENTIONS = os.environ.get("MENTIONS", "").strip()
+# What the report calls itself (heading, email subject) and what its first column groups by.
+# The defaults keep the wording of the main integration-tests workflow.
+REPORT_LABEL = os.environ.get("REPORT_LABEL", "Integration tests").strip() or "Integration tests"
+GROUP_LABEL = os.environ.get("GROUP_LABEL", "Module").strip() or "Module"
+# Groups that must be present. A group listed here with no Surefire reports is reported as
+# "did not run" and fails the report, so a pass that never executed cannot look green.
+EXPECTED_GROUPS = [g.strip() for g in os.environ.get("EXPECTED_GROUPS", "").split(",") if g.strip()]
 
 STACK_TRACE_LINE_LIMIT = 60
 COMMENT_BYTE_BUDGET = 60000  # GitHub hard limit is 65536; leave headroom
@@ -28,6 +35,7 @@ class ModuleStats:
     skipped: int = 0
     time: float = 0.0
     failed_cases: list = field(default_factory=list)
+    missing: bool = False
 
 
 def fmt_time(seconds: float) -> str:
@@ -78,13 +86,17 @@ def parse_module(module_dir: Path) -> ModuleStats:
 
 
 def collect_all() -> list[ModuleStats]:
-    if not ARTIFACTS_DIR.is_dir():
-        return []
-    return [
-        parse_module(child)
-        for child in sorted(ARTIFACTS_DIR.iterdir())
-        if child.is_dir() and (child / "surefire-reports").is_dir()
-    ]
+    present = {}
+    if ARTIFACTS_DIR.is_dir():
+        for child in sorted(ARTIFACTS_DIR.iterdir()):
+            if child.is_dir() and (child / "surefire-reports").is_dir():
+                present[child.name] = parse_module(child)
+    if not EXPECTED_GROUPS:
+        return list(present.values())
+    # Keep the declared order, and stand in for every expected group that produced nothing.
+    ordered = [present.pop(name, ModuleStats(name=name, missing=True)) for name in EXPECTED_GROUPS]
+    ordered.extend(present.values())
+    return ordered
 
 
 def truncate_trace(text: str) -> str:
@@ -95,37 +107,47 @@ def truncate_trace(text: str) -> str:
     return "\n".join(lines[:STACK_TRACE_LINE_LIMIT]) + f"\n... ({omitted} more lines — see Surefire artifact)"
 
 
-def build_title(status: str, bad: int) -> str:
+def failure_summary(bad: int, missing: list[str]) -> str:
+    parts = []
+    if bad:
+        parts.append(f"{bad} {'test' if bad == 1 else 'tests'}")
+    if missing:
+        parts.append(f"{len(missing)} did not run")
+    return ", ".join(parts)
+
+
+def build_title(status: str, bad: int, missing: list[str]) -> str:
     if status == "failed":
-        word = "test" if bad == 1 else "tests"
-        return f"❌ Integration tests #{RUN_NUMBER} FAILED ({bad} {word}) — {BRANCH}"
+        return f"❌ {REPORT_LABEL} #{RUN_NUMBER} FAILED ({failure_summary(bad, missing)}) — {BRANCH}"
     if status == "success":
-        return f"✅ Integration tests #{RUN_NUMBER} PASSED — {BRANCH}"
-    return f"⚠️ Integration tests #{RUN_NUMBER} DID NOT RUN — {BRANCH}"
+        return f"✅ {REPORT_LABEL} #{RUN_NUMBER} PASSED — {BRANCH}"
+    return f"⚠️ {REPORT_LABEL} #{RUN_NUMBER} DID NOT RUN — {BRANCH}"
 
 
 def render(modules: list[ModuleStats]) -> tuple[str, str, str, int]:
-    total_tests = sum(m.tests for m in modules)
-    total_failed = sum(m.failures for m in modules)
-    total_errors = sum(m.errors for m in modules)
-    total_skipped = sum(m.skipped for m in modules)
-    total_time = sum(m.time for m in modules)
+    ran = [m for m in modules if not m.missing]
+    missing = [m.name for m in modules if m.missing]
+    total_tests = sum(m.tests for m in ran)
+    total_failed = sum(m.failures for m in ran)
+    total_errors = sum(m.errors for m in ran)
+    total_skipped = sum(m.skipped for m in ran)
+    total_time = sum(m.time for m in ran)
     bad = total_failed + total_errors
 
-    if not modules:
+    if not ran:
         status = "no-tests"
-    elif bad > 0:
+    elif bad > 0 or missing:
         status = "failed"
     else:
         status = "success"
-    title = build_title(status, bad)
+    title = build_title(status, bad, missing)
 
     lines = []
     meta = f"**Branch:** `{BRANCH}` · **Commit:** `{COMMIT_SHA}`"
 
     if status == "no-tests":
         lines += [
-            f"### ⚠️ Integration tests #{RUN_NUMBER} — DID NOT RUN",
+            f"### ⚠️ {REPORT_LABEL} #{RUN_NUMBER} — DID NOT RUN",
             meta,
             "",
             "No Surefire reports found — a step before `mvn test` likely failed.",
@@ -137,10 +159,9 @@ def render(modules: list[ModuleStats]) -> tuple[str, str, str, int]:
         return "\n".join(lines), status, title, 0
 
     if status == "failed":
-        word = "test" if bad == 1 else "tests"
-        lines.append(f"### ❌ Integration tests #{RUN_NUMBER} — FAILED ({bad} {word})")
+        lines.append(f"### ❌ {REPORT_LABEL} #{RUN_NUMBER} — FAILED ({failure_summary(bad, missing)})")
     else:
-        lines.append(f"### ✅ Integration tests #{RUN_NUMBER} — PASSED")
+        lines.append(f"### ✅ {REPORT_LABEL} #{RUN_NUMBER} — PASSED")
 
     lines.append(f"{meta} · **Test time:** {fmt_time(total_time)}")
     if MENTIONS:
@@ -148,16 +169,26 @@ def render(modules: list[ModuleStats]) -> tuple[str, str, str, int]:
 
     lines += [
         "",
-        "| Module | Tests | Failed | Errors | Skipped | Time |",
+        f"| {GROUP_LABEL} | Tests | Failed | Errors | Skipped | Time |",
         "|---|---:|---:|---:|---:|---:|",
     ]
     for m in modules:
+        if m.missing:
+            lines.append(f"| {m.name} | — | — | — | — | did not run |")
+            continue
         lines.append(
             f"| {m.name} | {m.tests} | {m.failures} | {m.errors} | {m.skipped} | {fmt_time(m.time)} |"
         )
     lines.append(
         f"| **Total** | **{total_tests}** | **{total_failed}** | **{total_errors}** | **{total_skipped}** | **{fmt_time(total_time)}** |"
     )
+
+    if missing:
+        names = ", ".join(f"`{name}`" for name in missing)
+        lines += [
+            "",
+            f"No Surefire reports for {names} — the step never ran, or wrote its reports elsewhere.",
+        ]
 
     if status == "failed":
         lines.append("")
