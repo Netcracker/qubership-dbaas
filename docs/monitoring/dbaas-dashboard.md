@@ -121,7 +121,7 @@ It shows the average duration of operations executed against each adapter, group
 
 ### Number of Registered Databases per Adapter Type
 
-It shows the total count of databases registered in DBaaS for each adapter type over time. The graph displays series for the following adapter types: PostgreSQL, MongoDB, Cassandra, Elasticsearch, and Redis.
+It shows the total count of databases registered in DBaaS for each adapter type over time. The graph displays series for the following adapter types: PostgreSQL, MongoDB, Cassandra, OpenSearch, and Redis.
 
 ### Number of Not Registered Databases per Adapter Type
 
@@ -135,7 +135,7 @@ It shows the count of lost databases (registered in DBaaS but not found in stora
 ## Registered databases section
 
 The **Registered databases** section shows the current number of databases in the DBaaS registry. It contains
-an overall panel and separate panels for PostgreSQL, MongoDB, Cassandra, Elasticsearch, and Redis. Each database-type
+an overall panel and separate panels for PostgreSQL, MongoDB, Cassandra, OpenSearch, and Redis. Each database-type
 panel includes registrations found in the adapter and lost registrations.
 
 ## Registry discrepancy alert
