@@ -6,6 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
     app.kubernetes.io/part-of: "{{ .Values.APPLICATION_NAME }}"
+    app.kubernetes.io/component: monitoring
     deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
   groups:
