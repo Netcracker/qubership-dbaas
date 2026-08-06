@@ -20,6 +20,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
@@ -107,6 +110,10 @@ func (p *RotationPoller) Start(ctx context.Context) error {
 // rotations — already synced by the startup reconcile — are not replayed. A failed
 // seed returns nil so the next tick retries it.
 func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.ChangeCursor, limit int) *aggregatorclient.ChangeCursor {
+	ctx = ctxmanager.InitContext(ctx, map[string]any{
+		xrequestid.X_REQUEST_ID_HEADER_NAME: uuid.New().String(),
+	})
+
 	if cursor == nil {
 		resp, err := p.Source.GetChangedSince(ctx, nil, 0)
 		if err != nil {

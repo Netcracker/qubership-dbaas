@@ -23,13 +23,28 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // dbTypePostgresql is the database type used throughout these client tests.
 const dbTypePostgresql = "postgresql"
+
+var registerRequestIDProvider sync.Once
+
+func contextWithRequestID(requestID string) context.Context {
+	registerRequestIDProvider.Do(func() {
+		ctxmanager.Register([]ctxmanager.ContextProvider{xrequestid.XRequestIdProvider{}})
+	})
+	return ctxmanager.InitContext(context.Background(), map[string]any{
+		xrequestid.X_REQUEST_ID_HEADER_NAME: requestID,
+	})
+}
 
 // staticToken returns a TokenSource function that always returns the given token.
 // Used in tests to avoid touching the global tokensource state.
@@ -78,6 +93,55 @@ func writeJSON(t *testing.T, w http.ResponseWriter, status int, v any) {
 func bearerToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")
 	return strings.TrimPrefix(h, "Bearer ")
+}
+
+func TestAggregatorClient_PropagatesRequestID(t *testing.T) {
+	const requestID = "operator-reconcile-request-id"
+	tests := []struct {
+		name           string
+		newClient      func(string) *AggregatorClient
+		wantAuthPrefix string
+	}{
+		{
+			name: "M2M",
+			newClient: func(baseURL string) *AggregatorClient {
+				return newClient(baseURL, staticToken("test-token"))
+			},
+			wantAuthPrefix: "Bearer ",
+		},
+		{
+			name: "BasicAuth",
+			newClient: func(baseURL string) *AggregatorClient {
+				return NewBasicAuthClient(baseURL, "dbaas-operator", "password")
+			},
+			wantAuthPrefix: "Basic ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotRequestID, gotAuthorization string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotRequestID = r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME)
+				gotAuthorization = r.Header.Get("Authorization")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			c := tt.newClient(srv.URL)
+			err := c.RegisterExternalDatabase(contextWithRequestID(requestID), "ns", minimalExtDBRequest())
+			if err != nil {
+				t.Fatalf("RegisterExternalDatabase: %v", err)
+			}
+			if gotRequestID != requestID {
+				t.Errorf("%s header: got %q, want %q",
+					xrequestid.X_REQUEST_ID_HEADER_NAME, gotRequestID, requestID)
+			}
+			if !strings.HasPrefix(gotAuthorization, tt.wantAuthPrefix) {
+				t.Errorf("Authorization: got %q, want prefix %q", gotAuthorization, tt.wantAuthPrefix)
+			}
+		})
+	}
 }
 
 // ── RegisterExternalDatabase ──────────────────────────────────────────────────

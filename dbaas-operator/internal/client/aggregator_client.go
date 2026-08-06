@@ -30,6 +30,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxhelper"
 	"github.com/netcracker/qubership-core-lib-go/v3/security/tokensource"
 )
 
@@ -113,6 +114,12 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		// so the warning is pure noise logged on every call (incl. the rotation poll loop).
 		SetDisableWarn(true).
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
+			if err := ctxhelper.AddSerializableContextData(r.Context(), func(name, value string) {
+				r.SetHeader(name, value)
+			}); err != nil {
+				return fmt.Errorf("propagate request context: %w", err)
+			}
+
 			// M2M mode — fetch a fresh dbaas-audience token per request.
 			if c.getToken != nil {
 				token, err := c.getToken(r.Context())
