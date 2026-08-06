@@ -755,6 +755,33 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                void testInternalDatabaseWithPostgresqlExtensions() throws IOException, SQLException {
+                    String crName = generateName();
+                    String microserviceName = generateName();
+                    Map<String, Object> settings = Map.of("pgExtensions", List.of("uuid-ossp"));
+
+                    var cr = buildInternalDatabaseCR(crName, microserviceName, NAMESPACE, "postgresql", false,
+                            Map.of("settings", settings));
+
+                    createCR(CRD_INTERNAL_DATABASE, cr);
+                    waitForDesiredState(CRD_INTERNAL_DATABASE, cr,
+                            PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
+
+                    DatabaseResponse database = helperV3.getDatabaseByClassifierAsPOJO(
+                            helperV3.getClusterDbaAuthorization(),
+                            new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(),
+                            NAMESPACE, "postgresql", 200);
+                    assertEquals(settings, database.getSettings());
+
+                    try (var connection = helperV3.connectPg(database);
+                         var statement = connection.createStatement();
+                         var extensions = statement.executeQuery(
+                                 "select 1 from pg_extension where extname = 'uuid-ossp'")) {
+                        assertTrue(extensions.next(), "The uuid-ossp extension must be installed");
+                    }
+                }
+
+                @Test
                 void testInternalDatabaseClassifierNamespaceMismatch() throws IOException {
                     String crName = generateName();
                     String microserviceName = generateName();

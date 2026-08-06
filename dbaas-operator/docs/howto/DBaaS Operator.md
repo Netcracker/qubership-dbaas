@@ -1406,8 +1406,10 @@ spec:
   type: postgresql
   # lazy: false                    # if true, defer provisioning until first access
   # namePrefix: "myapp"            # prefix applied to the physical DB name
-  # settings:                      # adapter-specific connection / DB settings (string map)
+  # settings:                      # adapter-specific connection / DB settings (JSON values)
   #   encoding: UTF8
+  #   pgExtensions:
+  #     - vector
   # versioningConfig:
   #   approach: clone              # how a new version is created during blue-green
   # initialInstantiation:
@@ -1435,7 +1437,7 @@ spec:
 | `spec.classifier` | Yes | **No** | Database identity in dbaas-aggregator. Immutable after creation (CRD CEL rule `self == oldSelf`): switching the classifier on an existing CR would re-target the controller at a different database while `status.trackingId` and `status.observedGeneration` still reference the original one. Delete and recreate the CR to rebind. |
 | `spec.type` | Yes | **No** | Database engine type (e.g., `postgresql`, `mongodb`). Must match a type known to dbaas-aggregator. Immutable after creation: changing the engine mid-flight would request provisioning of a fresh database on a different adapter while the original one stays registered under the same CR identity. |
 | `spec.lazy` | No | Yes | When `true`, provisioning is deferred until first access. Defaults to `false`. **Prohibited** in combination with `initialInstantiation.approach=clone` — controller rejects with `InvalidSpec` |
-| `spec.settings` | No | Yes | Free-form string-to-string map of adapter-specific settings |
+| `spec.settings` | No | Yes | Free-form map of adapter-specific settings. Values may be any valid JSON type |
 | `spec.namePrefix` | No | Yes | Prefix applied to the physical database name created in the DBMS |
 | `spec.versioningConfig` | No | Yes | Strategy for blue-green database versioning. If absent → `versioningType=static`. If present → `versioningType=version` |
 | `spec.initialInstantiation` | No | Yes | Initial database creation strategy. If absent → `approach=new` |
@@ -1712,6 +1714,8 @@ spec:
   namePrefix: pay
   settings:
     encoding: UTF8
+    pgExtensions:
+      - vector
   versioningConfig:
     approach: clone
 ```

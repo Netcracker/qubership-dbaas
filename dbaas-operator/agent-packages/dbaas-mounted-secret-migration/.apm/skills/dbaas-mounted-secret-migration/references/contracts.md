@@ -73,14 +73,13 @@ spec:
 Optional mappings supported by the current CR contract are:
 
 - `BaseDbParams.NamePrefix` to `spec.namePrefix`;
-- string-valued database creation settings to `spec.settings`;
+- JSON-valued database creation settings to `spec.settings` without changing their types;
 - explicitly configured versioning and initial-instantiation behavior to their corresponding
   structures.
 
 Do not copy client connection-pool, migration, retry, or datasource settings into `spec.settings`.
-The CR type is `map[string]string`; do not guess encodings for arrays, booleans, or nested settings
-copied from Java settings objects or legacy declarations. Mark those identities `BLOCKED` until the
-target operator/aggregator contract defines the representation.
+The CR type is `map[string]apiextensionsv1.JSON`; values may be strings, numbers, booleans, null,
+arrays, or nested objects. Preserve the original JSON value instead of stringifying it.
 Do not silently drop `PhysicalDatabaseId`; block that identity until a target-contract mapping is
 confirmed.
 
