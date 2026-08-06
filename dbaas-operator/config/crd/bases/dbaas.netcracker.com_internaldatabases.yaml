@@ -220,10 +220,10 @@ spec:
                 type: string
               settings:
                 additionalProperties:
-                  type: string
+                  x-kubernetes-preserve-unknown-fields: true
                 description: |-
                   settings contains database-engine-specific configuration passed through to the
-                  dbaas adapter. All values are strings.
+                  dbaas adapter. Values may be any valid JSON type.
                 type: object
               type:
                 description: |-

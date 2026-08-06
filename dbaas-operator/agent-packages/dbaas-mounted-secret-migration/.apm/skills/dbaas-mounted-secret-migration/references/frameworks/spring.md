@@ -78,10 +78,9 @@ not as the sole source of truth. Compare its classifier, type, settings, `versio
 `initialInstantiation` with the Java request. Convert only after both agree. Preserve explicit
 versioning and clone behavior in the new `InternalDatabase`; do not silently remove it.
 
-The current `InternalDatabase.spec.settings` accepts string values. If a legacy declaration or Java
-settings object contains arrays, booleans, or nested objects, mark the identity `BLOCKED` until the
-target operator/aggregator defines the exact string encoding. Never stringify complex settings by
-guessing.
+`InternalDatabase.spec.settings` accepts JSON values. Preserve strings, numbers, booleans, null,
+arrays, and nested objects from the legacy declaration or Java settings object. Never stringify
+structured settings.
 
 ## Prove runtime behavior
 
@@ -95,7 +94,8 @@ the resolved client claims rotation support.
 
 Treat the target service's Maven or Gradle dependency graph and imported BOMs as the source of truth.
 Do not copy a client or Spring Boot version from this skill. When mounted-secret support is absent,
-consult the upstream [Qubership Core Java Libraries releases](https://github.com/Netcracker/qubership-core-java-libs/releases)
+consult the upstream
+[Qubership Core Java Libraries releases](https://github.com/Netcracker/qubership-core-java-libs/releases)
 and BOM release notes, choose a compatible coordinate in the consumer build, resolve the graph
 again, and rerun mounted-provider and REST-fallback tests. An E2E result applies only to the exact
 resolved graph that was tested; it is not a baseline for other services or wrappers.
