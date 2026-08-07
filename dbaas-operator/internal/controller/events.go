@@ -67,9 +67,10 @@ const (
 	// the CR spec is not at fault. Type: Warning.
 	EventReasonUnauthorized = "Unauthorized"
 
-	// EventReasonAggregatorRejected is emitted when dbaas-aggregator returns a
-	// 4xx error other than 401 (e.g. 400, 403, 409). Indicates a permanent
-	// spec error — retrying the same request will not help. Type: Warning.
+	// EventReasonAggregatorRejected is emitted when dbaas-aggregator returns 400,
+	// 403, 409, 410, or 422, or when a polled InternalDatabase operation ends
+	// with status FAILED. Indicates a permanent spec error — retrying the same
+	// request will not help. Type: Warning.
 	EventReasonAggregatorRejected = "AggregatorRejected"
 
 	// EventReasonAggregatorError is emitted on 5xx or network errors from

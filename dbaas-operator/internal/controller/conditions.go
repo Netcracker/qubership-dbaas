@@ -6,7 +6,7 @@ const (
 	// conditionTypeReady is the canonical condition describing whether the
 	// current generation was successfully processed by the controller.
 	// Ready=True  — the resource has been accepted and is active.
-	// Ready=False — processing failed; check Reason and Message for details.
+	// Ready=False — processing is in progress or it failed; check Reason and Message.
 	conditionTypeReady = "Ready"
 
 	// conditionTypeStalled is set to True when the error is permanent and
@@ -16,6 +16,8 @@ const (
 	conditionTypeStalled = "Stalled"
 )
 
+// stalledMsgPermanent and stalledMsgTransient are the Message the controllers put
+// on the Stalled condition.
 const (
 	stalledMsgPermanent = "Permanent error — spec must be corrected before the controller will retry."
 	stalledMsgTransient = "Transient error — the controller will retry automatically."

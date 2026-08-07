@@ -48,8 +48,7 @@ import (
 )
 
 // externalDatabaseDefaultResync is the fallback re-reconcile period used when
-// ResyncInterval is left zero. Referenced credential Secret changes are picked up
-// on the next periodic resync.
+// ResyncInterval is left zero.
 const externalDatabaseDefaultResync = 10 * time.Minute
 
 // ExternalDatabaseReconciler reconciles ExternalDatabase objects.
@@ -174,8 +173,6 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DBName)
-	// Periodically re-reconcile so a change to a referenced credentials Secret is picked up
-	// without a Secret watch (the operator holds only namespaced Secret RBAC).
 	return ctrl.Result{RequeueAfter: r.ResyncInterval}, nil
 }
 

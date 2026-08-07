@@ -46,15 +46,13 @@ import (
 // NamespaceBindingReconciler reconciles NamespaceBinding objects.
 //
 // Responsibilities:
-//  1. Keep the ownership cache (OwnershipResolver) up-to-date on every
+//  1. Keep the ownership cache ([ownership.OwnershipResolver]) up-to-date on every
 //     create/update/delete.
-//  2. Manage the NamespaceBindingProtectionFinalizer: add it when the namespace
-//     contains blocking dbaas resources; remove it (allowing deletion) only once
-//     those resources are gone.
-//  3. Watch workload resources (ExternalDatabase, DatabaseAccessPolicy, InternalDatabase,
-//     and balancing rules)
-//     so that any create/delete of a workload in a bound namespace triggers a
-//     re-evaluation of the finalizer.
+//  2. Manage the NamespaceBindingProtectionFinalizer: add it to every binding this
+//     instance owns, and remove it (allowing deletion) only once Checker reports no
+//     blocking resource left in the namespace.
+//  3. Watch the workload kinds that can block deletion, so that creating or
+//     deleting one in a bound namespace re-evaluates the finalizer.
 type NamespaceBindingReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme

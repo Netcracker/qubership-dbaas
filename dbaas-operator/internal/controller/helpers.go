@@ -38,6 +38,8 @@ import (
 var log = logging.GetLogger("dbaas-operator")
 
 const (
+	// apiVersionV1 is the apiVersion field of the declarative payload posted to
+	// the aggregator, not the operator's own CRD group.
 	apiVersionV1 = "core.netcracker.com/v1"
 )
 
@@ -169,8 +171,6 @@ func setCondition(
 	for i, existing := range *conditions {
 		if existing.Type == condType {
 			if existing.Status == status {
-				// Status unchanged: preserve the transition time per Kubernetes API
-				// conventions (LastTransitionTime reflects Status changes only).
 				cond.LastTransitionTime = existing.LastTransitionTime
 			}
 			(*conditions)[i] = cond
@@ -297,6 +297,13 @@ func markPermanentFailure[P ~string](
 		conditionTypeStalled, metav1.ConditionTrue, readyReason, stalledMsgPermanent)
 }
 
+// patchStatusOnExit patches obj's status against original and is meant to run
+// from a deferred call in Reconcile, with retErr pointing at the named error
+// result. When shouldObserve accepts obj and the pending error, it first stamps
+// status.observedGeneration from obj's metadata.generation. A patch that fails
+// because the object is gone is not an error; any other patch failure is joined
+// into *retErr, so it can turn an otherwise successful reconcile into a retry.
+// objectType names the kind in the log lines.
 func patchStatusOnExit[T interface {
 	client.Object
 	SetObservedGeneration(int64)

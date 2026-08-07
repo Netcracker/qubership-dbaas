@@ -77,8 +77,6 @@ const (
 	operationDeletePermanentRule     = "delete_permanent_balancing_rule"
 )
 
-// Metric declarations.
-
 // dbaasReconcileTriggerTotal counts reconcile invocations by meaningful source.
 // Controller-runtime already exposes reconcile totals; this metric adds the
 // trigger dimension that the framework cannot infer.
@@ -91,8 +89,8 @@ var dbaasReconcileTriggerTotal = prometheus.NewCounterVec(
 )
 
 // dbaasSecretResolutionErrorsTotal counts failures reading credential Secrets,
-// labeled by error category. A non-zero value means a credential rotation
-// left a database without valid credentials - direct service impact.
+// labeled by error category. A non-zero value means an ExternalDatabase cannot
+// be registered until its credentialsSecretRef resolves.
 var dbaasSecretResolutionErrorsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "dbaas_secret_resolution_errors_total",
@@ -147,8 +145,6 @@ func init() {
 	)
 }
 
-// Helper functions.
-
 // recordAggregatorCall records both the duration and the outcome counter for a
 // single aggregator HTTP call. Call it immediately after every aggregator
 // method returns, passing the start time and the error (nil = success).
@@ -161,7 +157,9 @@ func recordAggregatorCall(controller, operation string, start time.Time, err err
 		Inc()
 }
 
-// aggregatorResult maps an error from AggregatorClient to a result label.
+// aggregatorResult maps an error from AggregatorClient to a result label. An
+// error that does not wrap an [aggregatorclient.AggregatorError] is labeled
+// network_error, including a 2xx response the client could not decode.
 func aggregatorResult(err error) string {
 	if err == nil {
 		return resultSuccess
@@ -186,6 +184,9 @@ func aggregatorResult(err error) string {
 	return resultNetworkError
 }
 
+// secretResolutionError carries the failure category for a credential Secret that
+// could not be resolved. reason is one of the secretReason constants and becomes
+// the reason label on dbaas_secret_resolution_errors_total.
 type secretResolutionError struct {
 	reason string
 	err    error

@@ -75,6 +75,11 @@ type DatabaseSecretClaimReconciler struct {
 	Ownership  *ownership.OwnershipResolver
 
 	bindingTriggerTracker
+	// triggerMu guards siblingTriggerStamps and rotationTriggerValues, the
+	// sibling and rotation counterparts of bindingTriggerTracker: keyed by
+	// namespace/name and best-effort, so a lost entry only mis-classifies the
+	// reconcile-trigger metric. rotationTriggerValues holds the last annotation
+	// value seen for a key, so the first observation is never a rotation.
 	triggerMu             sync.Mutex
 	siblingTriggerStamps  map[string]struct{}
 	rotationTriggerValues map[string]string
@@ -168,9 +173,10 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // preflightValidate runs all spec-level and pre-aggregator validations:
-// classifier.namespace consistency, the required app.kubernetes.io/name label,
-// ownership of any pre-existing target Secret, and the sibling-CR tiebreak that
-// resolves spec.secretName collisions deterministically (older claimant wins).
+// classifier.namespace consistency, classifier.extraKeys not shadowing a typed
+// classifier field, the required app.kubernetes.io/name label, ownership of any
+// pre-existing target Secret, and the sibling-CR tiebreak that resolves
+// spec.secretName collisions deterministically (older claimant wins).
 // It returns stop=true when a terminal state has been set on the CR and the
 // caller must return res/err immediately; stop=false means validation passed
 // and the reconcile may proceed to the aggregator call.
@@ -440,7 +446,7 @@ func (r *DatabaseSecretClaimReconciler) markSecretConflict(ctx context.Context, 
 //   - 404 + CORE-DBAAS-4006  → BackingOff / DatabaseNotFound  (transient, DB not yet registered)
 //   - 404 without TMF body   → AggregatorError / BackingOff    (blue-green edge: no active namespace)
 //   - 401                    → BackingOff / Unauthorized        (transient)
-//   - 400 / 403              → InvalidConfiguration / AggregatorRejected (permanent)
+//   - 400/403/409/410/422    → InvalidConfiguration / AggregatorRejected (permanent)
 //   - 5xx / network          → BackingOff / AggregatorError     (transient)
 //
 // On a continuous DatabaseNotFound streak longer than databaseNotFoundTimeout
@@ -512,10 +518,10 @@ const (
 // the key. UserRole is the requested role (DatabaseSecretClaim.spec.userRole), not
 // the role the aggregator resolved at runtime; it is omitted when empty.
 //
-// Id, Name, Namespace, and Settings mirror the aggregator's
+// ID, Name, Namespace, and Settings mirror the aggregator's
 // DatabaseResponseV3SingleCP so dbaas-client can reconstruct a full LogicalDb
 // from a mounted Secret without a REST call. They are descriptive only (not
-// part of the match key) and are omitted when empty; Id in particular may be
+// part of the match key) and are omitted when empty; ID in particular may be
 // empty because the aggregator returns it best-effort on a by-classifier lookup.
 type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
@@ -650,9 +656,7 @@ func (r *DatabaseSecretClaimReconciler) enqueueForBinding(ctx context.Context, o
 
 // enqueueSiblingsBySecretName re-enqueues every DatabaseSecretClaim in the same
 // namespace that shares spec.secretName with the given object, excluding the
-// object itself. It fires on create/update/delete of any DatabaseSecretClaim so that
-// CRs sitting in SecretConflict can recover automatically once the older
-// claimant is removed or rebinds.
+// object itself.
 func (r *DatabaseSecretClaimReconciler) enqueueSiblingsBySecretName(ctx context.Context, obj client.Object) []reconcile.Request {
 	ds, ok := obj.(*dbaasv1.DatabaseSecretClaim)
 	if !ok || ds.Spec.SecretName == "" {
