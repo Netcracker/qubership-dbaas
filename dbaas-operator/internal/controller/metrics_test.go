@@ -8,6 +8,8 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
+// Every outcome of an aggregator call lands in exactly one result label, and the
+// classification sees through error wrapping.
 func TestAggregatorResultClassifiesOwnershipBuckets(t *testing.T) {
 	tests := []struct {
 		name string
@@ -33,6 +35,8 @@ func TestAggregatorResultClassifiesOwnershipBuckets(t *testing.T) {
 	}
 }
 
+// An error that wraps a secretResolutionError reports that error's reason;
+// anything else reports secretReasonReadFailed.
 func TestSecretResolutionReason(t *testing.T) {
 	tests := []struct {
 		name string

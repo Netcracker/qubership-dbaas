@@ -53,9 +53,13 @@ const pollRequeueAfter = 5 * time.Second
 //
 // The reconcile loop has two branches:
 //   - SUBMIT: no pending trackingId → validate, build payload, call POST /apply.
-//     HTTP 200 → Succeeded (synchronous). HTTP 202 → store trackingId, requeue for polling.
+//     HTTP 200 → Succeeded (synchronous), or WaitingForDependency and requeue while a pinned
+//     tenant database is still materializing (see materializeTenantDatabaseIfPinned).
+//     HTTP 202 → store trackingId, requeue for polling.
 //   - POLL: pending trackingId → call GET /operation/{id}/status.
-//     COMPLETED → Succeeded. FAILED/TERMINATED → InvalidConfiguration. IN_PROGRESS → requeue.
+//     COMPLETED → Succeeded, or WaitingForDependency on that same pinned-tenant condition.
+//     FAILED → InvalidConfiguration. TERMINATED → BackingOff with the
+//     trackingId cleared, so the next reconcile resubmits. IN_PROGRESS → requeue.
 type InternalDatabaseReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -215,7 +219,8 @@ func (r *InternalDatabaseReconciler) reconcilePoll(ctx context.Context, dd *dbaa
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
 // kind/subKind are hardcoded to what the aggregator expects.
-// microserviceName goes into metadata; the entire spec is forwarded as-is.
+// The CR's name, namespace and microserviceName go into metadata; every spec
+// field reaches the aggregator through [toWireSpec], which reshapes and defaults it.
 func (r *InternalDatabaseReconciler) buildPayload(dd *dbaasv1.InternalDatabase) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
 		APIVersion: apiVersionV1,
@@ -353,6 +358,8 @@ func pollConditionText(resp *aggregatorclient.DeclarativeResponse, fallback stri
 	return fallback
 }
 
+// validateInternalDatabaseSpec returns a message describing the first cross-field
+// violation in dd's spec, or "" when the spec is acceptable.
 func validateInternalDatabaseSpec(dd *dbaasv1.InternalDatabase) string {
 	// CRD enforces: classifier.required, classifier.microserviceName/scope required+minLength,
 	// type required+minLength. Controller handles cross-field constraints only.

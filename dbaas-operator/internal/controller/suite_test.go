@@ -148,7 +148,8 @@ var _ = AfterSuite(func() {
 	}, time.Minute, time.Second).Should(Succeed())
 })
 
-// getFirstFoundEnvTestBinaryDir locates the first binary in the specified path.
+// getFirstFoundEnvTestBinaryDir returns the first subdirectory of dbaas-operator/bin/k8s,
+// or "" when that directory is missing or holds no subdirectory.
 // ENVTEST-based tests depend on specific binaries, usually located in paths set by
 // controller-runtime. When running tests directly (e.g., via an IDE) without using
 // Makefile targets, the 'BinaryAssetsDirectory' must be explicitly configured.

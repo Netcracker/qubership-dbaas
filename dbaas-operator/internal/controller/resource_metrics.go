@@ -117,8 +117,11 @@ var (
 )
 
 // RegisterResourceMetrics registers kube-state-style current-state metrics for
-// dbaas CRs. The metrics intentionally expose CR name only on gauges that
-// represent current state; counters and histograms remain low-cardinality.
+// dbaas CRs on the controller-runtime metrics registry. Only the first call
+// registers; later calls are no-ops, so the c, resolver, and operatorNamespace
+// passed the first time are the ones every scrape uses. The metrics intentionally
+// expose CR name only on gauges that represent current state; counters and
+// histograms remain low-cardinality.
 func RegisterResourceMetrics(c client.Client, resolver *ownership.OwnershipResolver, operatorNamespace string) {
 	registerResourceMetricsOnce.Do(func() {
 		metrics.Registry.MustRegister(&resourceMetricsCollector{
@@ -129,6 +132,14 @@ func RegisterResourceMetrics(c client.Client, resolver *ownership.OwnershipResol
 	})
 }
 
+// resourceMetricsCollector answers a Prometheus scrape by listing dbaas CRs and
+// turning their current status into gauges. It keeps no state between scrapes.
+//
+// Two rules hold across every collect method. Each reports
+// dbaas_resource_collector_success for its kind, so a failed LIST is
+// distinguishable from a kind that has no objects. And each emits status series
+// only for the resources this instance owns, so no object's status is reported
+// by two instances at once; the methods differ in how they establish ownership.
 type resourceMetricsCollector struct {
 	client            client.Client
 	ownership         *ownership.OwnershipResolver
@@ -148,6 +159,10 @@ func (c *resourceMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- resourceCollectorSuccessDesc
 }
 
+// Collect runs one sweep over every dbaas kind per scrape, bounded as a whole
+// by [resourceMetricsCollectionTimeout]. A kind whose LIST does not finish
+// inside that budget reports dbaas_resource_collector_success 0 rather than
+// dropping out of the scrape.
 func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), resourceMetricsCollectionTimeout)
 	defer cancel()
@@ -204,6 +219,10 @@ func (c *resourceMetricsCollector) collectDatabaseAccessPolicies(ctx context.Con
 	}
 }
 
+// collectDatabaseSecretClaims adds the two DatabaseSecretClaim timestamp gauges
+// to the common status series. Each is emitted only when the status field
+// behind it is set, so a claim with no rotation series has never rotated, and
+// one with no first-not-found series has no DatabaseNotFound streak open.
 func (c *resourceMetricsCollector) collectDatabaseSecretClaims(ctx context.Context, ch chan<- prometheus.Metric) {
 	list := &dbaasv1.DatabaseSecretClaimList{}
 	if !c.collectList(ctx, ch, resourceKindDatabaseSecretClaim, list) {
@@ -237,6 +256,10 @@ func (c *resourceMetricsCollector) collectDatabaseSecretClaims(ctx context.Conte
 	}
 }
 
+// collectMicroserviceBalancingRules adds the desired and applied target gauges
+// to the common status series. A target here is one microservice, summed across
+// the rules rather than counted per rule, which is what the microservice
+// target_type stands for.
 func (c *resourceMetricsCollector) collectMicroserviceBalancingRules(ctx context.Context, ch chan<- prometheus.Metric) {
 	list := &dbaasv1.MicroserviceBalancingRuleList{}
 	if !c.collectList(ctx, ch, resourceKindMicroserviceBalancingRule, list) {
@@ -270,6 +293,9 @@ func (c *resourceMetricsCollector) collectMicroserviceBalancingRules(ctx context
 	}
 }
 
+// collectNamespaceBalancingRules adds the desired and applied target gauges to
+// the common status series. A namespace balancing rule names no targets of its
+// own, so the count is the number of rules and the target_type is rule.
 func (c *resourceMetricsCollector) collectNamespaceBalancingRules(ctx context.Context, ch chan<- prometheus.Metric) {
 	list := &dbaasv1.NamespaceBalancingRuleList{}
 	if !c.collectList(ctx, ch, resourceKindNamespaceBalancingRule, list) {
@@ -303,6 +329,12 @@ func (c *resourceMetricsCollector) collectNamespaceBalancingRules(ctx context.Co
 	}
 }
 
+// collectPermanentBalancingRules is the one collect method that does not list
+// cluster-wide: permanent rules live in the operator's own namespace, so
+// membership there is the ownership check and no resolver lookup is needed.
+// With no operator namespace configured it lists nothing and reports
+// dbaas_resource_collector_success 0, rather than falling back to a
+// cluster-wide LIST.
 func (c *resourceMetricsCollector) collectPermanentBalancingRules(ctx context.Context, ch chan<- prometheus.Metric) {
 	if c.operatorNamespace == "" {
 		ch <- prometheus.MustNewConstMetric(resourceCollectorSuccessDesc, prometheus.GaugeValue, 0, resourceKindPermanentBalancingRule)
@@ -339,6 +371,9 @@ func (c *resourceMetricsCollector) collectPermanentBalancingRules(ctx context.Co
 	}
 }
 
+// collectNamespaceBindings reports dbaas_namespace_binding_state for every
+// binding in the cluster, foreign ones included, so one instance's scrape shows
+// how the whole cluster is divided between operators.
 func (c *resourceMetricsCollector) collectNamespaceBindings(ctx context.Context, ch chan<- prometheus.Metric) {
 	list := &dbaasv1.NamespaceBindingList{}
 	if !c.collectList(ctx, ch, resourceKindNamespaceBinding, list) {
@@ -368,6 +403,11 @@ func (c *resourceMetricsCollector) collectNamespaceBindings(ctx context.Context,
 	}
 }
 
+// collectList lists every object of kind into list and reports the outcome as
+// dbaas_resource_collector_success for that kind. It returns false when the
+// LIST failed; the caller must then emit no series for the kind, so that a
+// scrape taken during an API-server outage does not read as the resources
+// having been deleted.
 func (c *resourceMetricsCollector) collectList(
 	ctx context.Context,
 	ch chan<- prometheus.Metric,
@@ -382,6 +422,11 @@ func (c *resourceMetricsCollector) collectList(
 	return true
 }
 
+// ownsNamespace reports whether this instance owns namespace, consulting the
+// resolver cache and never the API server. A namespace the cache has not seen
+// counts as not owned, as does a nil resolver, so a scrape taken before the
+// cache is warm omits series rather than claiming an object that belongs to
+// another instance.
 func (c *resourceMetricsCollector) ownsNamespace(namespace string) bool {
 	if c.ownership == nil {
 		return false
@@ -389,6 +434,13 @@ func (c *resourceMetricsCollector) ownsNamespace(namespace string) bool {
 	return c.ownership.GetState(namespace) == ownership.Mine
 }
 
+// collectOperatorStatus emits the three series every dbaas kind shares: phase,
+// observed-generation lag, and one series per status condition. An empty phase
+// is reported as Unknown, so every resource contributes exactly one phase
+// series. Conditions are deduplicated by type, the first occurrence winning:
+// two entries of one type can agree on every remaining label, and a duplicate
+// label set makes the registry reject the whole gather, not just the resource
+// that produced it.
 func collectOperatorStatus(
 	ch chan<- prometheus.Metric,
 	kind string,
@@ -438,6 +490,8 @@ func collectOperatorStatus(
 	}
 }
 
+// generationLag returns how far observedGeneration trails generation, clamped
+// at zero: an observedGeneration at or ahead of generation reports no lag.
 func generationLag(generation, observedGeneration int64) int64 {
 	if generation <= observedGeneration {
 		return 0
@@ -445,6 +499,13 @@ func generationLag(generation, observedGeneration int64) int64 {
 	return generation - observedGeneration
 }
 
+// namespaceBindingState returns the dbaas_namespace_binding_state label value
+// for binding as seen by the operator running in operatorNamespace: mine or
+// foreign while the binding is alive, deleting or deleting_with_finalizer once
+// deletion has started. Deletion outranks ownership, so a binding under
+// deletion never reports mine. Only NamespaceBindingProtectionFinalizer
+// produces deleting_with_finalizer here; a finalizer belonging to another
+// controller leaves the state at deleting.
 func namespaceBindingState(binding *dbaasv1.NamespaceBinding, operatorNamespace string) string {
 	if !binding.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(binding, dbaasv1.NamespaceBindingProtectionFinalizer) {
@@ -458,6 +519,11 @@ func namespaceBindingState(binding *dbaasv1.NamespaceBinding, operatorNamespace 
 	return namespaceBindingStateForeign
 }
 
+// collectDeletionState emits dbaas_resource_deletion_state for a resource whose
+// deletion has started, and nothing at all otherwise: absence of the series is
+// how a live resource is reported. Any surviving finalizer makes the state
+// deleting_with_finalizer, whichever controller owns it — unlike
+// [namespaceBindingState], which counts only the operator's own finalizer.
 func collectDeletionState(
 	ch chan<- prometheus.Metric,
 	kind string,
