@@ -97,9 +97,10 @@ func (c *AggregatorClient) SetCredentials(username, password string) {
 	c.creds.Store(&credentials{username: username, password: password})
 }
 
-// newClient is the internal constructor used in package-level tests. A non-nil
-// getToken selects M2M (Bearer) mode; nil selects Basic Auth mode, in which case
-// the caller must seed credentials via creds.Store / SetCredentials.
+// newClient is the constructor every exported constructor here delegates to, and
+// package-level tests call it directly. A non-nil getToken selects M2M (Bearer)
+// mode; nil selects Basic Auth mode, in which case the caller must seed
+// credentials via creds.Store or [AggregatorClient.SetCredentials].
 func newClient(baseURL string, getToken func(ctx context.Context) (string, error)) *AggregatorClient {
 	c := &AggregatorClient{getToken: getToken}
 
@@ -132,12 +133,11 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 	return c
 }
 
-// doRequest sends method+path to the aggregator through the shared resty client
-// (so the auth OnBeforeRequest hook applies), with ctx, an optional JSON body, and
-// an optional prep hook to tweak the request (e.g. query params). It returns the
-// response only when its status is in okCodes; otherwise an *AggregatorError. It
-// centralizes the transport + status-check boilerplate shared by every endpoint;
-// per-endpoint semantics (verb, OK codes, whether/what to decode) stay at the call site.
+// doRequest sends method+path through the shared resty client, so the auth
+// OnBeforeRequest hook applies. body is marshaled as JSON when non-nil, and prep,
+// when non-nil, adjusts the request before it is sent — query parameters, for
+// example. Returns the response only when its status is in okCodes, and an
+// *AggregatorError otherwise.
 func (c *AggregatorClient) doRequest(
 	ctx context.Context, method, path string, body any, prep func(*resty.Request), okCodes ...int,
 ) (*resty.Response, error) {
@@ -214,8 +214,8 @@ func (c *AggregatorClient) ApplyConfig(ctx context.Context, payload *Declarative
 
 // GetOperationStatus polls the status of an asynchronous operation.
 //
-// The trackingId is obtained from a previous ApplyConfig call.  The caller
-// should keep calling this method while the returned Status is TaskStateInProgress.
+// trackingID comes from a previous [AggregatorClient.ApplyConfig] call. Keep
+// calling this method while the returned Status is [TaskStateInProgress].
 //
 // Returns *AggregatorError on non-2xx.
 func (c *AggregatorClient) GetOperationStatus(ctx context.Context, trackingID string) (*DeclarativeResponse, error) {

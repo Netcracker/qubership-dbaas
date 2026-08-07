@@ -291,6 +291,10 @@ var _ = Describe("BalancingRule validation", func() {
 	})
 })
 
+// unstructuredBalancingRule builds a balancing rule CR as raw JSON, so a spec can
+// omit a field the typed Go struct always marshals. Order on
+// NamespaceBalancingRuleItem carries no omitempty, so only this form can present
+// the CRD with the field absent.
 func unstructuredBalancingRule(kind, name, namespace string, spec map[string]any) *unstructured.Unstructured {
 	GinkgoHelper()
 	return &unstructured.Unstructured{

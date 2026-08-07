@@ -29,6 +29,10 @@ type balancingRuleCall struct {
 	body   []byte
 }
 
+// balancingRuleReconcileFixture wires a [BalancingRuleReconciler] to a stub
+// aggregator that records every request in calls. The stub answers each request
+// with the head of statuses, popping one entry per request, and falls back to
+// statusCode once statuses is empty; statusCode starts at 200.
 type balancingRuleReconcileFixture struct {
 	reconciler *BalancingRuleReconciler
 	calls      []balancingRuleCall
@@ -230,7 +234,7 @@ var _ = Describe("BalancingRule Controller", func() {
 		})
 
 		It("keeps previously-applied rules recorded when an updated spec fails to apply a new earlier rule", func() {
-			// D1 follow-up: status already records two rules that are live in the
+			// Status already records two rules that are live in the
 			// aggregator. The updated spec prepends a new rule whose apply fails, so
 			// the loop never re-applies the existing two. They must stay recorded —
 			// emptying status here would orphan rules still live aggregator-side.
@@ -514,6 +518,11 @@ var _ = Describe("BalancingRule Controller", func() {
 	})
 })
 
+// newBalancingRuleReconcileFixture starts the stub aggregator's listener, so a
+// caller must pair it with [balancingRuleReconcileFixture.close]. It seeds the
+// ownership cache with ownedNamespace as Mine, standing in for a NamespaceBinding
+// these specs never create; without it the microservice and namespace reconcilers
+// requeue instead of applying anything.
 func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleReconcileFixture {
 	GinkgoHelper()
 	fixture := &balancingRuleReconcileFixture{
@@ -551,6 +560,9 @@ func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleRecon
 	return fixture
 }
 
+// namespaceRuleWithFinalizer returns the two-rule singleton the namespace specs
+// share, with the finalizer already set. ReconcileNamespace patches a missing
+// finalizer and returns, so a rule without one never reaches the apply path.
 func namespaceRuleWithFinalizer() *dbaasv1.NamespaceBalancingRule {
 	return &dbaasv1.NamespaceBalancingRule{
 		ObjectMeta: metav1.ObjectMeta{

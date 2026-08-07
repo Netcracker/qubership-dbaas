@@ -106,7 +106,6 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(controllerutil.ContainsFinalizer(fetched, dbaasv1.NamespaceBindingProtectionFinalizer)).To(BeTrue())
 
-			// Ownership cache must reflect Mine.
 			Expect(resolver.GetState(ns)).To(Equal(ownership.Mine))
 		})
 
@@ -176,12 +175,10 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			drainRecordedEvents(fakeRecorder.Events)
 
-			// Trigger deletion.
 			Expect(k8sClient.Delete(ctx, &dbaasv1.NamespaceBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: ns},
 			})).To(Succeed())
 
-			// Reconcile the deletion.
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
@@ -190,7 +187,6 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			err = k8sClient.Get(ctx, namespacedName, &dbaasv1.NamespaceBinding{})
 			Expect(client.IgnoreNotFound(err)).To(Succeed())
 
-			// Cache must be cleared.
 			Expect(resolver.GetState(ns)).To(Equal(ownership.Unknown))
 		})
 	})
@@ -199,7 +195,6 @@ var _ = Describe("NamespaceBinding Controller", func() {
 
 	Context("when the NamespaceBinding is deleted but blocking resources exist", func() {
 		It("keeps the finalizer and emits a BindingBlocked warning", func() {
-			// Use a checker that always reports blocking.
 			reconciler.Checker = &alwaysBlockingChecker{}
 
 			nb := newBinding(myOperatorNS)
@@ -208,12 +203,10 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			drainRecordedEvents(fakeRecorder.Events)
 
-			// Trigger deletion.
 			Expect(k8sClient.Delete(ctx, &dbaasv1.NamespaceBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: ns},
 			})).To(Succeed())
 
-			// Reconcile — should keep the finalizer.
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
@@ -379,10 +372,10 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
 
-			// Cache must reflect Foreign, not Mine.
 			Expect(resolver.GetState(ns)).To(Equal(ownership.Foreign))
 
-			// The owning operator must NOT have added the finalizer.
+			// The finalizer belongs to the owning instance, so this one must not
+			// have added it.
 			fetched := &dbaasv1.NamespaceBinding{}
 			Expect(k8sClient.Get(ctx, namespacedName, fetched)).To(Succeed())
 			Expect(controllerutil.ContainsFinalizer(fetched, dbaasv1.NamespaceBindingProtectionFinalizer)).To(BeFalse())
@@ -393,7 +386,6 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			Expect(fetched.Status.Conditions).To(BeEmpty())
 			Expect(fetched.Status.ObservedGeneration).To(BeZero())
 
-			// No events must be emitted.
 			expectNoRecordedEvent(fakeRecorder.Events)
 		})
 
@@ -410,7 +402,6 @@ var _ = Describe("NamespaceBinding Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, nb)).To(Succeed())
 
-			// Trigger deletion.
 			Expect(k8sClient.Delete(ctx, &dbaasv1.NamespaceBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: ns},
 			})).To(Succeed())

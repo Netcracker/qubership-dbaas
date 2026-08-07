@@ -54,6 +54,9 @@ func drainRecordedEvents(events <-chan string) {
 	}
 }
 
+// aggregatorSyncFixture is a stub aggregator. server answers every request with
+// statusCode and body, recording the last request in capturedPath and capturedBody;
+// recorder collects the events the reconciler emits. Call close when the spec ends.
 type aggregatorSyncFixture struct {
 	statusCode   int
 	body         string
@@ -101,6 +104,10 @@ func closeServerAndDrain(srv *httptest.Server, rec *record.FakeRecorder) {
 	}
 }
 
+// reconcileAndFetchObject reconciles key once and returns the object as k8sClient sees
+// it afterwards, together with the reconcile result and error. newObj must allocate a
+// fresh empty object on each call. The read-back is unconditional, so a reconcile that
+// deletes its object fails the test instead of returning a not-found error.
 func reconcileAndFetchObject[T client.Object](
 	reconciler reconcile.Reconciler,
 	key types.NamespacedName,
@@ -152,9 +159,9 @@ func foreignOwnershipResolver(namespaces ...string) *ownership.OwnershipResolver
 	return r
 }
 
-// emptyOwnershipResolver returns an OwnershipResolver with an empty cache and
-// no NamespaceBinding objects in the API server.  IsMyNamespace will perform a
-// live GET, find nothing, and return (false, nil) — leaving the state Unknown.
+// emptyOwnershipResolver returns an OwnershipResolver with an empty cache, so
+// [ownership.OwnershipResolver.IsMyNamespace] does a live GET. Absent a NamespaceBinding
+// it returns (false, nil) and caches Unbound, so the next call takes the fast path.
 func emptyOwnershipResolver() *ownership.OwnershipResolver {
 	return ownership.NewOwnershipResolver("test-namespace", k8sClient)
 }

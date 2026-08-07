@@ -52,6 +52,9 @@ func (a *logrAdapter) WithValues(keysAndValues ...any) logr.LogSink {
 	return &logrAdapter{logger: a.logger, name: a.name, kvs: append(append([]any{}, a.kvs...), keysAndValues...)}
 }
 
+// WithName joins name onto the receiver's name with "/" and logs through the
+// platform logger registered under that joined name, which resolves its own level
+// from the logging configuration. The accumulated key/value pairs carry over.
 func (a *logrAdapter) WithName(name string) logr.LogSink {
 	fullName := name
 	if a.name != "" {
@@ -64,6 +67,8 @@ func (a *logrAdapter) WithName(name string) logr.LogSink {
 	}
 }
 
+// formatMessage appends the pairs in kvs to msg as space-separated key=value
+// text, in the order given. A trailing key with no value is dropped.
 func formatMessage(msg string, kvs []any) string {
 	if len(kvs) == 0 {
 		return msg

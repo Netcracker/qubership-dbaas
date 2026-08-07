@@ -75,6 +75,11 @@ type DatabaseSecretClaimReconciler struct {
 	Ownership  *ownership.OwnershipResolver
 
 	bindingTriggerTracker
+	// triggerMu guards siblingTriggerStamps and rotationTriggerValues, the
+	// sibling and rotation counterparts of bindingTriggerTracker: keyed by
+	// namespace/name and best-effort, so a lost entry only mis-classifies the
+	// reconcile-trigger metric. rotationTriggerValues holds the last annotation
+	// value seen for a key, so the first observation is never a rotation.
 	triggerMu             sync.Mutex
 	siblingTriggerStamps  map[string]struct{}
 	rotationTriggerValues map[string]string
@@ -113,12 +118,11 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	original := s.DeepCopy()
 	defer func() {
-		// Stamp observedGeneration on terminal states only. Successful
-		// reconciles now carry a safety-net RequeueAfter, so the result's
-		// requeue delay can no longer distinguish "done" from "retrying";
-		// gate on the conditions instead. Ready=True and Stalled=True are
-		// terminal (the generation has been fully processed); a transient
-		// error leaves both false (still polling).
+		// Stamp observedGeneration on terminal states only, and let the conditions
+		// identify them: Ready=True or Stalled=True means the generation was fully
+		// processed, and a transient error leaves both False. The requeue delay
+		// cannot stand in for this, because a successful reconcile carries a
+		// safety-net RequeueAfter too.
 		patchStatusOnExit(ctx, r.Status(), s, original, &retErr,
 			func(obj *dbaasv1.DatabaseSecretClaim, retErr error) bool {
 				return retErr == nil && isTerminal(obj.Status.Conditions, obj.Generation)
@@ -169,9 +173,10 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // preflightValidate runs all spec-level and pre-aggregator validations:
-// classifier.namespace consistency, the required app.kubernetes.io/name label,
-// ownership of any pre-existing target Secret, and the sibling-CR tiebreak that
-// resolves spec.secretName collisions deterministically (older claimant wins).
+// classifier.namespace consistency, classifier.extraKeys not shadowing a typed
+// classifier field, the required app.kubernetes.io/name label, ownership of any
+// pre-existing target Secret, and the sibling-CR tiebreak that resolves
+// spec.secretName collisions deterministically (older claimant wins).
 // It returns stop=true when a terminal state has been set on the CR and the
 // caller must return res/err immediately; stop=false means validation passed
 // and the reconcile may proceed to the aggregator call.
@@ -308,7 +313,7 @@ func (r *DatabaseSecretClaimReconciler) writeSecret(
 // Only a change to connectionProperties.json is treated as a rotation — it
 // stamps Status.LastRotatedAt and emits SecretRotated. A metadata.json or label
 // backfill (credentials unchanged) still rewrites the Secret but reports plain
-// success (SecretCreated reason, no LastRotatedAt, no SecretRotated event), so
+// success (SecretUpToDate reason, no LastRotatedAt, no SecretRotated event), so
 // the rotation timestamp stays faithful to its connection-properties contract.
 func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 	ctx context.Context,
@@ -327,8 +332,6 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 		return ctrl.Result{RequeueAfter: secretRotationSafetyNetInterval}, nil
 	}
 
-	// Only credential changes advance LastRotatedAt and emit SecretRotated;
-	// metadata.json or label backfills do not.
 	// existing.Data is the pre-update content; secretData is the desired content.
 	credentialsChanged := !bytes.Equal(
 		existing.Data[secretKeyConnectionProperties],
@@ -374,10 +377,7 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 			return ctrl.Result{}, err
 		}
 	}
-	// The Secret was written. Only stamp LastRotatedAt and emit SecretRotated
-	// when the credentials actually changed. A metadata.json or label backfill
-	// rewrites the Secret once but is not a rotation, so it must not advance the
-	// rotation timestamp nor report SecretRotated.
+	// The Secret was written, but a metadata or label backfill is not a rotation.
 	if !credentialsChanged {
 		log.InfoC(ctx, "DatabaseSecretClaim Secret updated without credential change (metadata/label backfill) name=%s secretName=%s",
 			s.Name, s.Spec.SecretName)
@@ -444,9 +444,9 @@ func (r *DatabaseSecretClaimReconciler) markSecretConflict(ctx context.Context, 
 // handleAggregatorErr maps aggregator errors to phase/conditions/events for DatabaseSecretClaim.
 // It injects the DatabaseNotFound case before delegating to the shared handler:
 //   - 404 + CORE-DBAAS-4006  → BackingOff / DatabaseNotFound  (transient, DB not yet registered)
-//   - 404 without TMF body   → AggregatorError / BackingOff    (BG edge: no active namespace)
+//   - 404 without TMF body   → AggregatorError / BackingOff    (blue-green edge: no active namespace)
 //   - 401                    → BackingOff / Unauthorized        (transient)
-//   - 400 / 403              → InvalidConfiguration / AggregatorRejected (permanent)
+//   - 400/403/409/410/422    → InvalidConfiguration / AggregatorRejected (permanent)
 //   - 5xx / network          → BackingOff / AggregatorError     (transient)
 //
 // On a continuous DatabaseNotFound streak longer than databaseNotFoundTimeout
@@ -518,10 +518,10 @@ const (
 // the key. UserRole is the requested role (DatabaseSecretClaim.spec.userRole), not
 // the role the aggregator resolved at runtime; it is omitted when empty.
 //
-// Id, Name, Namespace, and Settings mirror the aggregator's
+// ID, Name, Namespace, and Settings mirror the aggregator's
 // DatabaseResponseV3SingleCP so dbaas-client can reconstruct a full LogicalDb
 // from a mounted Secret without a REST call. They are descriptive only (not
-// part of the match key) and are omitted when empty; Id in particular may be
+// part of the match key) and are omitted when empty; ID in particular may be
 // empty because the aggregator returns it best-effort on a by-classifier lookup.
 type secretMetadata struct {
 	Classifier map[string]any `json:"classifier"`
@@ -656,9 +656,7 @@ func (r *DatabaseSecretClaimReconciler) enqueueForBinding(ctx context.Context, o
 
 // enqueueSiblingsBySecretName re-enqueues every DatabaseSecretClaim in the same
 // namespace that shares spec.secretName with the given object, excluding the
-// object itself. It fires on create/update/delete of any DatabaseSecretClaim so that
-// CRs sitting in SecretConflict can recover automatically once the older
-// claimant is removed or rebinds.
+// object itself.
 func (r *DatabaseSecretClaimReconciler) enqueueSiblingsBySecretName(ctx context.Context, obj client.Object) []reconcile.Request {
 	ds, ok := obj.(*dbaasv1.DatabaseSecretClaim)
 	if !ok || ds.Spec.SecretName == "" {

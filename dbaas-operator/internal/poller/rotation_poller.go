@@ -26,8 +26,8 @@ import (
 )
 
 // DefaultLimit is the page size requested per poll. Excess changes are drained on
-// subsequent ticks — the keyset cursor advances by the last returned item, so a
-// full page never stalls even when many rows share a timestamp.
+// subsequent ticks: the cursor advances by the last item a page returned, not by
+// the feed's high-water mark, so a full page never skips its tail.
 const DefaultLimit = 500
 
 // zeroUUID is the smallest UUID; paired with the epoch timestamp it forms the
@@ -40,7 +40,9 @@ func epochCursor() aggregatorclient.ChangeCursor {
 }
 
 // ChangedSource is the subset of the aggregator client the poller depends on.
-// Defined as an interface so tests can supply a fake.
+// Defined as an interface so tests can supply a fake, which owes the full contract
+// of [aggregatorclient.AggregatorClient.GetChangedSince], including what a nil
+// cursor and a non-positive limit ask for.
 type ChangedSource interface {
 	GetChangedSince(ctx context.Context, cursor *aggregatorclient.ChangeCursor, limit int) (*aggregatorclient.ChangedDatabasesResponse, error)
 }
@@ -63,7 +65,8 @@ type RotationPoller struct {
 	Client client.Client
 	// Source is the aggregator changed-databases endpoint.
 	Source ChangedSource
-	// Interval is the polling period.
+	// Interval is the polling period. It must be positive: [RotationPoller.Start]
+	// feeds it to [time.NewTicker], which panics on a non-positive duration.
 	Interval time.Duration
 	// Limit is the page size; DefaultLimit when zero.
 	Limit int
@@ -73,7 +76,9 @@ type RotationPoller struct {
 // cursor owner drives the fan-out.
 func (p *RotationPoller) NeedLeaderElection() bool { return true }
 
-// Start runs the poll loop until ctx is canceled. It implements manager.Runnable.
+// Start runs the poll loop until ctx is canceled. It implements manager.Runnable
+// and always returns nil: a failed poll is logged and retried on the next tick, so
+// the loop ends only on cancellation.
 func (p *RotationPoller) Start(ctx context.Context) error {
 	limit := p.Limit
 	if limit <= 0 {
@@ -105,7 +110,8 @@ func (p *RotationPoller) Start(ctx context.Context) error {
 // A nil cursor triggers a seed: the seed-only (since-less) call returns the
 // aggregator's current high-water mark, which becomes the baseline so existing
 // rotations — already synced by the startup reconcile — are not replayed. A failed
-// seed returns nil so the next tick retries it.
+// seed returns nil so the next tick retries it; a failed poll returns the cursor
+// unchanged, so the next tick re-requests the same page.
 func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.ChangeCursor, limit int) *aggregatorclient.ChangeCursor {
 	if cursor == nil {
 		resp, err := p.Source.GetChangedSince(ctx, nil, 0)
@@ -138,8 +144,8 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 				it.Namespace, it.Type, perr)
 		}
 		// Items are ordered by (lastRotatedAt, id) ascending; advance the cursor
-		// unconditionally so a per-namespace list error (logged above) does not
-		// stall it — the safety-net reconcile heals any skipped fan-out.
+		// unconditionally so a failed fan-out (logged above) does not stall it. The
+		// safety-net reconcile heals whatever the fan-out missed.
 		advanced = &aggregatorclient.ChangeCursor{LastRotatedAt: it.LastRotatedAt, ID: it.ID}
 	}
 	if len(resp.Items) > 0 {

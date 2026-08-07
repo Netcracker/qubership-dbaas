@@ -679,7 +679,6 @@ var _ = Describe("ExternalDatabase Controller", func() {
 
 	Context("credentialsSecretRef — Secret exists but has no data (empty Secret)", func() {
 		It("returns error, sets Phase=BackingOff / SecretError, never calls aggregator", func() {
-			// Secret exists but Data map is completely empty.
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
 				// Data intentionally omitted — equivalent to an empty map.
