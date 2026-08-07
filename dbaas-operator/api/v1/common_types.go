@@ -94,8 +94,6 @@ type Classifier struct {
 //
 // InternalDatabase additionally uses WaitingForDependency while polling
 // an asynchronous provisioning operation in dbaas-aggregator.
-// ExternalDatabase and DatabaseAccessPolicy never transition into WaitingForDependency —
-// their reconcile flows are fully synchronous.
 //
 // Phase is an observational summary for humans, not an API contract: it exists so
 // that `kubectl get` can show a single readable column, which conditions cannot
@@ -119,8 +117,7 @@ const (
 
 	// PhaseWaitingForDependency indicates the controller is polling an
 	// asynchronous provisioning operation in dbaas-aggregator (HTTP 202 +
-	// trackingId flow). Used only by InternalDatabase — ExternalDatabase
-	// and DatabaseAccessPolicy have synchronous reconcile flows and never use this phase.
+	// trackingId flow). Used only by InternalDatabase.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
 	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.
@@ -154,17 +151,31 @@ type OperatorStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the resource.
-	// Ready is True when the current generation was successfully processed;
-	// False on any error, with Reason carrying the error category. Success
-	// reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
-	// (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
-	// ProvisioningStarted while the async operation runs), BindingRegistered
-	// (NamespaceBinding; BindingBlocked while deletion is deferred,
-	// BindingReleased once only other controllers' finalizers keep the object
-	// alive, OwnershipCheckError when listing blocking resources fails).
-	// Stalled=True marks a permanent error; the controller does not retry
-	// until the spec changes. Stalled=False covers successful, ongoing, and
-	// retriable states.
+	// Ready is True when the current generation was successfully processed and
+	// False on any error, with Message carrying the detail. Stalled is True for a
+	// permanent error, which the controller does not retry until the spec changes,
+	// and False for successful, ongoing, and retriable states. Most reasons below
+	// are also emitted as a Kubernetes event under the same name; SecretUpToDate,
+	// Succeeded, BindingReleased and OwnershipCheckError are condition-only.
+	//
+	// Reasons any kind except NamespaceBinding can report, that one having no spec
+	// to validate and never calling dbaas-aggregator: InvalidSpec and
+	// AggregatorRejected are permanent, Unauthorized and AggregatorError are
+	// retried, and Succeeded is the Stalled reason after a successful reconcile.
+	//
+	// Reasons that belong to one kind:
+	//   - ExternalDatabase: DatabaseRegistered, SecretError.
+	//   - InternalDatabase: DatabaseProvisioned, ProvisioningStarted while the
+	//     asynchronous operation runs, OperationTerminated.
+	//   - DatabaseAccessPolicy: PolicyApplied.
+	//   - DatabaseSecretClaim: SecretCreated, SecretRotated, SecretUpToDate,
+	//     SecretConflict (permanent), DatabaseNotFound, DatabaseNotFoundTimeout,
+	//     EmptyConnectionProperties.
+	//   - NamespaceBinding: BindingRegistered, BindingBlocked while deletion is
+	//     deferred, BindingReleased once only other controllers' finalizers keep
+	//     the object alive, OwnershipCheckError.
+	//   - MicroserviceBalancingRule, NamespaceBalancingRule and
+	//     PermanentBalancingRule: BalancingRuleApplied.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
