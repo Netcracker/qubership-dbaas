@@ -11,7 +11,8 @@ const (
 
 	// conditionTypeStalled is set to True when the error is permanent and
 	// retrying will not help until the spec is changed.
-	// Stalled=False — error is transient; the controller will retry automatically.
+	// Stalled=False — the reconcile succeeded, is still in progress, or failed
+	// transiently; none of the three needs a spec change to make progress.
 	conditionTypeStalled = "Stalled"
 )
 

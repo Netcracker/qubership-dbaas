@@ -361,8 +361,7 @@ func conditionTrueForGeneration(conditions []metav1.Condition, condType string, 
 // without touching conditions (for example on a benign create/update race)
 // still carries the previous generation's Ready=True, and without the check
 // the exit patch would stamp status.observedGeneration for a spec it never
-// finished processing. The former phase-based predicate was immune to this
-// because phase was reset to Processing at the start of every reconcile.
+// finished processing.
 func isTerminal(conditions []metav1.Condition, generation int64) bool {
 	return conditionTrueForGeneration(conditions, conditionTypeReady, generation) ||
 		conditionTrueForGeneration(conditions, conditionTypeStalled, generation)

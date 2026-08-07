@@ -26,9 +26,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
-// Label value constants.
-
-// Keeping the constants here because they are only relevant to Prometheus metrics.
+// Label values for the metrics in this file, grouped by the label they belong to.
+// Each value is part of a metric's public surface: renaming one breaks the
+// dashboards and alerts that select on it.
 const (
 	controllerEDB = "externaldatabase"
 	controllerIDB = "internaldatabase"
@@ -125,7 +125,8 @@ var dbaasAggregatorRequestsTotal = prometheus.NewCounterVec(
 )
 
 // dbaasAsyncOperationDurationSeconds measures end-to-end provisioning time from
-// async submit (HTTP 202) to final poll outcome. This is the user-visible DD SLO.
+// async submit (HTTP 202) to final poll outcome. It is the user-visible
+// provisioning SLO.
 var dbaasAsyncOperationDurationSeconds = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Name:    "dbaas_async_operation_duration_seconds",

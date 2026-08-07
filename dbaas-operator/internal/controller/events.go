@@ -36,11 +36,11 @@ const (
 	EventReasonPolicyApplied = "PolicyApplied"
 
 	// EventReasonProvisioningStarted is emitted when dbaas-aggregator returns HTTP 202
-	// for a InternalDatabase, meaning the async operation has been accepted.
+	// for an InternalDatabase, meaning the async operation has been accepted.
 	// Type: Normal (informational — not yet complete).
 	EventReasonProvisioningStarted = "ProvisioningStarted"
 
-	// EventReasonDatabaseProvisioned is emitted when a InternalDatabase is
+	// EventReasonDatabaseProvisioned is emitted when an InternalDatabase is
 	// successfully provisioned by dbaas-aggregator (either via HTTP 200 sync or
 	// after polling completes with COMPLETED). Type: Normal.
 	EventReasonDatabaseProvisioned = "DatabaseProvisioned"
@@ -84,7 +84,7 @@ const (
 	// last operation completed successfully.
 	ReasonSucceeded = "Succeeded"
 
-	// EventReasonBindingRegistered is emitted when an NamespaceBinding is
+	// EventReasonBindingRegistered is emitted when a NamespaceBinding is
 	// successfully registered (finalizer added). Type: Normal.
 	EventReasonBindingRegistered = "BindingRegistered"
 
@@ -127,8 +127,9 @@ const (
 	ReasonSecretUpToDate = "SecretUpToDate"
 
 	// EventReasonDatabaseNotFound is emitted when dbaas-aggregator returns HTTP 404
-	// for a get-by-classifier request, meaning the database is not yet registered and
-	// the operator retries until it appears. The controller retries with exponential backoff. Type: Warning.
+	// for a get-by-classifier request, meaning the database is not registered yet.
+	// The controller keeps retrying with exponential backoff until it appears.
+	// Type: Warning.
 	EventReasonDatabaseNotFound = "DatabaseNotFound"
 
 	// EventReasonEmptyConnectionProperties is emitted when dbaas-aggregator returns HTTP 200

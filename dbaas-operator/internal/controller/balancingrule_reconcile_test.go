@@ -230,7 +230,7 @@ var _ = Describe("BalancingRule Controller", func() {
 		})
 
 		It("keeps previously-applied rules recorded when an updated spec fails to apply a new earlier rule", func() {
-			// D1 follow-up: status already records two rules that are live in the
+			// Status already records two rules that are live in the
 			// aggregator. The updated spec prepends a new rule whose apply fails, so
 			// the loop never re-applies the existing two. They must stay recorded —
 			// emptying status here would orphan rules still live aggregator-side.

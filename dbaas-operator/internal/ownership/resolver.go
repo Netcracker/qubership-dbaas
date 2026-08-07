@@ -81,8 +81,9 @@ func NewOwnershipResolver(myNamespace string, c client.Client) *OwnershipResolve
 	}
 }
 
-// SetOwner updates the cache for namespace based on the binding's location.
-// Called by NamespaceBindingReconciler on every create/update reconcile.
+// SetOwner caches namespace as Mine when location equals this operator's own
+// namespace, and as Foreign otherwise. location is the spec.operatorNamespace
+// of that namespace's NamespaceBinding.
 func (r *OwnershipResolver) SetOwner(namespace, location string) {
 	state := Foreign
 	if location == r.myNamespace {
@@ -93,8 +94,8 @@ func (r *OwnershipResolver) SetOwner(namespace, location string) {
 	r.mu.Unlock()
 }
 
-// Forget removes the cached entry for namespace.
-// Called by NamespaceBindingReconciler when an NamespaceBinding is deleted.
+// Forget removes the cached entry for namespace, so
+// [OwnershipResolver.GetState] reports Unknown until the binding is seen again.
 func (r *OwnershipResolver) Forget(namespace string) {
 	r.mu.Lock()
 	delete(r.cache, namespace)
@@ -114,7 +115,9 @@ func (r *OwnershipResolver) GetState(namespace string) OwnershipState {
 }
 
 // IsMyNamespace reports whether the operator owns namespace, using the cache
-// when populated and falling back to a live NamespaceBinding lookup on Unknown.
+// when populated and falling back to a live NamespaceBinding lookup on
+// Unknown. A successful lookup caches Mine, Foreign, or Unbound; false covers
+// the last two, so use [OwnershipResolver.GetState] to tell them apart.
 func (r *OwnershipResolver) IsMyNamespace(ctx context.Context, namespace string) (bool, error) {
 	if state := r.GetState(namespace); state != Unknown {
 		return state == Mine, nil

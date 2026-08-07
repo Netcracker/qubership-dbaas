@@ -233,7 +233,8 @@ type DatabaseResponseSingleCP struct {
 // rotation or restore), as returned by GET /api/v3/dbaas/databases/changed. It
 // carries only the identity needed to locate the consuming DatabaseSecretClaim
 // CR(s); connection properties are fetched separately via GetDatabaseByClassifier.
-// Id together with LastRotatedAt forms the keyset cursor the poller advances by.
+// ID is the aggregator's registry id, one row per classifier rather than one per
+// database, and with LastRotatedAt it forms the keyset cursor the poller advances by.
 type ChangedDatabaseRef struct {
 	ID            string         `json:"id"`
 	Namespace     string         `json:"namespace"`

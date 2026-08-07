@@ -268,7 +268,7 @@ func markTenantMaterializationPending(dd *dbaasv1.InternalDatabase) {
 		conditionTypeStalled, metav1.ConditionFalse, EventReasonProvisioningStarted, stalledMsgTransient)
 }
 
-// toWireSpec converts a InternalDatabaseSpec (CRD shape) into the wire format
+// toWireSpec converts an InternalDatabaseSpec (CRD shape) into the wire format
 // expected by dbaas-aggregator. namespace is the owning CR's metadata.namespace,
 // used to default classifier.namespace when omitted.
 //
@@ -581,7 +581,7 @@ func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		Complete(r)
 }
 
-// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
+// enqueueForBinding maps a NamespaceBinding event to reconcile requests for
 // all InternalDatabases that live in the same namespace.
 func (r *InternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	return enqueueForBindingList(ctx, r.Client, &dbaasv1.InternalDatabaseList{}, obj.GetNamespace(),
