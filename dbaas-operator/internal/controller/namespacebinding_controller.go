@@ -86,8 +86,7 @@ func (r *NamespaceBindingReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// responsibility. This return sits above the status defer on purpose: two
 	// instances writing conditions to the same object would fight forever. The
 	// flip side: a binding whose operatorNamespace matches no running operator
-	// keeps an empty status — document that as "unclaimed", it cannot be
-	// reported by anyone.
+	// keeps an empty status, because no instance is entitled to write one.
 	if nb.Spec.OperatorNamespace != r.MyNamespace {
 		log.InfoC(ctx, "NamespaceBinding %s/%s belongs to operatorNamespace=%s (mine=%s) — skipping mutations",
 			nb.Namespace, nb.Name, nb.Spec.OperatorNamespace, r.MyNamespace)
@@ -210,9 +209,9 @@ func enqueueBindingForWorkload(_ context.Context, obj client.Object) []reconcile
 }
 
 // workloadLifecyclePredicate limits the workload watches to create and delete
-// events. The binding only cares whether blocking resources exist, and a
-// spec or status update cannot change that — without the filter every status
-// write on every workload CR re-enqueued the binding.
+// events. The binding only cares whether blocking resources exist, and a spec or
+// status update cannot change that — without the filter, every status write on
+// every workload CR would re-enqueue the binding.
 var workloadLifecyclePredicate = predicate.Funcs{
 	CreateFunc:  func(event.CreateEvent) bool { return true },
 	DeleteFunc:  func(event.DeleteEvent) bool { return true },

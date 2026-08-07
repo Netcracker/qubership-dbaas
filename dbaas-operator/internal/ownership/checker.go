@@ -34,8 +34,7 @@ type BlockingResourceChecker interface {
 }
 
 // KindChecker checks for the presence of any object of a specific list kind
-// within a namespace.  Use the generic constructor NewKindChecker so that the
-// type constraints are verified at compile time.
+// within a namespace.  Construct it with [NewKindChecker].
 type KindChecker[L client.ObjectList] struct {
 	cl      client.Client
 	kind    string
@@ -48,9 +47,9 @@ func NewKindChecker[L client.ObjectList](cl client.Client, kind string, newList 
 	return &KindChecker[L]{cl: cl, kind: kind, newList: newList}
 }
 
-// BlockingKinds returns [kind] when at least one object of this kind exists in
-// namespace, and nil otherwise. The list is capped at one item — presence is
-// enough, counting would need an uncapped LIST.
+// BlockingKinds returns a one-element slice holding kind when at least one object
+// of that kind exists in namespace, and nil otherwise. The LIST is capped at one
+// item — presence is enough, and counting would need an uncapped LIST.
 func (c *KindChecker[L]) BlockingKinds(ctx context.Context, namespace string) ([]string, error) {
 	list := c.newList()
 	log.InfoC(ctx, "Checking blocking resources kind=%s namespace=%s", c.kind, namespace)
@@ -76,15 +75,16 @@ func NewCompositeChecker(checkers ...BlockingResourceChecker) *CompositeChecker 
 	return &CompositeChecker{checkers: checkers}
 }
 
-// Add appends a checker to the composite.
+// Add appends a checker to the composite. It takes no lock, so add every
+// checker before the first [CompositeChecker.BlockingKinds] call.
 func (c *CompositeChecker) Add(ch BlockingResourceChecker) {
 	c.checkers = append(c.checkers, ch)
 }
 
-// BlockingKinds runs every constituent checker and returns the union of the
-// kinds they report, in registration order. Unlike a short-circuiting bool
-// check, the full sweep costs one Limit(1) LIST per kind and buys a complete
-// answer for the user-facing message.
+// BlockingKinds runs every constituent checker in registration order and
+// concatenates what they report, duplicates included. The first error aborts
+// the sweep and comes back with a nil slice. Nothing short-circuits on the
+// first non-empty result: the caller names every blocking kind to the user.
 func (c *CompositeChecker) BlockingKinds(ctx context.Context, namespace string) ([]string, error) {
 	log.InfoC(ctx, "Checking blocking resources namespace=%s checkers=%d", namespace, len(c.checkers))
 	var kinds []string

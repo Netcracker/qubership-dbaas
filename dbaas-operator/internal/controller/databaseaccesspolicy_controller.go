@@ -151,7 +151,7 @@ func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseAccessPolicy{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all DbPolicies in a namespace when its NamespaceBinding
+		// Re-enqueue all DatabaseAccessPolicies in a namespace when its NamespaceBinding
 		// is created or updated, so existing CRs are reconciled without waiting for
 		// a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
@@ -164,8 +164,8 @@ func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts
 		Complete(r)
 }
 
-// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
-// all DbPolicies that live in the same namespace.
+// enqueueForBinding maps a NamespaceBinding event to reconcile requests for
+// all DatabaseAccessPolicies that live in the same namespace.
 func (r *DatabaseAccessPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseAccessPolicyList{}, obj.GetNamespace(),
 		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
