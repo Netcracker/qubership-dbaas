@@ -62,11 +62,15 @@ func EffectiveClassifier(c Classifier, fallbackNamespace string) Classifier {
 // ClassifierFlatMap converts a Classifier into the flat map shape expected on
 // the wire by dbaas-aggregator (Map<String, Object>). All scalar fields are
 // added as top-level keys; customKeys is added as a nested map[string]any
-// under the "customKeys" key, with each JSON value deserialized. Empty
-// optional fields (namespace, tenantId, customKeys) are omitted entirely so
-// the resulting map matches what the aggregator stores for an equivalent
-// CR — critical for ClassifierIndexKey to produce the same string on both
-// sides of a rotation event.
+// under the "customKeys" key, with each JSON value deserialized. extraKeys are
+// deserialized the same way but flattened onto the top level beside the
+// scalars; an extraKey whose name collides with a typed field is dropped
+// rather than applied, and [ReservedExtraKeys] reports those collisions so a
+// caller can reject the CR instead. Empty optional fields (namespace,
+// tenantId, customKeys) are omitted entirely so the resulting map matches what
+// the aggregator stores for an equivalent CR — critical for
+// [ClassifierIndexKey] to produce the same string on both sides of a rotation
+// event.
 func ClassifierFlatMap(c Classifier) map[string]any {
 	m := make(map[string]any, 4+len(c.CustomKeys)+len(c.ExtraKeys))
 	m["microserviceName"] = c.MicroserviceName
@@ -84,11 +88,10 @@ func ClassifierFlatMap(c Classifier) map[string]any {
 		}
 		m["customKeys"] = customKeys
 	}
-	// extraKeys are flattened onto the top level (legacy open-classifier
-	// compatibility). Reserved keys are skipped defensively: the controllers
-	// reject them during pre-flight validation (there is no CRD CEL rule for
-	// extraKeys), and the typed fields above always win, so a stray reserved
-	// extraKey can never corrupt identity.
+	// Flattening rather than nesting is legacy open-classifier compatibility.
+	// Skipping reserved names is a backstop: no CRD CEL rule covers extraKeys,
+	// so the controllers' pre-flight validation is the only other place a
+	// collision is caught.
 	for k, v := range c.ExtraKeys {
 		if _, reserved := reservedClassifierKeys[k]; reserved {
 			continue
@@ -98,10 +101,13 @@ func ClassifierFlatMap(c Classifier) map[string]any {
 	return m
 }
 
-// reservedClassifierKeys are the top-level keys owned by the typed Classifier
-// fields. extraKeys may not shadow them: the controllers reject such a key during
-// pre-flight validation, and the check in ClassifierFlatMap is a defensive backstop
-// for objects that were admitted before that check existed.
+// reservedClassifierKeys are the wire keys the typed [Classifier] fields own: the
+// JSON name of every field except extraKeys itself, which may legitimately appear
+// as a flattened key. A new typed field on Classifier needs a new entry here.
+//
+// extraKeys may not shadow a reserved key. [ReservedExtraKeys] reports the
+// collision so a controller can reject the spec during pre-flight validation, and
+// [ClassifierFlatMap] drops the entry regardless, so the typed field always wins.
 var reservedClassifierKeys = map[string]struct{}{
 	"microserviceName": {},
 	"scope":            {},

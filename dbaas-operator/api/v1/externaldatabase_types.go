@@ -98,7 +98,7 @@ type ExternalDatabaseSpec struct {
 	Type string `json:"type"`
 
 	// dbName is the logical database name used by dbaas-aggregator to identify
-	// this registration. Included in the request URL path.
+	// this registration. Sent in the registration request body.
 	// Immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
