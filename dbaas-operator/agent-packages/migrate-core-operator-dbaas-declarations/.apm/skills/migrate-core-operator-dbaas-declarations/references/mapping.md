@@ -101,5 +101,6 @@ Do not copy status blocks. Do not copy old generic CR labels unless the target d
 - Flag `initialInstantiation.approach: clone` without `sourceClassifier`.
 - Fill a missing `sourceClassifier.microserviceName` from the target classifier and flag any explicit mismatch.
 - Reject cross-service clones: source and target `microserviceName` values must be identical.
-- Ensure `settings` is an object, and preserve string, number, boolean, array, and nested-object values.
+- Ensure `settings` is an object. Reject non-finite numbers, non-string object keys, and YAML-only values, and
+  preserve valid JSON values without conversion.
 - Preserve `versioningConfig.approach: clone` or `new`; this is what marks configuration/versioned databases.

@@ -63,6 +63,7 @@ def main() -> int:
 
     source = Path(args.input)
     warnings: list[str] = []
+    errors: list[str] = []
     docs = load_documents(source, warnings)
     resources: list[dict[str, Any]] = []
 
@@ -70,24 +71,37 @@ def main() -> int:
         if doc is None:
             continue
         for item_index, item in enumerate(as_legacy_items(doc), start=1):
-            resources.extend(convert_item(item, doc_index, item_index, args, warnings))
+            resources.extend(convert_item(item, doc_index, item_index, args, warnings, errors))
 
     if not resources:
         raise SystemExit("No supported DBaaS declarations found")
 
     warn_duplicate_resources(resources, warnings)
-    Path(args.output).write_text(dump_yaml_documents(resources), encoding="utf-8")
     for warning in warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+        raise SystemExit(
+            f"Conversion failed with {len(errors)} invalid setting value(s); the output file was not written"
+        )
+    Path(args.output).write_text(dump_yaml_documents(resources), encoding="utf-8")
     print(f"Wrote {len(resources)} resource(s) to {args.output}", file=sys.stderr)
     return 0
+
+
+def reject_json_constant(value: str) -> Any:
+    raise ValueError(f"numeric constant {value!r} is not valid JSON")
 
 
 def load_documents(path: Path, warnings: list[str]) -> list[Any]:
     text = path.read_text(encoding="utf-8-sig")
     suffix = path.suffix.lower()
     if suffix == ".json":
-        data = json.loads(text)
+        try:
+            data = json.loads(text, parse_constant=reject_json_constant)
+        except ValueError as exc:
+            raise SystemExit(f"{path}: invalid JSON: {exc}") from None
         return data if isinstance(data, list) else [data]
     if yaml is None:
         raise SystemExit("YAML input requires PyYAML. Install PyYAML or convert the source to JSON first.")
@@ -142,6 +156,7 @@ def convert_item(
     item_index: int,
     args: argparse.Namespace,
     warnings: list[str],
+    errors: list[str],
 ) -> list[dict[str, Any]]:
     kind = str(item.get("kind", ""))
     sub_kind = str(item.get("subKind", ""))
@@ -178,6 +193,7 @@ def convert_item(
                     len(declarations) > 1,
                     args,
                     warnings,
+                    errors,
                 )
             )
         return resources
@@ -197,6 +213,7 @@ def convert_database_declaration(
     multiple_declarations: bool,
     args: argparse.Namespace,
     warnings: list[str],
+    errors: list[str],
 ) -> dict[str, Any]:
     warn_unknown_fields(
         declaration,
@@ -246,10 +263,14 @@ def convert_database_declaration(
         settings = declaration["settings"]
         spec["settings"] = settings
         if not isinstance(settings, dict):
-            warnings.append(
-                f"InternalDatabase {metadata['name']} "
-                "has non-object settings; verify target CRD schema before applying"
+            errors.append(
+                f"InternalDatabase {metadata['name']} has invalid settings at settings: expected an object"
             )
+        else:
+            for path, reason in json_value_errors(settings, "settings"):
+                errors.append(
+                    f"InternalDatabase {metadata['name']} has invalid JSON value at {path}: {reason}"
+                )
 
     target_classifier = spec["classifier"]
     for required_key in ("microserviceName", "scope"):
@@ -273,6 +294,33 @@ def convert_database_declaration(
         "metadata": metadata,
         "spec": spec,
     }
+
+
+def json_value_errors(value: Any, path: str) -> list[tuple[str, str]]:
+    if value is None or isinstance(value, (str, bool, int)):
+        return []
+    if isinstance(value, float):
+        return [] if math.isfinite(value) else [(path, "non-finite numbers are not valid JSON")]
+    if isinstance(value, list):
+        errors: list[tuple[str, str]] = []
+        for index, item in enumerate(value):
+            errors.extend(json_value_errors(item, f"{path}[{index}]"))
+        return errors
+    if isinstance(value, dict):
+        errors = []
+        for key, item in value.items():
+            if not isinstance(key, str):
+                errors.append((f"{path}[{key!r}]", "object keys must be strings"))
+                continue
+            errors.extend(json_value_errors(item, json_child_path(path, key)))
+        return errors
+    return [(path, f"{type(value).__name__} values are not valid JSON")]
+
+
+def json_child_path(path: str, key: str) -> str:
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", key):
+        return f"{path}.{key}"
+    return f"{path}[{json.dumps(key, ensure_ascii=False)}]"
 
 
 def validate_source_classifier_owner(
