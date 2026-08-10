@@ -250,13 +250,6 @@ def convert_database_declaration(
                 f"InternalDatabase {metadata['name']} "
                 "has non-object settings; verify target CRD schema before applying"
             )
-        else:
-            for key, value in settings.items():
-                if not isinstance(value, str):
-                    warnings.append(
-                        f"InternalDatabase {metadata['name']} "
-                        f"has non-string settings.{key}; verify target CRD schema before applying"
-                    )
 
     target_classifier = spec["classifier"]
     for required_key in ("microserviceName", "scope"):

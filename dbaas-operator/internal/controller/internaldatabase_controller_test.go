@@ -603,6 +603,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 			spec := baseSpec()
 			spec.Settings = map[string]apiextensionsv1.JSON{
 				"encoding":     {Raw: []byte(`"UTF8"`)},
+				"nested":       {Raw: []byte(`{"a":1}`)},
 				"pgExtensions": {Raw: []byte(`["vector"]`)},
 			}
 			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
@@ -621,6 +622,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 			}
 			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
 			Expect(sent.Spec.Settings["encoding"]).To(Equal("UTF8"))
+			Expect(sent.Spec.Settings["nested"]).To(Equal(map[string]any{"a": float64(1)}))
 			Expect(sent.Spec.Settings["pgExtensions"]).To(Equal([]any{"vector"}))
 		})
 	})
