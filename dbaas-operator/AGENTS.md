@@ -80,24 +80,21 @@ github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders
 ### Initialization (in `main()`)
 
 ```go
-ctxmanager.Register([]ctxmanager.ContextProvider{
-    xrequestid.XRequestIdProvider{},
-})
+requestcontext.RegisterProviders()
 ```
 
 ### Per-reconcile / per-request
 
-Every reconcile loop or incoming request handler must generate a unique request ID and
-attach it to the context:
+Every reconcile loop or incoming request handler must use the shared helper to generate
+a unique request ID and attach it to the context:
 
 ```go
-requestID := uuid.New().String()
-ctx = ctxmanager.InitContext(ctx, map[string]any{
-    "X-Request-Id": requestID,
-})
+ctx, requestID := requestcontext.WithFreshRequestID(ctx)
 ```
 
 This enables end-to-end tracing across operator → aggregator → adapter logs.
+It is also a hard precondition for aggregator calls: the client rejects a request
+when the provider is not registered or the caller did not initialize the context.
 
 ---
 
@@ -474,8 +471,7 @@ docs/monitoring/                      Metrics & Grafana dashboard reference docs
 ```go
 func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
     // 1. Generate request ID
-    requestID := uuid.New().String()
-    ctx = ctxmanager.InitContext(ctx, map[string]any{"X-Request-Id": requestID})
+    ctx, requestID := requestcontext.WithFreshRequestID(ctx)
 
     // 2. Fetch the CR
     obj := &myapi.MyResource{}

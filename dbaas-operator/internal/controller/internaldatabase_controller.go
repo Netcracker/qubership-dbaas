@@ -74,8 +74,7 @@ type InternalDatabaseReconciler struct {
 }
 
 func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
-	// requestID is stored in ctx; sub-methods retrieve it via requestIDFromContext.
-	ctx, _ = initReconcileContext(ctx)
+	ctx, requestID := initReconcileContext(ctx)
 
 	dd := &dbaasv1.InternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
@@ -133,14 +132,17 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	recordReconcileTrigger(controllerIDB, trigger)
 
 	if dd.Status.TrackingID != "" {
-		return r.reconcilePoll(ctx, dd)
+		return r.reconcilePoll(ctx, dd, requestID)
 	}
-	return r.reconcileSubmit(ctx, dd)
+	return r.reconcileSubmit(ctx, dd, requestID)
 }
 
 // reconcileSubmit handles the SUBMIT branch: pre-flight validation + POST /apply.
-func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *dbaasv1.InternalDatabase) (ctrl.Result, error) {
-	requestID := requestIDFromContext(ctx)
+func (r *InternalDatabaseReconciler) reconcileSubmit(
+	ctx context.Context,
+	dd *dbaasv1.InternalDatabase,
+	requestID string,
+) (ctrl.Result, error) {
 	dd.Status.Phase = dbaasv1.PhaseProcessing
 
 	if msg := validateInternalDatabaseSpec(dd); msg != "" {
@@ -194,9 +196,11 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(ctx context.Context, dd *db
 }
 
 // reconcilePoll handles the POLL branch: GET /operation/{trackingId}/status.
-func (r *InternalDatabaseReconciler) reconcilePoll(ctx context.Context, dd *dbaasv1.InternalDatabase) (ctrl.Result, error) {
-	requestID := requestIDFromContext(ctx)
-
+func (r *InternalDatabaseReconciler) reconcilePoll(
+	ctx context.Context,
+	dd *dbaasv1.InternalDatabase,
+	requestID string,
+) (ctrl.Result, error) {
 	trackingID := dd.Status.TrackingID
 	log.DebugC(ctx, "polling operation status trackingId=%v", trackingID)
 
@@ -449,6 +453,12 @@ func (r *InternalDatabaseReconciler) handlePollError(
 	requestID string,
 	err error,
 ) (ctrl.Result, error) {
+	var requestContextErr *aggregatorclient.RequestContextError
+	if errors.As(err, &requestContextErr) {
+		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+			r.Recorder, dd, err, requestID)
+	}
+
 	var aggErr *aggregatorclient.AggregatorError
 	if errors.As(err, &aggErr) {
 		if aggErr.IsAuthError() {

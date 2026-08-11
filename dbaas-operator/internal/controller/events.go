@@ -53,6 +53,11 @@ const (
 	// validation before the aggregator is even contacted. Type: Warning.
 	EventReasonInvalidSpec = "InvalidSpec"
 
+	// EventReasonInvalidRequestContext is emitted when the operator cannot
+	// propagate its required X-Request-Id to dbaas-aggregator. This is a local
+	// wiring error, not an aggregator or network failure. Type: Warning.
+	EventReasonInvalidRequestContext = "InvalidRequestContext"
+
 	// EventReasonSecretError is emitted when a Secret referenced by
 	// ConnectionProperties.credentialsSecretRef cannot be read. Type: Warning.
 	EventReasonSecretError = "SecretError"

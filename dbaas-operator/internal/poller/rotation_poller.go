@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 )
 
 // DefaultLimit is the page size requested per poll. Excess changes are drained on
@@ -107,6 +108,10 @@ func (p *RotationPoller) Start(ctx context.Context) error {
 // rotations — already synced by the startup reconcile — are not replayed. A failed
 // seed returns nil so the next tick retries it.
 func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.ChangeCursor, limit int) *aggregatorclient.ChangeCursor {
+	// Give each poll iteration its own correlation scope instead of reusing an ID
+	// inherited from the long-lived manager context.
+	ctx, _ = requestcontext.WithFreshRequestID(ctx)
+
 	if cursor == nil {
 		resp, err := p.Source.GetChangedSince(ctx, nil, 0)
 		if err != nil {

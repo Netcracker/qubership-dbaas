@@ -19,15 +19,12 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
-	"github.com/google/uuid"
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -42,7 +39,6 @@ var log = logging.GetLogger("dbaas-operator")
 
 const (
 	apiVersionV1 = "core.netcracker.com/v1"
-	xRequestID   = "X-Request-Id"
 )
 
 // bindingTriggerTracker is a concurrency-safe set of "the next reconcile for this
@@ -117,22 +113,10 @@ func enqueueForBindingList[L client.ObjectList](
 	return reqs
 }
 
-// requestIDFromContext returns the reconcile request ID from ctx.
-// It panics if the reconcile context was not initialized.
-func requestIDFromContext(ctx context.Context) string {
-	xrid, err := xrequestid.Of(ctx)
-	if err != nil {
-		log.ErrorC(ctx, "failed to retrieve request ID from context: %v", err)
-		panic(fmt.Sprintf("requestIDFromContext: context not initialized, error: %v", err))
-	}
-	return xrid.GetRequestId()
-}
-
 // initReconcileContext seeds ctx with a fresh X-Request-Id and returns both
 // the enriched context and the raw ID string (used in status fields and event messages).
 func initReconcileContext(ctx context.Context) (context.Context, string) {
-	id := uuid.New().String()
-	return ctxmanager.InitContext(ctx, map[string]any{xRequestID: id}), id
+	return requestcontext.WithFreshRequestID(ctx)
 }
 
 // checkOwnership returns whether reconciliation should proceed for namespace.
@@ -241,6 +225,7 @@ func invalidSpec[P ~string](
 }
 
 // handleAggregatorError maps an aggregator failure to status, event, and retry behavior:
+//   - invalid request context -> InvalidConfiguration (permanent, no retry)
 //   - 401 → BackingOff (transient, retry)
 //   - 400/403/409/410/422 → InvalidConfiguration (permanent, no retry)
 //   - 5xx/network → BackingOff (transient, retry)
@@ -253,6 +238,16 @@ func handleAggregatorError[P ~string](
 	err error,
 	requestID string,
 ) (ctrl.Result, error) {
+	var requestContextErr *aggregatorclient.RequestContextError
+	if errors.As(err, &requestContextErr) {
+		markPermanentFailure(phase, conditions, generation,
+			EventReasonInvalidRequestContext, requestContextErr.Error())
+		recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonInvalidRequestContext,
+			"operator request context is invalid: %s (requestId=%s)",
+			requestContextErr.Error(), requestID)
+		return ctrl.Result{}, nil
+	}
+
 	var aggErr *aggregatorclient.AggregatorError
 	if errors.As(err, &aggErr) {
 		switch {

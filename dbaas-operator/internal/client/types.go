@@ -263,6 +263,21 @@ type ChangedDatabasesResponse struct {
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
+// RequestContextError reports a local request-context invariant violation.
+// It is deterministic and retrying the same call cannot fix it, so controllers
+// classify it as InvalidConfiguration rather than a transport failure.
+type RequestContextError struct {
+	Cause error
+}
+
+func (e *RequestContextError) Error() string {
+	return fmt.Sprintf("invalid aggregator request context: %v", e.Cause)
+}
+
+func (e *RequestContextError) Unwrap() error {
+	return e.Cause
+}
+
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.
 type AggregatorError struct {
 	StatusCode int
