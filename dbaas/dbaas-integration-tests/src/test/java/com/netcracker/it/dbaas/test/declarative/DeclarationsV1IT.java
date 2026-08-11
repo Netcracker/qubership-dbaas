@@ -172,6 +172,30 @@ class DeclarationsV1IT extends AbstractIT {
     }
 
     @Test
+    @Tag("backup")
+    void testApplyConfig_shouldWaitForSourceDatabaseReadiness() throws IOException, SQLException {
+        String microserviceName = "source-readiness-service";
+        String sourceClassifierValue = "source-readiness-source";
+        String cloneClassifierValue = "source-readiness-clone";
+
+        DeclarativePayload sourceDeclaration = new DeclarativeDBConfigBuilder()
+                .classifier(new ClassifierBuilder().test(sourceClassifierValue).ms(microserviceName))
+                .build().asPayload(TEST_NAMESPACE, microserviceName);
+        DeclarativePayload cloneDeclaration = new DeclarativeDBConfigBuilder()
+                .classifier(new ClassifierBuilder().test(cloneClassifierValue).ms(microserviceName))
+                .initClone(new ClassifierBuilder().test(sourceClassifierValue).ms(microserviceName))
+                .build().asPayload(TEST_NAMESPACE, microserviceName);
+
+        declarativeHelper.applyDeclarativeConfigs(List.of(sourceDeclaration, cloneDeclaration));
+
+        helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE),
+                getSimplePostgresCreateRequest(sourceClassifierValue, microserviceName, TEST_NAMESPACE), 200);
+        DatabaseResponse cloneDatabase = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE),
+                getSimplePostgresCreateRequest(cloneClassifierValue, microserviceName, TEST_NAMESPACE), 200);
+        helperV3.checkConnectionPostgres(cloneDatabase);
+    }
+
+    @Test
     void testApplyConfigFail() throws IOException {
         DeclarativePayload waitingDeclarativePayload = new DeclarativeDBConfigBuilder()
                 .classifier(new ClassifierBuilder().test("new").ms(TEST_MICROSERVICE_NAME))
