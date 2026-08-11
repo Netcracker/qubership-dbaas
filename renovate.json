@@ -3,7 +3,7 @@
   "assignAutomerge": true,
   "assigneesFromCodeOwners": true,
   "reviewersFromCodeOwners": true,
-  "stabilityDays": 0,
+  "minimumReleaseAge": null,
   "extends": [
     "github>Netcracker/qubership-core-infra:renovate-core-config",
     ":semanticCommitTypeAll(chore)"
