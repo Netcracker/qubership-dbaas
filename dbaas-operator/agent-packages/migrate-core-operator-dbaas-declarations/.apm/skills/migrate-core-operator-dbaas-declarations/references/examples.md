@@ -20,6 +20,9 @@ Before:
         }
       },
       "type": "postgresql",
+      "settings": {
+        "pgExtensions": ["vector"]
+      },
       "versioningConfig": {
         "approach": "clone"
       }
@@ -43,6 +46,9 @@ spec:
     customKeys:
       logicalDBName: configs
   type: postgresql
+  settings:
+    pgExtensions:
+      - vector
   versioningConfig:
     approach: clone
 ```

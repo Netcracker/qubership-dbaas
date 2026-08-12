@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -26,6 +27,18 @@ WORKLOAD_KINDS = {"Deployment", "StatefulSet"}
 
 def canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def is_json_value(value: Any) -> bool:
+    if value is None or isinstance(value, (str, bool, int)):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, list):
+        return all(is_json_value(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(key, str) and is_json_value(item) for key, item in value.items())
+    return False
 
 
 def database_key(classifier: dict[str, Any], db_type: str) -> str:
@@ -217,8 +230,10 @@ def validate(paths: list[Path], inventory: Path | None) -> list[str]:
             settings = spec.get("settings")
             if settings is None:
                 settings = {}
-            if not isinstance(settings, dict) or any(not isinstance(value, str) for value in settings.values()):
-                errors.append(f"{identity}: spec.settings values must be strings")
+            if not isinstance(settings, dict) or not all(
+                isinstance(key, str) and is_json_value(value) for key, value in settings.items()
+            ):
+                errors.append(f"{identity}: spec.settings must map string keys to valid JSON values")
             if db_key in internals:
                 errors.append(f"duplicate InternalDatabase identity: {identity} and {object_identity(internals[db_key])}")
             internals[db_key] = obj

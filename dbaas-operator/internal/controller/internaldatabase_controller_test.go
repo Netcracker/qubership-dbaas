@@ -598,6 +598,33 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(sent.Metadata.Namespace).To(Equal(ns))
 			Expect(sent.Spec.ClassifierConfig.Classifier["microserviceName"]).To(Equal("test-service"))
 		})
+
+		It("preserves structured settings in the aggregator payload", func() {
+			spec := baseSpec()
+			spec.Settings = map[string]apiextensionsv1.JSON{
+				"encoding":     {Raw: []byte(`"UTF8"`)},
+				"nested":       {Raw: []byte(`{"a":1}`)},
+				"pgExtensions": {Raw: []byte(`["vector"]`)},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(capturedApplyBody).NotTo(BeEmpty())
+
+			var sent struct {
+				Spec struct {
+					Settings map[string]any `json:"settings"`
+				} `json:"spec"`
+			}
+			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
+			Expect(sent.Spec.Settings["encoding"]).To(Equal("UTF8"))
+			Expect(sent.Spec.Settings["nested"]).To(Equal(map[string]any{"a": float64(1)}))
+			Expect(sent.Spec.Settings["pgExtensions"]).To(Equal([]any{"vector"}))
+		})
 	})
 
 	Context("buildPayload — customKeys", func() {

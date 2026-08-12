@@ -16,7 +16,10 @@ limitations under the License.
 
 package v1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // VersioningConfig defines the strategy for managing database versions during
 // blue-green deployments. Mirrors InternalDatabase.VersioningConfig in the aggregator.
@@ -82,9 +85,9 @@ type InternalDatabaseSpec struct {
 	Lazy bool `json:"lazy,omitempty"`
 
 	// settings contains database-engine-specific configuration passed through to the
-	// dbaas adapter. All values are strings.
+	// dbaas adapter. Values may be any valid JSON type.
 	// +optional
-	Settings map[string]string `json:"settings,omitempty"`
+	Settings map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
 
 	// namePrefix is a prefix applied to the physical database name created in the DBMS.
 	// +optional

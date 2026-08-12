@@ -43,7 +43,7 @@ Each old database declaration becomes one `InternalDatabase`.
 | other top-level classifier keys | `spec.classifier.extraKeys` | use for legacy open classifier keys such as `transactional` |
 | `type` | `spec.type` | required |
 | `lazy` | `spec.lazy` | coerce string `"true"`/`"false"`; flag other non-booleans; do not combine `true` with clone |
-| `settings` | `spec.settings` | verify target schema; flag non-string values if CRD requires string values |
+| `settings` | `spec.settings` | preserve entries verbatim; each value may be any valid JSON type |
 | `namePrefix` | `spec.namePrefix` | optional |
 | `versioningConfig` | `spec.versioningConfig` | marks configuration/versioned database |
 | `initialInstantiation` | `spec.initialInstantiation` | optional |
@@ -101,5 +101,6 @@ Do not copy status blocks. Do not copy old generic CR labels unless the target d
 - Flag `initialInstantiation.approach: clone` without `sourceClassifier`.
 - Fill a missing `sourceClassifier.microserviceName` from the target classifier and flag any explicit mismatch.
 - Reject cross-service clones: source and target `microserviceName` values must be identical.
-- Flag `settings` values that are not strings when the target CRD schema is `map[string]string`.
+- Ensure `settings` is an object. Reject non-finite numbers, non-string object keys, and YAML-only values, and
+  preserve valid JSON values without conversion.
 - Preserve `versioningConfig.approach: clone` or `new`; this is what marks configuration/versioned databases.

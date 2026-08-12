@@ -79,8 +79,7 @@ Helm values, and ConfigMaps. In particular resolve:
 
 - `quarkus.dbaas.postgresql.api.runtime-user-role` to the claim role;
 - `quarkus.dbaas.postgresql.api.db-prefix` to `InternalDatabase.spec.namePrefix`;
-- database creation settings to `spec.settings` only when the target CR accepts their exact string
-  representation;
+- database creation settings to `spec.settings` while preserving each value's JSON type;
 - `quarkus.dbaas.datasource.schema`, JDBC/Agroal pool, Flyway, retry, and connection properties as
   application-only configuration.
 
@@ -90,8 +89,8 @@ identities unless the production profile uses the same path.
 ## Legacy declarations and runtime proof
 
 Compare existing `DatabaseDeclaration` classifiers against the actual builder output. Preserve
-explicit versioning and initial-instantiation behavior. Block complex array, boolean, or nested
-settings until their `map[string]string` encoding is proven for the target operator.
+explicit versioning and initial-instantiation behavior. Preserve structured settings as their
+corresponding YAML values instead of stringifying them.
 
 Exercise every named datasource because CDI may initialize it lazily. Prove migrations and DML with
 REST unreachable, then verify retained REST fallback separately. Test CDI startup ordering and
@@ -101,7 +100,8 @@ credential rotation where supported.
 
 Treat the target service's Maven dependency graph and imported BOMs as the source of truth. Do not
 copy a Quarkus or DBaaS extension version from this skill. When mounted-secret support is absent,
-consult the upstream [Qubership Core Java Libraries releases](https://github.com/Netcracker/qubership-core-java-libs/releases)
+consult the upstream
+[Qubership Core Java Libraries releases](https://github.com/Netcracker/qubership-core-java-libs/releases)
 and BOM release notes, choose a compatible coordinate in the consumer build, resolve all direct and
 transitive extensions again, and rerun mounted-provider and REST-fallback tests. An E2E result
 applies only to the exact resolved graph that was tested; it does not establish compatibility for
