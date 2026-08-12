@@ -35,7 +35,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -44,7 +43,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
@@ -194,12 +192,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctrlOpts := ctrlcontroller.Options{
-		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](
-			backoffBaseDelay, backoffMaxDelay,
-		),
+	controllerOptions := func() ctrlcontroller.Options {
+		return newControllerOptions(backoffBaseDelay, backoffMaxDelay)
 	}
-	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
+	setupLog.Infof("Backoff configured base=%v max=%v rate=%v burst=%d jitter=%v",
+		backoffBaseDelay, backoffMaxDelay, controllerRateLimit, controllerRateBurst, backoffJitterMaxFactor)
 
 	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
 	controller.RegisterResourceMetrics(mgr.GetClient(), ownershipResolver, cloudNamespace)
@@ -232,7 +229,7 @@ func main() {
 		MyNamespace: cloudNamespace,
 		Ownership:   ownershipResolver,
 		Checker:     blockingChecker,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, controllerOptions()); err != nil {
 		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
 		os.Exit(1)
 	}
@@ -253,7 +250,7 @@ func main() {
 			setupLog.Infof("Ignoring invalid DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL=%q, using default", v)
 		}
 	}
-	if err := externalDatabaseReconciler.SetupWithManager(mgr, ctrlOpts); err != nil {
+	if err := externalDatabaseReconciler.SetupWithManager(mgr, controllerOptions()); err != nil {
 		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
 		os.Exit(1)
 	}
@@ -264,7 +261,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
 		Ownership:  ownershipResolver,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, controllerOptions()); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
 		os.Exit(1)
 	}
@@ -275,7 +272,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   recorderFor(mgr, "internaldatabase", eventsEnabled),
 		Ownership:  ownershipResolver,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, controllerOptions()); err != nil {
 		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
 		os.Exit(1)
 	}
@@ -287,7 +284,7 @@ func main() {
 		Recorder:    recorderFor(mgr, "balancingrule", eventsEnabled),
 		Ownership:   ownershipResolver,
 		MyNamespace: cloudNamespace,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, controllerOptions); err != nil {
 		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
 		os.Exit(1)
 	}
@@ -298,7 +295,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   recorderFor(mgr, "databasesecretclaim", eventsEnabled),
 		Ownership:  ownershipResolver,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, controllerOptions()); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseSecretClaim: %v", err)
 		os.Exit(1)
 	}
