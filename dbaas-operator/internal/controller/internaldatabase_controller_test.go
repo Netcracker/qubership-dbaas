@@ -28,6 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,6 +62,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 		pollCode           int
 		pollBody           string
 		capturedApplyBody  []byte
+		capturedRequestID  string
 		createCode         int
 		capturedCreateBody []byte
 		createPath         string
@@ -88,6 +90,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 		pollCode = http.StatusOK
 		pollBody = statusCompleted
 		capturedApplyBody = nil
+		capturedRequestID = ""
 		createCode = http.StatusOK
 		capturedCreateBody = nil
 		createPath = ""
@@ -98,6 +101,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 
 			if r.Method == http.MethodPost && r.URL.Path == "/api/declarations/v1/apply" {
 				capturedApplyBody, _ = io.ReadAll(r.Body)
+				capturedRequestID = r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME)
 				w.WriteHeader(applyCode)
 				if applyBody != "" {
 					_, _ = w.Write([]byte(applyBody))
@@ -673,7 +677,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 	// ── HTTP 200 — synchronous success ───────────────────────────────────────
 
 	Context("HTTP 200 — database provisioned synchronously", func() {
-		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/DatabaseProvisioned, does not requeue", func() {
+		It("propagates status.lastRequestId, sets successful status, emits DatabaseProvisioned, and does not requeue", func() {
 			applyCode = http.StatusOK
 			applyBody = statusCompleted
 			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
@@ -688,6 +692,9 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
+			Expect(capturedRequestID).NotTo(BeEmpty())
+			Expect(capturedRequestID).To(Equal(dd.Status.LastRequestID),
+				"the reconciler request ID stored in status must reach the aggregator")
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())

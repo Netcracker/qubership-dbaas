@@ -19,11 +19,21 @@ package poller
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 )
+
+func TestMain(m *testing.M) {
+	requestcontext.RegisterProviders()
+	os.Exit(m.Run())
+}
 
 // fakeSource is a stub ChangedSource that records the cursors it was called with
 // and returns a fixed response/error.
@@ -39,6 +49,40 @@ func (f *fakeSource) GetChangedSince(_ context.Context, cursor *aggregatorclient
 		return nil, f.err
 	}
 	return f.resp, nil
+}
+
+type requestIDSource struct {
+	requestIDs []string
+}
+
+func (s *requestIDSource) GetChangedSince(ctx context.Context, _ *aggregatorclient.ChangeCursor, _ int) (*aggregatorclient.ChangedDatabasesResponse, error) {
+	requestID, err := xrequestid.Of(ctx)
+	if err != nil {
+		s.requestIDs = append(s.requestIDs, "")
+	} else {
+		s.requestIDs = append(s.requestIDs, requestID.GetRequestId())
+	}
+	return &aggregatorclient.ChangedDatabasesResponse{}, nil
+}
+
+func TestPollOnce_InitializesFreshRequestID(t *testing.T) {
+	src := &requestIDSource{}
+	p := &RotationPoller{Client: newFakeClient(), Source: src}
+
+	p.pollOnce(context.Background(), nil, DefaultLimit)
+	p.pollOnce(context.Background(), nil, DefaultLimit)
+
+	if len(src.requestIDs) != 2 {
+		t.Fatalf("request IDs = %v, want two", src.requestIDs)
+	}
+	for _, requestID := range src.requestIDs {
+		if _, err := uuid.Parse(requestID); err != nil {
+			t.Errorf("request ID %q is not a UUID: %v", requestID, err)
+		}
+	}
+	if src.requestIDs[0] == src.requestIDs[1] {
+		t.Errorf("poll iterations reused request ID %q", src.requestIDs[0])
+	}
 }
 
 func TestPollOnce_SeedFromHighWaterMark(t *testing.T) {

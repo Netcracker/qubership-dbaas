@@ -91,7 +91,7 @@ The operator publishes two families of metrics:
 | Metric | Type | Labels | Description |
 |---|---|---|---|
 | `dbaas_reconcile_trigger_total` | Counter | `controller`, `trigger` | Reconcile invocations broken down by what triggered them. Complements the framework's reconcile totals with the trigger dimension. |
-| `dbaas_aggregator_requests_total` | Counter | `controller`, `operation`, `result` | Calls to dbaas-aggregator by controller, operation, and outcome. The `result` label separates user errors (`spec_rejection`) from platform errors (`auth_error`, `server_error`). |
+| `dbaas_aggregator_requests_total` | Counter | `controller`, `operation`, `result` | Calls to dbaas-aggregator by controller, operation, and outcome. The `result` label separates user errors (`spec_rejection`), local operator wiring errors (`configuration_error`), and platform errors (`auth_error`, `server_error`). |
 | `dbaas_aggregator_request_duration_seconds` | Histogram | `controller`, `operation` | Latency of HTTP calls to dbaas-aggregator. Buckets: `0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30` s. |
 | `dbaas_async_operation_duration_seconds` | Histogram | `result` | End-to-end duration of asynchronous `InternalDatabase` provisioning, from async submit (HTTP 202) to the final poll outcome. Buckets: `1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200` s. The submit timestamp is held in operator memory, so an operation that was in flight across an operator restart or a leadership change is never observed — `_count` under-reports completions after a restart. |
 | `dbaas_secret_resolution_errors_total` | Counter | `namespace`, `reason` | Failures reading the credential `Secret` referenced by an `ExternalDatabase`, scoped to namespaces owned by this operator instance. A non-zero value means a database may be left without valid credentials — direct service impact. |
@@ -277,6 +277,7 @@ value — it is not recorded in `dbaas_aggregator_requests_total` at all.
 |---|---|---|
 | `success` | Call succeeded | — |
 | `spec_rejection` | Aggregator rejected the request (400/403/409/410/422) | User error — fix the CR |
+| `configuration_error` | The operator could not propagate its required request context; the call was rejected locally | Operator wiring error — verify provider registration and request-context initialization |
 | `auth_error` | Authentication failed (401) | Platform error |
 | `server_error` | Aggregator 5xx | Platform error |
 | `network_error` | Connection/timeout, no HTTP response | Platform error |

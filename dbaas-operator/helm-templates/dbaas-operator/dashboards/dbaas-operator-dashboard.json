@@ -394,7 +394,7 @@
                                           "id":  7,
                                           "type":  "timeseries",
                                           "title":  "Aggregator Call Outcomes (calls/s)",
-                                          "description":  "Result breakdown: database_not_found = DatabaseSecretClaim waiting for DB registration, spec_rejection = CR/spec owner, auth_error = operator credentials/RBAC, server_error = aggregator, network_error = connectivity/platform.",
+                                          "description":  "Result breakdown: database_not_found = DatabaseSecretClaim waiting for DB registration, spec_rejection = CR/spec owner, configuration_error = operator request-context wiring, auth_error = operator credentials/RBAC, server_error = aggregator, network_error = connectivity/platform.",
                                           "gridPos":  {
                                                           "h":  8,
                                                           "w":  12,
@@ -450,6 +450,21 @@
                                                                                                            "id":  "color",
                                                                                                            "value":  {
                                                                                                                          "fixedColor":  "blue",
+                                                                                                                         "mode":  "fixed"
+                                                                                                                     }
+                                                                                                       }
+                                                                                                   ]
+                                                                                },
+                                                                                {
+                                                                                    "matcher":  {
+                                                                                                    "id":  "byName",
+                                                                                                    "options":  "configuration_error"
+                                                                                                },
+                                                                                    "properties":  [
+                                                                                                       {
+                                                                                                           "id":  "color",
+                                                                                                           "value":  {
+                                                                                                                         "fixedColor":  "red",
                                                                                                                          "mode":  "fixed"
                                                                                                                      }
                                                                                                        }

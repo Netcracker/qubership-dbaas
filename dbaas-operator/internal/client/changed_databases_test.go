@@ -17,7 +17,6 @@ limitations under the License.
 package client
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -41,7 +40,7 @@ func TestGetChangedSince_SeedCallOmitsCursorParams(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClientWithTokenFunc(srv.URL, staticToken("tok"))
-	resp, err := c.GetChangedSince(context.Background(), nil, 0)
+	resp, err := c.GetChangedSince(requestContext(), nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +86,7 @@ func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClientWithTokenFunc(srv.URL, staticToken("tok"))
-	resp, err := c.GetChangedSince(context.Background(), &cursor, 100)
+	resp, err := c.GetChangedSince(requestContext(), &cursor, 100)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -132,7 +131,7 @@ func TestGetChangedSince_PreservesLargeIntClassifier(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClientWithTokenFunc(srv.URL, staticToken("tok"))
-	resp, err := c.GetChangedSince(context.Background(), nil, 0)
+	resp, err := c.GetChangedSince(requestContext(), nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -152,7 +151,7 @@ func TestGetChangedSince_NonOKReturnsAggregatorError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClientWithTokenFunc(srv.URL, staticToken("tok"))
-	_, err := c.GetChangedSince(context.Background(), nil, 0)
+	_, err := c.GetChangedSince(requestContext(), nil, 0)
 	if err == nil {
 		t.Fatal("expected an error on HTTP 403")
 	}
