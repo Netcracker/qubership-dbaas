@@ -24,8 +24,8 @@
         <maven.compiler.target>25</maven.compiler.target>
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
-        <quarkus.platform.version>3.33.2.1</quarkus.platform.version>
-        <qs.quarkus.core.version>10.1.6</qs.quarkus.core.version>
+        <quarkus.platform.version>3.33.3.1</quarkus.platform.version>
+        <qs.quarkus.core.version>10.1.8</qs.quarkus.core.version>
 
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
@@ -117,7 +117,7 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-collections4</artifactId>
-            <version>4.5.0</version>
+            <version>4.6.0</version>
         </dependency>
         <dependency>
             <groupId>commons-io</groupId>
