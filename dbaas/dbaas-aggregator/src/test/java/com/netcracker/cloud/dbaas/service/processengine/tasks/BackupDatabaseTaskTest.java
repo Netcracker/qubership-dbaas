@@ -62,26 +62,24 @@ class BackupDatabaseTaskTest {
 
     @Test
     void testExecuteTask_shouldWaitUntilSourceDatabaseIsReady() {
-        UUID registryId = UUID.randomUUID();
-        DatabaseRegistry processingRegistry = databaseRegistry(registryId, PROCESSING, POSTGRES_ADAPTER_ID);
-        DatabaseRegistry registryWithoutAdapter = databaseRegistry(registryId, CREATED, null);
-        DatabaseRegistry readyRegistry = databaseRegistry(registryId, CREATED, POSTGRES_ADAPTER_ID);
+        DatabaseRegistry processingRegistryWithoutAdapter = databaseRegistry(PROCESSING, null);
+        DatabaseRegistry processingRegistry = databaseRegistry(PROCESSING, POSTGRES_ADAPTER_ID);
+        DatabaseRegistry readyRegistry = databaseRegistry(CREATED, POSTGRES_ADAPTER_ID);
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(
                 processObject.getSourceClassifier(), processObject.getConfig().getType()))
-                .thenReturn(Optional.empty(), Optional.of(processingRegistry),
-                        Optional.of(registryWithoutAdapter), Optional.of(readyRegistry));
+                .thenReturn(Optional.empty(), Optional.of(processingRegistryWithoutAdapter),
+                        Optional.of(processingRegistry), Optional.of(readyRegistry));
 
         backupDatabaseTask.executeTask(dataContext);
 
         verify(databaseRegistryDbaasRepository, times(4)).getDatabaseByClassifierAndType(
                 processObject.getSourceClassifier(), processObject.getConfig().getType());
-        verify(blueGreenService).createDatabaseBackup(backupId, namespace, registryId);
+        verify(blueGreenService).createDatabaseBackup(backupId, namespace, readyRegistry.getId());
     }
 
     @Test
     void testExecuteTask_shouldStartBackupImmediatelyForReadySourceDatabase() {
-        UUID registryId = UUID.randomUUID();
-        DatabaseRegistry readyRegistry = databaseRegistry(registryId, CREATED, POSTGRES_ADAPTER_ID);
+        DatabaseRegistry readyRegistry = databaseRegistry(CREATED, POSTGRES_ADAPTER_ID);
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(
                 processObject.getSourceClassifier(), processObject.getConfig().getType()))
                 .thenReturn(Optional.of(readyRegistry));
@@ -90,16 +88,15 @@ class BackupDatabaseTaskTest {
 
         verify(databaseRegistryDbaasRepository).getDatabaseByClassifierAndType(
                 processObject.getSourceClassifier(), processObject.getConfig().getType());
-        verify(blueGreenService).createDatabaseBackup(backupId, namespace, registryId);
+        verify(blueGreenService).createDatabaseBackup(backupId, namespace, readyRegistry.getId());
     }
 
-    private DatabaseRegistry databaseRegistry(UUID registryId,
-                                              AbstractDbState.DatabaseStateStatus state,
+    private DatabaseRegistry databaseRegistry(AbstractDbState.DatabaseStateStatus state,
                                               String adapterId) {
         return new DatabaseBuilder()
                 .state(state)
                 .adapterId(adapterId)
-                .registry(registry -> registry.id(registryId))
+                .registry()
                 .build()
                 .getDatabaseRegistry()
                 .getFirst();
