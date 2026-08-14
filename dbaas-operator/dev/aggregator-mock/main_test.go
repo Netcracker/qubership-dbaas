@@ -31,9 +31,8 @@ func newTestHandler(defaultCode int, createDbRules map[string]MockRule) http.Han
 	return handler(MockRule{HTTPCode: defaultCode}, nil, nil, nil, nil, nil, createDbRules)
 }
 
-// tenantCreateBody builds a get-or-create request body for a tenant-scoped database,
-// keeping the test lines short (the inline JSON literal would otherwise trip the
-// line-length linter).
+// tenantCreateBody builds a get-or-create request body for a tenant-scoped postgresql
+// database. An empty tenant leaves tenantId out of the classifier.
 func tenantCreateBody(t *testing.T, microservice, tenant string) string {
 	t.Helper()
 	classifier := map[string]any{
@@ -57,7 +56,8 @@ func tenantCreateBody(t *testing.T, microservice, tenant string) string {
 
 const gbcPath = "/api/v3/dbaas/test-ns/databases/get-by-classifier/postgresql"
 
-// gbcReqBody builds a get-by-classifier request body for the given classifier.
+// gbcReqBody builds a get-by-classifier request body for the given classifier,
+// always with userRole "admin".
 func gbcReqBody(t *testing.T, classifier map[string]any, origin string) string {
 	t.Helper()
 	b, err := json.Marshal(map[string]any{
@@ -220,8 +220,8 @@ func TestGetByClassifier_ServiceNoMaterializationNeeded(t *testing.T) {
 }
 
 // TestCreateDatabase_PendingCalls_Returns202ThenCreates reproduces the aggregator's asynchronous
-// creation, which broke tenant materialization before the operator learned to handle it: the first
-// get-or-create answers 202 with no usable credentials, and only a later call returns the database.
+// creation: while a rule's pendingCalls budget lasts, get-or-create answers 202 with no id, no
+// name, and a null password, and only the call past the budget returns the created database.
 // A client that treats the 202 as either success or failure never gets credentials.
 func TestCreateDatabase_PendingCalls_Returns202ThenCreates(t *testing.T) {
 	rules := map[string]MockRule{"slow-svc": {HTTPCode: http.StatusOK, PendingCalls: 2}}

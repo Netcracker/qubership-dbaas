@@ -32,7 +32,7 @@ const (
 
 // NamespaceBindingSpec declares the desired namespace ownership.
 type NamespaceBindingSpec struct {
-	// OperatorNamespace is the Kubernetes namespace where the dbaas-operator instance
+	// operatorNamespace is the Kubernetes namespace where the dbaas-operator instance
 	// that owns this namespace is deployed (its CLOUD_NAMESPACE).
 	// It is immutable after creation — change it by deleting and re-creating the NamespaceBinding.
 	//
@@ -81,6 +81,8 @@ type NamespaceBinding struct {
 	Status NamespaceBindingStatus `json:"status,omitempty"`
 }
 
+// SetObservedGeneration stores generation in the object's status. The write stays in
+// memory; the caller writes the status subresource back.
 func (nb *NamespaceBinding) SetObservedGeneration(generation int64) {
 	nb.Status.ObservedGeneration = generation
 }

@@ -40,6 +40,9 @@ var log = logging.GetLogger("dbaas-rotation-poller")
 // changes so the controller predicate fires even when the CR is otherwise
 // unchanged.
 //
+// classifier is the aggregator's flat wire map, the shape ClassifierFlatMap
+// produces from a typed dbaasv1.Classifier.
+//
 // Per-CR patch failures are logged and skipped, not propagated: one transient
 // k8s API error must not block notifications for the rest, and the safety-net
 // reconcile will heal any CR missed here.

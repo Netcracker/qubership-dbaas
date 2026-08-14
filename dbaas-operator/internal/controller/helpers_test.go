@@ -155,7 +155,7 @@ func TestSetCondition_LastTransitionTime(t *testing.T) {
 	})
 }
 
-// cond builds a condition for the predicate tests below.
+// cond builds a condition for the isTerminal and isReadyForGeneration tests.
 func cond(condType string, status metav1.ConditionStatus, generation int64) metav1.Condition {
 	return metav1.Condition{
 		Type:               condType,
@@ -165,18 +165,15 @@ func cond(condType string, status metav1.ConditionStatus, generation int64) meta
 	}
 }
 
-// TestIsTerminal covers the predicate that replaced the former
-// "phase == Succeeded || phase == InvalidConfiguration" check: a resource is
-// terminal once it either succeeded (Ready=True) or hit a permanent error
-// (Stalled=True) for the given generation. Transient failures and in-flight
-// work are not terminal.
+// A resource is terminal once it either succeeded (Ready=True) or hit a
+// permanent error (Stalled=True) for the given generation. Transient failures
+// and in-flight work are not terminal.
 //
-// The stale cases are regression tests: conditions persist across reconciles,
-// so a reconcile that exits early after a spec change still carries the
-// previous generation's terminal condition. Counting it as terminal would let
-// patchStatusOnExit stamp status.observedGeneration for a spec the controller
-// never finished processing. The former phase-based predicate was immune —
-// phase was reset to Processing at the start of every reconcile.
+// The stale cases guard the generation check: conditions persist across
+// reconciles, so a reconcile that exits early after a spec change still carries
+// the previous generation's terminal condition. Counting it as terminal would
+// let patchStatusOnExit stamp status.observedGeneration for a spec the
+// controller never finished processing.
 func TestIsTerminal(t *testing.T) {
 	t.Parallel()
 
@@ -238,10 +235,9 @@ func TestIsTerminal(t *testing.T) {
 	}
 }
 
-// TestIsReadyForGeneration covers the predicate that replaced the former
-// "observedGeneration >= generation && phase == Succeeded" check. A Ready
-// condition left over from an earlier generation must not count as success for
-// the current spec.
+// Ready=True counts as success only when it was recorded for the current
+// generation or newer. A Ready condition left over from an earlier generation
+// must not count as success for the current spec.
 func TestIsReadyForGeneration(t *testing.T) {
 	t.Parallel()
 

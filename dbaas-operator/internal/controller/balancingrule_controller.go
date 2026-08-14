@@ -56,6 +56,8 @@ import (
 
 // BalancingRuleReconciler reconciles the three balancing-rule CRDs into the
 // existing dbaas-aggregator balancing rule administration APIs.
+// [BalancingRuleReconciler.SetupWithManager] runs one controller per CRD, so
+// each has its own entry point instead of a shared Reconcile method.
 type BalancingRuleReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
@@ -67,6 +69,11 @@ type BalancingRuleReconciler struct {
 	bindingTriggerTracker
 }
 
+// generationOrLifecycleChangedPredicate admits creates, deletes, and generic
+// events unconditionally, and an update only when the generation, the deletion
+// timestamp, or the finalizer list changed. Finalizer and deletion-timestamp
+// writes leave the generation untouched, so watching the generation alone would
+// swallow the reconcile that has to follow the controller's own finalizer patch.
 func generationOrLifecycleChangedPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		CreateFunc: func(event.CreateEvent) bool {
@@ -93,6 +100,11 @@ func generationOrLifecycleChangedPredicate() predicate.Funcs {
 	}
 }
 
+// ReconcileMicroservice applies the MicroserviceBalancingRule singleton to the
+// aggregator in a single call carrying every rule in the spec. It proceeds only
+// in namespaces the operator owns; on its first pass it adds the cleanup
+// finalizer and returns, so no aggregator state is ever created for a resource
+// the operator could not later clean up.
 func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
@@ -164,6 +176,12 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 	return ctrl.Result{}, nil
 }
 
+// ReconcileNamespace applies the NamespaceBalancingRule singleton to the
+// aggregator one rule at a time, so a reconcile can end with the aggregator
+// holding part of the spec. status.appliedRules is what the aggregator has
+// accepted, in the order it was applied, and it is the list the deletion path
+// cleans up. Ownership gating and the cleanup finalizer work as in
+// [BalancingRuleReconciler.ReconcileMicroservice].
 func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
@@ -215,8 +233,6 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
 	}
 
-	// Prune removed rules before applying desired rules. A mid-list delete failure
-	// leaves still-live rules in status so later reconciles can retry cleanup.
 	if err := r.cleanupSupersededNamespaceRules(ctx, rule); err != nil {
 		return handleAggregatorError(&rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, err, requestID)
 	}
@@ -244,7 +260,6 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 		rule.Status.AppliedRules = out
 	}
 
-	// Apply desired rules; upsert into the applied set only on a successful apply.
 	for _, item := range rule.Spec.Rules {
 		aggStart := time.Now()
 		err = r.Aggregator.ApplyNamespaceBalancingRule(ctx, rule.Namespace, item.Name, namespaceRequestFromSpecItem(item))
@@ -271,6 +286,11 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 	return ctrl.Result{}, nil
 }
 
+// ReconcilePermanent applies the PermanentBalancingRule singleton to the
+// aggregator in a single call carrying every rule in the spec. It has no
+// ownership gate, because the resource is only valid in the operator's own
+// namespace and needs no NamespaceBinding for that namespace or for the
+// namespaces its rules name.
 func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
@@ -279,8 +299,8 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// PermanentBalancingRule is operator-namespace-only and does not require a
-	// NamespaceBinding for either the CR namespace or target namespaces.
+	// No NamespaceBinding watch feeds this controller, so a spec change is the
+	// only trigger it can report.
 	recordReconcileTrigger(controllerPBR, triggerSpecChange)
 
 	if !rule.DeletionTimestamp.IsZero() {
@@ -330,6 +350,10 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	return ctrl.Result{}, nil
 }
 
+// SetupWithManager registers one controller per balancing-rule CRD, each under
+// its own name and reconcile entry point, and gives all three the same opts. It
+// stops at the first registration failure, so a non-nil error can leave earlier
+// controllers already registered with mgr.
 func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.MicroserviceBalancingRule{},
@@ -369,6 +393,10 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 		Complete(reconcile.Func(r.ReconcilePermanent))
 }
 
+// reconcileMicroserviceDelete clears the microservices recorded in
+// status.appliedRules from the aggregator, then drops the finalizer. Any
+// aggregator failure leaves the finalizer in place, so the CR cannot go away
+// while rules it created are still live aggregator-side.
 func (r *BalancingRuleReconciler) reconcileMicroserviceDelete(
 	ctx context.Context,
 	rule *dbaasv1.MicroserviceBalancingRule,
@@ -396,6 +424,9 @@ func (r *BalancingRuleReconciler) reconcileMicroserviceDelete(
 	return nil
 }
 
+// reconcileNamespaceDelete deletes the rules recorded in status.appliedRules
+// from the aggregator, then drops the finalizer, on the terms
+// reconcileMicroserviceDelete describes.
 func (r *BalancingRuleReconciler) reconcileNamespaceDelete(
 	ctx context.Context,
 	rule *dbaasv1.NamespaceBalancingRule,
@@ -423,6 +454,9 @@ func (r *BalancingRuleReconciler) reconcileNamespaceDelete(
 	return nil
 }
 
+// reconcilePermanentDelete deletes the namespaces recorded in
+// status.appliedRules from the aggregator, then drops the finalizer, on the
+// terms reconcileMicroserviceDelete describes.
 func (r *BalancingRuleReconciler) reconcilePermanentDelete(
 	ctx context.Context,
 	rule *dbaasv1.PermanentBalancingRule,
@@ -450,6 +484,10 @@ func (r *BalancingRuleReconciler) reconcilePermanentDelete(
 	return nil
 }
 
+// cleanupSupersededMicroserviceRules clears, per rule type, the microservices
+// that status.appliedRules still lists and the spec no longer does. Types are
+// matched case-folded, so a type the spec has dropped entirely loses all of its
+// microservices.
 func (r *BalancingRuleReconciler) cleanupSupersededMicroserviceRules(
 	ctx context.Context,
 	rule *dbaasv1.MicroserviceBalancingRule,
@@ -515,6 +553,10 @@ func retainNamespaceAppliedExcept(
 	return out
 }
 
+// cleanupSupersededPermanentRules deletes, per dbType, the namespaces that
+// status.appliedRules still lists and the spec no longer does. dbTypes are
+// matched case-folded, so a dbType the spec has dropped entirely loses all of
+// its namespaces.
 func (r *BalancingRuleReconciler) cleanupSupersededPermanentRules(
 	ctx context.Context,
 	rule *dbaasv1.PermanentBalancingRule,
@@ -535,6 +577,9 @@ func (r *BalancingRuleReconciler) cleanupSupersededPermanentRules(
 	return nil
 }
 
+// cleanupMicroserviceTargets clears the balancing rules for the given
+// microservices under dbType in namespace. Removal is expressed as an apply
+// carrying an empty rule list, not as a delete request.
 func (r *BalancingRuleReconciler) cleanupMicroserviceTargets(
 	ctx context.Context,
 	namespace, dbType string,
@@ -579,6 +624,8 @@ func (r *BalancingRuleReconciler) deletePermanentTargets(
 // msgSpecRulesEmpty is the validation message returned when spec.rules is empty.
 const msgSpecRulesEmpty = "spec.rules must not be empty"
 
+// validateMicroserviceRule returns the first spec problem as a message for the
+// resource's status and events, or "" when the spec is valid.
 func (r *BalancingRuleReconciler) validateMicroserviceRule(rule *dbaasv1.MicroserviceBalancingRule) string {
 	if rule.Name != dbaasv1.MicroserviceBalancingRuleName {
 		return fmt.Sprintf("metadata.name must be %q", dbaasv1.MicroserviceBalancingRuleName)
@@ -611,6 +658,11 @@ func (r *BalancingRuleReconciler) validateMicroserviceRule(rule *dbaasv1.Microse
 	return ""
 }
 
+// validateNamespaceRule returns the first spec problem as a message for the
+// resource's status and events, or "" when the spec is valid. A non-nil error
+// means the cross-resource name check could not run, so the reconcile is
+// retried rather than reported as a bad spec. That check is skipped altogether
+// when the reconciler has no client.
 func (r *BalancingRuleReconciler) validateNamespaceRule(ctx context.Context, rule *dbaasv1.NamespaceBalancingRule) (string, error) {
 	if rule.Name != dbaasv1.NamespaceBalancingRuleName {
 		return fmt.Sprintf("metadata.name must be %q", dbaasv1.NamespaceBalancingRuleName), nil
@@ -652,6 +704,10 @@ func (r *BalancingRuleReconciler) validateNamespaceRule(ctx context.Context, rul
 	return "", nil
 }
 
+// validateNamespaceRuleGlobalConflicts reports a name in names that some other
+// NamespaceBalancingRule in the cluster already manages, or "" when there is no
+// clash. A non-nil error means the other rules could not be listed. names must
+// be keyed by the case-folded rule name.
 func (r *BalancingRuleReconciler) validateNamespaceRuleGlobalConflicts(
 	ctx context.Context,
 	rule *dbaasv1.NamespaceBalancingRule,
@@ -682,6 +738,9 @@ func (r *BalancingRuleReconciler) validateNamespaceRuleGlobalConflicts(
 	return "", nil
 }
 
+// validatePermanentRule returns the first spec problem as a message for the
+// resource's status and events, or "" when the spec is valid. The rule must
+// live in MyNamespace; leaving MyNamespace empty accepts it from any namespace.
 func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.PermanentBalancingRule) string {
 	if rule.Name != dbaasv1.PermanentBalancingRuleName {
 		return fmt.Sprintf("metadata.name must be %q", dbaasv1.PermanentBalancingRuleName)
@@ -741,6 +800,9 @@ func namespaceRuleTriggerKey(namespace, name string) string {
 	return "namespace/" + namespace + "/" + name
 }
 
+// differenceStrings returns the values in previous that current does not
+// contain, in their original order, and nil when previous is empty. Values are
+// compared exactly.
 func differenceStrings(previous, current []string) []string {
 	if len(previous) == 0 {
 		return nil
@@ -819,6 +881,9 @@ func appliedMicroserviceRulesFromSpec(
 	return applied
 }
 
+// removedNamespaceAppliedRules returns the applied rules whose name is absent
+// from desired, keeping their order. Names are matched exactly, without the
+// case folding the validators apply.
 func removedNamespaceAppliedRules(
 	applied []dbaasv1.NamespaceBalancingRuleAppliedRule,
 	desired []dbaasv1.NamespaceBalancingRuleItem,

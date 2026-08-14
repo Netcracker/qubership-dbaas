@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
+	// Import all Kubernetes client auth plugins (Azure, GCP, OIDC, and the rest)
+	// so the operator can authenticate against a cluster that requires one.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
@@ -334,8 +334,7 @@ func main() {
 	}
 	setupLog.Infof("Rotation poller registered interval=%v", pollInterval)
 
-	// In Basic Auth mode, reload the aggregator credentials when the mounted
-	// Secret is updated, so a password rotation is picked up without a restart.
+	// credentialWatcher is set only in Basic Auth mode.
 	if credentialWatcher != nil {
 		if err := mgr.Add(credentialWatcher); err != nil {
 			setupLog.Errorf("Failed to register credential watcher: %v", err)
@@ -382,11 +381,11 @@ func recorderFor(mgr ctrl.Manager, name string, enabled bool) record.EventRecord
 	return noopRecorder{}
 }
 
-// silentEventsTransport is a transport.WrapperFunc that intercepts event POST
-// requests and returns a fake 201 without hitting the API server.  Used as
-// LeaderElectionConfig.WrapTransport when K8S_EVENTS_ENABLED=false, because
-// the leader-election recorder is wired inside controller-runtime and bypasses
-// the per-controller noopRecorder.
+// silentEventsTransport is a transport.WrapperFunc that answers any request whose
+// URL path ends in /events with a 201 and an empty JSON object, without hitting the
+// API server.  Used as LeaderElectionConfig.WrapTransport when
+// K8S_EVENTS_ENABLED=false, because the leader-election recorder is wired
+// inside controller-runtime and bypasses the per-controller noopRecorder.
 func silentEventsTransport(rt http.RoundTripper) http.RoundTripper {
 	return silentEventsRT{rt}
 }

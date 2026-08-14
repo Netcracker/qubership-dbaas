@@ -51,8 +51,8 @@ func requestContext() context.Context {
 	return contextWithRequestID("client-test-request-id")
 }
 
-// staticToken returns a TokenSource function that always returns the given token.
-// Used in tests to avoid touching the global tokensource state.
+// staticToken returns a getToken function that always returns the given token, so
+// a test never touches the global tokensource state.
 func staticToken(token string) func(context.Context) (string, error) {
 	return func(context.Context) (string, error) { return token, nil }
 }
@@ -412,7 +412,7 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(requestContext())
-	cancel() // cancel immediately
+	cancel()
 
 	c := newClient(srv.URL, staticToken("test-token"))
 	err := c.RegisterExternalDatabase(ctx, "ns", minimalExtDBRequest())
@@ -1161,8 +1161,8 @@ func TestGetDatabaseByClassifier_EmptyBodyReturnsError(t *testing.T) {
 	}
 }
 
-// Conversely, the declarative apply/operation-status endpoints DO tolerate an
-// empty body (a success status with no payload yields the zero value, no error).
+// The declarative apply and operation-status endpoints tolerate an empty body: a
+// success status with no payload yields the zero value, not an error.
 func TestGetOperationStatus_EmptyBodyIsZeroValue(t *testing.T) {
 	t.Parallel()
 

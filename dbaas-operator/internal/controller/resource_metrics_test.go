@@ -13,6 +13,8 @@ import (
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
+// The reported lag is never negative: an observedGeneration at or ahead of
+// metadata.generation reports zero rather than a negative number.
 func TestGenerationLag(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -35,6 +37,10 @@ func TestGenerationLag(t *testing.T) {
 	}
 }
 
+// Two status conditions of the same type yield one dbaas_resource_condition
+// series. A second series with the same labels makes the registry fail the
+// gather, which loses every metric in the scrape rather than this one resource,
+// so the failure to fix is in collectOperatorStatus, not in the assertion.
 func TestCollectOperatorStatusDeduplicatesConditionsByType(t *testing.T) {
 	collector := duplicateConditionCollector{}
 	registry := prometheus.NewRegistry()
@@ -89,6 +95,11 @@ func TestResourceMetricsCollectorFiltersByOwnedNamespace(t *testing.T) {
 	}
 }
 
+// A failed LIST sets dbaas_resource_collector_success to 0 instead of leaving
+// the series out, so a scrape can tell an outage from an empty cluster. The
+// fake client is built without the dbaas scheme on purpose — that is what makes
+// every LIST fail; registering testResourceMetricsScheme here would let the
+// LIST succeed, and the assertion would then see success 1.
 func TestResourceMetricsCollectorReportsListErrors(t *testing.T) {
 	cl := fake.NewClientBuilder().Build()
 
@@ -103,6 +114,10 @@ func TestResourceMetricsCollectorReportsListErrors(t *testing.T) {
 	}
 }
 
+// With no operator namespace configured, the PermanentBalancingRule collector
+// reports dbaas_resource_collector_success 0 and emits no phase series. The
+// fixture stores a rule the collector would have found, so a regression that
+// falls back to a cluster-wide LIST fails both assertions.
 func TestPermanentBalancingRuleCollectorRequiresOperatorNamespace(t *testing.T) {
 	scheme := testResourceMetricsScheme(t)
 	cl := fake.NewClientBuilder().
@@ -146,6 +161,9 @@ func gatherResourceMetrics(t *testing.T, collector prometheus.Collector) []*dto.
 	return metrics
 }
 
+// countMetrics counts the series in the family named name whose labels match,
+// per metricHasLabels. An unknown name counts zero rather than failing, so an
+// assertion of zero passes on a misspelled metric name too.
 func countMetrics(metrics []*dto.MetricFamily, name string, labels map[string]string) int {
 	var count int
 	for _, family := range metrics {
@@ -161,6 +179,10 @@ func countMetrics(metrics []*dto.MetricFamily, name string, labels map[string]st
 	return count
 }
 
+// metricValue returns the gauge value of the first series in the family named
+// name whose labels match, per metricHasLabels, and -1 when nothing matches. No
+// gauge in resource_metrics.go is ever negative, so -1 is unambiguous as the
+// not-found marker.
 func metricValue(metrics []*dto.MetricFamily, name string, labels map[string]string) float64 {
 	for _, family := range metrics {
 		if family.GetName() != name {
@@ -175,6 +197,9 @@ func metricValue(metrics []*dto.MetricFamily, name string, labels map[string]str
 	return -1
 }
 
+// metricHasLabels reports whether metric carries every label in want with the
+// value want gives it. Labels absent from want are ignored, so a caller can
+// select on one label of a series that carries six.
 func metricHasLabels(metric *dto.Metric, want map[string]string) bool {
 	for key, value := range want {
 		found := false
@@ -191,6 +216,9 @@ func metricHasLabels(metric *dto.Metric, want map[string]string) bool {
 	return true
 }
 
+// duplicateConditionCollector drives collectOperatorStatus with a status that
+// carries the Ready condition twice, so that a gather can observe what the
+// deduplication leaves behind.
 type duplicateConditionCollector struct{}
 
 func (duplicateConditionCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -210,6 +238,8 @@ func (duplicateConditionCollector) Collect(ch chan<- prometheus.Metric) {
 	})
 }
 
+// Deletion outranks ownership: a binding under deletion reports deleting or
+// deleting_with_finalizer, and only a live binding reports mine or foreign.
 func TestNamespaceBindingState(t *testing.T) {
 	now := metav1.Now()
 
@@ -260,6 +290,8 @@ func TestNamespaceBindingState(t *testing.T) {
 	}
 }
 
+// All four balancing-rule counters sum the targets across the rules instead of
+// counting the rules: two rules holding two and one target report 3, not 2.
 func TestBalancingRuleAppliedTargetCounts(t *testing.T) {
 	if got := microserviceDesiredTargetCount([]dbaasv1.MicroserviceBalancingRuleItem{
 		{Microservices: []string{"a", "b"}},

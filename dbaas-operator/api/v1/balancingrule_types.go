@@ -116,6 +116,7 @@ type MicroserviceBalancingRuleStatus struct {
 
 // MicroserviceBalancingRule is the Schema for the microservicebalancingrules API.
 // It declares a physical database placement rule for specific microservices in a namespace.
+// The object must be named microservice-balancing-rules, so a namespace can hold only one.
 type MicroserviceBalancingRule struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -222,6 +223,7 @@ type NamespaceBalancingRuleStatus struct {
 
 // NamespaceBalancingRule is the Schema for the namespacebalancingrules API.
 // It declares a namespace-level physical database placement rule.
+// The object must be named namespace-balancing-rules, so a namespace can hold only one.
 type NamespaceBalancingRule struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -321,6 +323,9 @@ type PermanentBalancingRuleStatus struct {
 
 // PermanentBalancingRule is the Schema for the permanentbalancingrules API.
 // It declares a permanent namespace-level physical database placement rule.
+// The object must be named permanent-balancing-rules and must live in the
+// namespace the operator runs in. Any other name or namespace is reported as an
+// invalid configuration, and the rules are not applied.
 type PermanentBalancingRule struct {
 	metav1.TypeMeta `json:",inline"`
 

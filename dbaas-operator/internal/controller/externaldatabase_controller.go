@@ -48,8 +48,7 @@ import (
 )
 
 // externalDatabaseDefaultResync is the fallback re-reconcile period used when
-// ResyncInterval is left zero. Referenced credential Secret changes are picked up
-// on the next periodic resync.
+// ResyncInterval is left zero.
 const externalDatabaseDefaultResync = 10 * time.Minute
 
 // ExternalDatabaseReconciler reconciles ExternalDatabase objects.
@@ -174,8 +173,6 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	markSucceeded(&edb.Status.Phase, &edb.Status.Conditions, edb.Generation, EventReasonDatabaseRegistered)
 	r.Recorder.Eventf(edb, corev1.EventTypeNormal, EventReasonDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, dbName=%s)", edb.Spec.Type, edb.Spec.DBName)
-	// Periodically re-reconcile so a change to a referenced credentials Secret is picked up
-	// without a Secret watch (the operator holds only namespaced Secret RBAC).
 	return ctrl.Result{RequeueAfter: r.ResyncInterval}, nil
 }
 
@@ -192,15 +189,11 @@ func (r *ExternalDatabaseReconciler) buildRequest(
 	}
 
 	return &aggregatorclient.ExternalDatabaseRequest{
-		// Serialize the classifier with dbaasv1.ClassifierFlatMap — the same helper
-		// the InternalDatabase and DatabaseSecretClaim paths use. It keeps customKeys
-		// as a nested "customKeys" object, which is the canonical dbaas-aggregator
-		// classifier shape: the aggregator stores the classifier verbatim and reads
-		// classifier.customKeys.* as a nested map, so an externally registered
-		// database is found by the same classifier dbaas-client consumers use.
-		// EffectiveClassifier defaults classifier.namespace to metadata.namespace
-		// when omitted — the aggregator requires it (isValidClassifierV3) and the
-		// controller already validates that a non-empty value equals metadata.namespace.
+		// The wire classifier has to match what a dbaas-client consumer sends, or the
+		// aggregator stores this database under an identity nobody looks it up by.
+		// ClassifierFlatMap produces that shape — customKeys nested rather than
+		// flattened — and EffectiveClassifier supplies the namespace the aggregator
+		// requires.
 		Classifier:                 dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(edb.Spec.Classifier, edb.Namespace)),
 		Type:                       edb.Spec.Type,
 		DBName:                     edb.Spec.DBName,
@@ -349,7 +342,7 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 		Complete(r)
 }
 
-// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
+// enqueueForBinding maps a NamespaceBinding event to reconcile requests for
 // all ExternalDatabases that live in the same namespace.
 func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	return enqueueForBindingList(ctx, r.Client, &dbaasv1.ExternalDatabaseList{}, obj.GetNamespace(),

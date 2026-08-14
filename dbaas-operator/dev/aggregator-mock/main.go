@@ -83,9 +83,12 @@ import (
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
 )
 
-// MockRule fully describes the response for a specific dbName or microserviceName.
-// All TmfErrorResponse fields are specified here — the mock contains no hardcoded
-// templates; the ConfigMap is the single source of truth for every response.
+// MockRule fully describes one response. The three files loadRules reads map a key to one of
+// these — dbName, microserviceName, or originService, depending on the endpoint; poll-rules.json,
+// get-by-classifier.json and changed.json carry other shapes. The mock builds a few rules itself,
+// from MOCK_RESPONSE_CODE and from literals such as [authRuleUnauthorized]. All TmfErrorResponse
+// fields are specified here and the mock keeps no per-code templates, so an error body carries
+// exactly what its rule spells out.
 //
 // For 2xx codes TmfCode/Reason/Message are ignored (no error body is returned).
 // For 4xx/5xx codes omitted fields produce empty strings in the JSON output,
@@ -117,7 +120,7 @@ func newPendingCounter(rules map[string]MockRule) *pendingCounter {
 	return &pendingCounter{left: left}
 }
 
-// consume reports whether this call must still answer 202, decrementing the counter.
+// consume reports whether this call must still answer 202, spending one pending answer if so.
 func (p *pendingCounter) consume(key string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -129,18 +132,19 @@ func (p *pendingCounter) consume(key string) bool {
 }
 
 // MockPollRule describes the poll response for a specific trackingId.
-// HTTPCode overrides the response code (e.g. 404). Status controls the payload.
 type MockPollRule struct {
-	// HTTPCode, when non-zero, returns a non-200 response (e.g. 404).
+	// HTTPCode, when it is neither 0 nor 200, is returned with an empty body (e.g. 404).
 	HTTPCode int `json:"httpCode,omitempty"`
 	// Status is the operation status to return: "COMPLETED", "FAILED", "TERMINATED",
-	// "IN_PROGRESS", "NOT_STARTED". Defaults to "COMPLETED" when HTTPCode is 0.
+	// "IN_PROGRESS", "NOT_STARTED". Defaults to "COMPLETED" when empty.
 	Status string `json:"status,omitempty"`
-	// FailReason is included in the DataBaseCreated condition reason when Status=FAILED.
+	// FailReason, when non-empty, becomes the DataBaseCreated condition's reason and sets
+	// its message to "Failed", whatever Status says.
 	FailReason string `json:"failReason,omitempty"`
 }
 
-// authRuleUnauthorized is the fixed response for a missing/empty Bearer token (401).
+// authRuleUnauthorized is the fixed 401 response for a request that carries neither
+// Basic Auth nor a Bearer token.
 var authRuleUnauthorized = MockRule{
 	HTTPCode: http.StatusUnauthorized,
 	Message:  "Requested role is not allowed",
@@ -228,7 +232,7 @@ func classifierKey(classifier map[string]any, dbType string) string {
 }
 
 // isTenant reports whether a classifier is tenant-scoped (scope=tenant), matched
-// case-insensitively like the operator and aggregator do.
+// case-insensitively as the operator does. The real aggregator compares scope exactly.
 func isTenant(classifier map[string]any) bool {
 	scope, _ := classifier["scope"].(string)
 	return strings.EqualFold(scope, "tenant")
@@ -273,7 +277,7 @@ func main() {
 }
 
 // loadRules reads a JSON file that maps a string key → MockRule.
-// A missing file is not an error.
+// A missing file is not an error; a malformed one is fatal.
 func loadRules(path string) map[string]MockRule {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -293,7 +297,7 @@ func loadRules(path string) map[string]MockRule {
 }
 
 // loadPollRules reads a JSON file that maps trackingId → MockPollRule.
-// A missing file is not an error.
+// A missing file is not an error; a malformed one is fatal.
 func loadPollRules(path string) map[string]MockPollRule {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -313,7 +317,7 @@ func loadPollRules(path string) map[string]MockPollRule {
 }
 
 // loadChanged reads the rotation feed (a JSON array of ChangedEntry).
-// A missing file is not an error — it yields an empty feed.
+// A missing file is not an error — it yields an empty feed; a malformed one is fatal.
 func loadChanged(path string) []ChangedEntry {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -334,7 +338,7 @@ func loadChanged(path string) []ChangedEntry {
 
 // loadGbcRules reads a JSON file mapping originService → connectionProperties.
 // A missing file is not an error — get-by-classifier then falls back to a
-// synthetic default property set for every lookup.
+// synthetic default property set for every lookup. A malformed file is fatal.
 func loadGbcRules(path string) map[string]map[string]any {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -352,6 +356,8 @@ func loadGbcRules(path string) map[string]map[string]any {
 	return rules
 }
 
+// handler routes the mocked aggregator endpoints. Each call builds its own database store
+// and pending-call counters, so two handlers never share materialization state.
 func handler(
 	defaultRule MockRule, rules map[string]MockRule,
 	applyRules map[string]MockRule, pollRules map[string]MockPollRule,
@@ -502,7 +508,9 @@ func handleExternalDB(
 //   - "DatabaseDeclaration"  → 202 IN_PROGRESS with deterministic trackingId
 //
 // An explicit rule in applyRules (keyed by microserviceName) overrides the default.
-// Error rules (4xx/5xx) are returned as TmfErrorResponse regardless of subKind.
+// Error rules (4xx/5xx) are returned as TmfErrorResponse regardless of subKind; a 2xx
+// rule answers COMPLETED with no trackingId, so it cannot stand in for the asynchronous
+// DatabaseDeclaration path.
 func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockRule) {
 	var req struct {
 		SubKind  string `json:"subKind"`
@@ -552,7 +560,7 @@ func handleApply(w http.ResponseWriter, body []byte, applyRules map[string]MockR
 		return
 	}
 
-	// DatabaseAccessPolicy and any other subKind: default 200 COMPLETED (synchronous).
+	// DbPolicy (a DatabaseAccessPolicy) and any other subKind: default 200 COMPLETED (synchronous).
 	log.Printf("  → apply config  subKind=%q microserviceName=%q → 200 COMPLETED (default)", req.SubKind, msName)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -681,11 +689,12 @@ func handleChanged(w http.ResponseWriter, r *http.Request, changed []ChangedEntr
 }
 
 // handleGetByClassifier serves POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}.
-// It returns 200 with a DatabaseResponseV3SingleCP-shaped body. connectionProperties
-// come from the per-originService rule when present, otherwise from a synthetic
-// default. Editing a rule's password (and restarting the mock) lets a subsequent
-// rotation fan-out surface a real SecretRotated; the stable default yields the
-// content-aware no-op (SecretUpToDate) on re-fetch.
+// It answers 200 with a DatabaseResponseV3SingleCP-shaped body whenever a per-originService
+// rule supplies connectionProperties. Failing that, a tenant-scoped classifier that no
+// get-or-create has materialized yet gets 404 DatabaseNotFound, and every other request gets
+// the same 200 with a synthetic default property set. Editing a rule's password (and
+// restarting the mock) lets a subsequent rotation fan-out surface a real SecretRotated; the
+// stable default yields the content-aware no-op (SecretUpToDate) on re-fetch.
 func handleGetByClassifier(
 	w http.ResponseWriter, r *http.Request, body []byte,
 	gbcRules map[string]map[string]any, store *dbStore,
@@ -767,10 +776,12 @@ func defaultConnProps(role string) map[string]any {
 
 // handleCreateDatabase serves PUT /api/v3/dbaas/{namespace}/databases — the get-or-create
 // database call the operator issues to materialize a concrete {scope=tenant, tenantId}
-// database for a tenant declaration that pins a tenantId. The response code comes from the
-// per-originService createDbRules rule when present (e.g. to simulate a 500); otherwise the
-// mock returns 200 with a DatabaseResponseV3-shaped body. The operator ignores the body and
-// inspects only the status code, so a minimal descriptor is enough.
+// database for a tenant declaration that pins a tenantId. A rule's PendingCalls budget is
+// spent first: while it lasts the call answers 202 and records nothing, so the database stays
+// invisible to get-by-classifier. After that the response code comes from the per-originService
+// createDbRules rule when present (e.g. to simulate a 500); otherwise the mock returns 200 with
+// a DatabaseResponseV3-shaped body. The operator ignores the body and inspects only the status
+// code, so a minimal descriptor is enough.
 func handleCreateDatabase(
 	w http.ResponseWriter, r *http.Request, body []byte,
 	createDbRules map[string]MockRule, store *dbStore, pending *pendingCounter,
@@ -858,8 +869,8 @@ func writeAcceptedDatabase(w http.ResponseWriter, namespace, dbType string, clas
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// logRequest logs the incoming request and returns the body bytes.
-// The caller is responsible for passing the body to any handler that needs it.
+// logRequest logs the incoming request and returns the body bytes. It drains r.Body, so a
+// handler must work from the returned slice rather than read the request again.
 func logRequest(r *http.Request) []byte {
 	auth := "none"
 	if user, _, ok := r.BasicAuth(); ok && user != "" {
@@ -950,7 +961,7 @@ func parseTS(s string) (time.Time, error) {
 }
 
 // highWaterMark returns the greatest (lastRotatedAt, id) across the feed as a
-// ChangeCursor-shaped map, or nil when the feed is empty.
+// ChangeCursor-shaped map, or nil when no entry has a parseable lastRotatedAt.
 func highWaterMark(changed []ChangedEntry) any {
 	var maxT time.Time
 	var maxID string

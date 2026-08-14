@@ -117,6 +117,8 @@ func TestReadCredentials(t *testing.T) {
 
 // ── loadAggregatorCredentials ─────────────────────────────────────────────────
 
+// TestLoadAggregatorCredentials verifies that loadAggregatorCredentials returns the
+// operator username and the password read from users.json in the given directory.
 // Only the success path is unit-tested; the failure path calls os.Exit(1).
 func TestLoadAggregatorCredentials(t *testing.T) {
 	t.Parallel()
@@ -167,8 +169,9 @@ func TestWatchCredentials_ReloadsOnFileChange(t *testing.T) {
 	}
 }
 
-// TestWatchCredentials_ReloadsOnKubernetesSymlinkSwap simulates the atomic
-// "..data" symlink replacement that kubelet performs when a Secret is updated.
+// TestWatchCredentials_ReloadsOnKubernetesSymlinkSwap verifies that replacing the
+// "..data" symlink, the atomic update kubelet performs when a Secret changes,
+// reloads the credentials from the new version directory.
 //
 // Linux-only: inotify (production platform) generates IN_MOVED_TO → Create
 // for the destination of a rename, which our filter catches as base="..data".

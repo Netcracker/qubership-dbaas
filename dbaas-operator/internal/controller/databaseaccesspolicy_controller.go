@@ -42,9 +42,9 @@ import (
 
 // DatabaseAccessPolicyReconciler reconciles DatabaseAccessPolicy objects.
 //
-// On every reconcile it validates the spec, assembles a DeclarativePayload, calls
-// POST /api/declarations/v1/apply on dbaas-aggregator, and updates the CR status.
-// Key outcomes are also emitted as Kubernetes Events.
+// For a CR in a namespace bound to this operator, it validates the spec, assembles
+// a DeclarativePayload, calls POST /api/declarations/v1/apply on dbaas-aggregator,
+// and updates the CR status. Key outcomes are also emitted as Kubernetes Events.
 type DatabaseAccessPolicyReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -94,7 +94,7 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	dp.Status.Phase = dbaasv1.PhaseProcessing
 
 	// Field-level constraints (microserviceName, services[].name/roles, policy[].type/defaultRole)
-	// are enforced by CRD admission. Only the cross-field constraint below cannot be expressed in schema.
+	// are enforced by CRD admission. The cross-field constraint is the one the schema does not cover.
 
 	if len(dp.Spec.Services) == 0 && len(dp.Spec.Policy) == 0 {
 		return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, "spec: at least one of 'services' or 'policy' must be set")
@@ -127,7 +127,6 @@ type dbPolicyAggregatorSpec struct {
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.
-// MicroserviceName goes into metadata (not into the spec that is forwarded to the aggregator).
 func (r *DatabaseAccessPolicyReconciler) buildPayload(dp *dbaasv1.DatabaseAccessPolicy) *aggregatorclient.DeclarativePayload {
 	return &aggregatorclient.DeclarativePayload{
 		APIVersion: apiVersionV1,
@@ -151,9 +150,8 @@ func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseAccessPolicy{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all DbPolicies in a namespace when its NamespaceBinding
-		// is created or updated, so existing CRs are reconciled without waiting for
-		// a spec change.
+		// Re-enqueue all DatabaseAccessPolicies in a namespace when its NamespaceBinding
+		// changes, so existing CRs are reconciled without waiting for a spec change.
 		Watches(&dbaasv1.NamespaceBinding{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
 			// The binding status is written by its own controller; only create, delete,
@@ -164,8 +162,9 @@ func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts
 		Complete(r)
 }
 
-// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
-// all DbPolicies that live in the same namespace.
+// enqueueForBinding maps a NamespaceBinding event to reconcile requests for
+// all DatabaseAccessPolicies that live in the same namespace, stamping each one
+// so its next reconcile is counted as NamespaceBinding-triggered.
 func (r *DatabaseAccessPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
 	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseAccessPolicyList{}, obj.GetNamespace(),
 		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })

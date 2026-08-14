@@ -25,6 +25,11 @@ import (
 	"time"
 )
 
+// A cursor-less call must carry neither sinceTs nor sinceId. Their absence is what makes
+// the aggregator answer with the high-water mark alone and no items, so the poller seeds
+// a baseline instead of replaying every rotation already on record. A limit of 0 must stay
+// off the query as well: the aggregator rejects any limit below 1 with HTTP 400 and applies
+// its own page size when the parameter is absent.
 func TestGetChangedSince_SeedCallOmitsCursorParams(t *testing.T) {
 	hwm := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), ID: "11111111-1111-1111-1111-111111111111"}
 	var gotMethod, gotPath, gotSinceTs, gotSinceID, gotLimit string
@@ -64,6 +69,11 @@ func TestGetChangedSince_SeedCallOmitsCursorParams(t *testing.T) {
 	}
 }
 
+// A non-nil cursor must reach the aggregator as sinceTs plus sinceId, with sinceTs
+// formatted RFC3339Nano so the sub-second part of the cursor is not lost — the aggregator
+// selects rows strictly after (sinceTs, sinceId), so a coarser timestamp would hand back
+// rotations that were already fanned out. The returned items must decode into a
+// ChangedDatabaseRef with its identity and timestamp intact.
 func TestGetChangedSince_SendsCursorParamsAndParsesItems(t *testing.T) {
 	cursor := ChangeCursor{LastRotatedAt: time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), ID: "22222222-2222-2222-2222-222222222222"}
 	next := cursor.LastRotatedAt.Add(time.Minute)

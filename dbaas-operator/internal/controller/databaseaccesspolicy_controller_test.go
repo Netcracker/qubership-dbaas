@@ -50,7 +50,7 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 		namespacedName types.NamespacedName
 	)
 
-	// baseSpec builds a minimal valid spec for use in aggregator-response tests.
+	// baseSpec builds a minimal valid spec.
 	baseSpec := func() dbaasv1.DatabaseAccessPolicySpec {
 		return dbaasv1.DatabaseAccessPolicySpec{
 			MicroserviceName: "test-service",
