@@ -23,12 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -39,6 +36,7 @@ import (
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -63,13 +61,9 @@ func TestControllers(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
-	ctxmanager.Register([]ctxmanager.ContextProvider{
-		xrequestid.XRequestIdProvider{},
-	})
+	requestcontext.RegisterProviders()
 
-	baseCtx := ctxmanager.InitContext(context.Background(), map[string]any{
-		xRequestID: uuid.New().String(),
-	})
+	baseCtx, _ := requestcontext.WithFreshRequestID(context.Background())
 	ctx, cancel = context.WithCancel(baseCtx)
 
 	var err error

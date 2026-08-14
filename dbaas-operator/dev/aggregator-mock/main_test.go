@@ -218,3 +218,99 @@ func TestGetByClassifier_ServiceNoMaterializationNeeded(t *testing.T) {
 		t.Fatalf("service get-by-classifier: want 200 (no materialization needed), got %d", w.Code)
 	}
 }
+
+// TestCreateDatabase_PendingCalls_Returns202ThenCreates reproduces the aggregator's asynchronous
+// creation, which broke tenant materialization before the operator learned to handle it: the first
+// get-or-create answers 202 with no usable credentials, and only a later call returns the database.
+// A client that treats the 202 as either success or failure never gets credentials.
+func TestCreateDatabase_PendingCalls_Returns202ThenCreates(t *testing.T) {
+	rules := map[string]MockRule{"slow-svc": {HTTPCode: http.StatusOK, PendingCalls: 2}}
+	h := newTestHandler(http.StatusOK, rules)
+	body := tenantCreateBody(t, "slow-svc", "acme")
+	const path = "/api/v3/dbaas/test-ns/databases"
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		w := doReq(t, h, http.MethodPut, path, body, true)
+		if w.Code != http.StatusAccepted {
+			t.Fatalf("attempt %d: want 202, got %d (%s)", attempt, w.Code, w.Body.String())
+		}
+
+		var resp struct {
+			ID                   any `json:"id"`
+			Name                 any `json:"name"`
+			ConnectionProperties struct {
+				Password any    `json:"password"`
+				Role     string `json:"role"`
+			} `json:"connectionProperties"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("attempt %d: decode body: %v", attempt, err)
+		}
+		if resp.ID != nil || resp.Name != nil {
+			t.Errorf("attempt %d: a database being created has no id/name, got id=%v name=%v",
+				attempt, resp.ID, resp.Name)
+		}
+		if resp.ConnectionProperties.Password != nil {
+			t.Errorf("attempt %d: 202 must not carry a password, got %v",
+				attempt, resp.ConnectionProperties.Password)
+		}
+		if resp.ConnectionProperties.Role != "admin" {
+			t.Errorf("attempt %d: role: want admin, got %q", attempt, resp.ConnectionProperties.Role)
+		}
+	}
+
+	// The third call is past the pending budget: the database is created for real.
+	w := doReq(t, h, http.MethodPut, path, body, true)
+	if w.Code != http.StatusOK {
+		t.Fatalf("third attempt: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var created struct {
+		Name                 string `json:"name"`
+		ConnectionProperties struct {
+			Password string `json:"password"`
+		} `json:"connectionProperties"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created body: %v", err)
+	}
+	if created.ConnectionProperties.Password == "" {
+		t.Error("the created database must carry a password")
+	}
+	if !strings.Contains(created.Name, "acme") {
+		t.Errorf("expected tenantId in db name, got %q", created.Name)
+	}
+}
+
+// TestCreateDatabase_PendingCalls_NotVisibleUntilCreated asserts that a database still being
+// created is not resolvable through get-by-classifier — the state a DatabaseSecretClaim sees while
+// the operator waits on the 202.
+func TestCreateDatabase_PendingCalls_NotVisibleUntilCreated(t *testing.T) {
+	rules := map[string]MockRule{"slow-svc": {HTTPCode: http.StatusOK, PendingCalls: 1}}
+	h := newTestHandler(http.StatusOK, rules)
+	classifier := map[string]any{
+		"microserviceName": "slow-svc",
+		"scope":            "tenant",
+		"namespace":        "test-ns",
+		"tenantId":         "acme",
+	}
+
+	w := doReq(t, h, http.MethodPut, "/api/v3/dbaas/test-ns/databases",
+		tenantCreateBody(t, "slow-svc", "acme"), true)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d", w.Code)
+	}
+
+	w = doReq(t, h, http.MethodPost, gbcPath, gbcReqBody(t, classifier, "slow-svc"), true)
+	if w.Code == http.StatusOK {
+		t.Fatalf("a database that is still being created must not resolve, got 200: %s", w.Body.String())
+	}
+
+	// After the creation completes it resolves normally.
+	if w = doReq(t, h, http.MethodPut, "/api/v3/dbaas/test-ns/databases",
+		tenantCreateBody(t, "slow-svc", "acme"), true); w.Code != http.StatusOK {
+		t.Fatalf("second create: want 200, got %d", w.Code)
+	}
+	if w = doReq(t, h, http.MethodPost, gbcPath, gbcReqBody(t, classifier, "slow-svc"), true); w.Code != http.StatusOK {
+		t.Fatalf("after creation get-by-classifier must return 200, got %d (%s)", w.Code, w.Body.String())
+	}
+}

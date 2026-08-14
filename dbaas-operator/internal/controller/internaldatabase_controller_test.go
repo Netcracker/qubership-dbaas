@@ -28,6 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,6 +62,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 		pollCode           int
 		pollBody           string
 		capturedApplyBody  []byte
+		capturedRequestID  string
 		createCode         int
 		capturedCreateBody []byte
 		createPath         string
@@ -88,6 +90,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 		pollCode = http.StatusOK
 		pollBody = statusCompleted
 		capturedApplyBody = nil
+		capturedRequestID = ""
 		createCode = http.StatusOK
 		capturedCreateBody = nil
 		createPath = ""
@@ -98,6 +101,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 
 			if r.Method == http.MethodPost && r.URL.Path == "/api/declarations/v1/apply" {
 				capturedApplyBody, _ = io.ReadAll(r.Body)
+				capturedRequestID = r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME)
 				w.WriteHeader(applyCode)
 				if applyBody != "" {
 					_, _ = w.Write([]byte(applyBody))
@@ -598,6 +602,33 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(sent.Metadata.Namespace).To(Equal(ns))
 			Expect(sent.Spec.ClassifierConfig.Classifier["microserviceName"]).To(Equal("test-service"))
 		})
+
+		It("preserves structured settings in the aggregator payload", func() {
+			spec := baseSpec()
+			spec.Settings = map[string]apiextensionsv1.JSON{
+				"encoding":     {Raw: []byte(`"UTF8"`)},
+				"nested":       {Raw: []byte(`{"a":1}`)},
+				"pgExtensions": {Raw: []byte(`["vector"]`)},
+			}
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(capturedApplyBody).NotTo(BeEmpty())
+
+			var sent struct {
+				Spec struct {
+					Settings map[string]any `json:"settings"`
+				} `json:"spec"`
+			}
+			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
+			Expect(sent.Spec.Settings["encoding"]).To(Equal("UTF8"))
+			Expect(sent.Spec.Settings["nested"]).To(Equal(map[string]any{"a": float64(1)}))
+			Expect(sent.Spec.Settings["pgExtensions"]).To(Equal([]any{"vector"}))
+		})
 	})
 
 	Context("buildPayload — customKeys", func() {
@@ -646,7 +677,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 	// ── HTTP 200 — synchronous success ───────────────────────────────────────
 
 	Context("HTTP 200 — database provisioned synchronously", func() {
-		It("sets Phase=Succeeded, Ready=True, Stalled=False, emits Normal/DatabaseProvisioned, does not requeue", func() {
+		It("propagates status.lastRequestId, sets successful status, emits DatabaseProvisioned, and does not requeue", func() {
 			applyCode = http.StatusOK
 			applyBody = statusCompleted
 			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
@@ -661,6 +692,9 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(dd.Status.ObservedGeneration).To(Equal(dd.Generation))
 			Expect(dd.Status.TrackingID).To(BeEmpty())
+			Expect(capturedRequestID).NotTo(BeEmpty())
+			Expect(capturedRequestID).To(Equal(dd.Status.LastRequestID),
+				"the reconciler request ID stored in status must reach the aggregator")
 
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())

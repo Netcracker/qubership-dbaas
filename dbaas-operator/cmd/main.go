@@ -46,8 +46,6 @@ import (
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
-	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	_ "github.com/netcracker/qubership-core-lib-go/v3/memlimit"
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
@@ -55,6 +53,7 @@ import (
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/poller"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -72,9 +71,7 @@ func init() {
 
 // nolint:gocyclo
 func main() {
-	ctxmanager.Register([]ctxmanager.ContextProvider{
-		xrequestid.XRequestIdProvider{},
-	})
+	registerContextProviders()
 
 	var httpAddr string
 	var enableLeaderElection bool
@@ -352,6 +349,10 @@ func main() {
 		setupLog.Errorf("Failed to run manager: %v", err)
 		os.Exit(1)
 	}
+}
+
+func registerContextProviders() {
+	requestcontext.RegisterProviders()
 }
 
 // ownershipWarmupRunnable pre-populates the ownership cache before the

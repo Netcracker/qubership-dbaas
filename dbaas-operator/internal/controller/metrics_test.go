@@ -18,6 +18,8 @@ func TestAggregatorResultClassifiesOwnershipBuckets(t *testing.T) {
 		{name: "auth", err: &aggregatorclient.AggregatorError{StatusCode: 401}, want: resultAuthError},
 		{name: "spec rejection", err: &aggregatorclient.AggregatorError{StatusCode: 409}, want: resultSpecRejection},
 		{name: "database not found", err: &aggregatorclient.AggregatorError{StatusCode: 404, TmfCode: "CORE-DBAAS-4006"}, want: resultDatabaseNotFound},
+		{name: "configuration", err: &aggregatorclient.RequestContextError{Cause: errors.New("request ID missing")}, want: resultConfigurationError},
+		{name: "wrapped configuration", err: fmt.Errorf("wrapped: %w", &aggregatorclient.RequestContextError{Cause: errors.New("provider missing")}), want: resultConfigurationError},
 		{name: "server", err: &aggregatorclient.AggregatorError{StatusCode: 500}, want: resultServerError},
 		{name: "wrapped server", err: fmt.Errorf("wrapped: %w", &aggregatorclient.AggregatorError{StatusCode: 503}), want: resultServerError},
 		{name: "network", err: errors.New("dial tcp: connection refused"), want: resultNetworkError},

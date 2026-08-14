@@ -83,8 +83,8 @@ duplicate resources require manual review.
   `initialInstantiation.sourceClassifier.namespace` because a clone source may live in another namespace.
 - Require `initialInstantiation.sourceClassifier.microserviceName` to equal the target classifier owner. Fill it from
   the target when absent, and require manual correction when an explicit source owner differs.
-- Check `spec.settings` against the current CRD. Flag arrays, booleans, numbers, or objects when the schema accepts only
-  string values; do not silently alter their meaning.
+- Preserve valid JSON values in `spec.settings` without conversion. The converter rejects non-finite numbers,
+  non-string object keys, and YAML-only values, and identifies each invalid field by its full settings path.
 - Choose stable, DNS-compatible resource names and check for duplicate kind/name pairs across all generated files.
 
 ## Validation

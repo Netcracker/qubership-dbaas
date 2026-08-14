@@ -12,12 +12,12 @@ Use fixtures that cover at least:
 1. two same-type identities distinguished by classifier extensions;
 1. empty and explicit requested roles for one database;
 1. a static tenant classifier and a context-derived tenant classifier;
-1. `NamePrefix`, string creation settings, and `PhysicalDatabaseId`;
+1. `NamePrefix`, structured JSON creation settings, and `PhysicalDatabaseId`;
 1. direct base-client calls and DB-client wrappers;
 1. Helm and plain Kubernetes workloads.
 1. Spring proxy datasources with enable annotations and tenant-context classifier factories.
 1. Quarkus CDI producers, a default datasource, and a named builder-created datasource.
-1. A legacy `DatabaseDeclaration` with versioning and non-string settings.
+1. A legacy `DatabaseDeclaration` with versioning and structured settings.
 1. One Secret consumed by two application containers.
 
 Assert semantic properties rather than byte-for-byte YAML formatting:
@@ -33,9 +33,10 @@ Assert semantic properties rather than byte-for-byte YAML formatting:
 
 Add negative cases for malformed `customKeys`/`extraKeys`, classifier namespace mismatch,
 non-boolean `lazy`, orphaned claims, wrong mount paths, missing read-only mode, duplicate identities,
-and unsupported complex settings. Include a multi-item legacy declaration whose wrapper has one
-`metadata.name`; verify that generated resource names remain unique. Error messages must identify
-the resource and the mismatched identity, not only a count.
+non-string settings keys, non-finite numbers, and YAML-only values that are not valid JSON. Include a
+multi-item legacy declaration whose wrapper has one `metadata.name`; verify that generated resource
+names remain unique. Error messages must identify the resource and the mismatched identity, not only
+a count.
 
 Install PyYAML in the execution environment, then run the bundled validator:
 

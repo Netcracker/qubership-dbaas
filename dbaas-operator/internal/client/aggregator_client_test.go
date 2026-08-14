@@ -22,14 +22,34 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxmanager"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // dbTypePostgresql is the database type used throughout these client tests.
 const dbTypePostgresql = "postgresql"
+
+func TestMain(m *testing.M) {
+	requestcontext.RegisterProviders()
+	os.Exit(m.Run())
+}
+
+func contextWithRequestID(requestID string) context.Context {
+	return ctxmanager.InitContext(context.Background(), map[string]any{
+		xrequestid.X_REQUEST_ID_HEADER_NAME: requestID,
+	})
+}
+
+func requestContext() context.Context {
+	return contextWithRequestID("client-test-request-id")
+}
 
 // staticToken returns a TokenSource function that always returns the given token.
 // Used in tests to avoid touching the global tokensource state.
@@ -80,6 +100,78 @@ func bearerToken(r *http.Request) string {
 	return strings.TrimPrefix(h, "Bearer ")
 }
 
+func TestAggregatorClient_PropagatesRequestID(t *testing.T) {
+	const requestID = "operator-reconcile-request-id"
+	tests := []struct {
+		name           string
+		newClient      func(string) *AggregatorClient
+		wantAuthPrefix string
+	}{
+		{
+			name: "M2M",
+			newClient: func(baseURL string) *AggregatorClient {
+				return newClient(baseURL, staticToken("test-token"))
+			},
+			wantAuthPrefix: "Bearer ",
+		},
+		{
+			name: "BasicAuth",
+			newClient: func(baseURL string) *AggregatorClient {
+				return NewBasicAuthClient(baseURL, "dbaas-operator", "password")
+			},
+			wantAuthPrefix: "Basic ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotRequestID, gotAuthorization string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotRequestID = r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME)
+				gotAuthorization = r.Header.Get("Authorization")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			c := tt.newClient(srv.URL)
+			err := c.RegisterExternalDatabase(contextWithRequestID(requestID), "ns", minimalExtDBRequest())
+			if err != nil {
+				t.Fatalf("RegisterExternalDatabase: %v", err)
+			}
+			if gotRequestID != requestID {
+				t.Errorf("%s header: got %q, want %q",
+					xrequestid.X_REQUEST_ID_HEADER_NAME, gotRequestID, requestID)
+			}
+			if !strings.HasPrefix(gotAuthorization, tt.wantAuthPrefix) {
+				t.Errorf("Authorization: got %q, want prefix %q", gotAuthorization, tt.wantAuthPrefix)
+			}
+		})
+	}
+}
+
+func TestAggregatorClient_RejectsMissingRequestID(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("request without X-Request-Id reached the server")
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	if err == nil {
+		t.Fatal("expected missing request ID to reject the request")
+	}
+	var requestContextErr *RequestContextError
+	if !errors.As(err, &requestContextErr) {
+		t.Fatalf("error type = %T, want *RequestContextError", err)
+	}
+	if !strings.Contains(err.Error(), "request ID context is not initialized") ||
+		!strings.Contains(err.Error(), "call WithFreshRequestID") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 // ── RegisterExternalDatabase ──────────────────────────────────────────────────
 
 func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
@@ -94,7 +186,7 @@ func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if err := c.RegisterExternalDatabase(context.Background(), "my-namespace", minimalExtDBRequest()); err != nil {
+	if err := c.RegisterExternalDatabase(requestContext(), "my-namespace", minimalExtDBRequest()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -118,7 +210,7 @@ func TestRegisterExternalDatabase_SendsBearerToken(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("my-dbaas-token"))
-	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	_ = c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
 
 	if gotToken != "my-dbaas-token" {
 		t.Errorf("Authorization: got Bearer %q, want Bearer my-dbaas-token", gotToken)
@@ -147,8 +239,8 @@ func TestRegisterExternalDatabase_TokenFetchedPerRequest(t *testing.T) {
 	}
 
 	c := newClient(srv.URL, tokenFn)
-	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
-	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	_ = c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
+	_ = c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
 
 	if len(tokens) != 2 {
 		t.Fatalf("expected 2 requests, got %d", len(tokens))
@@ -179,7 +271,7 @@ func TestBasicAuthClient_SendsBasicAuth(t *testing.T) {
 	defer srv.Close()
 
 	c := NewBasicAuthClient(srv.URL, "dbaas-operator", "s3cr3t")
-	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	_ = c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
 
 	if !gotOK || gotUser != "dbaas-operator" || gotPass != "s3cr3t" {
 		t.Errorf("BasicAuth: got (%q,%q,ok=%v), want (dbaas-operator,s3cr3t,ok=true)", gotUser, gotPass, gotOK)
@@ -203,9 +295,9 @@ func TestBasicAuthClient_SetCredentialsHotSwap(t *testing.T) {
 	defer srv.Close()
 
 	c := NewBasicAuthClient(srv.URL, "dbaas-operator", "old-pass")
-	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	_ = c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
 	c.SetCredentials("dbaas-operator", "new-pass")
-	_ = c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+	_ = c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
 
 	if len(passwords) != 2 {
 		t.Fatalf("expected 2 requests, got %d", len(passwords))
@@ -237,7 +329,7 @@ func TestRegisterExternalDatabase_SerializesRequestBody(t *testing.T) {
 		UpdateConnectionProperties: true,
 	}
 	c := newClient(srv.URL, staticToken("test-token"))
-	if err := c.RegisterExternalDatabase(context.Background(), "ns", req); err != nil {
+	if err := c.RegisterExternalDatabase(requestContext(), "ns", req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -258,7 +350,7 @@ func TestRegisterExternalDatabase_HTTP200IsSuccess(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest()); err != nil {
+	if err := c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest()); err != nil {
 		t.Errorf("HTTP 200 should be success, got: %v", err)
 	}
 }
@@ -271,7 +363,7 @@ func TestRegisterExternalDatabase_HTTP201IsSuccess(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest()); err != nil {
+	if err := c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest()); err != nil {
 		t.Errorf("HTTP 201 should be success, got: %v", err)
 	}
 }
@@ -296,7 +388,7 @@ func TestRegisterExternalDatabase_NonSuccessReturnsAggregatorError(t *testing.T)
 			defer srv.Close()
 
 			c := newClient(srv.URL, staticToken("test-token"))
-			err := c.RegisterExternalDatabase(context.Background(), "ns", minimalExtDBRequest())
+			err := c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
 			}
@@ -319,7 +411,7 @@ func TestRegisterExternalDatabase_ContextCancellation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(requestContext())
 	cancel() // cancel immediately
 
 	c := newClient(srv.URL, staticToken("test-token"))
@@ -345,7 +437,7 @@ func TestApplyMicroserviceBalancingRules_UsesCorrectURLMethodAndBody(t *testing.
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	err := c.ApplyMicroserviceBalancingRules(context.Background(), "payments", []OnMicroserviceRuleRequest{{
+	err := c.ApplyMicroserviceBalancingRules(requestContext(), "payments", []OnMicroserviceRuleRequest{{
 		Type:          dbTypePostgresql,
 		Rules:         []RuleOnMicroservice{{Label: "zone=fast"}},
 		Microservices: []string{"billing-service"},
@@ -382,7 +474,7 @@ func TestApplyNamespaceBalancingRule_UsesCorrectURLMethodAndBody(t *testing.T) {
 
 	order := int64(3)
 	c := newClient(srv.URL, staticToken("test-token"))
-	err := c.ApplyNamespaceBalancingRule(context.Background(), "payments", "pg-fast", &NamespaceBalancingRuleRequest{
+	err := c.ApplyNamespaceBalancingRule(requestContext(), "payments", "pg-fast", &NamespaceBalancingRuleRequest{
 		Order: &order,
 		Type:  dbTypePostgresql,
 		Rule: NamespaceBalancingRuleBody{
@@ -419,7 +511,7 @@ func TestDeleteNamespaceBalancingRule_UsesCorrectURLAndMethod(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err != nil {
+	if err := c.DeleteNamespaceBalancingRule(requestContext(), "payments", "pg-fast"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if gotMethod != http.MethodDelete {
@@ -443,7 +535,7 @@ func TestDeleteNamespaceBalancingRule_SuccessStatuses(t *testing.T) {
 			defer srv.Close()
 
 			c := newClient(srv.URL, staticToken("test-token"))
-			if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err != nil {
+			if err := c.DeleteNamespaceBalancingRule(requestContext(), "payments", "pg-fast"); err != nil {
 				t.Errorf("HTTP %d should be success, got: %v", code, err)
 			}
 		})
@@ -462,7 +554,7 @@ func TestDeleteNamespaceBalancingRule_NonSuccessReturnsError(t *testing.T) {
 			defer srv.Close()
 
 			c := newClient(srv.URL, staticToken("test-token"))
-			if err := c.DeleteNamespaceBalancingRule(context.Background(), "payments", "pg-fast"); err == nil {
+			if err := c.DeleteNamespaceBalancingRule(requestContext(), "payments", "pg-fast"); err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
 			}
 		})
@@ -472,7 +564,7 @@ func TestDeleteNamespaceBalancingRule_NonSuccessReturnsError(t *testing.T) {
 func TestDeleteNamespaceBalancingRule_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(requestContext())
 	cancel()
 
 	c := newClient("http://127.0.0.1", staticToken("test-token"))
@@ -497,7 +589,7 @@ func TestApplyPermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T) 
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	err := c.ApplyPermanentBalancingRules(context.Background(), []PermanentBalancingRuleRequest{{
+	err := c.ApplyPermanentBalancingRules(requestContext(), []PermanentBalancingRuleRequest{{
 		DBType:             dbTypePostgresql,
 		PhysicalDatabaseID: "postgresql-prod-a",
 		Namespaces:         []string{"payments", "orders"},
@@ -533,7 +625,7 @@ func TestDeletePermanentBalancingRules_UsesCorrectURLMethodAndBody(t *testing.T)
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	err := c.DeletePermanentBalancingRules(context.Background(), []PermanentBalancingRuleDeleteRequest{{
+	err := c.DeletePermanentBalancingRules(requestContext(), []PermanentBalancingRuleDeleteRequest{{
 		DBType:     dbTypePostgresql,
 		Namespaces: []string{"payments"},
 	}})
@@ -566,7 +658,7 @@ func TestApplyConfig_UsesCorrectURLAndMethod(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if _, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload()); err != nil {
+	if _, err := c.ApplyConfig(requestContext(), minimalDeclarativePayload()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -593,7 +685,7 @@ func TestApplyConfig_HTTP200SyncResponse(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	got, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
+	got, err := c.ApplyConfig(requestContext(), minimalDeclarativePayload())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -621,7 +713,7 @@ func TestApplyConfig_HTTP202AsyncResponse(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	got, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
+	got, err := c.ApplyConfig(requestContext(), minimalDeclarativePayload())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -651,7 +743,7 @@ func TestApplyConfig_NonSuccessReturnsAggregatorError(t *testing.T) {
 			defer srv.Close()
 
 			c := newClient(srv.URL, staticToken("test-token"))
-			_, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload())
+			_, err := c.ApplyConfig(requestContext(), minimalDeclarativePayload())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
 			}
@@ -681,7 +773,7 @@ func TestApplyConfig_SerializesDeclarationVersion(t *testing.T) {
 	payload.DeclarationVersion = "v2"
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if _, err := c.ApplyConfig(context.Background(), payload); err != nil {
+	if _, err := c.ApplyConfig(requestContext(), payload); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -702,7 +794,7 @@ func TestApplyConfig_OmitsDeclarationVersionWhenEmpty(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if _, err := c.ApplyConfig(context.Background(), minimalDeclarativePayload()); err != nil {
+	if _, err := c.ApplyConfig(requestContext(), minimalDeclarativePayload()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -725,7 +817,7 @@ func TestGetOperationStatus_UsesCorrectURLAndMethod(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	if _, err := c.GetOperationStatus(context.Background(), "track-99"); err != nil {
+	if _, err := c.GetOperationStatus(requestContext(), "track-99"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -751,7 +843,7 @@ func TestGetOperationStatus_InProgressResponse(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	got, err := c.GetOperationStatus(context.Background(), "track-99")
+	got, err := c.GetOperationStatus(requestContext(), "track-99")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -779,7 +871,7 @@ func TestGetOperationStatus_AllTerminalStates(t *testing.T) {
 			defer srv.Close()
 
 			c := newClient(srv.URL, staticToken("test-token"))
-			got, err := c.GetOperationStatus(context.Background(), "tid")
+			got, err := c.GetOperationStatus(requestContext(), "tid")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -808,7 +900,7 @@ func TestGetOperationStatus_NonSuccessReturnsAggregatorError(t *testing.T) {
 			defer srv.Close()
 
 			c := newClient(srv.URL, staticToken("test-token"))
-			_, err := c.GetOperationStatus(context.Background(), "tid")
+			_, err := c.GetOperationStatus(requestContext(), "tid")
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
 			}
@@ -837,7 +929,7 @@ func TestGetOperationStatus_ParsesTmfMessage(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	_, err := c.GetOperationStatus(context.Background(), "tid")
+	_, err := c.GetOperationStatus(requestContext(), "tid")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -942,7 +1034,7 @@ func TestRegisterExternalDatabase_ParsesTmfMessage(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
+	err := c.RegisterExternalDatabase(requestContext(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -977,7 +1069,7 @@ func TestRegisterExternalDatabase_NonTmfBodyFallback(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
+	err := c.RegisterExternalDatabase(requestContext(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -1007,7 +1099,7 @@ func TestRegisterExternalDatabase_TmfEmptyMessageFallback(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	err := c.RegisterExternalDatabase(context.Background(), "test", minimalExtDBRequest())
+	err := c.RegisterExternalDatabase(requestContext(), "test", minimalExtDBRequest())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -1039,7 +1131,7 @@ func TestGetChangedSince_EmptyBodyReturnsError(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	got, err := c.GetChangedSince(context.Background(), nil, 0)
+	got, err := c.GetChangedSince(requestContext(), nil, 0)
 	if err == nil {
 		t.Fatalf("expected an error for an empty 200 body, got nil (result=%+v)", got)
 	}
@@ -1059,7 +1151,7 @@ func TestGetDatabaseByClassifier_EmptyBodyReturnsError(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	got, err := c.GetDatabaseByClassifier(context.Background(), "test-ns", dbTypePostgresql,
+	got, err := c.GetDatabaseByClassifier(requestContext(), "test-ns", dbTypePostgresql,
 		&GetByClassifierRequest{Classifier: map[string]any{"namespace": "test-ns"}})
 	if err == nil {
 		t.Fatalf("expected an error for an empty 200 body, got nil (result=%+v)", got)
@@ -1080,7 +1172,7 @@ func TestGetOperationStatus_EmptyBodyIsZeroValue(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, staticToken("test-token"))
-	got, err := c.GetOperationStatus(context.Background(), "tracking-123")
+	got, err := c.GetOperationStatus(requestContext(), "tracking-123")
 	if err != nil {
 		t.Fatalf("empty declarative body must not error, got %v", err)
 	}
@@ -1127,7 +1219,7 @@ func TestCreateDatabase_StatusHandling(t *testing.T) {
 			defer srv.Close()
 
 			pending, err := NewBasicAuthClient(srv.URL, "dbaas-operator", "s3cr3t").CreateDatabase(
-				context.Background(), "ns", &CreateDatabaseRequest{Type: "postgresql"})
+				requestContext(), "ns", &CreateDatabaseRequest{Type: "postgresql"})
 
 			if tt.wantErr {
 				if err == nil {

@@ -30,7 +30,10 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/netcracker/qubership-core-lib-go-error-handling/v3/tmf"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/xrequestid"
+	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/ctxhelper"
 	"github.com/netcracker/qubership-core-lib-go/v3/security/tokensource"
+	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 )
 
 const defaultTimeout = 30 * time.Second
@@ -113,6 +116,20 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		// so the warning is pure noise logged on every call (incl. the rotation poll loop).
 		SetDisableWarn(true).
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
+			if _, err := requestcontext.RequestID(r.Context()); err != nil {
+				return &RequestContextError{Cause: err}
+			}
+			if err := ctxhelper.AddSerializableContextData(r.Context(), func(name, value string) {
+				r.SetHeader(name, value)
+			}); err != nil {
+				return &RequestContextError{Cause: fmt.Errorf("serialize request context: %w", err)}
+			}
+			if r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME) == "" {
+				return &RequestContextError{Cause: fmt.Errorf(
+					"serialization did not add required header %s; verify that request-ID propagation is not restricted",
+					xrequestid.X_REQUEST_ID_HEADER_NAME)}
+			}
+
 			// M2M mode — fetch a fresh dbaas-audience token per request.
 			if c.getToken != nil {
 				token, err := c.getToken(r.Context())

@@ -17,11 +17,84 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
+	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 )
+
+func TestHandleAggregatorError_RequestContextFailureIsPermanent(t *testing.T) {
+	t.Parallel()
+
+	phase := dbaasv1.PhaseProcessing
+	var conditions []metav1.Condition
+	recorder := record.NewFakeRecorder(1)
+	obj := &dbaasv1.ExternalDatabase{}
+	contextErr := &aggregatorclient.RequestContextError{Cause: errors.New("request ID provider is not registered")}
+
+	result, err := handleAggregatorError(&phase, &conditions, 7, recorder, obj, contextErr, "request-123")
+	if err != nil {
+		t.Fatalf("handleAggregatorError() error = %v, want nil", err)
+	}
+	if !result.IsZero() {
+		t.Fatalf("handleAggregatorError() result = %+v, want zero result", result)
+	}
+	if phase != dbaasv1.PhaseInvalidConfiguration {
+		t.Fatalf("phase = %q, want %q", phase, dbaasv1.PhaseInvalidConfiguration)
+	}
+
+	ready := findCondition(conditions, conditionTypeReady)
+	if ready == nil || ready.Status != metav1.ConditionFalse || ready.Reason != EventReasonInvalidRequestContext {
+		t.Fatalf("Ready condition = %+v, want False/%s", ready, EventReasonInvalidRequestContext)
+	}
+	stalled := findCondition(conditions, conditionTypeStalled)
+	if stalled == nil || stalled.Status != metav1.ConditionTrue || stalled.Reason != EventReasonInvalidRequestContext {
+		t.Fatalf("Stalled condition = %+v, want True/%s", stalled, EventReasonInvalidRequestContext)
+	}
+
+	select {
+	case event := <-recorder.Events:
+		if !strings.Contains(event, corev1.EventTypeWarning+" "+EventReasonInvalidRequestContext) ||
+			!strings.Contains(event, "request ID provider is not registered") {
+			t.Fatalf("event = %q, want actionable InvalidRequestContext warning", event)
+		}
+	default:
+		t.Fatal("expected InvalidRequestContext warning event")
+	}
+}
+
+func TestHandlePollError_RequestContextFailureIsPermanent(t *testing.T) {
+	t.Parallel()
+
+	reconciler := &InternalDatabaseReconciler{Recorder: record.NewFakeRecorder(1)}
+	database := &dbaasv1.InternalDatabase{
+		ObjectMeta: metav1.ObjectMeta{Generation: 3},
+		Status:     dbaasv1.InternalDatabaseStatus{OperatorStatus: dbaasv1.OperatorStatus{Phase: dbaasv1.PhaseWaitingForDependency}},
+	}
+	contextErr := &aggregatorclient.RequestContextError{Cause: errors.New("request ID context is not initialized")}
+
+	result, err := reconciler.handlePollError(context.Background(), database, "tracking-123", "request-123", contextErr)
+	if err != nil {
+		t.Fatalf("handlePollError() error = %v, want nil", err)
+	}
+	if !result.IsZero() {
+		t.Fatalf("handlePollError() result = %+v, want zero result", result)
+	}
+	if database.Status.Phase != dbaasv1.PhaseInvalidConfiguration {
+		t.Fatalf("phase = %q, want %q", database.Status.Phase, dbaasv1.PhaseInvalidConfiguration)
+	}
+	stalled := findCondition(database.Status.Conditions, conditionTypeStalled)
+	if stalled == nil || stalled.Status != metav1.ConditionTrue || stalled.Reason != EventReasonInvalidRequestContext {
+		t.Fatalf("Stalled condition = %+v, want True/%s", stalled, EventReasonInvalidRequestContext)
+	}
+}
 
 // TestSetCondition_LastTransitionTime verifies that LastTransitionTime follows
 // Kubernetes API conventions: it is preserved when Status is unchanged,

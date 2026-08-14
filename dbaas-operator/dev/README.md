@@ -66,6 +66,14 @@ The script runs these steps in order:
 6. `kubectl apply` — creates namespace `test-ns`, its `NamespaceBinding`, the namespaced Secret **`Role`+`RoleBinding`** (`secret-rbac.yaml`), and secret `pg-credentials`
 7. Waits for `rollout status` on both deployments
 
+Re-running the script on an existing cluster rebuilds and reloads the images, but both
+Deployments keep their `:dev` tag, so Kubernetes sees no change and the pods keep running the
+previous build. Restart them to pick up the new images:
+
+```bash
+kubectl rollout restart deployment/dbaas-operator deployment/dbaas-aggregator -n dbaas-system
+```
+
 ## Test scenarios
 
 **Namespace ownership** is now declared through `NamespaceBinding` rather than a
@@ -184,6 +192,21 @@ a matching `DatabaseSecretClaim` would wait forever). The mock answers the get-o
 from `create-db-rules.json` (keyed by `originService`); missing rule → 200. See
 `idb-tenant-materialize.yaml`.
 
+An aggregator that creates the database **asynchronously** answers the same call with
+`202 Accepted`. Reproduce it with a `pendingCalls` budget on the rule:
+
+```json
+{ "tenant-svc-202": { "httpCode": 200, "pendingCalls": 3 } }
+```
+
+The first three get-or-create calls then answer `202 Accepted` with no usable credentials
+(`id`, `name` and `connectionProperties.password` are null), and the database stays invisible
+to get-by-classifier until the fourth call creates it. The operator reports
+`WaitingForDependency` with an **empty** `status.trackingId` and repeats the call until the
+database answers. Before that path was handled the same response left the `InternalDatabase`
+in `BackingOff` and the consuming pod on `FailedMount`. See `idb-tenant-materialize-202.yaml`
+and `dev/e2e-tenant-materialize-202.sh`.
+
 Expected output (`kubectl get internaldatabase -n test-ns`):
 
 ```
@@ -192,6 +215,7 @@ idb-success-sync         Succeeded              postgresql
 idb-success-async        Succeeded              postgresql
 idb-custom-keys          Succeeded              postgresql
 idb-tenant-materialize   Succeeded              postgresql
+idb-tenant-materialize-202  Succeeded           postgresql
 idb-400-bad-request      InvalidConfiguration   postgresql
 idb-401-unauthorized     BackingOff             postgresql
 idb-500-server-error     BackingOff             postgresql
@@ -207,6 +231,7 @@ idb-invalid-no-source    InvalidConfiguration   postgresql
 | `idb-success-async.yaml` | `idb-svc-async` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
 | `idb-custom-keys.yaml` | `idb-svc-custom-keys` | 202 (default) | `COMPLETED` (default) | `Succeeded` | `DatabaseProvisioned` | `False` |
 | `idb-tenant-materialize.yaml` | `idb-tenant` | 202 (default) | `COMPLETED` (default) + get-or-create 200 | `Succeeded` | `DatabaseProvisioned` | `False` |
+| `idb-tenant-materialize-202.yaml` | `tenant-svc-202` | 202 (default) | `COMPLETED` (default) + get-or-create 202 ×3, then 200 | `WaitingForDependency` while pending, then `Succeeded` | `ProvisioningStarted`, then `DatabaseProvisioned` | `False` |
 | `idb-400-bad-request.yaml` | `idb-svc-400` | 400 (rule) | — | `InvalidConfiguration` | `AggregatorRejected` | `True` |
 | `idb-401-unauthorized.yaml` | `idb-svc-401` | 401 (rule) | — | `BackingOff` | `Unauthorized` | `False` |
 | `idb-500-server-error.yaml` | `idb-svc-500` | 500 (rule) | — | `BackingOff` | `AggregatorError` | `False` |
@@ -340,6 +365,33 @@ It asserts:
 Restart the mock (`kubectl rollout restart deployment/dbaas-aggregator -n dbaas-system`) to
 clear the in-memory store, then apply the claim alone — it backs off on `DatabaseNotFound`
 until the `InternalDatabase` materializes its database. Pass `KEEP=1` to keep the CRs and Secret.
+
+#### asynchronous tenant materialization (`dev/e2e-tenant-materialize-202.sh`)
+
+The aggregator may answer the get-or-create with `202 Accepted` instead of creating the database
+on the spot: the response carries no credentials, and the database is not resolvable yet. The
+`tenant-svc-202` rule reproduces it with a `pendingCalls` budget of 3, so the operator has to
+retry the call three times before the database exists:
+
+```bash
+./dev/kind-up.sh                     # if not already up
+./dev/e2e-tenant-materialize-202.sh
+```
+
+It applies `idb-tenant-materialize-202.yaml` and `dsc-tenant-materialize-202.yaml` together —
+the pairing a service uses in production — and asserts:
+
+1. while the mock answers 202, the `InternalDatabase` reports `WaitingForDependency` with
+   `Ready=False/ProvisioningStarted`, `Stalled=False` and an **empty** `status.trackingId` (an
+   empty trackingId is what tells this wait apart from the async-provisioning wait), and the
+   claim's Secret does not exist yet;
+2. once the budget is spent, the `InternalDatabase` reaches `Succeeded`, the mock logs at least
+   two 202 answers (the operator did retry), the claim reaches `Succeeded` and its Secret
+   carries the tenant identity (`scope=tenant`, `tenantId=acme-202`).
+
+Before the operator accepted 202, step 1 ended in `BackingOff` and step 2 never happened. The
+pending budget lives in the mock process, so the script restarts the mock to keep repeated runs
+deterministic. Pass `KEEP=1` to keep the CRs and Secret.
 
 ### Changing rules without rebuilding
 

@@ -145,8 +145,8 @@ Preserve the runtime request exactly:
   the wire;
 - a runtime nested `customKeys` object maps to `spec.classifier.customKeys`;
 - `BaseDbParams.NamePrefix` maps to `InternalDatabase.spec.namePrefix`;
-- database-creation `BaseDbParams.Settings` map to `InternalDatabase.spec.settings` only when every
-  value is representable as a string;
+- database-creation `BaseDbParams.Settings` map to `InternalDatabase.spec.settings`; preserve each
+  value's JSON type instead of converting it to a string;
 - `BaseDbParams.Role` maps to `DatabaseSecretClaim.spec.userRole` exactly, including the difference
   between omitted/empty and an explicit role;
 - connection-pool, migration, retry, and client options remain application configuration;
@@ -154,9 +154,8 @@ Preserve the runtime request exactly:
   `BLOCKED` unless the target operator/aggregator contract proves a mapping.
 
 When replacing a legacy `DatabaseDeclaration`, preserve explicit `versioningConfig` and
-`initialInstantiation` only after verifying that its classifier matches the runtime request. Block
-array, boolean, or nested settings until their exact string encoding is defined by the target
-operator contract.
+`initialInstantiation` only after verifying that its classifier matches the runtime request.
+Preserve array, boolean, numeric, null, and nested settings as their corresponding YAML values.
 
 Mongo's default classifier adds top-level `dbClassifier: default`. Preserve it under `extraKeys`.
 Apply the same rule to any custom top-level classifier extension.

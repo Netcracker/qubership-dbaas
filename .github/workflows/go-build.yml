@@ -33,6 +33,46 @@ jobs:
       go-module-dir: 'dbaas-operator'
     secrets: inherit
 
+  test-agent-packages:
+    name: Test agent packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install test dependencies
+        run: >-
+          python -m pip install
+          --disable-pip-version-check
+          --no-input
+          --requirement dbaas-operator/agent-packages/requirements-test.txt
+
+      - name: Run agent package tests
+        working-directory: dbaas-operator
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          found=false
+          for test_dir in agent-packages/*/tests; do
+            if [ ! -d "$test_dir" ]; then
+              continue
+            fi
+            found=true
+            python -m unittest discover -s "$test_dir" -v
+          done
+          if [ "$found" != true ]; then
+            echo "::error::No agent package test directories were found"
+            exit 1
+          fi
+
   # CRDs, DeepCopy and the chart's CRD templates are generated from the markers in
   # api/v1. Regenerate them here and fail if anything differs from what was committed,
   # so a stale artifact cannot reach the chart. The Helm CRD templates used to be

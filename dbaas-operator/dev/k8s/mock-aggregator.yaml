@@ -157,7 +157,8 @@ data:
   # Per-originService response rules for the get-or-create database call
   # PUT /api/v3/dbaas/{ns}/databases — the operator's pinned-tenant materialization
   # for a tenant InternalDatabase. Falls back to 200 (success) when no rule matches;
-  # the rule below is illustrative, to simulate a materialization failure on demand.
+  # the rules below are illustrative: one simulates a materialization failure, the other
+  # an asynchronous creation (202 Accepted, no credentials yet) for the first N calls.
   create-db-rules.json: |
     {
       "tenant-svc-500": {
@@ -165,6 +166,10 @@ data:
         "tmfCode": "CORE-DBAAS-2000",
         "reason": "Unexpected exception",
         "message": "Unexpected exception"
+      },
+      "tenant-svc-202": {
+        "httpCode": 200,
+        "pendingCalls": 3
       }
     }
 ---

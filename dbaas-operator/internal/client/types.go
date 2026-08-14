@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 // ─── Declarative API ──────────────────────────────────────────────────────────
@@ -159,13 +161,13 @@ type PermanentBalancingRuleDeleteRequest struct {
 type DatabaseDeclarationSpecWire struct {
 	// ClassifierConfig wraps the classifier flat map.
 	// Mirrors InternalDatabase.ClassifierConfig (static nested class).
-	ClassifierConfig     ClassifierConfigWire      `json:"classifierConfig"`
-	Type                 string                    `json:"type"`
-	Lazy                 bool                      `json:"lazy,omitempty"`
-	Settings             map[string]string         `json:"settings,omitempty"`
-	NamePrefix           string                    `json:"namePrefix,omitempty"`
-	VersioningConfig     *VersioningConfigWire     `json:"versioningConfig,omitempty"`
-	InitialInstantiation *InitialInstantiationWire `json:"initialInstantiation,omitempty"`
+	ClassifierConfig     ClassifierConfigWire            `json:"classifierConfig"`
+	Type                 string                          `json:"type"`
+	Lazy                 bool                            `json:"lazy,omitempty"`
+	Settings             map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
+	NamePrefix           string                          `json:"namePrefix,omitempty"`
+	VersioningConfig     *VersioningConfigWire           `json:"versioningConfig,omitempty"`
+	InitialInstantiation *InitialInstantiationWire       `json:"initialInstantiation,omitempty"`
 }
 
 // ClassifierConfigWire mirrors InternalDatabase.ClassifierConfig in dbaas-aggregator:
@@ -262,6 +264,21 @@ type ChangedDatabasesResponse struct {
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
+
+// RequestContextError reports a local request-context invariant violation.
+// It is deterministic and retrying the same call cannot fix it, so controllers
+// classify it as InvalidConfiguration rather than a transport failure.
+type RequestContextError struct {
+	Cause error
+}
+
+func (e *RequestContextError) Error() string {
+	return fmt.Sprintf("invalid aggregator request context: %v", e.Cause)
+}
+
+func (e *RequestContextError) Unwrap() error {
+	return e.Cause
+}
 
 // AggregatorError represents a non-2xx HTTP response from dbaas-aggregator.
 type AggregatorError struct {
