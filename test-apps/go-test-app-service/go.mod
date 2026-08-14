@@ -4,8 +4,8 @@ go 1.26.6
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.6.3
-	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.4.9
+	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.0
+	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.0
 	github.com/netcracker/qubership-core-lib-go/v3 v3.13.5
 	github.com/uptrace/bun v1.2.18
 )
