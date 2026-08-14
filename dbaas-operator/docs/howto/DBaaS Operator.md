@@ -2473,14 +2473,14 @@ Deployment template or patch the rendered Deployment.
 ### Reconcile Backoff
 
 When a reconcile attempt fails with a transient error (Secret not found, aggregator 5xx, network error, etc.), the
-controller does not retry immediately. Each named controller has its own composite rate limiter: a per-object
-**exponential backoff** whose delay doubles on consecutive failures, plus a controller-wide token bucket capped at
-10 retries per second with a burst of 100. Keeping the limiters separate prevents failures for one resource kind from
-changing the retry history of another kind that happens to have the same namespace and name.
+controller does not retry immediately. Each named controller has its own per-object **exponential backoff** rate
+limiter whose delay doubles on consecutive failures. Keeping the limiters separate prevents failures for one resource
+kind from changing the retry history of another kind that happens to have the same namespace and name.
 
 This behavior is controlled by the two backoff [startup flags](#startup-flags): `--backoff-base-delay`
 (default `1s`) doubles on each consecutive failure for the same object, up to `--backoff-max-delay`
-(default `5m`). A random jitter of up to 10% is added without exceeding that cap, which spreads retries after a
+(default `5m`). Before the cap, a random jitter of up to 10% is added without exceeding it. At the cap, jitter is
+applied downward, producing a delay between 90% and 100% of the cap. This keeps retries spread out during a prolonged
 shared dependency outage. The chart exposes no values for these delays, so tuning means editing the Deployment `args`.
 
 **Backoff does not cover every retry.** Several paths requeue after a fixed interval with no error, which
@@ -2503,10 +2503,9 @@ bypasses the rate limiter entirely:
 | 3rd | 4s to 4.4s |
 | 4th | 8s to 8.8s |
 | … | … (doubles each time) |
-| N-th | up to 5m (cap) |
+| N-th (at cap) | 4m30s to 5m |
 
-The counter is reset when a reconcile succeeds — the next failure starts from `--backoff-base-delay` again. The
-counter is local to that controller and object; a reconcile of another resource kind cannot increment or reset it.
+The counter is reset when a reconcile succeeds — the next failure starts from `--backoff-base-delay` again.
 
 **To tune** (example Deployment args):
 

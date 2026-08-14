@@ -36,7 +36,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -564,7 +563,7 @@ func pollProgressMessage(resp *aggregatorclient.DeclarativeResponse) string {
 
 // SetupWithManager registers watches for spec changes and NamespaceBinding fan-out.
 // Timer-based polling requeues bypass watch predicates.
-func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.InternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
@@ -576,7 +575,7 @@ func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 			// The binding status is written by its own controller; only create, delete,
 			// and spec changes can affect ownership, so status-only updates are ignored.
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("internaldatabase").
 		Complete(r)
 }

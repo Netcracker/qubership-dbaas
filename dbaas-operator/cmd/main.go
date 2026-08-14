@@ -39,7 +39,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -192,11 +191,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	controllerOptions := func() ctrlcontroller.Options {
-		return newControllerOptions(backoffBaseDelay, backoffMaxDelay)
-	}
-	setupLog.Infof("Backoff configured base=%v max=%v rate=%v burst=%d jitter=%v",
-		backoffBaseDelay, backoffMaxDelay, controllerRateLimit, controllerRateBurst, backoffJitterMaxFactor)
+	rateLimiterConfig := controller.NewRateLimiterConfig(backoffBaseDelay, backoffMaxDelay)
+	setupLog.Infof("Backoff configured base=%v max=%v jitter=%v",
+		backoffBaseDelay, backoffMaxDelay, "10%")
 
 	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
 	controller.RegisterResourceMetrics(mgr.GetClient(), ownershipResolver, cloudNamespace)
@@ -229,7 +226,7 @@ func main() {
 		MyNamespace: cloudNamespace,
 		Ownership:   ownershipResolver,
 		Checker:     blockingChecker,
-	}).SetupWithManager(mgr, controllerOptions()); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
 		os.Exit(1)
 	}
@@ -250,7 +247,7 @@ func main() {
 			setupLog.Infof("Ignoring invalid DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL=%q, using default", v)
 		}
 	}
-	if err := externalDatabaseReconciler.SetupWithManager(mgr, controllerOptions()); err != nil {
+	if err := externalDatabaseReconciler.SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
 		os.Exit(1)
 	}
@@ -261,7 +258,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
 		Ownership:  ownershipResolver,
-	}).SetupWithManager(mgr, controllerOptions()); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
 		os.Exit(1)
 	}
@@ -272,7 +269,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   recorderFor(mgr, "internaldatabase", eventsEnabled),
 		Ownership:  ownershipResolver,
-	}).SetupWithManager(mgr, controllerOptions()); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
 		os.Exit(1)
 	}
@@ -284,7 +281,7 @@ func main() {
 		Recorder:    recorderFor(mgr, "balancingrule", eventsEnabled),
 		Ownership:   ownershipResolver,
 		MyNamespace: cloudNamespace,
-	}).SetupWithManager(mgr, controllerOptions); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
 		os.Exit(1)
 	}
@@ -295,7 +292,7 @@ func main() {
 		Aggregator: aggregator,
 		Recorder:   recorderFor(mgr, "databasesecretclaim", eventsEnabled),
 		Ownership:  ownershipResolver,
-	}).SetupWithManager(mgr, controllerOptions()); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseSecretClaim: %v", err)
 		os.Exit(1)
 	}
