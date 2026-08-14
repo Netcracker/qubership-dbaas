@@ -117,10 +117,10 @@ github.com/moby/sys/userns v0.1.0 h1:tVLXkFOxVu9A64/yh59slHVv9ahO9UIev4JZusOLG/g
 github.com/moby/sys/userns v0.1.0/go.mod h1:IHUYgu/kao6N8YZlp9Cf444ySSvCmDlmzUcYfDHOl28=
 github.com/moby/term v0.5.2 h1:6qk3FJAFDs6i/q3W/pQ97SX192qKfZgGjCQqfCJkgzQ=
 github.com/moby/term v0.5.2/go.mod h1:d3djjFCrjnB+fl8NJux+EJzu0msscUP+f8it8hPkFLc=
-github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.6.3 h1:ArdNDbB+7hR777Xrk2n16K8z027kw1OUoLvfOgxC0AE=
-github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.6.3/go.mod h1:r6MxQyCHHACgADwwMlScHvOcloGuBA6+QYGTJts3FIY=
-github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.4.9 h1:ehhKDSEo+sVa0To/RP3tZux2gSCs5ln8kRW8dmA37RQ=
-github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.4.9/go.mod h1:FuIdDM6uDHpt63arBBWj5+8QPZ0/jQSFWaEyQK6ofmY=
+github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.0 h1:Mct5b5B6rKrE+LuTHdWuCKmjAK1bYP8HCHOsbhkljA8=
+github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.0/go.mod h1:2CBDc7+mn1bnMTMWGCYrVVQyP7MRWWHkiJXSYO4o67I=
+github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.0 h1:xlb1ge7HdKeUCNtRWN6gJfV4n6YILCdaDbDjZhHRpDs=
+github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.0/go.mod h1:6V/HfG7Lx7OQ8q/FxWNS2CHTkgHEgx1n/MUS+WBfz1c=
 github.com/netcracker/qubership-core-lib-go/v3 v3.13.5 h1:QR/RNcjHVf9cW0h0FAiPEjA7wAw+0oMEN/uwaRik9vk=
 github.com/netcracker/qubership-core-lib-go/v3 v3.13.5/go.mod h1:JsebYnve9uz4MsRUHQ95EfTgmH25yFGYbyfIUkpvm/M=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
