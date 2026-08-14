@@ -4,57 +4,101 @@ import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.service.BlueGreenService;
+import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
 import com.netcracker.core.scheduler.po.DataContext;
-
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
+import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.PROCESSING;
+import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.PG_TYPE;
+import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.POSTGRES_ADAPTER_ID;
 import static org.mockito.Mockito.*;
 
+@ExtendWith(MockitoExtension.class)
 class BackupDatabaseTaskTest {
-    @Test
-    void executeTask() {
-        UUID registryId = UUID.randomUUID();
-        UUID backupId = UUID.randomUUID();
-        String namespace = "namespace";
+    private final UUID backupId = UUID.randomUUID();
+    private final String namespace = "namespace";
 
-        DataContext dataContext = Mockito.mock(DataContext.class);
-        CloneDatabaseProcessObject processObject = new CloneDatabaseProcessObject();
+    @Mock
+    DataContext dataContext;
+    @Mock
+    BlueGreenService blueGreenService;
+    @Mock
+    LogicalDbDbaasRepository logicalDbDbaasRepository;
+    @Mock
+    DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
+    @InjectMocks
+    BackupDatabaseTask backupDatabaseTask;
+
+    private CloneDatabaseProcessObject processObject;
+
+    @BeforeEach
+    void setUp() {
+        DatabaseDeclaration declaration = new DatabaseDeclaration();
+        declaration.setType(PG_TYPE);
+
+        processObject = new CloneDatabaseProcessObject();
         processObject.setBackupId(backupId);
         processObject.setSourceNamespace(namespace);
-        processObject.setConfig(new DatabaseDeclarativeConfig(new DatabaseDeclaration(), new TreeMap<>(), namespace));
-        doReturn(processObject).when(dataContext).get(eq("processObject"));
+        processObject.setSourceClassifier(new TreeMap<>());
+        processObject.setConfig(new DatabaseDeclarativeConfig(declaration, new TreeMap<>(), namespace));
 
-        BlueGreenService blueGreenService = mock(BlueGreenService.class);
-        LogicalDbDbaasRepository logicalDbDbaasRepository = mock(LogicalDbDbaasRepository.class);
-        DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository = mock(DatabaseRegistryDbaasRepository.class);
-        DatabaseRegistry databaseRegistry = mock(DatabaseRegistry.class);
+        when(dataContext.get("processObject")).thenReturn(processObject);
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+    }
 
-        doReturn(null).when(blueGreenService).createDatabaseBackup(backupId, namespace, registryId);
-        doReturn(databaseRegistryDbaasRepository).when(logicalDbDbaasRepository).getDatabaseRegistryDbaasRepository();
-        doReturn(registryId).when(databaseRegistry).getId();
-        AtomicInteger retryCount = new AtomicInteger(0);
-        doAnswer(invocation -> {
-            if (retryCount.incrementAndGet() < 5) {
-                return Optional.empty();
-            } else {
-                return Optional.of(databaseRegistry);
-            }
-        }).when(databaseRegistryDbaasRepository).getDatabaseByClassifierAndType(processObject.getSourceClassifier(), processObject.getConfig().getType());
+    @Test
+    void testExecuteTask_shouldWaitUntilSourceDatabaseIsReady() {
+        DatabaseRegistry processingRegistryWithoutAdapter = databaseRegistry(PROCESSING, null);
+        DatabaseRegistry processingRegistry = databaseRegistry(PROCESSING, POSTGRES_ADAPTER_ID);
+        DatabaseRegistry readyRegistry = databaseRegistry(CREATED, POSTGRES_ADAPTER_ID);
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(
+                processObject.getSourceClassifier(), processObject.getConfig().getType()))
+                .thenReturn(Optional.empty(), Optional.of(processingRegistryWithoutAdapter),
+                        Optional.of(processingRegistry), Optional.of(readyRegistry));
 
-        BackupDatabaseTask backupDatabaseTask = new BackupDatabaseTask();
-        backupDatabaseTask.blueGreenService = blueGreenService;
-        backupDatabaseTask.logicalDbDbaasRepository = logicalDbDbaasRepository;
         backupDatabaseTask.executeTask(dataContext);
-        verify(databaseRegistryDbaasRepository, times(5)).getDatabaseByClassifierAndType(processObject.getSourceClassifier(), processObject.getConfig().getType());
-        verify(blueGreenService, times(1)).createDatabaseBackup(backupId, namespace, registryId);
+
+        verify(databaseRegistryDbaasRepository, times(4)).getDatabaseByClassifierAndType(
+                processObject.getSourceClassifier(), processObject.getConfig().getType());
+        verify(blueGreenService).createDatabaseBackup(backupId, namespace, readyRegistry.getId());
+    }
+
+    @Test
+    void testExecuteTask_shouldStartBackupImmediatelyForReadySourceDatabase() {
+        DatabaseRegistry readyRegistry = databaseRegistry(CREATED, POSTGRES_ADAPTER_ID);
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(
+                processObject.getSourceClassifier(), processObject.getConfig().getType()))
+                .thenReturn(Optional.of(readyRegistry));
+
+        backupDatabaseTask.executeTask(dataContext);
+
+        verify(databaseRegistryDbaasRepository).getDatabaseByClassifierAndType(
+                processObject.getSourceClassifier(), processObject.getConfig().getType());
+        verify(blueGreenService).createDatabaseBackup(backupId, namespace, readyRegistry.getId());
+    }
+
+    private DatabaseRegistry databaseRegistry(AbstractDbState.DatabaseStateStatus state,
+                                              String adapterId) {
+        return new DatabaseBuilder()
+                .state(state)
+                .adapterId(adapterId)
+                .registry()
+                .build()
+                .getDatabaseRegistry()
+                .getFirst();
     }
 }
