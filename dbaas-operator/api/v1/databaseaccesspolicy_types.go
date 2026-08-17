@@ -67,6 +67,14 @@ type PolicyRole struct {
 // Field names and semantics match the RolesRegistration Java class in the aggregator.
 // At least one of services or policy must be provided.
 type DatabaseAccessPolicySpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// microserviceName is the microservice that owns this policy.
 	// Mapped to metadata.microserviceName in the DBaaS declarative payload.
 	// Immutable after creation — repointing a DatabaseAccessPolicy CR at a different

@@ -10,9 +10,8 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
 | `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DatabaseAccessPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`), `changed.json` (rotation feed), `get-by-classifier.json` (DatabaseSecretClaim connection properties by `originService`), `create-db-rules.json` (InternalDatabase tenant get-or-create by `originService`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator — watches CRs cluster-wide; Secret access is **namespaced** (no cluster-wide Secret RBAC) |
-| `Role`/`RoleBinding` `dbaas-operator` | `dbaas-system` | Operator's own-namespace RBAC (leases, events, permanentbalancingrules) — **no Secret access** |
+| `Role`/`RoleBinding` `dbaas-operator` | `dbaas-system` | Operator's own-namespace RBAC (leases and events) — **no Secret access** |
 | Namespace `test-ns` | — | Working namespace for CRs |
-| `NamespaceBinding/binding` | `test-ns` | Claims `test-ns` for this operator (operatorNamespace=`dbaas-system`) |
 | `Role`/`RoleBinding` `dbaas-operator-secrets` | `test-ns` | **Per-namespace Secret access for the operator** — required because the operator has no cluster-wide Secret RBAC |
 | Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabase |
 
@@ -63,7 +62,8 @@ The script runs these steps in order:
 3. `docker build` — builds `dbaas-operator:dev` and `aggregator-mock:dev` images
 4. `kind load docker-image` — loads images into the cluster (no registry required)
 5. `kubectl apply` — deploys aggregator-mock and the operator into `dbaas-system`
-6. `kubectl apply` — creates namespace `test-ns`, its `NamespaceBinding`, the namespaced Secret **`Role`+`RoleBinding`** (`secret-rbac.yaml`), and secret `pg-credentials`
+6. `kubectl apply` — creates namespace `test-ns`, its namespaced Secret **`Role`+`RoleBinding`**
+   (`secret-rbac.yaml`), and secret `pg-credentials`
 7. Waits for `rollout status` on both deployments
 
 Re-running the script on an existing cluster rebuilds and reloads the images, but both
@@ -76,13 +76,27 @@ kubectl rollout restart deployment/dbaas-operator deployment/dbaas-aggregator -n
 
 ## Test scenarios
 
-**Namespace ownership** is now declared through `NamespaceBinding` rather than a
-`--watch-namespaces` flag.  The operator runs cluster-wide but only reconciles
-resources in namespaces where a `NamespaceBinding` named `binding` exists
-and its `spec.operatorNamespace` matches the operator's own namespace (`CLOUD_NAMESPACE`).
+**Operator assignment** is declared on each managed CR through required, immutable
+`spec.operatorNamespace`. The operator runs cluster-wide and reconciles a CR only when that
+value matches its own namespace (`CLOUD_NAMESPACE`). All local test CRs use `dbaas-system`.
 
-`dev/test-resources/namespacebinding.yaml` (included in the directory) creates
-the binding for `test-ns` automatically when you apply the full directory.
+### All managed CR kinds and operator assignment
+
+Run the complete reconciliation smoke test after `kind-up.sh`:
+
+```bash
+bash dev/e2e-all-crs.sh
+```
+
+The script leaves its successful resources in place for OpenLens inspection. It creates two
+`ExternalDatabase`, two `InternalDatabase`, two `DatabaseSecretClaim`, one
+`DatabaseAccessPolicy`, one `MicroserviceBalancingRule`, and one `NamespaceBalancingRule` in
+`test-ns`, all assigned to `dbaas-system`. It creates the permanent singleton in
+`dbaas-system`, temporarily creates a misplaced permanent singleton in `test-ns` to prove it
+reaches `InvalidConfiguration` without an aggregator call, and then removes that negative case.
+For every successful CR it checks `Succeeded`, `Ready=True`, and
+`status.observedGeneration == metadata.generation`; it also verifies both claimed Secrets and
+the tenant materialization path.
 
 ### Secret access is namespaced
 
@@ -90,27 +104,24 @@ The operator deploy holds **no Secret RBAC at all** — not cluster-wide, and no
 namespace (it reads its own aggregator credentials from a mounted volume, not the API). It can
 read/write Secrets only in a namespace where a `Role` + `RoleBinding` grant its ServiceAccount
 (`dbaas-operator` in `dbaas-system`) access. So **every namespace it works in must have such a
-`Role` + `RoleBinding` installed alongside its `NamespaceBinding`** — otherwise `ExternalDatabase`
+`Role` + `RoleBinding` installed** — otherwise `ExternalDatabase`
 (reads a referenced credential Secret) and `DatabaseSecretClaim` (creates the owned Secret) fail
 with `forbidden`.
 
 `dev/test-resources/secret-rbac.yaml` provisions this for `test-ns`, and `kind-up.sh` applies it
-next to the `NamespaceBinding` — exactly as a real namespace onboarding would. The granted verbs
+as part of namespace onboarding. The granted verbs
 are the minimum the operator uses: `get, create, update, patch` (no `list`/`watch` — there is no
 Secret informer; no `delete` — owned Secrets are garbage-collected via ownerReferences). See
 `config/samples/namespaced-secret-rbac.yaml` for the production-shaped template.
 
-> The operator is deployed **without a self-`NamespaceBinding`** for its own namespace, and its
-> own-namespace `Role` grants **no Secret access** — the operator reads its own aggregator
-> credentials from a mounted volume, not the API. It reconciles CRs in a namespace only once a
-> `NamespaceBinding` for it exists, so to manage CRs in `dbaas-system` too, create both a
-> `NamespaceBinding` and a `dbaas-operator-secrets` `Role`+`RoleBinding` there (as for `test-ns`).
+> The operator's own-namespace `Role` grants **no Secret access** — the operator reads its own
+> aggregator credentials from a mounted volume, not the API. If Secret-backed CRs are created in
+> `dbaas-system`, add a `dbaas-operator-secrets` `Role`+`RoleBinding` there too.
 
 Apply all test CRs at once and observe their phases:
 
 ```bash
 kubectl apply -f dev/test-resources/ -n test-ns
-kubectl get namespacebinding -n test-ns       # binding   dbaas-system
 kubectl get externaldatabase -n test-ns
 kubectl get databaseaccesspolicy -n test-ns
 kubectl get internaldatabase -n test-ns
@@ -440,7 +451,7 @@ kubectl apply -f dev/test-resources/dap-401.yaml -n test-ns
 kubectl delete internaldatabase -n test-ns idb-401-unauthorized
 kubectl apply -f dev/test-resources/idb-401-unauthorized.yaml -n test-ns
 
-# Redeploy all test resources at once (NamespaceBinding is preserved — it has a deletion-protection finalizer)
+# Redeploy all test resources at once
 kubectl delete externaldatabase,databaseaccesspolicy,internaldatabase -n test-ns --all
 kubectl apply -f dev/test-resources/ -n test-ns
 ```
@@ -471,7 +482,6 @@ dev/
 │   └── operator.yaml           # ServiceAccount + RBAC + Deployment for the operator
 └── test-resources/
     ├── namespace.yaml               # namespace test-ns
-    ├── namespacebinding.yaml        # NamespaceBinding/binding — claims test-ns (operatorNamespace=dbaas-system)
     ├── secret-rbac.yaml             # namespaced Secret Role+RoleBinding for test-ns
     ├── secret.yaml                  # Secret pg-credentials (and pg-credentials-incomplete)
     │

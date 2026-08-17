@@ -215,6 +215,16 @@ spec:
                 x-kubernetes-validations:
                 - message: spec.dbName is immutable after creation
                   rule: self == oldSelf
+              operatorNamespace:
+                description: |-
+                  operatorNamespace is the namespace where the dbaas-operator instance
+                  responsible for this resource is deployed. It must match that operator's
+                  CLOUD_NAMESPACE and is immutable after creation.
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: spec.operatorNamespace is immutable after creation
+                  rule: self == oldSelf
               type:
                 description: |-
                   type is the database engine type, e.g. "postgresql", "mongodb", "opensearch".
@@ -229,6 +239,7 @@ spec:
             - classifier
             - connectionProperties
             - dbName
+            - operatorNamespace
             - type
             type: object
           status:
@@ -241,10 +252,7 @@ spec:
                   False on any error, with Reason carrying the error category. Success
                   reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
                   (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
-                  ProvisioningStarted while the async operation runs), BindingRegistered
-                  (NamespaceBinding; BindingBlocked while deletion is deferred,
-                  BindingReleased once only other controllers' finalizers keep the object
-                  alive, OwnershipCheckError when listing blocking resources fails).
+                  ProvisioningStarted while the async operation runs).
                   Stalled=True marks a permanent error; the controller does not retry
                   until the spec changes. Stalled=False covers successful, ongoing, and
                   retriable states.
@@ -309,10 +317,9 @@ spec:
               lastRequestId:
                 description: |-
                   lastRequestId is the X-Request-Id of the most recent reconcile attempt
-                  that wrote this status; a reconcile that leaves the status untouched (for
-                  example a steady-state NamespaceBinding reconcile) keeps the previous
-                  value. Use it to correlate operator logs with dbaas-aggregator logs when
-                  investigating issues for a specific resource.
+                  that wrote this status; a reconcile that leaves the status untouched keeps
+                  the previous value. Use it to correlate operator logs with
+                  dbaas-aggregator logs when investigating issues for a specific resource.
                 type: string
               observedGeneration:
                 description: |-

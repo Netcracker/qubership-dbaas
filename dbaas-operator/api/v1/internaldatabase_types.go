@@ -56,6 +56,14 @@ type InitialInstantiation struct {
 //
 // Field names and semantics match the InternalDatabase Java DTO in the aggregator.
 type InternalDatabaseSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// classifier uniquely identifies this database in dbaas.
 	// The aggregator uses it to look up or create the physical database.
 	// Required keys: microserviceName, scope.

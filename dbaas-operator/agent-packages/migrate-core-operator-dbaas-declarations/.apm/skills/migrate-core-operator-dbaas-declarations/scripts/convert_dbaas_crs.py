@@ -56,6 +56,11 @@ def main() -> int:
     parser.add_argument("--output", required=True, help="Output YAML file")
     parser.add_argument("--service-name")
     parser.add_argument("--namespace", default="{{ .Values.NAMESPACE }}")
+    parser.add_argument(
+        "--operator-namespace",
+        required=True,
+        help="Namespace of the dbaas-operator instance that will manage the generated resources",
+    )
     parser.add_argument("--name-prefix", default="")
     args = parser.parse_args()
     args.service_name_explicit = args.service_name is not None
@@ -244,6 +249,7 @@ def convert_database_declaration(
         )
 
     spec: dict[str, Any] = {
+        "operatorNamespace": args.operator_namespace,
         "classifier": target_classifier,
     }
 
@@ -403,7 +409,10 @@ def convert_db_policy(
         microservice_name = "TODO-service-name"
         warnings.append("DatabaseAccessPolicy.spec.microserviceName could not be derived")
 
-    spec: dict[str, Any] = {"microserviceName": normalize_service_template(str(microservice_name), args.service_name)}
+    spec: dict[str, Any] = {
+        "operatorNamespace": args.operator_namespace,
+        "microserviceName": normalize_service_template(str(microservice_name), args.service_name),
+    }
     for field in ("services", "policy"):
         if field in body:
             spec[field] = body[field]

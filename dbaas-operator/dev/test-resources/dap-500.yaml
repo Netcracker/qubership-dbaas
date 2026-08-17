@@ -4,6 +4,7 @@ metadata:
   name: dap-500
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   # microserviceName "svc-500" matches apply-rules.json → mock returns 500 CORE-DBAAS-2000
   # Expected result: Phase=BackingOff, Stalled=False, reason=AggregatorError (retrying)
   microserviceName: svc-500

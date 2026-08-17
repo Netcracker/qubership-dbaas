@@ -345,7 +345,7 @@ as `cmd/` and `internal/client/`.)
   - `reconcileAndFetchObject[T]()` — reconcile then re-fetch.
   - `findCondition()` — locate a condition by type.
   - `expectRecordedEvent()` / `expectRecordedEventContaining()` — assert events.
-  - `mineOwnershipResolver()` / `foreignOwnershipResolver()` — pre-seed ownership cache.
+  - Set `spec.operatorNamespace` to the reconciler namespace or a foreign namespace to test operator eligibility.
 
 ### Running tests
 
@@ -443,14 +443,13 @@ cmd/credentials.go                    Basic Auth credential loader + Secret watc
 api/v1/*_types.go                     CRD schemas (all CRs are v1)
 api/v1/zz_generated.*.go              Auto-generated (DO NOT EDIT)
 internal/controller/*_controller.go   Reconciliation logic
-internal/controller/helpers.go        Shared condition/status/ownership utilities
+internal/controller/helpers.go        Shared condition/status/operator-eligibility utilities
 internal/controller/events.go         Event reason constants
 internal/controller/conditions.go     Condition type constants + timing intervals
 internal/controller/metrics.go        Prometheus metrics — definitions + recording helpers
 internal/controller/resource_metrics.go  Resource-state metrics (custom collector)
 internal/client/                      HTTP client for dbaas-aggregator
 internal/poller/                      Rotation poller (changed-databases feed)
-internal/ownership/                   Namespace ownership resolution
 config/                               Kustomize manifests (CRDs, RBAC, samples) — dev/test + envtest
 helm-templates/                       Helm chart templates (production install)
 dev/                                  Local development utilities (Kind, aggregator-mock)
@@ -460,7 +459,7 @@ docs/monitoring/                      Metrics & Grafana dashboard reference docs
 ### Custom Resources (all `dbaas.netcracker.com/v1`)
 
 `ExternalDatabase`, `InternalDatabase`, `DatabaseSecretClaim`, `DatabaseAccessPolicy`,
-`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`, `NamespaceBinding`.
+`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`.
 
 ---
 
@@ -479,10 +478,10 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result 
         return ctrl.Result{}, client.IgnoreNotFound(err)
     }
 
-    // 3. Check namespace ownership
-    owned, result, err := checkOwnership(ctx, r.Ownership, obj.Namespace, obj.Name, "MyResource")
-    if err != nil { return ctrl.Result{}, err }
-    if !owned  { return result, nil }
+    // 3. Check whether this CR is assigned to this operator instance
+    if !isEligibleForOperator(ctx, obj.Spec.OperatorNamespace, r.MyNamespace, obj.Namespace, obj.Name, "MyResource") {
+        return ctrl.Result{}, nil
+    }
 
     // 4. Snapshot + defer status patch
     original := obj.DeepCopy()
@@ -508,8 +507,6 @@ func (r *MyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Op
     return ctrl.NewControllerManagedBy(mgr).
         For(&myapi.MyResource{},
             builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-        Watches(&dbaasv1.NamespaceBinding{},
-            handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
         WithOptions(opts).
         Named("myresource").
         Complete(r)

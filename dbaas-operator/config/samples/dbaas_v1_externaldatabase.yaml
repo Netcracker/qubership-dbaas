@@ -3,6 +3,7 @@ kind: ExternalDatabase
 metadata:
   name: externaldatabase-sample
 spec:
+  operatorNamespace: dbaas-system
   classifier:
     namespace: dbaas-system
     microserviceName: sample-service

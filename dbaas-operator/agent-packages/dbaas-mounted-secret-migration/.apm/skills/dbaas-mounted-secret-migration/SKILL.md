@@ -108,8 +108,15 @@ place top-level extension keys directly in the classifier. Do not use `extraKeys
 
 Produce the inventory before making changes:
 
+Resolve the target operator namespace independently from the workload namespace. Prefer an explicit
+deployment value. When a cluster is available, verify it against the namespace of the intended
+`dbaas-operator` Deployment or Pod. If multiple operator instances exist, identify the one that must
+manage these CRs. If the value cannot be proven, stop generation and ask for it; never assume
+`dbaas-system` or reuse the workload namespace by default.
+
 ```json
 {
+  "operatorNamespace": "platform-dbaas",
   "datasources": [
     {
       "id": "orders-postgresql-service",
@@ -191,6 +198,8 @@ that identity, generate a claim. Use the canonical templates in
 
 Rules:
 
+- Set every generated CR's `spec.operatorNamespace` to the non-empty `operatorNamespace` recorded in
+  the inventory. Do not derive it from `metadata.namespace`.
 - Set `metadata.namespace` to the workload namespace.
 - Omit `classifier.namespace` and let the operator derive it, or set it to the workload namespace
   consistently in both resources. Never copy a differing legacy namespace.
@@ -237,6 +246,7 @@ Perform all applicable checks from [testing.md](references/testing.md):
 1. Run `scripts/validate_generated.py --inventory <inventory.json> <rendered-or-plain-yaml>`.
 1. Validate syntax and run client-side and server-side dry runs when a suitable cluster is present.
 1. Compare canonical classifiers and type between each InternalDatabase and claim.
+1. Verify every generated managed CR has the exact `spec.operatorNamespace` recorded in the inventory.
 1. Verify claim role against every client request role.
 1. Verify that all names are unique and DNS-compatible.
 1. Verify each claim Secret has at least one consuming volume/mount and every consumer uses the
@@ -251,6 +261,7 @@ multiple claims for one database.
 Report:
 
 - every discovered logical database identity and its evidence;
+- the target operator namespace and the evidence used to resolve it;
 - supported, dynamic, blocked, and ambiguous counts;
 - the deduplication decisions;
 - every generated or modified file;

@@ -252,7 +252,7 @@
                                           "id":  2,
                                           "type":  "timeseries",
                                           "title":  "Reconcile Triggers by Source (EDB)",
-                                          "description":  "Reconcile invocations for ExternalDatabase by trigger source (spec_change, namespace_binding_change).",
+                                          "description":  "Reconcile invocations for ExternalDatabase by trigger source.",
                                           "gridPos":  {
                                                           "h":  8,
                                                           "w":  24,
@@ -938,7 +938,7 @@
                    {
                        "id":  27,
                        "type":  "row",
-                       "title":  "Placement and Namespace Ownership",
+                       "title":  "Placement and Resource Lifecycle",
                        "collapsed":  true,
                        "gridPos":  {
                                        "h":  1,
@@ -951,10 +951,10 @@
                                           "id":  28,
                                           "type":  "timeseries",
                                           "title":  "Balancing Rule Desired vs Applied Targets",
-                                          "description":  "Compares placement intent from spec with the last applied state recorded in status. These counts do not prove referenced physical databases exist or independently read back aggregator state. No data means no owned balancing-rule CRs currently exist.",
+                                          "description":  "Compares placement intent from spec with the last applied state recorded in status. These counts do not prove referenced physical databases exist or independently read back aggregator state. No data means no balancing-rule CRs assigned to this operator currently exist.",
                                           "gridPos":  {
                                                           "h":  8,
-                                                          "w":  12,
+                                                          "w":  24,
                                                           "x":  0,
                                                           "y":  23
                                                       },
@@ -983,39 +983,6 @@
                                                               "expr":  "sum by (kind, resource_namespace, name, target_type) (max without (pod, instance) (dbaas_balancing_rule_applied_targets{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
                                                               "legendFormat":  "applied {{kind}} {{resource_namespace}}/{{name}} / {{target_type}}",
                                                               "refId":  "B"
-                                                          }
-                                                      ]
-                                      },
-                                      {
-                                          "id":  29,
-                                          "type":  "timeseries",
-                                          "title":  "NamespaceBinding States",
-                                          "description":  "Current namespace ownership state from this operator instance\u0027s point of view. deleting_with_finalizer means deletion is in progress and the protection finalizer remains; it does not by itself prove blocking resources still exist.",
-                                          "gridPos":  {
-                                                          "h":  8,
-                                                          "w":  12,
-                                                          "x":  12,
-                                                          "y":  23
-                                                      },
-                                          "datasource":  "$datasource",
-                                          "fieldConfig":  {
-                                                              "defaults":  {
-                                                                               "unit":  "short",
-                                                                               "custom":  {
-                                                                                              "lineWidth":  2
-                                                                                          }
-                                                                           }
-                                                          },
-                                          "options":  {
-                                                          "legend":  {
-                                                                         "displayMode":  "list",
-                                                                         "placement":  "bottom"
-                                                                     }
-                                                      },
-                                          "targets":  [
-                                                          {
-                                                              "expr":  "sum by (state) (max without (pod, instance) (dbaas_namespace_binding_state{cluster=~\"$cluster\",namespace=~\"$namespace\"}))",
-                                                              "legendFormat":  "{{state}}"
                                                           }
                                                       ]
                                       },

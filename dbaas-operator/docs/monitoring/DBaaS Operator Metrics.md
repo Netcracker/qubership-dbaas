@@ -94,7 +94,7 @@ The operator publishes two families of metrics:
 | `dbaas_aggregator_requests_total` | Counter | `controller`, `operation`, `result` | Calls to dbaas-aggregator by controller, operation, and outcome. The `result` label separates user errors (`spec_rejection`), local operator wiring errors (`configuration_error`), and platform errors (`auth_error`, `server_error`). |
 | `dbaas_aggregator_request_duration_seconds` | Histogram | `controller`, `operation` | Latency of HTTP calls to dbaas-aggregator. Buckets: `0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30` s. |
 | `dbaas_async_operation_duration_seconds` | Histogram | `result` | End-to-end duration of asynchronous `InternalDatabase` provisioning, from async submit (HTTP 202) to the final poll outcome. Buckets: `1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200` s. The submit timestamp is held in operator memory, so an operation that was in flight across an operator restart or a leadership change is never observed — `_count` under-reports completions after a restart. |
-| `dbaas_secret_resolution_errors_total` | Counter | `namespace`, `reason` | Failures reading the credential `Secret` referenced by an `ExternalDatabase`, scoped to namespaces owned by this operator instance. A non-zero value means a database may be left without valid credentials — direct service impact. |
+| `dbaas_secret_resolution_errors_total` | Counter | `namespace`, `reason` | Failures reading the credential `Secret` referenced by an `ExternalDatabase` assigned to this operator instance. A non-zero value means a database may be left without valid credentials — direct service impact. |
 
 > Histograms expose the usual `_bucket`, `_sum`, and `_count` series.
 >
@@ -108,16 +108,11 @@ The operator publishes two families of metrics:
 
 ## Resource-state metrics
 
-These gauges are emitted **only for resources in namespaces owned by this operator instance**
-(`PermanentBalancingRule` is read from the operator's own namespace; `NamespaceBinding` is reported
-for all namespaces with a `state` label, and additionally emits the phase / condition /
-observed-generation-lag gauges for bindings whose `spec.operatorNamespace` is this instance — only
-the owning instance writes `NamespaceBinding` status). They are derived from the CR object state the
-operator has listed/cached — `status` (phase, conditions, observed generation, rotation timestamps),
-`spec` (desired balancing-rule targets, `NamespaceBinding` ownership), and `metadata`
-(`deletionTimestamp`, finalizers) — **not** from an independent read-back of dbaas-aggregator.
-`dbaas_resource_deletion_state` is not emitted for `NamespaceBinding`: its deletion progress is
-already carried by `dbaas_namespace_binding_state` (`deleting_with_finalizer`).
+These gauges are emitted **only for resources assigned to this operator instance** through
+`spec.operatorNamespace == CLOUD_NAMESPACE`. The gauges are derived from the CR object state the operator has
+listed/cached — `status` (phase, conditions, observed generation, rotation timestamps), `spec`
+(operator assignment and desired balancing-rule targets), and `metadata` (`deletionTimestamp`,
+finalizers) — **not** from an independent read-back of dbaas-aggregator.
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
@@ -125,12 +120,11 @@ already carried by `dbaas_namespace_binding_state` (`deleting_with_finalizer`).
 | `dbaas_resource_condition` | Gauge | `kind`, `resource_namespace`, `name`, `condition`, `status`, `reason` | Value `1` per current status condition (e.g. `Ready`, `Stalled`) with its status and reason. |
 | `dbaas_resource_observed_generation_lag` | Gauge | `kind`, `resource_namespace`, `name` | `metadata.generation − status.observedGeneration`. `> 0` means the latest spec has not been fully reconciled yet. |
 | `dbaas_resource_deletion_state` | Gauge | `kind`, `resource_namespace`, `name`, `state` | Emitted only while a resource is being deleted. `state` is `deleting` or `deleting_with_finalizer`. |
-| `dbaas_namespace_binding_state` | Gauge | `resource_namespace`, `name`, `state` | Current `NamespaceBinding` state from this operator's point of view: `mine`, `foreign`, `deleting`, `deleting_with_finalizer`. |
 | `dbaas_balancing_rule_desired_targets` | Gauge | `kind`, `resource_namespace`, `name`, `target_type` | Desired balancing-rule target count from `spec` (operator intent). `kind` is limited to the three balancing-rule kinds. For `NamespaceBalancingRule` the value counts **rules**, not targets (`target_type="rule"`); `MicroserviceBalancingRule` counts microservices and `PermanentBalancingRule` counts namespaces. |
 | `dbaas_balancing_rule_applied_targets` | Gauge | `kind`, `resource_namespace`, `name`, `target_type` | Applied balancing-rule target count recorded in `status` (last operator-applied state). Same `kind` and `target_type` semantics as `dbaas_balancing_rule_desired_targets`. |
 | `dbaas_secret_claim_last_rotation_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp of the most recent connection-properties rotation applied by a `DatabaseSecretClaim`. Present only after the first rotation. |
 | `dbaas_secret_claim_first_not_found_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp when the current `DatabaseNotFound` streak started for a `DatabaseSecretClaim`. Present only while the claim's database is missing. |
-| `dbaas_resource_collector_success` | Gauge | `kind` | `1` if the latest resource-metrics collection for that CR kind succeeded, `0` if the list call failed. It is also `0` for `PermanentBalancingRule` when the operator namespace is unknown — in that case the collector emits no PBR series at all and never attempts the list. Watch for `0` — other resource-state series for that kind may be stale or missing. |
+| `dbaas_resource_collector_success` | Gauge | `kind` | `1` if the latest resource-metrics collection for that CR kind succeeded, `0` if the list call failed. Watch for `0` — other resource-state series for that kind may be stale or missing. |
 
 > **Caveat (balancing rules):** desired/applied target counts and applied state are operator
 > intent / last-applied snapshots. They do **not** prove the referenced physical database exists
@@ -216,12 +210,11 @@ appears first and is expanded by default; all detailed rows are collapsed until 
 | SecretClaim DatabaseNotFound Age | How long each claim's database has been missing | `dbaas_secret_claim_first_not_found_timestamp_seconds` |
 | SecretClaim Time Since Last Rotation | Time since the last connection-properties rotation | `dbaas_secret_claim_last_rotation_timestamp_seconds` |
 
-### Placement and Namespace Ownership
+### Placement and Resource Lifecycle
 
 | Panel | What it shows | Based on |
 |---|---|---|
-| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts. No data means no owned balancing-rule CRs currently exist. | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
-| NamespaceBinding States | NamespaceBindings by state (`mine` / `foreign` / `deleting` …) | `dbaas_namespace_binding_state` |
+| Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts. No data means no balancing-rule CRs assigned to this operator currently exist. | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
 | Resources being deleted | CRs currently in deletion. No data means no resources are being deleted. | `dbaas_resource_deletion_state` |
 
 ---
@@ -235,28 +228,23 @@ appears first and is expanded by default; all detailed rows are collapsed until 
 > The three balancing-rule kinds share one reconciler, so **aggregator-call** metrics group them
 > under `balancingrule`, while **reconcile-trigger** metrics use the per-kind names.
 >
-> `namespacebinding` is deliberately absent: the `NamespaceBinding` reconciler makes no aggregator calls
-> and records no trigger counters. The kind still appears in the resource-state metrics below.
-
 **`kind`** (CamelCase; resource-state metrics):
 `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`,
-`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`, `NamespaceBinding`.
+`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`.
 
 **`trigger`** (what caused a reconcile):
 
 | Value | Meaning |
 |---|---|
 | `spec_change` | The CR spec / generation changed. It is also the **default/catch-all** bucket: for `ExternalDatabase` it additionally counts the periodic resync (`ResyncInterval`) and `refresh`-annotation force-reconciles, since those are not classified as any of the more specific triggers below. |
-| `namespace_binding_change` | A `NamespaceBinding` change re-enqueued the CR |
 | `polling` | An `InternalDatabase` reconcile that polls an in-progress async provisioning operation (`status.trackingId` is set). Emitted only with `controller="internaldatabase"` — the rotation poller's feed shows up as `rotation_trigger` instead |
 | `rotation_trigger` | A rotation-trigger annotation was stamped — `databasesecretclaim` only |
 | `sibling_secret_claim_change` | A related `DatabaseSecretClaim` changed — `databasesecretclaim` only |
 | `safety_net` | Periodic safety-net re-reconcile — `databasesecretclaim` only |
 
-> Not every `controller` × `trigger` combination can occur. `namespace_binding_change` is emitted by every
-> binding-gated controller but never by `permanentbalancingrule`, which only ever reports `spec_change`.
-> All trigger counters are recorded **after** the ownership check, so reconciles of CRs in foreign or
-> unbound namespaces are not counted at all.
+> Not every `controller` × `trigger` combination can occur. All trigger counters are recorded
+> **after** the operator-assignment check, so reconciles of CRs assigned to another operator are
+> not counted.
 
 **`operation`** (which aggregator call):
 `register_external_database`, `apply_config`, `poll_status`, `get_database_by_classifier`,
@@ -384,7 +372,7 @@ dbaas_resource_collector_success == 0
 ## Cardinality & high-availability notes
 
 - **Resource-state metrics include the CR name** (`name` label). Cardinality grows with the number
-  of managed CRs across owned namespaces. The framework's event/operation counters and histograms
+  of CRs assigned to this operator. The framework's event/operation counters and histograms
   deliberately omit resource names to stay low-cardinality.
 - **Leader election (HA):** with multiple replicas, only the **active leader** runs the
   reconcilers, so the event/operation counters (`dbaas_reconcile_trigger_total`,

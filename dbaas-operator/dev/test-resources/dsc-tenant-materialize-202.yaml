@@ -18,6 +18,7 @@ metadata:
   labels:
     app.kubernetes.io/name: tenant-svc-202
 spec:
+  operatorNamespace: dbaas-system
   type: postgresql
   userRole: admin
   secretName: dsc-tenant-materialize-202-secret

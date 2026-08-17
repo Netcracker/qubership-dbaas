@@ -39,12 +39,11 @@ const (
 	controllerNBR = "namespacebalancingrule"
 	controllerPBR = "permanentbalancingrule"
 
-	triggerSpecChange             = "spec_change"
-	triggerNamespaceBindingChange = "namespace_binding_change"
-	triggerPolling                = "polling"
-	triggerRotation               = "rotation_trigger"
-	triggerSiblingSecretClaim     = "sibling_secret_claim_change"
-	triggerSafetyNet              = "safety_net"
+	triggerSpecChange         = "spec_change"
+	triggerPolling            = "polling"
+	triggerRotation           = "rotation_trigger"
+	triggerSiblingSecretClaim = "sibling_secret_claim_change"
+	triggerSafetyNet          = "safety_net"
 
 	resultSuccess            = "success"
 	resultAuthError          = "auth_error"

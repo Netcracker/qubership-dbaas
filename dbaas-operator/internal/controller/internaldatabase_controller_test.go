@@ -76,6 +76,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 	// baseSpec returns a minimal valid InternalDatabase spec.
 	baseSpec := func() dbaasv1.InternalDatabaseSpec {
 		return dbaasv1.InternalDatabaseSpec{
+			OperatorNamespace: testOperatorNamespace,
 			Classifier: dbaasv1.Classifier{
 				MicroserviceName: "test-service",
 				Scope:            "service",
@@ -135,11 +136,11 @@ var _ = Describe("InternalDatabase Controller", func() {
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 		fakeRecorder = record.NewFakeRecorder(16)
 		reconciler = &InternalDatabaseReconciler{
-			Client:     k8sClient,
-			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return testToken, nil }),
-			Recorder:   fakeRecorder,
-			Ownership:  mineOwnershipResolver(ns),
+			Client:      k8sClient,
+			Scheme:      k8sClient.Scheme(),
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc(mockServer.URL, func(_ context.Context) (string, error) { return testToken, nil }),
+			Recorder:    fakeRecorder,
+			MyNamespace: testOperatorNamespace,
 		}
 	})
 
@@ -160,6 +161,25 @@ var _ = Describe("InternalDatabase Controller", func() {
 			return &dbaasv1.InternalDatabase{}
 		})
 	}
+
+	Context("operator eligibility", func() {
+		It("skips a resource assigned to another operator without mutating status", func() {
+			spec := baseSpec()
+			spec.OperatorNamespace = testForeignOperatorNamespace
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			database, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called for a foreign resource")
+			Expect(createReqCount).To(BeZero(), "tenant materialization must not run for a foreign resource")
+			Expect(database.Status.Phase).To(BeEmpty())
+		})
+	})
 
 	// ── CRD admission validation ──────────────────────────────────────────────
 
@@ -1256,11 +1276,11 @@ var _ = Describe("InternalDatabase Controller — rate limiter", func() {
 		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
 
 		err = (&InternalDatabaseReconciler{
-			Client:     mgr.GetClient(),
-			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("dd-rate-limiter-test"), // nolint:staticcheck
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
-			Ownership:  mineOwnershipResolver("ns"),
+			Client:      mgr.GetClient(),
+			Scheme:      mgr.GetScheme(),
+			Recorder:    mgr.GetEventRecorderFor("dd-rate-limiter-test"), // nolint:staticcheck
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
+			MyNamespace: testOperatorNamespace,
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 

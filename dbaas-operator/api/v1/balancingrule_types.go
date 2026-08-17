@@ -28,7 +28,7 @@ const (
 	NamespaceBalancingRuleName = "namespace-balancing-rules"
 
 	// PermanentBalancingRuleName is the fixed singleton name for permanent
-	// balancing rules in the operator namespace.
+	// balancing rules in the assigned operator namespace.
 	PermanentBalancingRuleName = "permanent-balancing-rules"
 
 	// MicroserviceBalancingRuleFinalizer lets the operator disable aggregator-side
@@ -47,6 +47,14 @@ const (
 // MicroserviceBalancingRuleSpec defines an on-microservice physical database
 // balancing rule. It maps to the dbaas-aggregator onMicroservices rule payload.
 type MicroserviceBalancingRuleSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// rules is the set of microservice balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
@@ -147,6 +155,14 @@ type MicroserviceBalancingRuleList struct {
 // NamespaceBalancingRuleSpec defines an on-namespace physical database
 // balancing rule. It maps to the dbaas-aggregator perNamespace rule payload.
 type NamespaceBalancingRuleSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// rules is the set of namespace balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
@@ -253,6 +269,14 @@ type NamespaceBalancingRuleList struct {
 // PermanentBalancingRuleSpec defines a permanent namespace physical database
 // balancing rule. It maps to the dbaas-aggregator permanent rule payload.
 type PermanentBalancingRuleSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// rules is the set of permanent balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1

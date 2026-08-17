@@ -15,7 +15,16 @@ All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` 
 | `DatabaseSecretClaim` | Materialize a database's credentials into a Kubernetes `Secret` in the workload namespace, kept in sync as credentials rotate. |
 | `DatabaseAccessPolicy` | Declare per-microservice role grants and apply them to dbaas-aggregator. |
 | `MicroserviceBalancingRule` / `NamespaceBalancingRule` / `PermanentBalancingRule` | Configure physical-database balancing rules in dbaas-aggregator. |
-| `NamespaceBinding` | Claim a namespace for this operator instance (ownership) — gates which CRs the operator reconciles. |
+
+All seven workload CRs declare the target operator through
+required, immutable `spec.operatorNamespace`. The operator reconciles a CR only when that value
+matches its `CLOUD_NAMESPACE`.
+`PermanentBalancingRule` additionally requires `metadata.namespace` to equal
+`spec.operatorNamespace`, so its singleton lives with the assigned operator.
+
+Existing installations that still use `NamespaceBinding` must run the staged
+[NamespaceBinding migration](docs/howto/DBaaS%20Operator.md#upgrade-from-namespacebinding) before upgrading the chart.
+It installs the compatible schemas first, migrates and verifies live assignments, and releases binding finalizers.
 
 ## Authentication
 
