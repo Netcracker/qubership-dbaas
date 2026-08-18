@@ -5,18 +5,17 @@ import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.exceptions.NamespaceCompositeValidationException;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
-import org.eclipse.microprofile.openapi.annotations.Operation;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -85,7 +84,10 @@ public class CompositeController {
         log.info("Received request to get all composite structures");
         List<CompositeStructure> compositeStructures = compositeService.getAllCompositeStructures();
         List<CompositeStructureDto> compositeStructureResponse = compositeStructures.stream()
-                .map(compositeStructure -> new CompositeStructureDto(compositeStructure.getBaseline(), compositeStructure.getNamespaces()))
+                .map(compositeStructure -> CompositeStructureDto.builder()
+                        .id(compositeStructure.getBaseline())
+                        .namespaces(compositeStructure.getNamespaces())
+                        .build())
                 .toList();
         return Response.ok(compositeStructureResponse).build();
     }
@@ -108,7 +110,11 @@ public class CompositeController {
         if (composite.isEmpty()) {
             return getNotFoundTmfErrorResponse(compositeId);
         }
-        return Response.ok(new CompositeStructureDto(composite.get().getBaseline(), composite.get().getNamespaces())).build();
+        return Response.ok(CompositeStructureDto.builder()
+                        .id(composite.get().getBaseline())
+                        .namespaces(composite.get().getNamespaces())
+                        .build())
+                .build();
     }
 
     @NotNull
