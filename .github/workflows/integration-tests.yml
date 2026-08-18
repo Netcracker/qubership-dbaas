@@ -14,8 +14,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
 
     steps:
+      - name: Wait for other workflows on the current PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.event.pull_request.head.sha }}"
+          for i in $(seq 1 60); do
+            RUNS=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$SHA" \
+              --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }})]")
+            TOTAL=$(echo "$RUNS" | jq 'length')
+            IN_PROGRESS=$(echo "$RUNS" | jq '[.[] | select(.status != "completed")] | length')
+            FAILED=$(echo "$RUNS" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")] | length')
+            echo "attempt $i: total=$TOTAL in_progress=$IN_PROGRESS failed=$FAILED"
+            [ "$FAILED" -gt 0 ] && { echo "One or more workflows failed"; exit 1; }
+            [ "$TOTAL" -gt 0 ] && [ "$IN_PROGRESS" -eq 0 ] && exit 0
+            sleep 30
+          done
+          echo "Timed out waiting for other workflows"; exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
