@@ -3,9 +3,14 @@ name: DBaaS Integration Tests
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
 
 jobs:
   integration-tests:
+    if: |
+      github.event_name != 'pull_request' ||
+      startsWith(github.event.pull_request.title, 'chore(deps)')
     runs-on: ubuntu-latest
     permissions:
       contents: read
