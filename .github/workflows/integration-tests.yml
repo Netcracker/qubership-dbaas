@@ -191,8 +191,10 @@ jobs:
           EOF
 
       - name: Resolve image tags
+        env:
+          SOURCE_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          SAFE_REF="${GITHUB_REF_NAME//\//-}"
+          SAFE_REF="${SOURCE_REF//\//-}"
           if [ "$SAFE_REF" = "main" ]; then
             IMAGE_TAG=latest
           else
@@ -306,7 +308,7 @@ jobs:
           OUTPUT_FILE: report.md
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
-          BRANCH: ${{ github.ref_name }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           RUN_NUMBER: ${{ github.run_number }}
         run: python3 .github/scripts/build-test-report.py
