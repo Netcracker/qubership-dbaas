@@ -32,7 +32,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -223,7 +222,7 @@ var workloadLifecyclePredicate = predicate.Funcs{
 // SetupWithManager registers NamespaceBinding and workload watches.
 func (r *NamespaceBindingReconciler) SetupWithManager(
 	mgr ctrl.Manager,
-	opts ctrlcontroller.Options,
+	config RateLimiterConfig,
 ) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.NamespaceBinding{},
@@ -261,14 +260,9 @@ func (r *NamespaceBindingReconciler) SetupWithManager(
 			handler.EnqueueRequestsFromMapFunc(enqueueBindingForWorkload),
 			builder.WithPredicates(workloadLifecyclePredicate),
 		).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("namespacebinding").
 		Complete(r)
-}
-
-// SetupWithManagerOpts registers the controller with default controller-runtime options.
-func (r *NamespaceBindingReconciler) SetupWithManagerOpts(mgr ctrl.Manager) error {
-	return r.SetupWithManager(mgr, ctrlcontroller.Options{})
 }
 
 // Ensure runtime.Object is satisfied for recorder.Eventf.

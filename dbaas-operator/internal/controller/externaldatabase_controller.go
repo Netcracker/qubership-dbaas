@@ -36,7 +36,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -328,7 +327,7 @@ func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
 // NamespaceBinding fan-out. There is intentionally no Secret watch (the operator
 // holds only namespaced Secret RBAC, no cluster-wide list/watch); credential
 // Secret changes are picked up by periodic resync or by changing AnnotationRefresh.
-func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	if r.ResyncInterval == 0 {
 		r.ResyncInterval = externalDatabaseDefaultResync
 	}
@@ -344,7 +343,7 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 			// The binding status is written by its own controller; only create, delete,
 			// and spec changes can affect ownership, so status-only updates are ignored.
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("externaldatabase").
 		Complete(r)
 }

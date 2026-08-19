@@ -42,7 +42,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -330,7 +329,12 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	return ctrl.Result{}, nil
 }
 
-func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+// SetupWithManager registers the three balancing-rule controllers. Each registration
+// builds a fresh rate limiter so their workqueue state is isolated.
+func (r *BalancingRuleReconciler) SetupWithManager(
+	mgr ctrl.Manager,
+	config RateLimiterConfig,
+) error {
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.MicroserviceBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
@@ -339,7 +343,7 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 			// The binding status is written by its own controller; only create, delete,
 			// and spec changes can affect ownership, so status-only updates are ignored.
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("microservicebalancingrule").
 		Complete(reconcile.Func(r.ReconcileMicroservice)); err != nil {
 		return err
@@ -353,7 +357,7 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 			// The binding status is written by its own controller; only create, delete,
 			// and spec changes can affect ownership, so status-only updates are ignored.
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("namespacebalancingrule").
 		Complete(reconcile.Func(r.ReconcileNamespace)); err != nil {
 		return err
@@ -364,7 +368,7 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.PermanentBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("permanentbalancingrule").
 		Complete(reconcile.Func(r.ReconcilePermanent))
 }
