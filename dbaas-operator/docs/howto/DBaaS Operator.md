@@ -2425,7 +2425,7 @@ or leaves them unset:
 | Variable | Source | Default | Description |
 |----------|--------|---------|-------------|
 | `CLOUD_NAMESPACE` | Injected by the chart from `metadata.namespace` (downward API) | none | **Required.** The operator logs an error and exits at startup if it is unset. Defines which `NamespaceBinding` CRs this instance owns (`spec.operatorNamespace == CLOUD_NAMESPACE`) and scopes the `PermanentBalancingRule` informer. |
-| `DBAAS_AGGREGATOR_URL` | Not exposed by the chart | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Override only when the aggregator is not reachable at the default in-cluster service address (for example, cross-cluster deployments). The chart has no value for it — `--set DBAAS_AGGREGATOR_URL=...` does nothing; patch the Deployment `env` block instead. |
+| `DBAAS_AGGREGATOR_URL` | Optional Helm value; injected only when set | `http://dbaas-aggregator:8080` | Base URL of the dbaas-aggregator API. Leave empty to use the operator's built-in default. Override when the aggregator is not reachable at the default in-cluster service address (for example, cross-cluster deployments). |
 
 **Deployment parameters** — control pod scheduling and resources:
 
