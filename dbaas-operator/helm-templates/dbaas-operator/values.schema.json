@@ -206,6 +206,18 @@
         "10m"
       ]
     },
+    "DBAAS_AGGREGATOR_URL": {
+      "$id": "#/properties/DBAAS_AGGREGATOR_URL",
+      "type": "string",
+      "title": "The DBAAS_AGGREGATOR_URL schema",
+      "description": "Base URL of dbaas-aggregator. Leave empty to use the operator's built-in default (http://dbaas-aggregator:8080). Override only when the aggregator is not reachable at the default in-cluster service address (for example cross-cluster deployments).",
+      "default": "",
+      "examples": [
+        "",
+        "http://dbaas-aggregator:8080",
+        "http://dbaas-aggregator.other-namespace.svc.cluster.local:8080"
+      ]
+    },
     "DBAAS_OPERATOR_ENABLED": {
       "$id": "#/properties/DBAAS_OPERATOR_ENABLED",
       "$ref": "#/definitions/booleanOrString",
