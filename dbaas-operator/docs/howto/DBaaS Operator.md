@@ -606,7 +606,7 @@ namespace the operator manages.
 
 ## Custom Resources
 
-All seven kinds are namespaced, expose a `status` subresource, and belong to the `dbaas` category, so
+All the CRs are namespaced, expose a `status` subresource, and belong to the `dbaas` category, so
 `kubectl get dbaas -n <namespace>` lists every DBaaS CR in a namespace at once. Each kind also has a short
 name:
 
