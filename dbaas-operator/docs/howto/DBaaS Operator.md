@@ -106,7 +106,8 @@ following custom resources (CRs):
   dbaas-aggregator
 
 Assignment: a managed CR is reconciled only when its own
-`spec.operatorNamespace` equals the operator's `CLOUD_NAMESPACE`. CRs assigned to
+`spec.operatorNamespace` equals the operator's `CLOUD_NAMESPACE` — the namespace where
+dbaas-operator itself runs, not the workload namespace the CR lives in. CRs assigned to
 another operator are skipped without status or external side effects.
 
 Managed CRs are routed by their own immutable spec.operatorNamespace.
@@ -623,35 +624,14 @@ All seven managed CR kinds require immutable `spec.operatorNamespace`. The opera
 a CR only when that value equals its `CLOUD_NAMESPACE`; otherwise it leaves the resource untouched.
 Change the assignment by deleting and recreating the CR.
 
-### Upgrade from NamespaceBinding
+### Installation and the retired NamespaceBinding model
 
-Do not perform this as a one-step Helm upgrade. The old CRDs prune the unknown
-`spec.operatorNamespace` field, while deleting a `NamespaceBinding` CRD before releasing its
-`platform.dbaas.netcracker.com/binding-protection` finalizers can leave that CRD terminating.
-
-Use [`hack/migrate_namespace_bindings.py`](../../hack/migrate_namespace_bindings.py) before upgrading the operator:
-
-```bash
-# Review the exact cluster, assignments, and affected resources. This is read-only.
-python3 hack/migrate_namespace_bindings.py --context <kube-context>
-
-# Apply the seven migration-compatible CRDs, populate and verify operatorNamespace,
-# then delete NamespaceBindings after removing only their protection finalizer.
-python3 hack/migrate_namespace_bindings.py --context <kube-context> --execute
-
-# Only after the script succeeds, upgrade the operator chart.
-helm upgrade <release> helm-templates/dbaas-operator ...
-```
-
-The script derives each workload CR's assignment from the `NamespaceBinding` in its namespace.
-For an existing `PermanentBalancingRule`, it uses `metadata.namespace`, matching the old
-operator-namespace-only contract. It stops before changing anything if a workload has no binding,
-an existing assignment conflicts with its binding, or a permanent rule is misplaced. The execution
-is idempotent, but there is an intentional short hand-off after the bindings are deleted; proceed
-immediately with the Helm upgrade so the new operator resumes reconciliation.
-
-Update source manifests at the same time. Every live and declarative CR must retain the migrated
-`spec.operatorNamespace`; the new field is immutable after it has been set.
+This operator ships no automated upgrade from the retired `NamespaceBinding` model. It assumes
+either a greenfield install or GitOps-managed manifests: the assignment is carried declaratively by
+each CR's `spec.operatorNamespace`, so a GitOps tool applies the field and prunes the old
+`NamespaceBinding` objects during a normal sync. A cluster that still runs live `NamespaceBinding`
+resources needs its own migration before adopting this chart, because `spec.operatorNamespace` is
+required and immutable once set.
 
 ### Common Status Model
 
@@ -2236,7 +2216,7 @@ The operator emits Kubernetes Events on reconcile outcomes when `K8S_EVENTS_ENAB
 | `DatabaseNotFoundTimeout` | Emitted once, when a `DatabaseNotFound` streak crosses 10 minutes. |
 
 **Condition-only reasons** — these appear in `status.conditions` but are never emitted as events:
-`Succeeded`, `SecretUpToDate`, `BindingReleased`, and `OwnershipCheckError`.
+`Succeeded` and `SecretUpToDate`.
 
 ---
 
@@ -2332,7 +2312,6 @@ bypasses the rate limiter entirely:
 |----------|------|
 | 5 s | `InternalDatabase` async poll and `TERMINATED` resubmit; `DatabaseSecretClaim` `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` |
 | 1 s | `DatabaseSecretClaim` Secret create/update race reconverge |
-| 30 s / 5 min | Ownership `Unknown` / `Unbound` retries |
 | 10 min | `ExternalDatabase` resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`) |
 | 1 h | `DatabaseSecretClaim` rotation safety net |
 

@@ -128,6 +128,7 @@ type ExternalDatabaseStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:selectablefield:JSONPath=".spec.operatorNamespace"
 // +kubebuilder:resource:scope=Namespaced,path=externaldatabases,singular=externaldatabase,shortName=dbedb,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"

@@ -241,6 +241,8 @@ spec:
         x-kubernetes-validations:
         - message: PermanentBalancingRule name must be 'permanent-balancing-rules'
           rule: self.metadata.name == 'permanent-balancing-rules'
+    selectableFields:
+    - jsonPath: .spec.operatorNamespace
     served: true
     storage: true
     subresources:

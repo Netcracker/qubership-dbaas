@@ -254,6 +254,8 @@ spec:
         required:
         - spec
         type: object
+    selectableFields:
+    - jsonPath: .spec.operatorNamespace
     served: true
     storage: true
     subresources:

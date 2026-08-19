@@ -22,10 +22,6 @@ matches its `CLOUD_NAMESPACE`.
 `PermanentBalancingRule` additionally requires `metadata.namespace` to equal
 `spec.operatorNamespace`, so its singleton lives with the assigned operator.
 
-Existing installations that still use `NamespaceBinding` must run the staged
-[NamespaceBinding migration](docs/howto/DBaaS%20Operator.md#upgrade-from-namespacebinding) before upgrading the chart.
-It installs the compatible schemas first, migrates and verifies live assignments, and releases binding finalizers.
-
 ## Authentication
 
 The operator authenticates to dbaas-aggregator in one of two modes, selected by `KUBERNETES_M2M_ENABLED` and **must match the aggregator's setting**:

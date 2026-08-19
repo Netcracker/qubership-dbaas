@@ -249,6 +249,8 @@ spec:
         x-kubernetes-validations:
         - message: NamespaceBalancingRule name must be 'namespace-balancing-rules'
           rule: self.metadata.name == 'namespace-balancing-rules'
+    selectableFields:
+    - jsonPath: .spec.operatorNamespace
     served: true
     storage: true
     subresources:

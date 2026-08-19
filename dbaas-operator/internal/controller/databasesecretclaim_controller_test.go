@@ -1067,6 +1067,62 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 		})
 	})
 
+	Context("Pre-flight: sibling assigned to another operator", func() {
+		It("ignores an older foreign-operator sibling and succeeds", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			// Older sibling assigned to a different operator. This reconciler never
+			// services it, so it never creates the Secret; it must not win the
+			// tiebreak against the claim this operator owns.
+			foreignSpec := baseSpec()
+			foreignSpec.OperatorNamespace = "other-operator-ns"
+			foreign := &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: foreignSpec,
+			}
+			Expect(k8sClient.Create(ctx, foreign)).To(Succeed())
+
+			// creationTimestamp has 1-second resolution. Sleep so the owned claim is
+			// strictly younger, i.e. it would lose the age tiebreak if the foreign
+			// sibling were not filtered out.
+			time.Sleep(1100 * time.Millisecond)
+
+			ownedName := resourceName + "-2"
+			owned := &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      ownedName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, owned)).To(Succeed())
+
+			foreignKey := types.NamespacedName{Name: resourceName, Namespace: ns}
+			ownedKey := types.NamespacedName{Name: ownedName, Namespace: ns}
+			Eventually(func() error {
+				if err := cacheClient.Get(ctx, foreignKey, &dbaasv1.DatabaseSecretClaim{}); err != nil {
+					return err
+				}
+				return cacheClient.Get(ctx, ownedKey, &dbaasv1.DatabaseSecretClaim{})
+			}).Should(Succeed())
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: ownedKey})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(secretRotationSafetyNetInterval))
+
+			got := &dbaasv1.DatabaseSecretClaim{}
+			Expect(k8sClient.Get(ctx, ownedKey, got)).To(Succeed())
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded),
+				"a foreign-operator sibling must not park this claim in SecretConflict")
+		})
+	})
+
 	Context("Pre-flight: loser CR recovers after winner is deleted", func() {
 		It("re-reconciling the loser after winner deletion lets it succeed", func() {
 			fixture.statusCode = http.StatusOK

@@ -242,6 +242,8 @@ spec:
         x-kubernetes-validations:
         - message: MicroserviceBalancingRule name must be 'microservice-balancing-rules'
           rule: self.metadata.name == 'microservice-balancing-rules'
+    selectableFields:
+    - jsonPath: .spec.operatorNamespace
     served: true
     storage: true
     subresources:

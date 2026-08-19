@@ -63,6 +63,11 @@ def main() -> int:
     )
     parser.add_argument("--name-prefix", default="")
     args = parser.parse_args()
+    # argparse's required=True still accepts an empty string. spec.operatorNamespace is
+    # required and MinLength=1 in the CRDs, so an empty value would emit a CR the API
+    # server rejects; fail here with a clear message instead.
+    if not args.operator_namespace.strip():
+        parser.error("--operator-namespace must not be empty")
     args.service_name_explicit = args.service_name is not None
     args.service_name = args.service_name or "{{ .Values.SERVICE_NAME }}"
 

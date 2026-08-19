@@ -261,11 +261,6 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcilePermanentDelete(ctx, rule, requestID)
 	}
-	if !controllerutil.ContainsFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer) {
-		patch := client.MergeFrom(rule.DeepCopy())
-		controllerutil.AddFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer)
-		return ctrl.Result{}, r.Patch(ctx, rule, patch)
-	}
 
 	original := rule.DeepCopy()
 	defer func() {
@@ -279,8 +274,17 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	rule.Status.Phase = dbaasv1.PhaseProcessing
 	rule.Status.LastRequestID = requestID
 
+	// Validate placement before taking ownership. A misplaced rule must not
+	// receive the operator finalizer: the operator refuses to service it, so a
+	// finalizer would only block its deletion until an operator adopts it.
 	if msg := r.validatePermanentRule(rule); msg != "" {
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
+	}
+
+	if !controllerutil.ContainsFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer) {
+		patch := client.MergeFrom(rule.DeepCopy())
+		controllerutil.AddFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer)
+		return ctrl.Result{}, r.Patch(ctx, rule, patch)
 	}
 
 	if err := r.cleanupSupersededPermanentRules(ctx, rule); err != nil {

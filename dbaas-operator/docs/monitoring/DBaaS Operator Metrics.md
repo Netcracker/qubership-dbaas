@@ -108,8 +108,9 @@ The operator publishes two families of metrics:
 
 ## Resource-state metrics
 
-These gauges are emitted **only for resources assigned to this operator instance** through
-`spec.operatorNamespace == CLOUD_NAMESPACE`. The gauges are derived from the CR object state the operator has
+Except for `dbaas_resource_collector_success` (see its row below), these gauges are emitted **only for
+resources assigned to this operator instance** through `spec.operatorNamespace == CLOUD_NAMESPACE`. The
+gauges are derived from the CR object state the operator has
 listed/cached — `status` (phase, conditions, observed generation, rotation timestamps), `spec`
 (operator assignment and desired balancing-rule targets), and `metadata` (`deletionTimestamp`,
 finalizers) — **not** from an independent read-back of dbaas-aggregator.
@@ -124,7 +125,7 @@ finalizers) — **not** from an independent read-back of dbaas-aggregator.
 | `dbaas_balancing_rule_applied_targets` | Gauge | `kind`, `resource_namespace`, `name`, `target_type` | Applied balancing-rule target count recorded in `status` (last operator-applied state). Same `kind` and `target_type` semantics as `dbaas_balancing_rule_desired_targets`. |
 | `dbaas_secret_claim_last_rotation_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp of the most recent connection-properties rotation applied by a `DatabaseSecretClaim`. Present only after the first rotation. |
 | `dbaas_secret_claim_first_not_found_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp when the current `DatabaseNotFound` streak started for a `DatabaseSecretClaim`. Present only while the claim's database is missing. |
-| `dbaas_resource_collector_success` | Gauge | `kind` | `1` if the latest resource-metrics collection for that CR kind succeeded, `0` if the list call failed. Watch for `0` — other resource-state series for that kind may be stale or missing. |
+| `dbaas_resource_collector_success` | Gauge | `kind` | `1` if the latest resource-metrics collection for that CR kind succeeded, `0` if the list call failed. Emitted per kind before the operator-assignment filter, so it reports list health even when no CR is assigned to this operator. Watch for `0` — other resource-state series for that kind may be stale or missing. |
 
 > **Caveat (balancing rules):** desired/applied target counts and applied state are operator
 > intent / last-applied snapshots. They do **not** prove the referenced physical database exists
@@ -227,7 +228,7 @@ appears first and is expanded by default; all detailed rows are collapsed until 
 
 > The three balancing-rule kinds share one reconciler, so **aggregator-call** metrics group them
 > under `balancingrule`, while **reconcile-trigger** metrics use the per-kind names.
->
+
 **`kind`** (CamelCase; resource-state metrics):
 `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`,
 `MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`.

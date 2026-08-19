@@ -76,7 +76,7 @@ func PatchClaimsForRotation(
 
 	for i := range list.Items {
 		ds := &list.Items[i]
-		if ds.Spec.OperatorNamespace != operatorNamespace {
+		if !dbaasv1.IsAssignedTo(ds.Spec.OperatorNamespace, operatorNamespace) {
 			continue
 		}
 		matched++

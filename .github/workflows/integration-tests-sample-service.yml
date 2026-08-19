@@ -237,6 +237,13 @@ jobs:
 
       - name: "Pass A — wait for sample services"
         run: |
+          # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
+          # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
+          # with a clear cause instead of an opaque deployment rollout timeout downstream.
+          kubectl -n "$TEST_NAMESPACE" wait internaldatabase --all \
+            --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
+          kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
+            --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
@@ -267,6 +274,13 @@ jobs:
 
       - name: "Pass B — wait for sample services"
         run: |
+          # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
+          # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
+          # with a clear cause instead of an opaque deployment rollout timeout downstream.
+          kubectl -n "$TEST_NAMESPACE" wait internaldatabase --all \
+            --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
+          kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
+            --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
@@ -295,6 +309,13 @@ jobs:
 
       - name: "Phase C — wait for sample services"
         run: |
+          # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
+          # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
+          # with a clear cause instead of an opaque deployment rollout timeout downstream.
+          kubectl -n "$TEST_NAMESPACE" wait internaldatabase --all \
+            --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
+          kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
+            --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s

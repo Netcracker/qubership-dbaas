@@ -42,22 +42,22 @@ kubectl get deployment/dbaas-operator -n "$OPERATOR_NS" >/dev/null 2>&1 \
 
 for namespace in default "$WORKLOAD_NS" "$OPERATOR_NS"; do
   kubectl delete permanentbalancingrule permanent-balancing-rules -n "$namespace" \
-    --ignore-not-found --wait=true >/dev/null
+    --ignore-not-found --wait=true --timeout=60s >/dev/null
 done
 
-kubectl delete -f "$RESOURCES/dsc-success.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/dsc-tenant-materialize.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/idb-success-sync.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/idb-tenant-materialize.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/dap-success.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/mbr-success.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/nbr-success.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/edb-with-secret.yaml" --ignore-not-found --wait=true >/dev/null
-kubectl delete -f "$RESOURCES/edb-201-created.yaml" --ignore-not-found --wait=true >/dev/null
+kubectl delete -f "$RESOURCES/dsc-success.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/dsc-tenant-materialize.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/idb-success-sync.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/idb-tenant-materialize.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/dap-success.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/mbr-success.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/nbr-success.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/edb-with-secret.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/edb-201-created.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
 kubectl delete externaldatabase foreign-postgres -n "$WORKLOAD_NS" \
-  --ignore-not-found --wait=true >/dev/null
+  --ignore-not-found --wait=true --timeout=60s >/dev/null
 kubectl delete secret dsc-success-secret dsc-tenant-materialize-secret -n "$WORKLOAD_NS" \
-  --ignore-not-found --wait=true >/dev/null
+  --ignore-not-found --wait=true --timeout=60s >/dev/null
 
 kubectl apply -f "$RESOURCES/secret-rbac.yaml" >/dev/null
 kubectl apply -f "$RESOURCES/secret.yaml" >/dev/null
@@ -76,7 +76,11 @@ kubectl apply -f "$RESOURCES/idb-success-sync.yaml" >/dev/null
 kubectl apply -f "$RESOURCES/idb-tenant-materialize.yaml" >/dev/null
 wait_succeeded internaldatabase idb-success-sync "$WORKLOAD_NS"
 wait_succeeded internaldatabase idb-tenant-materialize "$WORKLOAD_NS"
-kubectl logs -n "$OPERATOR_NS" deployment/dbaas-aggregator | grep -qE 'create database .*tenantId="acme"' \
+# Capture the log once and match it with a here-string. A `kubectl logs | grep -q`
+# pipe lets grep close the pipe on first match, which kills kubectl with SIGPIPE
+# (exit 141); under `set -o pipefail` that turns a healthy run into a spurious FAIL.
+tenant_logs="$(kubectl logs -n "$OPERATOR_NS" deployment/dbaas-aggregator)"
+grep -qE 'create database .*tenantId="acme"' <<<"$tenant_logs" \
   || fail "tenant InternalDatabase did not materialize tenantId=acme"
 pass "tenant InternalDatabase produced the expected aggregator call"
 
@@ -122,18 +126,27 @@ invalid_observed="$(kubectl get permanentbalancingrule/permanent-balancing-rules
 invalid_stalled="$(kubectl get permanentbalancingrule/permanent-balancing-rules -n "$WORKLOAD_NS" -o jsonpath='{.status.conditions[?(@.type=="Stalled")].status}')"
 [ "$invalid_observed" = "$invalid_generation" ] && [ "$invalid_stalled" = "True" ] \
   || fail "misplaced PermanentBalancingRule did not report a terminal validation error"
-if kubectl logs -n "$OPERATOR_NS" deployment/dbaas-aggregator | grep -q 'must-not-be-applied'; then
+# Same SIGPIPE hazard as above, but inside an `if` it is worse: a real regression
+# (the string is present) makes grep exit early, kubectl returns 141, pipefail makes
+# the pipeline non-zero, the `then` branch is skipped, and the regression passes
+# silently. Match against the captured log instead.
+invalid_logs="$(kubectl logs -n "$OPERATOR_NS" deployment/dbaas-aggregator)"
+if grep -q 'must-not-be-applied' <<<"$invalid_logs"; then
   fail "misplaced PermanentBalancingRule reached the aggregator"
 fi
 pass "misplaced PermanentBalancingRule was rejected before aggregator application"
-kubectl delete -f "$RESOURCES/pbr-invalid-namespace.yaml" --wait=true >/dev/null
+kubectl delete -f "$RESOURCES/pbr-invalid-namespace.yaml" --wait=true --timeout=60s >/dev/null
 
-while read -r namespace operator_namespace; do
-  [ "$namespace" = "$OPERATOR_NS" ] && [ "$operator_namespace" = "$OPERATOR_NS" ] \
-    || fail "a PermanentBalancingRule remains outside the DBaaS namespace"
-done < <(kubectl get permanentbalancingrules -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.spec.operatorNamespace}{"\n"}{end}')
-pass "only the PermanentBalancingRule in ${OPERATOR_NS} remains"
+# Assert on counts, not a `while read` over a process substitution: that loop
+# runs zero times when the list is empty, so an RBAC denial, a missing CRD, or
+# rules that were never created would all fall through to a false PASS.
+pbr_total="$(kubectl get permanentbalancingrules -A --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+pbr_in_operator_ns="$(kubectl get permanentbalancingrules -n "$OPERATOR_NS" --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+[ "$pbr_total" -ge 1 ] \
+  || fail "expected at least one PermanentBalancingRule, found none (the list may have failed)"
+[ "$pbr_total" = "$pbr_in_operator_ns" ] \
+  || fail "a PermanentBalancingRule remains outside ${OPERATOR_NS} (total=${pbr_total}, in ${OPERATOR_NS}=${pbr_in_operator_ns})"
+pass "only PermanentBalancingRule(s) in ${OPERATOR_NS} remain (count=${pbr_in_operator_ns})"
 
 section "RESULT: PASS"
 kubectl get \

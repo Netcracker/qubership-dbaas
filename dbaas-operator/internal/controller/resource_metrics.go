@@ -336,7 +336,7 @@ func (c *resourceMetricsCollector) collectList(
 }
 
 func (c *resourceMetricsCollector) manages(operatorNamespace string) bool {
-	return operatorNamespace == c.operatorNamespace
+	return dbaasv1.IsAssignedTo(operatorNamespace, c.operatorNamespace)
 }
 
 func collectOperatorStatus(

@@ -222,6 +222,12 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 		if sib.UID == s.UID {
 			continue
 		}
+		// A sibling assigned to a different operator is never reconciled here and
+		// never creates the Secret, so it cannot be the real owner. Skip it, or an
+		// older foreign claim would park this one in SecretConflict indefinitely.
+		if sib.Spec.OperatorNamespace != s.Spec.OperatorNamespace {
+			continue
+		}
 		if isOlderClaimant(sib, s) {
 			res, err := r.markSecretConflict(ctx, s,
 				fmt.Sprintf("another DatabaseSecretClaim %q in namespace %q already claims secretName %q (older claimant wins)",

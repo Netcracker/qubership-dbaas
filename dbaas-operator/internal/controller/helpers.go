@@ -21,6 +21,7 @@ import (
 	"errors"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 	corev1 "k8s.io/api/core/v1"
@@ -52,7 +53,7 @@ func isEligibleForOperator(
 	ctx context.Context,
 	resourceOperatorNamespace, myNamespace, namespace, name, kind string,
 ) bool {
-	if resourceOperatorNamespace == myNamespace {
+	if dbaasv1.IsAssignedTo(resourceOperatorNamespace, myNamespace) {
 		return true
 	}
 	log.InfoC(ctx,

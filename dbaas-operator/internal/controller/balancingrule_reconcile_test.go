@@ -456,6 +456,31 @@ var _ = Describe("BalancingRule Controller", func() {
 			Expect(findCondition(stored.Status.Conditions, conditionTypeStalled).Status).To(Equal(metav1.ConditionTrue))
 		})
 
+		It("does not add a finalizer to a misplaced rule it will not service", func() {
+			const assignedOperatorNamespace = "operator-ns"
+			fixture.reconciler.MyNamespace = assignedOperatorNamespace
+			rule := &dbaasv1.PermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      dbaasv1.PermanentBalancingRuleName,
+					Namespace: businessNS,
+				},
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: assignedOperatorNamespace,
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
+						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, _, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(slices.Contains(stored.Finalizers, dbaasv1.PermanentBalancingRuleFinalizer)).To(BeFalse())
+		})
+
 		It("skips a resource assigned to another operator without adding a finalizer or mutating status", func() {
 			rule := &dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.PermanentBalancingRuleName, Namespace: operatorNS},

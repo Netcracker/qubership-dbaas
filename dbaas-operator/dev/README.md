@@ -118,10 +118,12 @@ Secret informer; no `delete` — owned Secrets are garbage-collected via ownerRe
 > aggregator credentials from a mounted volume, not the API. If Secret-backed CRs are created in
 > `dbaas-system`, add a `dbaas-operator-secrets` `Role`+`RoleBinding` there too.
 
-Apply all test CRs at once and observe their phases:
+Apply all test CRs at once and observe their phases. Each manifest declares its own namespace
+(`test-ns` for the workload CRs, `dbaas-system` for `pbr-success.yaml`), so do not pass `-n` —
+it would conflict with the PermanentBalancingRule's pinned operator namespace:
 
 ```bash
-kubectl apply -f dev/test-resources/ -n test-ns
+kubectl apply -f dev/test-resources/
 kubectl get externaldatabase -n test-ns
 kubectl get databaseaccesspolicy -n test-ns
 kubectl get internaldatabase -n test-ns

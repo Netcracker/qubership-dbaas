@@ -196,7 +196,7 @@ def validate_inventory(
         errors.append(f"unexpected DatabaseSecretClaim identities: {describe_keys(extra_claims)}")
 
 
-def validate(paths: list[Path], inventory: Path | None) -> list[str]:
+def validate(paths: list[Path], inventory: Path | None, operator_namespace: str | None = None) -> list[str]:
     errors: list[str] = []
     objects = load_objects(paths)
     seen_objects: set[str] = set()
@@ -217,6 +217,17 @@ def validate(paths: list[Path], inventory: Path | None) -> list[str]:
             continue
         classifier = effective_classifier(obj, errors)
         spec = obj.get("spec") or {}
+        # spec.operatorNamespace is required and immutable on every managed CR. When the caller
+        # passes the resolved operator namespace, also assert an exact match, since reusing the
+        # workload namespace here is the most common mistake.
+        cr_operator_namespace = spec.get("operatorNamespace")
+        if not isinstance(cr_operator_namespace, str) or not cr_operator_namespace.strip():
+            errors.append(f"{identity}: spec.operatorNamespace is required and must be non-empty")
+        elif operator_namespace is not None and cr_operator_namespace != operator_namespace:
+            errors.append(
+                f"{identity}: spec.operatorNamespace {cr_operator_namespace!r} does not match the "
+                f"expected operator namespace {operator_namespace!r}"
+            )
         db_type = spec.get("type")
         if classifier is None or not isinstance(db_type, str) or not db_type:
             errors.append(f"{identity}: spec.type is required")
@@ -320,9 +331,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("manifests", nargs="+", type=Path)
     parser.add_argument("--inventory", type=Path)
+    parser.add_argument(
+        "--operator-namespace",
+        help="If set, assert every managed CR's spec.operatorNamespace equals this value",
+    )
     args = parser.parse_args()
     try:
-        errors = validate(args.manifests, args.inventory)
+        errors = validate(args.manifests, args.inventory, args.operator_namespace)
     except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
