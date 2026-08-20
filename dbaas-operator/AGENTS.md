@@ -593,7 +593,7 @@ Variables read by the operator binary:
 
 | Variable | Purpose | Required |
 |---|---|---|
-| `CLOUD_NAMESPACE` | Operator's own namespace (ownership checks) | Yes |
+| `CLOUD_NAMESPACE` | Operator's own namespace; a managed CR is reconciled only when its `spec.operatorNamespace` equals this | Yes |
 | `DBAAS_AGGREGATOR_URL` | Aggregator base URL (default: `http://dbaas-aggregator:8080`) | No |
 | `KUBERNETES_M2M_ENABLED` | Auth mode; **must match the aggregator**. `false` (default) → HTTP Basic Auth (creds from `users.json` in the mounted `dbaas-security-configuration-secret`); `true` → M2M Bearer token. | No |
 | `DBAAS_ROTATION_POLL_INTERVAL` | Poll period for the changed-databases feed used to propagate credential rotations (Go duration; empty → built-in default `30s`). | No |

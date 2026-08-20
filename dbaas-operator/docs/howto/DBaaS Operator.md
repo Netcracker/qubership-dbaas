@@ -140,7 +140,9 @@ require the corresponding per-namespace Secret RBAC grant.
 
 **Prerequisites**
 
-- Kubernetes 1.25 or newer — the CRDs rely on CEL validation rules (`x-kubernetes-validations`).
+- Kubernetes 1.32 or newer — the CRDs rely on CEL validation rules (`x-kubernetes-validations`), and
+  the operator-assignment cache filter uses CRD **selectable fields** on `spec.operatorNamespace`,
+  which are GA in 1.32. On an older server the operator's informers fail to sync at startup.
 - A reachable dbaas-aggregator. In the default Basic Auth mode the operator must run **in the same namespace
   as dbaas-aggregator**: the chart mounts `dbaas-security-configuration-secret` by name from the pod's own
   namespace, so if the aggregator chart has not created it there, the pod never starts (`FailedMount`).

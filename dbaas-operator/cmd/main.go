@@ -156,24 +156,24 @@ func main() {
 	}
 
 	// Cache only the managed CRs assigned to this operator. spec.operatorNamespace is a
-	// selectable field on every managed CRD, so the informers list/watch server-side with
-	// fieldSelector=spec.operatorNamespace=CLOUD_NAMESPACE instead of caching every DBaaS CR
-	// cluster-wide and discarding foreign ones one reconcile at a time. This is an
-	// optimization only: the per-reconcile isEligibleForOperator checks remain the
-	// correctness guarantee, since the field selector is not exercised by the direct clients
-	// used in tests. A missing or malformed selectable field fails the informer sync loudly at
-	// startup rather than silently, so a misconfiguration cannot pass unnoticed.
+	// selectable field on every managed CRD (GA in Kubernetes 1.32, the documented minimum),
+	// so the informers list/watch server-side with fieldSelector=spec.operatorNamespace=
+	// CLOUD_NAMESPACE instead of caching every DBaaS CR cluster-wide and discarding foreign
+	// ones one reconcile at a time. This is an optimization: the per-reconcile
+	// isEligibleForOperator checks remain the correctness guarantee.
 	assignedToThisOperator := cache.ByObject{
 		Field: fields.OneTermEqualSelector("spec.operatorNamespace", cloudNamespace),
 	}
-	managedCRCache := map[client.Object]cache.ByObject{
-		&dbaasv1.ExternalDatabase{}:          assignedToThisOperator,
-		&dbaasv1.InternalDatabase{}:          assignedToThisOperator,
-		&dbaasv1.DatabaseAccessPolicy{}:      assignedToThisOperator,
-		&dbaasv1.DatabaseSecretClaim{}:       assignedToThisOperator,
-		&dbaasv1.MicroserviceBalancingRule{}: assignedToThisOperator,
-		&dbaasv1.NamespaceBalancingRule{}:    assignedToThisOperator,
-		&dbaasv1.PermanentBalancingRule{}:    assignedToThisOperator,
+	cacheOptions := cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			&dbaasv1.ExternalDatabase{}:          assignedToThisOperator,
+			&dbaasv1.InternalDatabase{}:          assignedToThisOperator,
+			&dbaasv1.DatabaseAccessPolicy{}:      assignedToThisOperator,
+			&dbaasv1.DatabaseSecretClaim{}:       assignedToThisOperator,
+			&dbaasv1.MicroserviceBalancingRule{}: assignedToThisOperator,
+			&dbaasv1.NamespaceBalancingRule{}:    assignedToThisOperator,
+			&dbaasv1.PermanentBalancingRule{}:    assignedToThisOperator,
+		},
 	}
 
 	mgr, err := ctrl.NewManager(baseConfig, ctrl.Options{
@@ -183,7 +183,7 @@ func main() {
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
 		LeaderElectionConfig:   leaderElectionConfig,
-		Cache:                  cache.Options{ByObject: managedCRCache},
+		Cache:                  cacheOptions,
 		// Secrets are fetched directly from the API server on each reconcile
 		// and do not need to be cached. Caching all Secrets cluster-wide
 		// would load the entire cluster's secret store into memory, causing OOM.

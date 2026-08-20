@@ -84,19 +84,9 @@ func TestResourceMetricsCollectorFiltersByOperatorNamespace(t *testing.T) {
 	if got := countPhaseMetrics(metrics, map[string]string{"resource_namespace": "foreign-ns"}); got != 0 {
 		t.Fatalf("foreign namespace phase metrics = %d, want 0", got)
 	}
-
-	// The foreign CR is invisible to the assigned-state gauges above but must
-	// surface as dbaas_resource_unassigned, and the owned CR must not.
-	if got := metricValue(metrics, "dbaas_resource_unassigned", map[string]string{
-		"kind": resourceKindExternalDatabase, "resource_namespace": "foreign-ns", "name": "foreign-db",
-	}); got != 1 {
-		t.Fatalf("dbaas_resource_unassigned for foreign CR = %v, want 1", got)
-	}
-	if got := metricValue(metrics, "dbaas_resource_unassigned", map[string]string{
-		"resource_namespace": "owned-ns",
-	}); got != -1 {
-		t.Fatalf("dbaas_resource_unassigned for owned CR = %v, want absent (-1)", got)
-	}
+	// The orphan scan (dbaas_resource_unassigned) uses a server-side field selector,
+	// which the fake client does not honor, so it is exercised in the envtest suite
+	// (see resource_metrics_envtest_test.go) rather than here.
 }
 
 func TestResourceMetricsCollectorReportsListErrors(t *testing.T) {

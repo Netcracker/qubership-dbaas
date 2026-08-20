@@ -23,6 +23,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
@@ -43,6 +44,9 @@ const (
 	balancingTargetTypeRule                = "rule"
 	balancingTargetTypeNamespace           = "namespace"
 	resourceMetricsCollectionTimeout       = 10 * time.Second
+	// unassignedListPageSize bounds each page of the orphan scan so a cluster with
+	// many mis-assigned CRs cannot return an unbounded response in one call.
+	unassignedListPageSize = 500
 )
 
 var (
@@ -106,6 +110,12 @@ var (
 		[]string{"kind", "resource_namespace", "name"},
 		nil,
 	)
+	resourceUnassignedScanSuccessDesc = prometheus.NewDesc(
+		"dbaas_resource_unassigned_scan_success",
+		"Whether the latest orphan scan (the uncached list behind dbaas_resource_unassigned) succeeded for a CR kind. 0 means the scan failed, so dbaas_resource_unassigned for that kind may be missing orphans — the alert on it can otherwise fail open.",
+		[]string{"kind"},
+		nil,
+	)
 	registerResourceMetricsOnce sync.Once
 )
 
@@ -143,6 +153,7 @@ func (c *resourceMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- secretClaimFirstNotFoundTimestampDesc
 	ch <- resourceCollectorSuccessDesc
 	ch <- resourceUnassignedDesc
+	ch <- resourceUnassignedScanSuccessDesc
 }
 
 func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
@@ -159,17 +170,17 @@ func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.collectUnassigned(ctx, ch)
 }
 
-// collectUnassigned lists every managed kind through the uncached reader — the
-// manager cache is filtered to CRs this operator owns, so a mis-assigned CR is
-// invisible to the cached client. It emits dbaas_resource_unassigned for each CR
-// whose spec.operatorNamespace does not match this operator instance, giving the
-// otherwise-silent "assigned to nobody / a typo" case an observable signal.
+// collectUnassigned scans every managed kind for CRs this operator does not own.
+// The manager cache is filtered to owned CRs, so a mis-assigned CR is invisible to
+// the cached client; the uncached reader with a server-side field selector lists
+// only the orphans, giving the otherwise-silent "assigned to nobody / a typo" case
+// an observable signal.
 func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch chan<- prometheus.Metric) {
 	collectUnassignedKind(c, ctx, ch, resourceKindExternalDatabase, &dbaasv1.ExternalDatabaseList{},
 		func(l *dbaasv1.ExternalDatabaseList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
 			}
 			return rows
 		})
@@ -177,7 +188,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.InternalDatabaseList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
 			}
 			return rows
 		})
@@ -185,7 +196,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.DatabaseAccessPolicyList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
 			}
 			return rows
 		})
@@ -193,7 +204,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.DatabaseSecretClaimList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
 			}
 			return rows
 		})
@@ -201,7 +212,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.MicroserviceBalancingRuleList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
 			}
 			return rows
 		})
@@ -209,7 +220,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.NamespaceBalancingRuleList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
 			}
 			return rows
 		})
@@ -217,16 +228,21 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.PermanentBalancingRuleList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
 			}
 			return rows
 		})
 }
 
 type unassignedRow struct {
-	namespace, name, operatorNamespace string
+	namespace, name string
 }
 
+// collectUnassignedKind lists one kind through the uncached reader with a
+// server-side spec.operatorNamespace != CLOUD_NAMESPACE field selector, so the API
+// server returns only the CRs this operator does not own rather than the whole
+// kind. Results are paged. A list failure sets the per-kind scan-success gauge to 0
+// so an alert on dbaas_resource_unassigned cannot silently fail open.
 func collectUnassignedKind[L client.ObjectList](
 	c *resourceMetricsCollector,
 	ctx context.Context,
@@ -235,17 +251,30 @@ func collectUnassignedKind[L client.ObjectList](
 	list L,
 	extract func(L) []unassignedRow,
 ) {
-	// Best effort: a failed list here just omits the unassigned series for this
-	// kind. dbaas_resource_collector_success already surfaces cached-path list health.
-	if err := c.reader.List(ctx, list); err != nil {
-		return
-	}
-	for _, row := range extract(list) {
-		if !c.manages(row.operatorNamespace) {
+	selector := fields.OneTermNotEqualSelector("spec.operatorNamespace", c.operatorNamespace)
+	continueToken := ""
+	for {
+		opts := []client.ListOption{
+			client.MatchingFieldsSelector{Selector: selector},
+			client.Limit(unassignedListPageSize),
+		}
+		if continueToken != "" {
+			opts = append(opts, client.Continue(continueToken))
+		}
+		if err := c.reader.List(ctx, list, opts...); err != nil {
+			ch <- prometheus.MustNewConstMetric(resourceUnassignedScanSuccessDesc, prometheus.GaugeValue, 0, kind)
+			return
+		}
+		for _, row := range extract(list) {
 			ch <- prometheus.MustNewConstMetric(
 				resourceUnassignedDesc, prometheus.GaugeValue, 1, kind, row.namespace, row.name)
 		}
+		continueToken = list.GetContinue()
+		if continueToken == "" {
+			break
+		}
 	}
+	ch <- prometheus.MustNewConstMetric(resourceUnassignedScanSuccessDesc, prometheus.GaugeValue, 1, kind)
 }
 
 func (c *resourceMetricsCollector) collectExternalDatabases(ctx context.Context, ch chan<- prometheus.Metric) {
