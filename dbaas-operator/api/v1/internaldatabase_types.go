@@ -61,6 +61,8 @@ type InternalDatabaseSpec struct {
 	// CLOUD_NAMESPACE and is immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// The Pattern rejects a whitespace-only value, which MinLength alone accepts.
+	// +kubebuilder:validation:Pattern=`\S`
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
 	OperatorNamespace string `json:"operatorNamespace"`
 
