@@ -208,7 +208,7 @@ func main() {
 	}
 	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
 
-	controller.RegisterResourceMetrics(mgr.GetClient(), cloudNamespace)
+	controller.RegisterResourceMetrics(mgr.GetClient(), mgr.GetAPIReader(), cloudNamespace)
 
 	externalDatabaseReconciler := &controller.ExternalDatabaseReconciler{
 		Client:      mgr.GetClient(),

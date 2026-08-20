@@ -108,7 +108,8 @@ The operator publishes two families of metrics:
 
 ## Resource-state metrics
 
-Except for `dbaas_resource_collector_success` (see its row below), these gauges are emitted **only for
+Except for `dbaas_resource_collector_success` (per-kind list health) and `dbaas_resource_unassigned`
+(the inverse — CRs *not* assigned here; see their rows below), these gauges are emitted **only for
 resources assigned to this operator instance** through `spec.operatorNamespace == CLOUD_NAMESPACE`. The
 gauges are derived from the CR object state the operator has
 listed/cached — `status` (phase, conditions, observed generation, rotation timestamps), `spec`
@@ -126,6 +127,7 @@ finalizers) — **not** from an independent read-back of dbaas-aggregator.
 | `dbaas_secret_claim_last_rotation_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp of the most recent connection-properties rotation applied by a `DatabaseSecretClaim`. Present only after the first rotation. |
 | `dbaas_secret_claim_first_not_found_timestamp_seconds` | Gauge | `resource_namespace`, `name` | Unix timestamp when the current `DatabaseNotFound` streak started for a `DatabaseSecretClaim`. Present only while the claim's database is missing. |
 | `dbaas_resource_collector_success` | Gauge | `kind` | `1` if the latest resource-metrics collection for that CR kind succeeded, `0` if the list call failed. Emitted per kind before the operator-assignment filter, so it reports list health even when no CR is assigned to this operator. Watch for `0` — other resource-state series for that kind may be stale or missing. |
+| `dbaas_resource_unassigned` | Gauge | `kind`, `resource_namespace`, `name` | Value `1` for each managed CR whose `spec.operatorNamespace` does **not** match this operator's `CLOUD_NAMESPACE`, so no operator here reconciles it. This is the only place an orphaned CR — usually an `operatorNamespace` typo — is visible, since it otherwise produces no phase, condition, or event. Read through an uncached cluster-wide list. **Assumes one operator per cluster:** with several operators, a CR assigned to a *different* operator also appears here, so scope by the operator instance before alerting. |
 
 > **Caveat (balancing rules):** desired/applied target counts and applied state are operator
 > intent / last-applied snapshots. They do **not** prove the referenced physical database exists
@@ -217,6 +219,7 @@ appears first and is expanded by default; all detailed rows are collapsed until 
 |---|---|---|
 | Balancing Rule Desired vs Applied Targets | Desired (spec) vs. applied (status) target counts. No data means no balancing-rule CRs assigned to this operator currently exist. | `dbaas_balancing_rule_desired_targets`, `dbaas_balancing_rule_applied_targets` |
 | Resources being deleted | CRs currently in deletion. No data means no resources are being deleted. | `dbaas_resource_deletion_state` |
+| Unassigned CRs (no owning operator) | Managed CRs whose `spec.operatorNamespace` matches no operator here. Non-zero usually means an `operatorNamespace` typo. Assumes one operator per cluster. | `dbaas_resource_unassigned` |
 
 ---
 

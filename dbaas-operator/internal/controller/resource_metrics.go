@@ -100,16 +100,27 @@ var (
 		[]string{"kind"},
 		nil,
 	)
+	resourceUnassignedDesc = prometheus.NewDesc(
+		"dbaas_resource_unassigned",
+		"A managed CR whose spec.operatorNamespace does not match this operator instance's CLOUD_NAMESPACE, so no reconcile, status, event, or state gauge is produced for it. Value is always 1, one series per such CR. This assumes one operator per cluster: with several operators a CR assigned to a different operator also shows up here.",
+		[]string{"kind", "resource_namespace", "name"},
+		nil,
+	)
 	registerResourceMetricsOnce sync.Once
 )
 
 // RegisterResourceMetrics registers kube-state-style current-state metrics for
 // dbaas CRs. The metrics intentionally expose CR name only on gauges that
 // represent current state; counters and histograms remain low-cardinality.
-func RegisterResourceMetrics(c client.Client, operatorNamespace string) {
+//
+// reader is an uncached client.Reader (the manager's API reader). The manager's
+// cache is filtered to CRs assigned to this operator, so the cached client cannot
+// see mis-assigned CRs; the reader lists them directly for dbaas_resource_unassigned.
+func RegisterResourceMetrics(c client.Client, reader client.Reader, operatorNamespace string) {
 	registerResourceMetricsOnce.Do(func() {
 		metrics.Registry.MustRegister(&resourceMetricsCollector{
 			client:            c,
+			reader:            reader,
 			operatorNamespace: operatorNamespace,
 		})
 	})
@@ -117,6 +128,7 @@ func RegisterResourceMetrics(c client.Client, operatorNamespace string) {
 
 type resourceMetricsCollector struct {
 	client            client.Client
+	reader            client.Reader
 	operatorNamespace string
 }
 
@@ -130,6 +142,7 @@ func (c *resourceMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- secretClaimLastRotationTimestampDesc
 	ch <- secretClaimFirstNotFoundTimestampDesc
 	ch <- resourceCollectorSuccessDesc
+	ch <- resourceUnassignedDesc
 }
 
 func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
@@ -143,6 +156,96 @@ func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.collectMicroserviceBalancingRules(ctx, ch)
 	c.collectNamespaceBalancingRules(ctx, ch)
 	c.collectPermanentBalancingRules(ctx, ch)
+	c.collectUnassigned(ctx, ch)
+}
+
+// collectUnassigned lists every managed kind through the uncached reader — the
+// manager cache is filtered to CRs this operator owns, so a mis-assigned CR is
+// invisible to the cached client. It emits dbaas_resource_unassigned for each CR
+// whose spec.operatorNamespace does not match this operator instance, giving the
+// otherwise-silent "assigned to nobody / a typo" case an observable signal.
+func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch chan<- prometheus.Metric) {
+	collectUnassignedKind(c, ctx, ch, resourceKindExternalDatabase, &dbaasv1.ExternalDatabaseList{},
+		func(l *dbaasv1.ExternalDatabaseList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindInternalDatabase, &dbaasv1.InternalDatabaseList{},
+		func(l *dbaasv1.InternalDatabaseList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindDatabaseAccessPolicy, &dbaasv1.DatabaseAccessPolicyList{},
+		func(l *dbaasv1.DatabaseAccessPolicyList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindDatabaseSecretClaim, &dbaasv1.DatabaseSecretClaimList{},
+		func(l *dbaasv1.DatabaseSecretClaimList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindMicroserviceBalancingRule, &dbaasv1.MicroserviceBalancingRuleList{},
+		func(l *dbaasv1.MicroserviceBalancingRuleList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindNamespaceBalancingRule, &dbaasv1.NamespaceBalancingRuleList{},
+		func(l *dbaasv1.NamespaceBalancingRuleList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindPermanentBalancingRule, &dbaasv1.PermanentBalancingRuleList{},
+		func(l *dbaasv1.PermanentBalancingRuleList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+}
+
+type unassignedRow struct {
+	namespace, name, operatorNamespace string
+}
+
+func collectUnassignedKind[L client.ObjectList](
+	c *resourceMetricsCollector,
+	ctx context.Context,
+	ch chan<- prometheus.Metric,
+	kind string,
+	list L,
+	extract func(L) []unassignedRow,
+) {
+	// Best effort: a failed list here just omits the unassigned series for this
+	// kind. dbaas_resource_collector_success already surfaces cached-path list health.
+	if err := c.reader.List(ctx, list); err != nil {
+		return
+	}
+	for _, row := range extract(list) {
+		if !c.manages(row.operatorNamespace) {
+			ch <- prometheus.MustNewConstMetric(
+				resourceUnassignedDesc, prometheus.GaugeValue, 1, kind, row.namespace, row.name)
+		}
+	}
 }
 
 func (c *resourceMetricsCollector) collectExternalDatabases(ctx context.Context, ch chan<- prometheus.Metric) {

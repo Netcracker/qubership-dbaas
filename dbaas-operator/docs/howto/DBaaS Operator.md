@@ -620,7 +620,7 @@ name:
 | `NamespaceBalancingRule` | `dbnbr` | `PHASE`, `READY`, `AGE` |
 | `PermanentBalancingRule` | `dbpbr` | `PHASE`, `READY`, `AGE` |
 
-All seven managed CR kinds require immutable `spec.operatorNamespace`. The operator reconciles
+All managed CR kinds require immutable `spec.operatorNamespace`. The operator reconciles
 a CR only when that value equals its `CLOUD_NAMESPACE`; otherwise it leaves the resource untouched.
 Change the assignment by deleting and recreating the CR.
 
