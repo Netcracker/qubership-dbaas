@@ -65,6 +65,7 @@ var _ = Describe("Unassigned resource metrics", func() {
 			families := gather()
 			g.Expect(metricValue(families, "dbaas_resource_unassigned", map[string]string{
 				"kind": resourceKindInternalDatabase, "resource_namespace": crNamespace, "name": "orphan-idb",
+				"operator_namespace": "some-other-operator",
 			})).To(Equal(float64(1)))
 			g.Expect(metricValue(families, "dbaas_resource_unassigned_scan_success", map[string]string{
 				"kind": resourceKindInternalDatabase,

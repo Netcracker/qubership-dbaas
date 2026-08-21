@@ -60,6 +60,28 @@ var _ = Describe("BalancingRule validation", func() {
 			Expect(err.Error()).To(ContainSubstring("operatorNamespace"))
 		})
 
+		It("rejects a whitespace-only operatorNamespace on permanent rules", func() {
+			rule := unstructuredBalancingRule(
+				"PermanentBalancingRule",
+				dbaasv1.PermanentBalancingRuleName,
+				map[string]any{
+					"rules": []any{
+						map[string]any{
+							"dbType":             "mongodb",
+							"physicalDatabaseId": "mongodb-prod-a",
+							"namespaces":         []any{"payments"},
+						},
+					},
+				},
+			)
+			Expect(unstructured.SetNestedField(rule.Object, " ", "spec", "operatorNamespace")).To(Succeed())
+
+			err := k8sClient.Create(ctx, rule)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("operatorNamespace"))
+		})
+
 		It("keeps operatorNamespace immutable on permanent rules", func() {
 			rule := &dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.PermanentBalancingRuleName, Namespace: operatorNS},

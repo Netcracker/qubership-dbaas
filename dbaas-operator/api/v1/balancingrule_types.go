@@ -52,8 +52,11 @@ type MicroserviceBalancingRuleSpec struct {
 	// CLOUD_NAMESPACE and is immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	// The Pattern rejects a whitespace-only value, which MinLength alone accepts.
-	// +kubebuilder:validation:Pattern=`\S`
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
 	OperatorNamespace string `json:"operatorNamespace"`
 
@@ -163,8 +166,11 @@ type NamespaceBalancingRuleSpec struct {
 	// CLOUD_NAMESPACE and is immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	// The Pattern rejects a whitespace-only value, which MinLength alone accepts.
-	// +kubebuilder:validation:Pattern=`\S`
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
 	OperatorNamespace string `json:"operatorNamespace"`
 
@@ -280,8 +286,11 @@ type PermanentBalancingRuleSpec struct {
 	// CLOUD_NAMESPACE and is immutable after creation.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	// The Pattern rejects a whitespace-only value, which MinLength alone accepts.
-	// +kubebuilder:validation:Pattern=`\S`
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
 	OperatorNamespace string `json:"operatorNamespace"`
 

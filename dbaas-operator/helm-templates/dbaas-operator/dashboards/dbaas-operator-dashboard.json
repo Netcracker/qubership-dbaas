@@ -1051,6 +1051,39 @@
                                                               "legendFormat":  "{{kind}}"
                                                           }
                                                       ]
+                                      },
+                                      {
+                                          "id":  32,
+                                          "type":  "timeseries",
+                                          "title":  "Unassigned orphan-scan health",
+                                          "description":  "Managed CRs whose spec.operatorNamespace does not match this operator's CLOUD_NAMESPACE, so no operator reconciles them and they produce no phase/condition/event. Non-zero means a CR is orphaned, usually an operatorNamespace typo. Assumes one operator per cluster: with several operators this also shows CRs owned by another operator.",
+                                          "gridPos":  {
+                                                          "h":  8,
+                                                          "w":  24,
+                                                          "x":  0,
+                                                          "y":  47
+                                                      },
+                                          "datasource":  "$datasource",
+                                          "fieldConfig":  {
+                                                              "defaults":  {
+                                                                               "unit":  "short",
+                                                                               "custom":  {
+                                                                                              "lineWidth":  2
+                                                                                          }
+                                                                           }
+                                                          },
+                                          "options":  {
+                                                          "legend":  {
+                                                                         "displayMode":  "list",
+                                                                         "placement":  "bottom"
+                                                                     }
+                                                      },
+                                          "targets":  [
+                                                          {
+                                                              "expr":  "min by (kind) (dbaas_resource_unassigned_scan_success{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
+                                                              "legendFormat":  "{{kind}}"
+                                                          }
+                                                      ]
                                       }
                                   ]
                    }

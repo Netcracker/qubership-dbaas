@@ -106,8 +106,8 @@ var (
 	)
 	resourceUnassignedDesc = prometheus.NewDesc(
 		"dbaas_resource_unassigned",
-		"A managed CR whose spec.operatorNamespace does not match this operator instance's CLOUD_NAMESPACE, so no reconcile, status, event, or state gauge is produced for it. Value is always 1, one series per such CR. This assumes one operator per cluster: with several operators a CR assigned to a different operator also shows up here.",
-		[]string{"kind", "resource_namespace", "name"},
+		"A managed CR whose spec.operatorNamespace does not match this operator instance's CLOUD_NAMESPACE, so no reconcile, status, event, or state gauge is produced for it. Value is always 1, one series per such CR. The operator_namespace label carries the CR's declared spec.operatorNamespace: with several operators every instance reports the others' CRs here, so scope alerts with operator_namespace!~\"<known live operators>\" to isolate a genuinely orphaned CR.",
+		[]string{"kind", "resource_namespace", "name", "operator_namespace"},
 		nil,
 	)
 	resourceUnassignedScanSuccessDesc = prometheus.NewDesc(
@@ -180,7 +180,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.ExternalDatabaseList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
 			}
 			return rows
 		})
@@ -188,7 +188,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.InternalDatabaseList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
 			}
 			return rows
 		})
@@ -196,7 +196,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.DatabaseAccessPolicyList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
 			}
 			return rows
 		})
@@ -204,7 +204,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.DatabaseSecretClaimList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
 			}
 			return rows
 		})
@@ -212,7 +212,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.MicroserviceBalancingRuleList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
 			}
 			return rows
 		})
@@ -220,7 +220,7 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.NamespaceBalancingRuleList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
 			}
 			return rows
 		})
@@ -228,14 +228,14 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 		func(l *dbaasv1.PermanentBalancingRuleList) []unassignedRow {
 			rows := make([]unassignedRow, len(l.Items))
 			for i := range l.Items {
-				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name}
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
 			}
 			return rows
 		})
 }
 
 type unassignedRow struct {
-	namespace, name string
+	namespace, name, operatorNamespace string
 }
 
 // collectUnassignedKind lists one kind through the uncached reader with a
@@ -267,7 +267,7 @@ func collectUnassignedKind[L client.ObjectList](
 		}
 		for _, row := range extract(list) {
 			ch <- prometheus.MustNewConstMetric(
-				resourceUnassignedDesc, prometheus.GaugeValue, 1, kind, row.namespace, row.name)
+				resourceUnassignedDesc, prometheus.GaugeValue, 1, kind, row.namespace, row.name, row.operatorNamespace)
 		}
 		continueToken = list.GetContinue()
 		if continueToken == "" {
