@@ -24,7 +24,6 @@ public class OperatorHelper {
 
     public static final String DBAAS_OPERATOR_NAME = "dbaas-operator";
 
-    public static final String CR_NAMESPACE_BINDING_NAME = "binding";
     // Balancing-rule CRs are singletons with fixed names (see dbaas-operator api/v1/balancingrule_types.go).
     public static final String CR_MICROSERVICE_BALANCING_RULE_NAME = "microservice-balancing-rules";
     public static final String CR_NAMESPACE_BALANCING_RULE_NAME = "namespace-balancing-rules";
@@ -68,13 +67,6 @@ public class OperatorHelper {
                     .withPlural("externaldatabases")
                     .withScope("Namespaced")
                     .build();
-
-    public static final CustomResourceDefinitionContext CRD_NAMESPACE_BINDING = new CustomResourceDefinitionContext.Builder()
-            .withGroup("dbaas.netcracker.com")
-            .withVersion("v1")
-            .withPlural("namespacebindings")
-            .withScope("Namespaced")
-            .build();
 
     public static final CustomResourceDefinitionContext CRD_INTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
@@ -130,27 +122,6 @@ public class OperatorHelper {
         return namespace;
     }
 
-    public static GenericKubernetesResource buildNamespaceBindingCR() {
-        return buildNamespaceBindingCR("binding", NAMESPACE, NAMESPACE);
-    }
-
-    public static GenericKubernetesResource buildNamespaceBindingCR(String crName, String namespace, String operatorNamespace) {
-        GenericKubernetesResource cr = new GenericKubernetesResource();
-        cr.setApiVersion("dbaas.netcracker.com/v1");
-        cr.setKind("NamespaceBinding");
-
-        ObjectMeta meta = new ObjectMeta();
-        meta.setName(crName);
-        meta.setNamespace(namespace);
-        meta.getLabels().put(TEST_ID, TEST_ID);
-        cr.setMetadata(meta);
-
-        cr.setAdditionalProperty("spec", Map.of(
-                "operatorNamespace", operatorNamespace
-        ));
-        return cr;
-    }
-
     public static GenericKubernetesResource buildExternalDatabaseCR(String crName, String microserviceName, String namespace, String dbName, String secretName) {
         GenericKubernetesResource cr = new GenericKubernetesResource();
         cr.setApiVersion("dbaas.netcracker.com/v1");
@@ -188,6 +159,7 @@ public class OperatorHelper {
         }
 
         Map<String, Object> specBody = new HashMap<>();
+        specBody.put("operatorNamespace", NAMESPACE);
         specBody.put("classifier", classifier);
         specBody.put("type", "postgresql");
         specBody.put("dbName", dbName);
@@ -412,6 +384,7 @@ public class OperatorHelper {
         classifier.put("scope", "service");
 
         Map<String, Object> specBody = new HashMap<>();
+        specBody.put("operatorNamespace", NAMESPACE);
         specBody.put("classifier", classifier);
         specBody.put("type", type);
         specBody.put("lazy", lazy);
@@ -442,6 +415,7 @@ public class OperatorHelper {
         classifier.put("scope", "service");
 
         Map<String, Object> specBody = new HashMap<>();
+        specBody.put("operatorNamespace", NAMESPACE);
         specBody.put("classifier", classifier);
         specBody.put("secretName", secretName);
         specBody.put("type", type);
@@ -481,6 +455,7 @@ public class OperatorHelper {
         cr.setMetadata(meta);
 
         Map<String, Object> specBody = new HashMap<>();
+        specBody.put("operatorNamespace", NAMESPACE);
         specBody.put("microserviceName", microserviceName);
         if (services != null) {
             specBody.put("services", services);
@@ -510,6 +485,7 @@ public class OperatorHelper {
         cr.setMetadata(meta);
 
         Map<String, Object> specBody = new HashMap<>();
+        specBody.put("operatorNamespace", NAMESPACE);
         specBody.put("rules", rules);
         cr.setAdditionalProperty("spec", specBody);
         return cr;

@@ -53,7 +53,8 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 	// baseSpec builds a minimal valid spec for use in aggregator-response tests.
 	baseSpec := func() dbaasv1.DatabaseAccessPolicySpec {
 		return dbaasv1.DatabaseAccessPolicySpec{
-			MicroserviceName: "test-service",
+			OperatorNamespace: testOperatorNamespace,
+			MicroserviceName:  "test-service",
 			Services: []dbaasv1.ServiceRole{
 				{Name: "other-service", Roles: []string{"admin"}},
 			},
@@ -64,11 +65,11 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 		reconciler = &DatabaseAccessPolicyReconciler{
-			Client:     k8sClient,
-			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
-			Recorder:   fixture.recorder,
-			Ownership:  mineOwnershipResolver(ns),
+			Client:      k8sClient,
+			Scheme:      k8sClient.Scheme(),
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
+			Recorder:    fixture.recorder,
+			MyNamespace: testOperatorNamespace,
 		}
 	})
 
@@ -82,6 +83,24 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 			return &dbaasv1.DatabaseAccessPolicy{}
 		})
 	}
+
+	Context("operator eligibility", func() {
+		It("skips a resource assigned to another operator without mutating status", func() {
+			spec := baseSpec()
+			spec.OperatorNamespace = testForeignOperatorNamespace
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			policy, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called for a foreign resource")
+			Expect(policy.Status.Phase).To(BeEmpty())
+		})
+	})
 
 	// ── Request payload assembly ──────────────────────────────────────────────
 
@@ -115,7 +134,8 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 	Context("buildPayload — services and policy are serialized into spec", func() {
 		It("sends services and policy in the spec field", func() {
 			spec := dbaasv1.DatabaseAccessPolicySpec{
-				MicroserviceName: "test-service",
+				OperatorNamespace: testOperatorNamespace,
+				MicroserviceName:  "test-service",
 				Services: []dbaasv1.ServiceRole{
 					{Name: "other-svc", Roles: []string{"admin", "readonly"}},
 				},
@@ -175,7 +195,10 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue", func() {
 			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
-				Spec:       dbaasv1.DatabaseAccessPolicySpec{MicroserviceName: "test-service"},
+				Spec: dbaasv1.DatabaseAccessPolicySpec{
+					OperatorNamespace: testOperatorNamespace,
+					MicroserviceName:  "test-service",
+				},
 			})).To(Succeed())
 
 			dp, result, err := reconcileAndFetch()
@@ -200,8 +223,9 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 			err := k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec: dbaasv1.DatabaseAccessPolicySpec{
-					MicroserviceName: "test-service",
-					Services:         []dbaasv1.ServiceRole{{Name: "", Roles: []string{"admin"}}},
+					OperatorNamespace: testOperatorNamespace,
+					MicroserviceName:  "test-service",
+					Services:          []dbaasv1.ServiceRole{{Name: "", Roles: []string{"admin"}}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -215,8 +239,9 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 			err := k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec: dbaasv1.DatabaseAccessPolicySpec{
-					MicroserviceName: "test-service",
-					Services:         []dbaasv1.ServiceRole{{Name: "other-svc", Roles: nil}},
+					OperatorNamespace: testOperatorNamespace,
+					MicroserviceName:  "test-service",
+					Services:          []dbaasv1.ServiceRole{{Name: "other-svc", Roles: nil}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -230,8 +255,9 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 			err := k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec: dbaasv1.DatabaseAccessPolicySpec{
-					MicroserviceName: "test-service",
-					Policy:           []dbaasv1.PolicyRole{{Type: "", DefaultRole: "admin"}},
+					OperatorNamespace: testOperatorNamespace,
+					MicroserviceName:  "test-service",
+					Policy:            []dbaasv1.PolicyRole{{Type: "", DefaultRole: "admin"}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -245,8 +271,9 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 			err := k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec: dbaasv1.DatabaseAccessPolicySpec{
-					MicroserviceName: "test-service",
-					Policy:           []dbaasv1.PolicyRole{{Type: "postgresql", DefaultRole: ""}},
+					OperatorNamespace: testOperatorNamespace,
+					MicroserviceName:  "test-service",
+					Policy:            []dbaasv1.PolicyRole{{Type: "postgresql", DefaultRole: ""}},
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -454,11 +481,11 @@ var _ = Describe("DatabaseAccessPolicy Controller — rate limiter", func() {
 		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
 
 		err = (&DatabaseAccessPolicyReconciler{
-			Client:     mgr.GetClient(),
-			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("dp-rate-limiter-test"), //nolint:staticcheck
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
-			Ownership:  mineOwnershipResolver("ns"),
+			Client:      mgr.GetClient(),
+			Scheme:      mgr.GetScheme(),
+			Recorder:    mgr.GetEventRecorderFor("dp-rate-limiter-test"), //nolint:staticcheck
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
+			MyNamespace: testOperatorNamespace,
 		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
 		Expect(err).NotTo(HaveOccurred())
 

@@ -23,12 +23,11 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 const (
@@ -39,42 +38,34 @@ const (
 	resourceKindMicroserviceBalancingRule  = "MicroserviceBalancingRule"
 	resourceKindNamespaceBalancingRule     = "NamespaceBalancingRule"
 	resourceKindPermanentBalancingRule     = "PermanentBalancingRule"
-	resourceKindNamespaceBinding           = "NamespaceBinding"
-	namespaceBindingStateMine              = "mine"
-	namespaceBindingStateForeign           = "foreign"
-	namespaceBindingStateDeleting          = "deleting"
-	namespaceBindingStateDeletingFinalizer = "deleting_with_finalizer"
 	resourceDeletionStateDeleting          = "deleting"
 	resourceDeletionStateDeletingFinalizer = "deleting_with_finalizer"
 	balancingTargetTypeMicroservice        = "microservice"
 	balancingTargetTypeRule                = "rule"
 	balancingTargetTypeNamespace           = "namespace"
 	resourceMetricsCollectionTimeout       = 10 * time.Second
+	// unassignedListPageSize bounds each page of the orphan scan so a cluster with
+	// many mis-assigned CRs cannot return an unbounded response in one call.
+	unassignedListPageSize = 500
 )
 
 var (
 	resourcePhaseDesc = prometheus.NewDesc(
 		"dbaas_resource_phase",
-		"Current phase of dbaas operator resources that expose OperatorStatus. Emits one series for the current phase of each resource owned by this operator instance.",
+		"Current phase of dbaas operator resources that expose OperatorStatus. Emits one series for the current phase of each resource assigned to this operator instance.",
 		[]string{"kind", "resource_namespace", "name", "phase"},
 		nil,
 	)
 	resourceConditionDesc = prometheus.NewDesc(
 		"dbaas_resource_condition",
-		"Current status conditions of dbaas operator resources that expose OperatorStatus. Emits current condition type, status, and reason for each resource owned by this operator instance.",
+		"Current status conditions of dbaas operator resources that expose OperatorStatus. Emits current condition type, status, and reason for each resource assigned to this operator instance.",
 		[]string{"kind", "resource_namespace", "name", "condition", "status", "reason"},
 		nil,
 	)
 	resourceGenerationLagDesc = prometheus.NewDesc(
 		"dbaas_resource_observed_generation_lag",
-		"Difference between metadata.generation and status.observedGeneration for dbaas operator resources owned by this operator instance.",
+		"Difference between metadata.generation and status.observedGeneration for dbaas operator resources assigned to this operator instance.",
 		[]string{"kind", "resource_namespace", "name"},
-		nil,
-	)
-	namespaceBindingStateDesc = prometheus.NewDesc(
-		"dbaas_namespace_binding_state",
-		"Current NamespaceBinding state from this operator instance's point of view. deleting_with_finalizer means deletion is in progress and the protection finalizer is still present; it does not prove blocking resources still exist.",
-		[]string{"resource_namespace", "name", "state"},
 		nil,
 	)
 	resourceDeletionStateDesc = prometheus.NewDesc(
@@ -113,17 +104,33 @@ var (
 		[]string{"kind"},
 		nil,
 	)
+	resourceUnassignedDesc = prometheus.NewDesc(
+		"dbaas_resource_unassigned",
+		"A managed CR whose spec.operatorNamespace does not match this operator instance's CLOUD_NAMESPACE, so no reconcile, status, event, or state gauge is produced for it. Value is always 1, one series per such CR. The operator_namespace label carries the CR's declared spec.operatorNamespace: with several operators every instance reports the others' CRs here, so scope alerts with operator_namespace!~\"<known live operators>\" to isolate a genuinely orphaned CR.",
+		[]string{"kind", "resource_namespace", "name", "operator_namespace"},
+		nil,
+	)
+	resourceUnassignedScanSuccessDesc = prometheus.NewDesc(
+		"dbaas_resource_unassigned_scan_success",
+		"Whether the latest orphan scan (the uncached list behind dbaas_resource_unassigned) succeeded for a CR kind. 0 means the scan failed, so dbaas_resource_unassigned for that kind may be missing orphans — the alert on it can otherwise fail open.",
+		[]string{"kind"},
+		nil,
+	)
 	registerResourceMetricsOnce sync.Once
 )
 
 // RegisterResourceMetrics registers kube-state-style current-state metrics for
 // dbaas CRs. The metrics intentionally expose CR name only on gauges that
 // represent current state; counters and histograms remain low-cardinality.
-func RegisterResourceMetrics(c client.Client, resolver *ownership.OwnershipResolver, operatorNamespace string) {
+//
+// reader is an uncached client.Reader (the manager's API reader). The manager's
+// cache is filtered to CRs assigned to this operator, so the cached client cannot
+// see mis-assigned CRs; the reader lists them directly for dbaas_resource_unassigned.
+func RegisterResourceMetrics(c client.Client, reader client.Reader, operatorNamespace string) {
 	registerResourceMetricsOnce.Do(func() {
 		metrics.Registry.MustRegister(&resourceMetricsCollector{
 			client:            c,
-			ownership:         resolver,
+			reader:            reader,
 			operatorNamespace: operatorNamespace,
 		})
 	})
@@ -131,7 +138,7 @@ func RegisterResourceMetrics(c client.Client, resolver *ownership.OwnershipResol
 
 type resourceMetricsCollector struct {
 	client            client.Client
-	ownership         *ownership.OwnershipResolver
+	reader            client.Reader
 	operatorNamespace string
 }
 
@@ -139,13 +146,14 @@ func (c *resourceMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- resourcePhaseDesc
 	ch <- resourceConditionDesc
 	ch <- resourceGenerationLagDesc
-	ch <- namespaceBindingStateDesc
 	ch <- resourceDeletionStateDesc
 	ch <- balancingRuleDesiredTargetsDesc
 	ch <- balancingRuleAppliedTargetsDesc
 	ch <- secretClaimLastRotationTimestampDesc
 	ch <- secretClaimFirstNotFoundTimestampDesc
 	ch <- resourceCollectorSuccessDesc
+	ch <- resourceUnassignedDesc
+	ch <- resourceUnassignedScanSuccessDesc
 }
 
 func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
@@ -159,7 +167,114 @@ func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.collectMicroserviceBalancingRules(ctx, ch)
 	c.collectNamespaceBalancingRules(ctx, ch)
 	c.collectPermanentBalancingRules(ctx, ch)
-	c.collectNamespaceBindings(ctx, ch)
+	c.collectUnassigned(ctx, ch)
+}
+
+// collectUnassigned scans every managed kind for CRs this operator does not own.
+// The manager cache is filtered to owned CRs, so a mis-assigned CR is invisible to
+// the cached client; the uncached reader with a server-side field selector lists
+// only the orphans, giving the otherwise-silent "assigned to nobody / a typo" case
+// an observable signal.
+func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch chan<- prometheus.Metric) {
+	collectUnassignedKind(c, ctx, ch, resourceKindExternalDatabase, &dbaasv1.ExternalDatabaseList{},
+		func(l *dbaasv1.ExternalDatabaseList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindInternalDatabase, &dbaasv1.InternalDatabaseList{},
+		func(l *dbaasv1.InternalDatabaseList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindDatabaseAccessPolicy, &dbaasv1.DatabaseAccessPolicyList{},
+		func(l *dbaasv1.DatabaseAccessPolicyList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindDatabaseSecretClaim, &dbaasv1.DatabaseSecretClaimList{},
+		func(l *dbaasv1.DatabaseSecretClaimList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindMicroserviceBalancingRule, &dbaasv1.MicroserviceBalancingRuleList{},
+		func(l *dbaasv1.MicroserviceBalancingRuleList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindNamespaceBalancingRule, &dbaasv1.NamespaceBalancingRuleList{},
+		func(l *dbaasv1.NamespaceBalancingRuleList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+	collectUnassignedKind(c, ctx, ch, resourceKindPermanentBalancingRule, &dbaasv1.PermanentBalancingRuleList{},
+		func(l *dbaasv1.PermanentBalancingRuleList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
+}
+
+type unassignedRow struct {
+	namespace, name, operatorNamespace string
+}
+
+// collectUnassignedKind lists one kind through the uncached reader with a
+// server-side spec.operatorNamespace != CLOUD_NAMESPACE field selector, so the API
+// server returns only the CRs this operator does not own rather than the whole
+// kind. Results are paged. A list failure sets the per-kind scan-success gauge to 0
+// so an alert on dbaas_resource_unassigned cannot silently fail open.
+func collectUnassignedKind[L client.ObjectList](
+	c *resourceMetricsCollector,
+	ctx context.Context,
+	ch chan<- prometheus.Metric,
+	kind string,
+	list L,
+	extract func(L) []unassignedRow,
+) {
+	selector := fields.OneTermNotEqualSelector("spec.operatorNamespace", c.operatorNamespace)
+	continueToken := ""
+	for {
+		opts := []client.ListOption{
+			client.MatchingFieldsSelector{Selector: selector},
+			client.Limit(unassignedListPageSize),
+		}
+		if continueToken != "" {
+			opts = append(opts, client.Continue(continueToken))
+		}
+		if err := c.reader.List(ctx, list, opts...); err != nil {
+			ch <- prometheus.MustNewConstMetric(resourceUnassignedScanSuccessDesc, prometheus.GaugeValue, 0, kind)
+			return
+		}
+		for _, row := range extract(list) {
+			ch <- prometheus.MustNewConstMetric(
+				resourceUnassignedDesc, prometheus.GaugeValue, 1, kind, row.namespace, row.name, row.operatorNamespace)
+		}
+		continueToken = list.GetContinue()
+		if continueToken == "" {
+			break
+		}
+	}
+	ch <- prometheus.MustNewConstMetric(resourceUnassignedScanSuccessDesc, prometheus.GaugeValue, 1, kind)
 }
 
 func (c *resourceMetricsCollector) collectExternalDatabases(ctx context.Context, ch chan<- prometheus.Metric) {
@@ -169,7 +284,7 @@ func (c *resourceMetricsCollector) collectExternalDatabases(ctx context.Context,
 	}
 	for i := range list.Items {
 		item := &list.Items[i]
-		if c.ownsNamespace(item.Namespace) {
+		if c.manages(item.Spec.OperatorNamespace) {
 			collectOperatorStatus(ch, resourceKindExternalDatabase, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
 			collectDeletionState(ch, resourceKindExternalDatabase, item.Namespace, item.Name, item.DeletionTimestamp, item.Finalizers)
 		}
@@ -183,7 +298,7 @@ func (c *resourceMetricsCollector) collectInternalDatabases(ctx context.Context,
 	}
 	for i := range list.Items {
 		item := &list.Items[i]
-		if c.ownsNamespace(item.Namespace) {
+		if c.manages(item.Spec.OperatorNamespace) {
 			collectOperatorStatus(ch, resourceKindInternalDatabase, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
 			collectDeletionState(ch, resourceKindInternalDatabase, item.Namespace, item.Name, item.DeletionTimestamp, item.Finalizers)
 		}
@@ -197,7 +312,7 @@ func (c *resourceMetricsCollector) collectDatabaseAccessPolicies(ctx context.Con
 	}
 	for i := range list.Items {
 		item := &list.Items[i]
-		if c.ownsNamespace(item.Namespace) {
+		if c.manages(item.Spec.OperatorNamespace) {
 			collectOperatorStatus(ch, resourceKindDatabaseAccessPolicy, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
 			collectDeletionState(ch, resourceKindDatabaseAccessPolicy, item.Namespace, item.Name, item.DeletionTimestamp, item.Finalizers)
 		}
@@ -211,7 +326,7 @@ func (c *resourceMetricsCollector) collectDatabaseSecretClaims(ctx context.Conte
 	}
 	for i := range list.Items {
 		item := &list.Items[i]
-		if !c.ownsNamespace(item.Namespace) {
+		if !c.manages(item.Spec.OperatorNamespace) {
 			continue
 		}
 		collectOperatorStatus(ch, resourceKindDatabaseSecretClaim, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
@@ -244,7 +359,7 @@ func (c *resourceMetricsCollector) collectMicroserviceBalancingRules(ctx context
 	}
 	for i := range list.Items {
 		item := &list.Items[i]
-		if !c.ownsNamespace(item.Namespace) {
+		if !c.manages(item.Spec.OperatorNamespace) {
 			continue
 		}
 		collectOperatorStatus(ch, resourceKindMicroserviceBalancingRule, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
@@ -277,7 +392,7 @@ func (c *resourceMetricsCollector) collectNamespaceBalancingRules(ctx context.Co
 	}
 	for i := range list.Items {
 		item := &list.Items[i]
-		if !c.ownsNamespace(item.Namespace) {
+		if !c.manages(item.Spec.OperatorNamespace) {
 			continue
 		}
 		collectOperatorStatus(ch, resourceKindNamespaceBalancingRule, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
@@ -304,18 +419,17 @@ func (c *resourceMetricsCollector) collectNamespaceBalancingRules(ctx context.Co
 }
 
 func (c *resourceMetricsCollector) collectPermanentBalancingRules(ctx context.Context, ch chan<- prometheus.Metric) {
-	if c.operatorNamespace == "" {
-		ch <- prometheus.MustNewConstMetric(resourceCollectorSuccessDesc, prometheus.GaugeValue, 0, resourceKindPermanentBalancingRule)
-		return
-	}
 	list := &dbaasv1.PermanentBalancingRuleList{}
-	if err := c.client.List(ctx, list, client.InNamespace(c.operatorNamespace)); err != nil {
+	if err := c.client.List(ctx, list); err != nil {
 		ch <- prometheus.MustNewConstMetric(resourceCollectorSuccessDesc, prometheus.GaugeValue, 0, resourceKindPermanentBalancingRule)
 		return
 	}
 	ch <- prometheus.MustNewConstMetric(resourceCollectorSuccessDesc, prometheus.GaugeValue, 1, resourceKindPermanentBalancingRule)
 	for i := range list.Items {
 		item := &list.Items[i]
+		if !c.manages(item.Spec.OperatorNamespace) {
+			continue
+		}
 		collectOperatorStatus(ch, resourceKindPermanentBalancingRule, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
 		collectDeletionState(ch, resourceKindPermanentBalancingRule, item.Namespace, item.Name, item.DeletionTimestamp, item.Finalizers)
 		ch <- prometheus.MustNewConstMetric(
@@ -339,35 +453,6 @@ func (c *resourceMetricsCollector) collectPermanentBalancingRules(ctx context.Co
 	}
 }
 
-func (c *resourceMetricsCollector) collectNamespaceBindings(ctx context.Context, ch chan<- prometheus.Metric) {
-	list := &dbaasv1.NamespaceBindingList{}
-	if !c.collectList(ctx, ch, resourceKindNamespaceBinding, list) {
-		return
-	}
-	for i := range list.Items {
-		item := &list.Items[i]
-		state := namespaceBindingState(item, c.operatorNamespace)
-		ch <- prometheus.MustNewConstMetric(
-			namespaceBindingStateDesc,
-			prometheus.GaugeValue,
-			1,
-			item.Namespace,
-			item.Name,
-			state,
-		)
-		// Status gauges only for bindings this instance owns — only the owning
-		// instance writes NamespaceBinding status, so a foreign binding's status
-		// is another instance's (or nobody's) data. Ownership comes from the
-		// binding's own spec, not the resolver cache: the binding IS the source
-		// the cache is built from. Deletion state is deliberately not emitted
-		// under dbaas_resource_deletion_state — dbaas_namespace_binding_state
-		// already carries it (deleting_with_finalizer).
-		if item.Spec.OperatorNamespace == c.operatorNamespace {
-			collectOperatorStatus(ch, resourceKindNamespaceBinding, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
-		}
-	}
-}
-
 func (c *resourceMetricsCollector) collectList(
 	ctx context.Context,
 	ch chan<- prometheus.Metric,
@@ -382,11 +467,8 @@ func (c *resourceMetricsCollector) collectList(
 	return true
 }
 
-func (c *resourceMetricsCollector) ownsNamespace(namespace string) bool {
-	if c.ownership == nil {
-		return false
-	}
-	return c.ownership.GetState(namespace) == ownership.Mine
+func (c *resourceMetricsCollector) manages(operatorNamespace string) bool {
+	return dbaasv1.IsAssignedTo(operatorNamespace, c.operatorNamespace)
 }
 
 func collectOperatorStatus(
@@ -443,19 +525,6 @@ func generationLag(generation, observedGeneration int64) int64 {
 		return 0
 	}
 	return generation - observedGeneration
-}
-
-func namespaceBindingState(binding *dbaasv1.NamespaceBinding, operatorNamespace string) string {
-	if !binding.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(binding, dbaasv1.NamespaceBindingProtectionFinalizer) {
-			return namespaceBindingStateDeletingFinalizer
-		}
-		return namespaceBindingStateDeleting
-	}
-	if binding.Spec.OperatorNamespace == operatorNamespace {
-		return namespaceBindingStateMine
-	}
-	return namespaceBindingStateForeign
 }
 
 func collectDeletionState(

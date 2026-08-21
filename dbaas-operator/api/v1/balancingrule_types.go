@@ -28,7 +28,7 @@ const (
 	NamespaceBalancingRuleName = "namespace-balancing-rules"
 
 	// PermanentBalancingRuleName is the fixed singleton name for permanent
-	// balancing rules in the operator namespace.
+	// balancing rules in the assigned operator namespace.
 	PermanentBalancingRuleName = "permanent-balancing-rules"
 
 	// MicroserviceBalancingRuleFinalizer lets the operator disable aggregator-side
@@ -47,6 +47,19 @@ const (
 // MicroserviceBalancingRuleSpec defines an on-microservice physical database
 // balancing rule. It maps to the dbaas-aggregator onMicroservices rule payload.
 type MicroserviceBalancingRuleSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// rules is the set of microservice balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
@@ -108,6 +121,7 @@ type MicroserviceBalancingRuleStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:selectablefield:JSONPath=".spec.operatorNamespace"
 // +kubebuilder:resource:scope=Namespaced,path=microservicebalancingrules,singular=microservicebalancingrule,shortName=dbmbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
@@ -147,6 +161,19 @@ type MicroserviceBalancingRuleList struct {
 // NamespaceBalancingRuleSpec defines an on-namespace physical database
 // balancing rule. It maps to the dbaas-aggregator perNamespace rule payload.
 type NamespaceBalancingRuleSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// rules is the set of namespace balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
@@ -214,6 +241,7 @@ type NamespaceBalancingRuleStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:selectablefield:JSONPath=".spec.operatorNamespace"
 // +kubebuilder:resource:scope=Namespaced,path=namespacebalancingrules,singular=namespacebalancingrule,shortName=dbnbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
@@ -253,6 +281,19 @@ type NamespaceBalancingRuleList struct {
 // PermanentBalancingRuleSpec defines a permanent namespace physical database
 // balancing rule. It maps to the dbaas-aggregator permanent rule payload.
 type PermanentBalancingRuleSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// rules is the set of permanent balancing rules managed by this singleton CR.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
@@ -313,6 +354,7 @@ type PermanentBalancingRuleStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:selectablefield:JSONPath=".spec.operatorNamespace"
 // +kubebuilder:resource:scope=Namespaced,path=permanentbalancingrules,singular=permanentbalancingrule,shortName=dbpbr,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"

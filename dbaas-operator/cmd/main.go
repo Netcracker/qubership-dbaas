@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -51,7 +52,6 @@ import (
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/poller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
 	// +kubebuilder:scaffold:imports
@@ -107,7 +107,7 @@ func main() {
 
 	cloudNamespace := os.Getenv("CLOUD_NAMESPACE")
 	if cloudNamespace == "" {
-		setupLog.Errorf("CLOUD_NAMESPACE env var is not set — ownership checks will not work correctly")
+		setupLog.Errorf("CLOUD_NAMESPACE env var is not set — resource eligibility checks will not work correctly")
 		os.Exit(1)
 	}
 	setupLog.Infof("operator namespace cloud-namespace=%v", cloudNamespace)
@@ -155,25 +155,35 @@ func main() {
 		leaderElectionConfig.WrapTransport = silentEventsTransport
 	}
 
-	// PermanentBalancingRule is operator-namespace-only, so its informer is
-	// scoped to CLOUD_NAMESPACE. All other CRs remain cluster-wide.
-	cacheOpts := cache.Options{}
-	if cloudNamespace != "" {
-		cacheOpts.ByObject = map[client.Object]cache.ByObject{
-			&dbaasv1.PermanentBalancingRule{}: {
-				Namespaces: map[string]cache.Config{cloudNamespace: {}},
-			},
-		}
+	// Cache only the managed CRs assigned to this operator. spec.operatorNamespace is a
+	// selectable field on every managed CRD (GA in Kubernetes 1.32, the documented minimum),
+	// so the informers list/watch server-side with fieldSelector=spec.operatorNamespace=
+	// CLOUD_NAMESPACE instead of caching every DBaaS CR cluster-wide and discarding foreign
+	// ones one reconcile at a time. This is an optimization: the per-reconcile
+	// isEligibleForOperator checks remain the correctness guarantee.
+	assignedToThisOperator := cache.ByObject{
+		Field: fields.OneTermEqualSelector("spec.operatorNamespace", cloudNamespace),
+	}
+	cacheOptions := cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			&dbaasv1.ExternalDatabase{}:          assignedToThisOperator,
+			&dbaasv1.InternalDatabase{}:          assignedToThisOperator,
+			&dbaasv1.DatabaseAccessPolicy{}:      assignedToThisOperator,
+			&dbaasv1.DatabaseSecretClaim{}:       assignedToThisOperator,
+			&dbaasv1.MicroserviceBalancingRule{}: assignedToThisOperator,
+			&dbaasv1.NamespaceBalancingRule{}:    assignedToThisOperator,
+			&dbaasv1.PermanentBalancingRule{}:    assignedToThisOperator,
+		},
 	}
 
 	mgr, err := ctrl.NewManager(baseConfig, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                httpServerOpts,
 		HealthProbeBindAddress: probeAddr,
-		Cache:                  cacheOpts,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "0bafbe61.netcracker.com",
 		LeaderElectionConfig:   leaderElectionConfig,
+		Cache:                  cacheOptions,
 		// Secrets are fetched directly from the API server on each reconcile
 		// and do not need to be cached. Caching all Secrets cluster-wide
 		// would load the entire cluster's secret store into memory, causing OOM.
@@ -198,48 +208,14 @@ func main() {
 	}
 	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
 
-	ownershipResolver := ownership.NewOwnershipResolver(cloudNamespace, mgr.GetClient())
-	controller.RegisterResourceMetrics(mgr.GetClient(), ownershipResolver, cloudNamespace)
-	if err := mgr.Add(&ownershipWarmupRunnable{resolver: ownershipResolver}); err != nil {
-		setupLog.Errorf("Failed to register ownership warmup runnable: %v", err)
-		os.Exit(1)
-	}
-
-	edbChecker := ownership.NewKindChecker(mgr.GetClient(), "ExternalDatabase", func() *dbaasv1.ExternalDatabaseList { return &dbaasv1.ExternalDatabaseList{} })
-	dpChecker := ownership.NewKindChecker(mgr.GetClient(), "DatabaseAccessPolicy", func() *dbaasv1.DatabaseAccessPolicyList { return &dbaasv1.DatabaseAccessPolicyList{} })
-	ddChecker := ownership.NewKindChecker(mgr.GetClient(), "InternalDatabase", func() *dbaasv1.InternalDatabaseList { return &dbaasv1.InternalDatabaseList{} })
-	microserviceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), "MicroserviceBalancingRule", func() *dbaasv1.MicroserviceBalancingRuleList { return &dbaasv1.MicroserviceBalancingRuleList{} })
-	namespaceRuleChecker := ownership.NewKindChecker(mgr.GetClient(), "NamespaceBalancingRule", func() *dbaasv1.NamespaceBalancingRuleList { return &dbaasv1.NamespaceBalancingRuleList{} })
-	dsChecker := ownership.NewKindChecker(mgr.GetClient(), "DatabaseSecretClaim", func() *dbaasv1.DatabaseSecretClaimList { return &dbaasv1.DatabaseSecretClaimList{} })
-	// PermanentBalancingRule is intentionally excluded: it is an operator-namespace
-	// resource decoupled from NamespaceBinding, so it never blocks a (tenant)
-	// NamespaceBinding deletion.
-	blockingChecker := ownership.NewCompositeChecker(
-		edbChecker,
-		dpChecker,
-		ddChecker,
-		dsChecker,
-		microserviceRuleChecker,
-		namespaceRuleChecker,
-	)
-	if err := (&controller.NamespaceBindingReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    recorderFor(mgr, "namespacebinding", eventsEnabled),
-		MyNamespace: cloudNamespace,
-		Ownership:   ownershipResolver,
-		Checker:     blockingChecker,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
-		setupLog.Errorf("Failed to create controller controller=NamespaceBinding: %v", err)
-		os.Exit(1)
-	}
+	controller.RegisterResourceMetrics(mgr.GetClient(), mgr.GetAPIReader(), cloudNamespace)
 
 	externalDatabaseReconciler := &controller.ExternalDatabaseReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "externaldatabase", eventsEnabled),
-		Ownership:  ownershipResolver,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Aggregator:  aggregator,
+		Recorder:    recorderFor(mgr, "externaldatabase", eventsEnabled),
+		MyNamespace: cloudNamespace,
 	}
 	// ExternalDatabase picks up referenced credential Secret changes through a
 	// periodic resync. Override the default interval for faster rotation pickup.
@@ -256,22 +232,22 @@ func main() {
 	}
 
 	if err := (&controller.DatabaseAccessPolicyReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
-		Ownership:  ownershipResolver,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Aggregator:  aggregator,
+		Recorder:    recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
+		MyNamespace: cloudNamespace,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
 		os.Exit(1)
 	}
 
 	if err := (&controller.InternalDatabaseReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "internaldatabase", eventsEnabled),
-		Ownership:  ownershipResolver,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Aggregator:  aggregator,
+		Recorder:    recorderFor(mgr, "internaldatabase", eventsEnabled),
+		MyNamespace: cloudNamespace,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
 		os.Exit(1)
@@ -282,7 +258,6 @@ func main() {
 		Scheme:      mgr.GetScheme(),
 		Aggregator:  aggregator,
 		Recorder:    recorderFor(mgr, "balancingrule", eventsEnabled),
-		Ownership:   ownershipResolver,
 		MyNamespace: cloudNamespace,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
@@ -290,11 +265,11 @@ func main() {
 	}
 
 	if err := (&controller.DatabaseSecretClaimReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Aggregator: aggregator,
-		Recorder:   recorderFor(mgr, "databasesecretclaim", eventsEnabled),
-		Ownership:  ownershipResolver,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Aggregator:  aggregator,
+		Recorder:    recorderFor(mgr, "databasesecretclaim", eventsEnabled),
+		MyNamespace: cloudNamespace,
 	}).SetupWithManager(mgr, ctrlOpts); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseSecretClaim: %v", err)
 		os.Exit(1)
@@ -324,10 +299,11 @@ func main() {
 		}
 	}
 	if err := mgr.Add(&poller.RotationPoller{
-		Client:   mgr.GetClient(),
-		Source:   aggregator,
-		Interval: pollInterval,
-		Limit:    poller.DefaultLimit,
+		Client:            mgr.GetClient(),
+		Source:            aggregator,
+		Interval:          pollInterval,
+		Limit:             poller.DefaultLimit,
+		OperatorNamespace: cloudNamespace,
 	}); err != nil {
 		setupLog.Errorf("Failed to register rotation poller: %v", err)
 		os.Exit(1)
@@ -353,24 +329,6 @@ func main() {
 
 func registerContextProviders() {
 	requestcontext.RegisterProviders()
-}
-
-// ownershipWarmupRunnable pre-populates the ownership cache before the
-// controller loops start.  It runs on every pod (no leader election) so that
-// workload reconcilers can make ownership decisions immediately after startup
-// without incurring per-object API round-trips.
-type ownershipWarmupRunnable struct {
-	resolver *ownership.OwnershipResolver
-}
-
-func (r *ownershipWarmupRunnable) NeedLeaderElection() bool { return false }
-
-func (r *ownershipWarmupRunnable) Start(ctx context.Context) error {
-	if err := r.resolver.WarmupOwnershipCache(ctx); err != nil {
-		// Non-fatal: the resolver falls back to per-namespace API calls.
-		setupLog.Infof("Ownership cache warmup failed (non-fatal, will fall back to live lookups): %v", err)
-	}
-	return nil
 }
 
 // recorderFor returns a real EventRecorder when enabled, or a no-op recorder

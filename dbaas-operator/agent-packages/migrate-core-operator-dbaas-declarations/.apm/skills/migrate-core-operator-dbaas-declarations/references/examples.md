@@ -40,6 +40,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -94,6 +95,7 @@ metadata:
   name: db-declaration-1
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -132,6 +134,7 @@ kind: InternalDatabase
 metadata:
   name: service-db
 spec:
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: dbaas-spring-service
@@ -174,6 +177,7 @@ metadata:
   name: database-access-policy
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
+  operatorNamespace: "dbaas-system"
   microserviceName: "{{ .Values.SERVICE_NAME }}"
   services:
     - name: externalService
@@ -199,6 +203,7 @@ metadata:
   name: transactional-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -210,6 +215,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
