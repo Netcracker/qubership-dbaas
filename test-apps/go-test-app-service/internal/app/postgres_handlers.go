@@ -231,3 +231,121 @@ func postgresSQLDB(ctx context.Context, db pgdbaas.Database) (*sql.DB, error) {
 	}
 	return sqlDB, nil
 }
+
+// rotationProbeTimeout bounds one probe attempt. It stays below the rotation test's per-request
+// timeout so a stalled datasource surfaces as HTTP 500 that the caller can retry, rather than as a
+// client-side read timeout that hides the reason.
+const rotationProbeTimeout = 4 * time.Second
+
+// maxProbeIDLength matches the item-name limit; probe IDs are stored in the same column.
+const maxProbeIDLength = 200
+
+type rotationProbeRequest struct {
+	ProbeID string `json:"probeId"`
+}
+
+// handlePostgresRotationProbe runs one write-read-delete transaction and reports whether it
+// committed. The credential-rotation test calls it before and after a rotation, so the response
+// carries no connection properties, username, or password — only the caller's own probe ID.
+//
+// Every call goes through GetSqlDb. That method owns stale-pool detection and the refresh of
+// connection properties after a credential change, so resolving the datasource per request is what
+// makes the probe able to observe a rotation at all.
+func handlePostgresRotationProbe(db pgdbaas.Database) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+
+		probeID, err := decodeRotationProbeRequest(w, r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), rotationProbeTimeout)
+		defer cancel()
+
+		sqlDB, err := postgresSQLDB(ctx, db)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		if err := runRotationProbe(ctx, sqlDB, probeID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"probeId": probeID, "status": "ok"})
+	}
+}
+
+func decodeRotationProbeRequest(w http.ResponseWriter, r *http.Request) (string, error) {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+	var request rotationProbeRequest
+	if err := decoder.Decode(&request); err != nil {
+		return "", fmt.Errorf("decode request: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return "", errors.New("request body must contain a single JSON object")
+	}
+
+	probeID := strings.TrimSpace(request.ProbeID)
+	if probeID == "" {
+		return "", errors.New("probeId is required")
+	}
+	if len(probeID) > maxProbeIDLength {
+		return "", errors.New("probeId is too long")
+	}
+	return probeID, nil
+}
+
+// runRotationProbe writes probeID, reads it back, and deletes it in one transaction. A rolled-back
+// or failed transaction leaves the items table as it found it, so the probe can be retried until
+// the deadline without accumulating rows.
+func runRotationProbe(ctx context.Context, sqlDB *sql.DB, probeID string) (err error) {
+	tx, err := sqlDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin rotation probe transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			// The failing error is already on its way to the caller; a rollback failure on an
+			// abandoned transaction adds nothing it can act on.
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.ExecContext(ctx,
+		fmt.Sprintf("INSERT INTO %s (name) VALUES ($1)", postgresmigrations.ItemsTable),
+		probeID,
+	); err != nil {
+		return fmt.Errorf("insert rotation probe row: %w", err)
+	}
+
+	var stored string
+	if err = tx.QueryRowContext(ctx,
+		fmt.Sprintf("SELECT name FROM %s WHERE name = $1", postgresmigrations.ItemsTable),
+		probeID,
+	).Scan(&stored); err != nil {
+		return fmt.Errorf("read rotation probe row back: %w", err)
+	}
+	if stored != probeID {
+		err = fmt.Errorf("rotation probe row mismatch: read %q", stored)
+		return err
+	}
+
+	if _, err = tx.ExecContext(ctx,
+		fmt.Sprintf("DELETE FROM %s WHERE name = $1", postgresmigrations.ItemsTable),
+		probeID,
+	); err != nil {
+		return fmt.Errorf("delete rotation probe row: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit rotation probe transaction: %w", err)
+	}
+	return nil
+}

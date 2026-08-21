@@ -1,0 +1,65 @@
+DATABASE_PROXY_STACK_ENABLED: true
+NAMESPACE: dbaas
+APPLICATION_NAME: dbaas
+MANAGED_BY: Helm
+
+# ── DBaaS Proxy (control plane) ────────────────────────────────────────────────────────────────
+# An HTTP proxy between the operator and the aggregator. It forwards /api requests unchanged and
+# rewrites the database host and port in create/get responses to point at the TCP proxy, so the
+# application connects through a proxy whose sessions a test can terminate on demand.
+#
+# Two images satisfy this contract, and the chart does not care which one it deploys:
+#
+#   - test-apps/dbaas-proxy-stub, built from this repository. This is what CI uses, because the real
+#     dbaas-proxy lives on the internal GitLab and a public runner can neither pull nor build it.
+#   - the real dbaas-proxy, packaged by build-image.sh from a checkout, for a run that has to
+#     validate against the production component.
+#
+# Both values are required; the chart refuses to render without them, and the tag should be
+# immutable so a rerun deploys the same proxy.
+DBAAS_PROXY_IMAGE_REPOSITORY: ""
+DBAAS_PROXY_TAG: ""
+DBAAS_PROXY_PULL_POLICY: IfNotPresent
+DBAAS_PROXY_SERVICE_NAME: dbaas-proxy
+# Where DBaaS Proxy forwards /api requests. This stays the real aggregator: the operator points at
+# the proxy, but the proxy never points back at the operator.
+DBAAS_PROXY_UPSTREAM_URL: http://dbaas-aggregator.dbaas:8080
+
+DBAAS_PROXY_CPU_REQUEST: 50m
+DBAAS_PROXY_MEMORY_REQUEST: 64Mi
+DBAAS_PROXY_CPU_LIMIT: 500m
+DBAAS_PROXY_MEMORY_LIMIT: 128Mi
+
+# ── TCP proxy (data plane) ─────────────────────────────────────────────────────────────────────
+# HAProxy in TCP mode, carrying the application's database traffic. It owns the live sessions, and
+# DBaaS Proxy terminates them through the admin port.
+TCP_PROXY_IMAGE: haproxy:3.0-alpine@sha256:7c8dac975b9def049d6585b7efe865486acaa7b6ec5e74eec45f08fde8bb2ad4
+TCP_PROXY_PULL_POLICY: IfNotPresent
+TCP_PROXY_SERVICE_NAME: tcp-proxy
+# UID of the haproxy user in the official image. Pin it explicitly: runAsNonRoot cannot verify the
+# image's own non-numeric USER, and the pod fails to start without a numeric UID.
+TCP_PROXY_RUN_AS_USER: 99
+TCP_PROXY_ADMIN_PORT: 9999
+# Cluster address DBaaS Proxy rewrites connection properties to. Defaults to
+# <TCP_PROXY_SERVICE_NAME>.<NAMESPACE>.
+TCP_PROXY_HOST: ""
+
+TCP_PROXY_CPU_REQUEST: 50m
+TCP_PROXY_MEMORY_REQUEST: 64Mi
+TCP_PROXY_CPU_LIMIT: 500m
+TCP_PROXY_MEMORY_LIMIT: 128Mi
+
+# ── Database mappings ──────────────────────────────────────────────────────────────────────────
+# One entry per proxied database. This list is the single source of truth: it generates the HAProxy
+# frontends and backends AND the TCP_PROXY_MAPPINGS that DBaaS Proxy matches against, so the two
+# cannot drift apart.
+#
+# `name` must be the database type as the aggregator registers it, because DBaaS Proxy resolves
+# /haproxy/shutdown-sessions/<name> through it. `targetHost` and `targetPort` must be the address
+# the adapter actually returns; DBaaS Proxy normalizes <svc>.<ns>.svc.cluster.local to <svc>.<ns>
+# before matching, so either form works.
+DATABASE_MAPPINGS:
+  - name: postgresql
+    listenPort: 8801
+    targetHost: pg-patroni.postgres.svc.cluster.local
+    targetPort: 5432

@@ -36,6 +36,11 @@ jobs:
       # Minimal dbaas-agent stand-in used by the REST-fallback pass (test-apps/dbaas-agent-stub).
       AGENT_STUB_IMAGE_REPOSITORY: dbaas-agent-stub
       AGENT_STUB_IMAGE_TAG: it
+      # Minimal dbaas-proxy stand-in used by the rotation pass (test-apps/dbaas-proxy-stub). The real
+      # dbaas-proxy is an internal component this runner can neither pull nor build, and the stub
+      # speaks the same environment and HTTP contract.
+      PROXY_STUB_IMAGE_REPOSITORY: dbaas-proxy-stub
+      PROXY_STUB_IMAGE_TAG: it
       TEST_NAMESPACE: dbaas
 
     steps:
@@ -157,6 +162,11 @@ jobs:
           docker build -t "$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG" test-apps/dbaas-agent-stub
           kind load docker-image "$AGENT_STUB_IMAGE_REPOSITORY:$AGENT_STUB_IMAGE_TAG" --name kind
 
+      - name: Build dbaas-proxy stub image and load into kind
+        run: |
+          docker build -t "$PROXY_STUB_IMAGE_REPOSITORY:$PROXY_STUB_IMAGE_TAG" test-apps/dbaas-proxy-stub
+          kind load docker-image "$PROXY_STUB_IMAGE_REPOSITORY:$PROXY_STUB_IMAGE_TAG" --name kind
+
       - name: Deploy DBaaS Aggregator, Operator, and PostgreSQL
         working-directory: bootstrap
         run: >
@@ -237,6 +247,34 @@ jobs:
               test-apps/dbaas-agent-stub/deploy.yaml | kubectl apply -f -
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/dbaas-agent --timeout=120s
 
+      # ──────────────── Database proxy fixture (rotation prerequisite) ────────────────
+      # DBaaS Proxy + HAProxy from test-apps/database-proxy-test-stack. DBaaS Proxy rewrites the
+      # database endpoint in the aggregator's create/get responses to the HAProxy address, so the
+      # sample services connect through a proxy whose sessions the rotation test can terminate.
+      #
+      # This has to run BEFORE any sample InternalDatabase or DatabaseSecretClaim exists. The
+      # operator writes the Secret from whatever the aggregator returns, so a claim reconciled ahead
+      # of the proxy would carry a direct-to-Patroni endpoint that never reaches HAProxy.
+      - name: Deploy database proxy test stack
+        run: |
+          chmod +x test-apps/database-proxy-test-stack/deploy.sh
+          test-apps/database-proxy-test-stack/deploy.sh \
+            --namespace "$TEST_NAMESPACE" \
+            --image "$PROXY_STUB_IMAGE_REPOSITORY:$PROXY_STUB_IMAGE_TAG" \
+            --upstream "http://dbaas-aggregator.$TEST_NAMESPACE:8080" \
+            --mapping "postgresql:8801:pg-patroni.postgres.svc.cluster.local:5432"
+
+      # Test routing, not an operator behavior change: the chart does not expose DBAAS_AGGREGATOR_URL,
+      # so the deployment is patched directly. DBAAS_ROTATION_POLL_INTERVAL already comes from
+      # bootstrap/dbaas-operator-values.yaml and decides how fast a rotation reaches the Secret.
+      - name: Route the operator through DBaaS Proxy
+        run: |
+          kubectl -n "$TEST_NAMESPACE" set env deployment/dbaas-operator \
+            DBAAS_AGGREGATOR_URL="http://dbaas-proxy.${TEST_NAMESPACE}:8080"
+          kubectl -n "$TEST_NAMESPACE" rollout status deployment/dbaas-operator --timeout=300s
+          kubectl -n "$TEST_NAMESPACE" set env deployment/dbaas-operator --list \
+            | grep -E 'DBAAS_AGGREGATOR_URL|DBAAS_ROTATION_POLL_INTERVAL'
+
       # ───────────────────────── Pass A — mount proof ─────────────────────────
       # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED. A working
       # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
@@ -264,10 +302,38 @@ jobs:
           -DskipIT=false
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Dtest='!GoPostgresSecretRotationIT'
           -Dsurefire.reportsDirectory=target/surefire-reports/pass-a
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ───────────────── PostgreSQL rotation — mounted-secret recovery ─────────────────
+      # Runs while the mounted-secret deployment from Pass A is still in place, and as its own Maven
+      # invocation: it rotates a credential shared with every other class in the namespace, so it
+      # must not run beside them. The class is excluded from the other passes for the same reason.
+      - name: "Rotation — run PostgreSQL credential rotation test"
+        id: tests_rotation
+        working-directory: test-apps/test-apps-integration-tests
+        # No shell tracing around this step: the credentials are passed as system properties.
+        run: >
+          mvn --batch-mode
+          -DskipIT=false
+          -Dclouds.cloud.name=kind
+          -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Drotation.dbaas.proxy.service=dbaas-proxy
+          -Drotation.cluster.dba.username="$ROTATION_DBAAS_USERNAME"
+          -Drotation.cluster.dba.password="$ROTATION_DBAAS_PASSWORD"
+          -Drotation.timeout.seconds=120
+          -Dtest=GoPostgresSecretRotationIT
+          -Dsurefire.reportsDirectory=target/surefire-reports/postgres-rotation
+          test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The ephemeral kind bootstrap registers this DB_CLIENT user; see the dbaas block in
+          # patroni-services-values.yaml above, which must stay in step with these values.
+          ROTATION_DBAAS_USERNAME: cluster-dba
+          ROTATION_DBAAS_PASSWORD: password
 
       # ──────────────────────── Pass B — REST fallback ────────────────────────
       # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted. Each
@@ -290,6 +356,7 @@ jobs:
           mvn --batch-mode
           -DskipIT=false
           -Dclouds.cloud.name=kind
+          -Dtest='!GoPostgresSecretRotationIT'
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
           -Dsurefire.reportsDirectory=target/surefire-reports/pass-b
           test
@@ -317,6 +384,7 @@ jobs:
         run: >
           mvn --batch-mode
           -DskipIT=false
+          -Dtest='!GoPostgresSecretRotationIT'
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
           -Dsurefire.reportsDirectory=target/surefire-reports/phase-c
@@ -395,7 +463,32 @@ jobs:
           } > "$DIAG/physical-databases-and-classifiers.txt" 2>&1
           dump "Physical databases on Patroni + dbaas classifier registry (who created what)" physical-databases-and-classifiers.txt
 
-          for pair in "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "dbaas-postgres-adapter:postgres"; do
+          # Rotation fixture. The mappings DBaaS Proxy logs at startup, the Secret endpoint, and the
+          # HAProxy stats together separate a control-plane failure (no rewrite, so traffic never
+          # reached HAProxy) from a client failure (traffic reached it and the pool did not refresh).
+          {
+            kubectl -n "$TEST_NAMESPACE" get deploy,svc,cm -l app.kubernetes.io/component=test-fixture -o wide
+            echo "--- dbaas-proxy / tcp-proxy pods ---"
+            kubectl -n "$TEST_NAMESPACE" describe pod -l app.kubernetes.io/name=dbaas-proxy
+            kubectl -n "$TEST_NAMESPACE" describe pod -l app.kubernetes.io/name=tcp-proxy
+            echo "--- haproxy.cfg ---"
+            kubectl -n "$TEST_NAMESPACE" get cm tcp-proxy-config -o jsonpath='{.data.haproxy\.cfg}'
+            echo
+            echo "--- operator aggregator routing ---"
+            kubectl -n "$TEST_NAMESPACE" set env deployment/dbaas-operator --list \
+              | grep -E 'DBAAS_AGGREGATOR_URL|DBAAS_ROTATION_POLL_INTERVAL'
+            echo "--- rotation Secret endpoint (host/port only, never the password) ---"
+            kubectl -n "$TEST_NAMESPACE" get secret go-test-app-service-postgres-admin \
+              -o jsonpath='{.data.connectionProperties\.json}' 2>/dev/null | base64 -d \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print("host=%s port=%s" % (d.get("host"), d.get("port")))' 2>/dev/null
+            echo "--- Secret resource version ---"
+            kubectl -n "$TEST_NAMESPACE" get secret go-test-app-service-postgres-admin \
+              -o jsonpath='{.metadata.resourceVersion}{"\n"}'
+          } > "$DIAG/rotation-proxy-fixture.txt" 2>&1
+          dump "Rotation fixture (DBaaS Proxy, HAProxy, operator routing, Secret endpoint)" rotation-proxy-fixture.txt
+
+          for pair in "dbaas-proxy:$TEST_NAMESPACE" "tcp-proxy:$TEST_NAMESPACE" \
+                      "dbaas-operator:$TEST_NAMESPACE" "dbaas-aggregator:$TEST_NAMESPACE" "dbaas-postgres-adapter:postgres"; do
             d="${pair%%:*}"; ns="${pair##*:}"
             kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=2000 > "$DIAG/logs-$d.txt" 2>&1
             dump "logs $d ($ns)" "logs-$d.txt"
@@ -427,6 +520,7 @@ jobs:
           src=test-apps/test-apps-integration-tests/target/surefire-reports
           mkdir -p artifacts   # keep the report step's input directory present even if no pass ran
           for pair in "pass-a:pass-a-mounted-secret" \
+                      "postgres-rotation:postgres-rotation" \
                       "pass-b:pass-b-rest-fallback" \
                       "phase-c:phase-c-direct-m2m"; do
             from="${pair%%:*}"; to="${pair##*:}"
@@ -449,7 +543,7 @@ jobs:
           GROUP_LABEL: Pass
           # A pass with no reports never ran — it must show up in the report and fail the job,
           # otherwise a pass that died during deploy would leave the run looking green.
-          EXPECTED_GROUPS: pass-a-mounted-secret,pass-b-rest-fallback,phase-c-direct-m2m
+          EXPECTED_GROUPS: pass-a-mounted-secret,postgres-rotation,pass-b-rest-fallback,phase-c-direct-m2m
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
           BRANCH: ${{ github.ref_name }}
