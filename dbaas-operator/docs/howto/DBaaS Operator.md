@@ -120,7 +120,7 @@ require the corresponding per-namespace Secret RBAC grant.
 
 - The operator runs **cluster-wide** — no static `--watch-namespaces` list.
 - Each managed workload CR declares its operator directly in immutable `spec.operatorNamespace`.
-- CRs whose `spec.operatorNamespace` differs from `CLOUD_NAMESPACE` are silently skipped.
+- CRs whose `spec.operatorNamespace` differs from the `CLOUD_NAMESPACE` of the operator are silently skipped.
 - Credentials for `ExternalDatabase` are read from Kubernetes Secrets at reconcile time. The operator does **not** watch
   Secrets — each `ExternalDatabase` is re-reconciled on a periodic resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`,
   default `10m`), which re-reads the referenced Secrets and so picks up credential rotations without a spec change.
