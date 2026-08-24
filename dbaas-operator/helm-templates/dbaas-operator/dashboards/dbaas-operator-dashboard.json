@@ -1023,7 +1023,7 @@
                                           "id":  31,
                                           "type":  "timeseries",
                                           "title":  "Unassigned CRs (no owning operator)",
-                                          "description":  "Managed CRs whose spec.operatorNamespace does not match this operator's CLOUD_NAMESPACE, so no operator reconciles them and they produce no phase/condition/event. Non-zero means a CR is orphaned, usually an operatorNamespace typo. Assumes one operator per cluster: with several operators this also shows CRs owned by another operator.",
+                                          "description":  "Managed CRs whose spec.operatorNamespace does not match this operator's CLOUD_NAMESPACE. Each series shows the declared operator_namespace; with several operators, exclude known live operator namespaces to isolate genuinely orphaned CRs, which usually indicate an operatorNamespace typo.",
                                           "gridPos":  {
                                                           "h":  8,
                                                           "w":  24,
@@ -1047,8 +1047,8 @@
                                                       },
                                           "targets":  [
                                                           {
-                                                              "expr":  "sum by (kind) (dbaas_resource_unassigned{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
-                                                              "legendFormat":  "{{kind}}"
+                                                              "expr":  "sum by (kind, operator_namespace) (dbaas_resource_unassigned{cluster=~\"$cluster\",namespace=~\"$namespace\"})",
+                                                              "legendFormat":  "{{kind}} / {{operator_namespace}}"
                                                           }
                                                       ]
                                       },
@@ -1056,7 +1056,7 @@
                                           "id":  32,
                                           "type":  "timeseries",
                                           "title":  "Unassigned orphan-scan health",
-                                          "description":  "Managed CRs whose spec.operatorNamespace does not match this operator's CLOUD_NAMESPACE, so no operator reconciles them and they produce no phase/condition/event. Non-zero means a CR is orphaned, usually an operatorNamespace typo. Assumes one operator per cluster: with several operators this also shows CRs owned by another operator.",
+                                          "description":  "Whether the orphan scan behind the panel above succeeded for each kind: 1 is healthy and 0 means the scan failed, so unassigned CRs may be missing from the panel above. Gate alerts on dbaas_resource_unassigned with this signal.",
                                           "gridPos":  {
                                                           "h":  8,
                                                           "w":  24,
