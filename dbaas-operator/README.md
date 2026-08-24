@@ -16,7 +16,7 @@ All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` 
 | `DatabaseAccessPolicy` | Declare per-microservice role grants and apply them to dbaas-aggregator. |
 | `MicroserviceBalancingRule` / `NamespaceBalancingRule` / `PermanentBalancingRule` | Configure physical-database balancing rules in dbaas-aggregator. |
 
-All seven workload CRs declare the target operator through
+All workload CRs declare the target operator through
 required, immutable `spec.operatorNamespace`. The operator reconciles a CR only when that value
 matches its `CLOUD_NAMESPACE`.
 `PermanentBalancingRule` additionally requires `metadata.namespace` to equal
