@@ -470,13 +470,15 @@ When `restrictedEnvironment: false` (the default), the chart creates:
 | Resource | Name | Scope | Purpose |
 |----------|------|-------|---------|
 | `ServiceAccount` | `dbaas-operator` | Namespaced (operator namespace) | Pod identity |
-| `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs across all namespaces (**no `secrets`** — Secret access is namespaced, see below) |
+| `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs and Event recording across reconciled namespaces (**no `secrets`** — Secret access is namespaced, see below) |
 | `ClusterRoleBinding` | `dbaas-operator-<NAMESPACE>` (e.g. `dbaas-operator-dbaas-system`, truncated to 63 characters) | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
 | `Role` | `dbaas-operator` | Namespaced (operator namespace) | Leader-election leases and event recording |
 | `RoleBinding` | `dbaas-operator` | Namespaced (operator namespace) | Binds `Role` to the `ServiceAccount` |
 
-Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader election leases and
-Kubernetes Events are always written to the operator's own namespace, so they use a namespace-scoped `Role`.
+Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader-election leases and
+`PermanentBalancingRule` reconciliation stay in the operator namespace, so they use a namespace-scoped `Role`.
+Events are written to the namespace of the involved object: the `Role` covers operator-namespace objects, while the
+`ClusterRole` covers objects reconciled in other namespaces.
 
 ### Restricted Environment
 
@@ -501,7 +503,7 @@ source of truth and are intentionally **not** reproduced inline here (so this do
 never drifts from the code):
 
 - [`ClusterRole.yaml`](../../helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas
-  CRs (no `secrets`)
+  CRs and Event recording when enabled (no `secrets`)
 - [`ClusterRoleBinding.yaml`](../../helm-templates/dbaas-operator/templates/ClusterRoleBinding.yaml) — binds the
   `ClusterRole` to the `ServiceAccount`
 - [`Role.yaml`](../../helm-templates/dbaas-operator/templates/Role.yaml) — operator-namespace-only access for
@@ -566,6 +568,7 @@ generated from).
 | `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton permanent balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
 | `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
+| `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events in the namespace of reconciled objects outside the operator namespace (required when `K8S_EVENTS_ENABLED=true`) |
 
 > **Secrets are not in the `ClusterRole`** — Secret access is namespaced (see [Secret access
 > (namespaced)](#secret-access-namespaced) below).
@@ -575,11 +578,15 @@ generated from).
 | API group | Resource | Verbs | Why it is needed |
 |-----------|----------|-------|-----------------|
 | `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Leader election lock (required when `LEADER_ELECT=true`) |
-| `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events on reconcile outcomes (required when `K8S_EVENTS_ENABLED=true`) |
+| `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events for involved objects in the operator namespace (required when `K8S_EVENTS_ENABLED=true`) |
+| `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read the singleton permanent balancing rule CR **in the operator namespace only** (informer scoped there); `patch` adds/removes the cleanup finalizer |
+| `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
+| `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 
-> **Note:** The chart omits the `events` rule automatically when `K8S_EVENTS_ENABLED=false` (the default); the advice to
-> drop it applies to hand-written `Role` manifests. The `leases` rule is **not** gated — it is always rendered. With
-> `LEADER_ELECT=false` you may omit it from a hand-written `Role`, but that is only safe when running a single replica.
+> **Note:** Events are enabled by default. The chart omits the `events` rules from both the `Role` and `ClusterRole`
+> when `K8S_EVENTS_ENABLED=false`; hand-written RBAC may omit them in that mode as well. The `leases` rule is **not**
+> gated — it is always rendered. With `LEADER_ELECT=false` you may omit it from a hand-written `Role`, but that is only
+> safe when running a single replica.
 
 ### Secret Access (Namespaced)
 
@@ -2187,8 +2194,10 @@ kubectl get events -n my-namespace --field-selector involvedObject.name=my-app-d
 
 ## Kubernetes Events
 
-The operator emits Kubernetes Events on reconcile outcomes when `K8S_EVENTS_ENABLED=true`. With the default
-`false` every recorder is a no-op, so none of the events below appear in `kubectl describe`.
+The operator emits Kubernetes Events on reconcile outcomes when `K8S_EVENTS_ENABLED=true`, which is the chart
+default. Each Event is written to the namespace of its involved object. The operator-namespace `Role` covers objects
+there, while the `ClusterRole` permits Events for objects reconciled in other namespaces. Set the value to `false` to
+use no-op recorders and omit both Event RBAC rules; none of the events below then appear in `kubectl describe`.
 
 **Normal**
 
@@ -2234,7 +2243,7 @@ directly by the binary, and **startup flags** passed as container `args`.
 |-----------|------|---------|-------------|
 | `DBAAS_OPERATOR_ENABLED` | boolean | `false` | When `false`, no operator resources are created by the Helm chart (Deployment, RBAC, CRDs, and monitoring objects are all skipped); only a placeholder `<SERVICE_NAME>-stub` ConfigMap is rendered. Must be set to `true` to deploy the operator. **The CRDs ship as chart templates**, so setting this back to `false` on an existing release deletes them along with every CR they define. |
 | `LEADER_ELECT` | boolean | `true` | Enables leader election; a truthy value makes the chart append the `--leader-elect` flag. Required when running more than one replica to ensure only one active instance processes resources at a time. The binary's own default is `false` — see [Startup flags](#startup-flags). |
-| `K8S_EVENTS_ENABLED` | boolean | `false` | When `true`, the operator emits Kubernetes Events on reconcile outcomes (visible in `kubectl describe`). Requires additional RBAC (`create`, `patch` on `core/events`). |
+| `K8S_EVENTS_ENABLED` | boolean | `true` | When `true`, the operator emits Kubernetes Events in each involved object's namespace (visible in `kubectl describe`). The chart conditionally grants `create` and `patch` on `core/events` through the operator-namespace `Role` and cluster-wide `ClusterRole`. |
 | `KUBERNETES_M2M_ENABLED` | boolean | `false` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `KUBERNETES_M2M_ENABLED`**. `false` (default): HTTP Basic Auth, with credentials read from `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security` (see [Authentication](#authentication-basic-auth-or-m2m-token)). `true`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
 | `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate `DatabaseSecretClaim` credential rotations. Empty uses the operator's built-in default (`30s`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
 | `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30s`, `1m`) for `ExternalDatabase` CRs. The operator does not watch Secrets, so a referenced credential Secret change is picked up on the next resync rather than instantly. Empty uses the operator's built-in default (`10m`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
