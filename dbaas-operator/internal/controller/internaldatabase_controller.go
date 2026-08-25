@@ -36,7 +36,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
@@ -561,11 +560,11 @@ func pollProgressMessage(resp *aggregatorclient.DeclarativeResponse) string {
 
 // SetupWithManager registers watches for spec changes. Timer-based polling
 // requeues bypass watch predicates.
-func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.InternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("internaldatabase").
 		Complete(r)
 }
