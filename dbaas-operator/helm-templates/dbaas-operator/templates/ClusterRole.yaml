@@ -74,4 +74,10 @@ rules:
   # per namespace by a dbaas-operator-secrets Role + RoleBinding provisioned alongside that
   # namespace's NamespaceBinding (see config/samples/namespaced-secret-rbac.yaml). The operator
   # reads its own aggregator credentials from a mounted volume, not the API.
+  {{- if .Values.K8S_EVENTS_ENABLED }}
+  # Event recording — events may be written to any namespace the operator reconciles
+  - apiGroups: [ "" ]
+    resources: [ events ]
+    verbs: [ create, patch ]
+  {{- end }}
 {{- end }}
