@@ -34,9 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -1262,7 +1260,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 // ── Rate limiter / SetupWithManager ───────────────────────────────────────────
 
 var _ = Describe("InternalDatabase Controller — rate limiter", func() {
-	It("registers the controller with a custom exponential rate limiter", func() {
+	It("registers the controller with configured backoff", func() {
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
 			Metrics:                httpserver.Options{BindAddress: "0"},
@@ -1273,24 +1271,15 @@ var _ = Describe("InternalDatabase Controller — rate limiter", func() {
 		const base = 100 * time.Millisecond
 		const max = 10 * time.Second
 
-		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
-
 		err = (&InternalDatabaseReconciler{
 			Client:      mgr.GetClient(),
 			Scheme:      mgr.GetScheme(),
 			Recorder:    mgr.GetEventRecorderFor("dd-rate-limiter-test"), // nolint:staticcheck
 			Aggregator:  aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
 			MyNamespace: testOperatorNamespace,
-		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
+		}).SetupWithManager(mgr, NewRateLimiterConfig(base, max))
 		Expect(err).NotTo(HaveOccurred())
 
-		req := reconcile.Request{NamespacedName: types.NamespacedName{Name: "dd", Namespace: "ns"}}
-		Expect(rateLimiter.When(req)).To(Equal(base))
-		Expect(rateLimiter.When(req)).To(Equal(2 * base))
-		Expect(rateLimiter.When(req)).To(Equal(4 * base))
-
-		rateLimiter.Forget(req)
-		Expect(rateLimiter.When(req)).To(Equal(base))
 	})
 })
 

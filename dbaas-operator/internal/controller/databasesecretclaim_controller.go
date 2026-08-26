@@ -45,7 +45,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -595,7 +594,7 @@ func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
 }
 
 // SetupWithManager registers indexes and watches for DatabaseSecretClaim reconciliation.
-func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&dbaasv1.DatabaseSecretClaim{},
@@ -636,7 +635,7 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 		Watches(&dbaasv1.DatabaseSecretClaim{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueSiblingsBySecretName),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("databasesecretclaim").
 		Complete(r)
 }

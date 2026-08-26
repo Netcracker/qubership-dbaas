@@ -53,7 +53,7 @@ log.ErrorC(ctx, "aggregator call failed: %v", err)
 - Use active voice: `"Created Deployment"`, not `"deployment was created"`.
 - Use past tense for completed actions: `"Failed to create Pod"`, not `"Cannot create Pod"`.
 - Always specify the object type: `"Deleted Pod"`, not `"Deleted"`.
-- Attach structured key=value pairs inline: `log.Infof("backoff configured base=%v max=%v", base, max)`.
+- Attach structured key=value pairs inline: `log.Infof("Backoff configured base=%v max=%v", base, max)`.
 
 ### Bridging logr (controller-runtime)
 
@@ -268,7 +268,9 @@ defer func() {
 
 - **GenerationChangedPredicate**: filter events to spec changes only.
 - Use `client.IgnoreNotFound(err)` for the initial GET.
-- Use `workqueue.NewTypedItemExponentialFailureRateLimiter` for backoff (configurable via flags).
+- Take a `RateLimiterConfig` in `SetupWithManager` and call `config.controllerOptions()` once per registered
+  controller, so each one gets its own backoff state. Never share one `ctrlcontroller.Options` value between
+  registrations. Delays come from the `--backoff-base-delay` and `--backoff-max-delay` flags.
 - **RBAC markers** live on the controller; regenerate with `make manifests`:
 
 ```go
@@ -503,11 +505,11 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result 
 ### SetupWithManager skeleton
 
 ```go
-func (r *MyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *MyReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
     return ctrl.NewControllerManagedBy(mgr).
         For(&myapi.MyResource{},
             builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-        WithOptions(opts).
+        WithOptions(config.controllerOptions()).
         Named("myresource").
         Complete(r)
 }

@@ -36,16 +36,13 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	_ "github.com/netcracker/qubership-core-lib-go/v3/memlimit"
@@ -84,11 +81,13 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.DurationVar(&backoffBaseDelay, "backoff-base-delay", 1*time.Second,
+	flag.DurationVar(&backoffBaseDelay, "backoff-base-delay", controller.DefaultBackoffBaseDelay,
 		"Initial delay for exponential backoff when a reconcile error occurs. "+
-			"Doubles on each consecutive failure up to --backoff-max-delay.")
-	flag.DurationVar(&backoffMaxDelay, "backoff-max-delay", 5*time.Minute,
-		"Maximum delay cap for exponential backoff on reconcile errors.")
+			"Doubles on each consecutive failure up to --backoff-max-delay, "+
+			"with up to 10% jitter added to each delay below the cap.")
+	flag.DurationVar(&backoffMaxDelay, "backoff-max-delay", controller.DefaultBackoffMaxDelay,
+		"Maximum delay cap for exponential backoff on reconcile errors. "+
+			"Delays at the cap are jittered downward, into 90% to 100% of this value.")
 	flag.Parse()
 
 	// Route both controller-runtime (logr) and client-go (klog) through the platform
@@ -201,12 +200,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctrlOpts := ctrlcontroller.Options{
-		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](
-			backoffBaseDelay, backoffMaxDelay,
-		),
-	}
-	setupLog.Infof("backoff configured base=%v max=%v", backoffBaseDelay, backoffMaxDelay)
+	rateLimiterConfig := controller.NewRateLimiterConfig(backoffBaseDelay, backoffMaxDelay)
+	setupLog.Infof("Backoff configured %s", rateLimiterConfig)
 
 	controller.RegisterResourceMetrics(mgr.GetClient(), mgr.GetAPIReader(), cloudNamespace)
 
@@ -226,7 +221,7 @@ func main() {
 			setupLog.Infof("Ignoring invalid DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL=%q, using default", v)
 		}
 	}
-	if err := externalDatabaseReconciler.SetupWithManager(mgr, ctrlOpts); err != nil {
+	if err := externalDatabaseReconciler.SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=ExternalDatabase: %v", err)
 		os.Exit(1)
 	}
@@ -237,7 +232,7 @@ func main() {
 		Aggregator:  aggregator,
 		Recorder:    recorderFor(mgr, "databaseaccesspolicy", eventsEnabled),
 		MyNamespace: cloudNamespace,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseAccessPolicy: %v", err)
 		os.Exit(1)
 	}
@@ -248,7 +243,7 @@ func main() {
 		Aggregator:  aggregator,
 		Recorder:    recorderFor(mgr, "internaldatabase", eventsEnabled),
 		MyNamespace: cloudNamespace,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=InternalDatabase: %v", err)
 		os.Exit(1)
 	}
@@ -259,7 +254,7 @@ func main() {
 		Aggregator:  aggregator,
 		Recorder:    recorderFor(mgr, "balancingrule", eventsEnabled),
 		MyNamespace: cloudNamespace,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=BalancingRule: %v", err)
 		os.Exit(1)
 	}
@@ -270,7 +265,7 @@ func main() {
 		Aggregator:  aggregator,
 		Recorder:    recorderFor(mgr, "databasesecretclaim", eventsEnabled),
 		MyNamespace: cloudNamespace,
-	}).SetupWithManager(mgr, ctrlOpts); err != nil {
+	}).SetupWithManager(mgr, rateLimiterConfig); err != nil {
 		setupLog.Errorf("Failed to create controller controller=DatabaseSecretClaim: %v", err)
 		os.Exit(1)
 	}

@@ -29,7 +29,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
@@ -128,11 +127,11 @@ func (r *DatabaseAccessPolicyReconciler) buildPayload(dp *dbaasv1.DatabaseAccess
 }
 
 // SetupWithManager registers watches for spec changes.
-func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseAccessPolicy{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("databaseaccesspolicy").
 		Complete(r)
 }
