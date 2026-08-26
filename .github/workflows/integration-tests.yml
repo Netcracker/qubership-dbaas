@@ -3,14 +3,39 @@ name: DBaaS Integration Tests
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
 
 jobs:
   integration-tests:
+    if: |
+      github.event_name != 'pull_request' ||
+      startsWith(github.event.pull_request.title, 'chore(deps)')
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
 
     steps:
+      - name: Wait for other workflows on the current PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.event.pull_request.head.sha }}"
+          for i in $(seq 1 60); do
+            RUNS=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$SHA" \
+              --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }})]")
+            TOTAL=$(echo "$RUNS" | jq 'length')
+            IN_PROGRESS=$(echo "$RUNS" | jq '[.[] | select(.status != "completed")] | length')
+            FAILED=$(echo "$RUNS" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")] | length')
+            echo "attempt $i: total=$TOTAL in_progress=$IN_PROGRESS failed=$FAILED"
+            [ "$FAILED" -gt 0 ] && { echo "One or more workflows failed"; exit 1; }
+            [ "$TOTAL" -gt 0 ] && [ "$IN_PROGRESS" -eq 0 ] && exit 0
+            sleep 30
+          done
+          echo "Timed out waiting for other workflows"; exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -45,7 +70,7 @@ jobs:
         uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
 
       - name: Set up JDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -166,8 +191,10 @@ jobs:
           EOF
 
       - name: Resolve image tags
+        env:
+          SOURCE_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          SAFE_REF="${GITHUB_REF_NAME//\//-}"
+          SAFE_REF="${SOURCE_REF//\//-}"
           if [ "$SAFE_REF" = "main" ]; then
             IMAGE_TAG=latest
           else
@@ -281,7 +308,7 @@ jobs:
           OUTPUT_FILE: report.md
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
-          BRANCH: ${{ github.ref_name }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           RUN_NUMBER: ${{ github.run_number }}
         run: python3 .github/scripts/build-test-report.py

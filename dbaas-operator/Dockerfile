@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.26@sha256:26326682769ca980f8f1d3b1f52be2dd1c1d25270e3de3fe0c97d6bb65df3556 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27@sha256:0ecdc2a9f6156af6451080bfe3d8382a662fcc4e209608c6f919e643453514c1 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 # Allow Go toolchain auto-download when the image patch (e.g. 1.26.1) is

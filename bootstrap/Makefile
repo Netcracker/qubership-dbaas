@@ -181,12 +181,12 @@ wait-patroni-pods:
 			exit 1; \
 		fi; \
 		RUNNING_PATRONI_PODS=$$(kubectl -n $(PG_NAMESPACE) get pods --selector=app=patroni --field-selector=status.phase=Running -o name | wc -l); \
-		RUNNING_MASTER_PODS=$$(kubectl -n $(PG_NAMESPACE) get pods --selector=pgtype=master --field-selector=status.phase=Running -o name | wc -l); \
-		if [ "$$RUNNING_PATRONI_PODS" -eq $(PATRONI_REPLICAS_NUMBER) ] && [ "$$RUNNING_MASTER_PODS" -eq 1 ]; then \
-			echo "All patroni pods are running ($$RUNNING_PATRONI_PODS/$(PATRONI_REPLICAS_NUMBER)) and master pod is ready ($$RUNNING_MASTER_PODS/1)!"; \
+		RUNNING_PRIMARY_PODS=$$(kubectl -n $(PG_NAMESPACE) get pods --selector=pgtype=primary --field-selector=status.phase=Running -o name | wc -l); \
+		if [ "$$RUNNING_PATRONI_PODS" -eq $(PATRONI_REPLICAS_NUMBER) ] && [ "$$RUNNING_PRIMARY_PODS" -eq 1 ]; then \
+			echo "All patroni pods are running ($$RUNNING_PATRONI_PODS/$(PATRONI_REPLICAS_NUMBER)) and primary pod is ready ($$RUNNING_PRIMARY_PODS/1)!"; \
 			break; \
 		fi; \
-		echo "Waiting for pods to be ready... (Patroni: $$RUNNING_PATRONI_PODS/$(PATRONI_REPLICAS_NUMBER), Master: $$RUNNING_MASTER_PODS/1) - $$((TIMEOUT - ELAPSED_TIME))s remaining"; \
+		echo "Waiting for pods to be ready... (Patroni: $$RUNNING_PATRONI_PODS/$(PATRONI_REPLICAS_NUMBER), Primary: $$RUNNING_PRIMARY_PODS/1) - $$((TIMEOUT - ELAPSED_TIME))s remaining"; \
 		sleep 10; \
 	done
 	@echo "$(GREEN)--- Stage 3 END: Patroni pods are ready$(NC)"
