@@ -30,8 +30,9 @@ public class JdbcUtils {
 
     private static final String CERTIFICATE_STORE_PATH = getParameterValue("CERTIFICATE_FILE_PATH", "/etc/tls");
     private static final String CA_CERTIFICATE_URL = "file://" + CERTIFICATE_STORE_PATH + "/ca.crt";
-    private static final String SSL_URL_PARAMS = "?ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=" + CA_CERTIFICATE_URL;
+    private static final String SSL_URL_PARAMS = "&ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=" + CA_CERTIFICATE_URL;
     private static final String POD_SECRETS_PATH = "/etc/secrets/pod-secrets";
+    private static final String ACTIVE_DR_MODE = "active";
 
     public static String resolveConnectionURL() {
         String host = getParameterValue("POSTGRES_HOST", DEFAULT_HOST);
@@ -51,12 +52,19 @@ public class JdbcUtils {
 
     public static String buildConnectionURL(String host, String port, String database, boolean ssl) {
         String url = String.format("jdbc:postgresql://%s:%s/%s", host, port, database);
+        url += "?connectTimeout=10&socketTimeout=30";
+
+        if (ACTIVE_DR_MODE.equalsIgnoreCase(getParameterValue("EXECUTION_MODE", ""))) {
+            url += "&targetServerType=primary";
+        }
+
         if (ssl) {
             log.info("Using secured connection to postgres");
             url += SSL_URL_PARAMS;
         } else {
             log.info("Using not secured connection to postgres");
         }
+
         return url;
     }
 
