@@ -4,6 +4,7 @@ metadata:
   name: namespace-balancing-rules
   namespace: dbaas-system
 spec:
+  operatorNamespace: dbaas-system
   rules:
     - name: shared-rule-name
       type: postgresql

@@ -22,11 +22,9 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=namespacebalancingrules/status,verbs=get;update;patch
-// permanentbalancingrules is operator-namespace-only; namespace= makes
-// controller-gen emit namespaced RBAC instead of a ClusterRole.
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules,verbs=get;list;watch;patch,namespace=system
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/finalizers,verbs=update,namespace=system
-// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/status,verbs=get;update;patch,namespace=system
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/finalizers,verbs=update
+// +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=permanentbalancingrules/status,verbs=get;update;patch
 
 import (
 	"context"
@@ -36,7 +34,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -45,13 +42,11 @@ import (
 	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 // BalancingRuleReconciler reconciles the three balancing-rule CRDs into the
@@ -61,10 +56,7 @@ type BalancingRuleReconciler struct {
 	Scheme      *runtime.Scheme
 	Aggregator  *aggregatorclient.AggregatorClient
 	Recorder    record.EventRecorder
-	Ownership   *ownership.OwnershipResolver
 	MyNamespace string
-
-	bindingTriggerTracker
 }
 
 func generationOrLifecycleChangedPredicate() predicate.Funcs {
@@ -98,24 +90,14 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 
 	rule := &dbaasv1.MicroserviceBalancingRule{}
 	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {
-		if apierrors.IsNotFound(err) {
-			r.clearBindingTrigger(microserviceRuleTriggerKey(req.Namespace, req.Name))
-		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	key := microserviceRuleTriggerKey(rule.Namespace, rule.Name)
-	trigger := r.triggerForKey(key)
-
-	owned, result, err := checkOwnership(ctx, r.Ownership, rule.Namespace, rule.Name, "MicroserviceBalancingRule")
-	if err != nil {
-		return ctrl.Result{}, err
+	if !isEligibleForOperator(ctx, rule.Spec.OperatorNamespace, r.MyNamespace,
+		rule.Namespace, rule.Name, "MicroserviceBalancingRule") {
+		return ctrl.Result{}, nil
 	}
-	if !owned {
-		r.clearBindingTrigger(key)
-		return result, nil
-	}
-	recordReconcileTrigger(controllerMBR, trigger)
+	recordReconcileTrigger(controllerMBR, triggerSpecChange)
 
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcileMicroserviceDelete(ctx, rule, requestID)
@@ -147,7 +129,7 @@ func (r *BalancingRuleReconciler) ReconcileMicroservice(ctx context.Context, req
 	}
 
 	aggStart := time.Now()
-	err = r.Aggregator.ApplyMicroserviceBalancingRules(ctx, rule.Namespace, microserviceRequestsFromSpec(rule.Spec.Rules))
+	err := r.Aggregator.ApplyMicroserviceBalancingRules(ctx, rule.Namespace, microserviceRequestsFromSpec(rule.Spec.Rules))
 	recordAggregatorCall(controllerBR, operationApplyMicroserviceRule, aggStart, err)
 	if err != nil {
 		log.ErrorC(ctx, "failed to apply MicroserviceBalancingRule to dbaas-aggregator: %v", err)
@@ -169,24 +151,14 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 
 	rule := &dbaasv1.NamespaceBalancingRule{}
 	if err := r.Get(ctx, req.NamespacedName, rule); err != nil {
-		if apierrors.IsNotFound(err) {
-			r.clearBindingTrigger(namespaceRuleTriggerKey(req.Namespace, req.Name))
-		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	key := namespaceRuleTriggerKey(rule.Namespace, rule.Name)
-	trigger := r.triggerForKey(key)
-
-	owned, result, err := checkOwnership(ctx, r.Ownership, rule.Namespace, rule.Name, "NamespaceBalancingRule")
-	if err != nil {
-		return ctrl.Result{}, err
+	if !isEligibleForOperator(ctx, rule.Spec.OperatorNamespace, r.MyNamespace,
+		rule.Namespace, rule.Name, "NamespaceBalancingRule") {
+		return ctrl.Result{}, nil
 	}
-	if !owned {
-		r.clearBindingTrigger(key)
-		return result, nil
-	}
-	recordReconcileTrigger(controllerNBR, trigger)
+	recordReconcileTrigger(controllerNBR, triggerSpecChange)
 
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcileNamespaceDelete(ctx, rule, requestID)
@@ -247,7 +219,7 @@ func (r *BalancingRuleReconciler) ReconcileNamespace(ctx context.Context, req ct
 	// Apply desired rules; upsert into the applied set only on a successful apply.
 	for _, item := range rule.Spec.Rules {
 		aggStart := time.Now()
-		err = r.Aggregator.ApplyNamespaceBalancingRule(ctx, rule.Namespace, item.Name, namespaceRequestFromSpecItem(item))
+		err := r.Aggregator.ApplyNamespaceBalancingRule(ctx, rule.Namespace, item.Name, namespaceRequestFromSpecItem(item))
 		recordAggregatorCall(controllerBR, operationApplyNamespaceRule, aggStart, err)
 		if err != nil {
 			syncAppliedStatus()
@@ -279,17 +251,15 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// PermanentBalancingRule is operator-namespace-only and does not require a
-	// NamespaceBinding for either the CR namespace or target namespaces.
+	if !isEligibleForOperator(ctx, rule.Spec.OperatorNamespace, r.MyNamespace,
+		rule.Namespace, rule.Name, "PermanentBalancingRule") {
+		return ctrl.Result{}, nil
+	}
+
 	recordReconcileTrigger(controllerPBR, triggerSpecChange)
 
 	if !rule.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, r.reconcilePermanentDelete(ctx, rule, requestID)
-	}
-	if !controllerutil.ContainsFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer) {
-		patch := client.MergeFrom(rule.DeepCopy())
-		controllerutil.AddFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer)
-		return ctrl.Result{}, r.Patch(ctx, rule, patch)
 	}
 
 	original := rule.DeepCopy()
@@ -304,8 +274,17 @@ func (r *BalancingRuleReconciler) ReconcilePermanent(ctx context.Context, req ct
 	rule.Status.Phase = dbaasv1.PhaseProcessing
 	rule.Status.LastRequestID = requestID
 
+	// Validate placement before taking ownership. A misplaced rule must not
+	// receive the operator finalizer: the operator refuses to service it, so a
+	// finalizer would only block its deletion until an operator adopts it.
 	if msg := r.validatePermanentRule(rule); msg != "" {
 		return invalidSpec(ctx, &rule.Status.Phase, &rule.Status.Conditions, rule.Generation, r.Recorder, rule, msg)
+	}
+
+	if !controllerutil.ContainsFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer) {
+		patch := client.MergeFrom(rule.DeepCopy())
+		controllerutil.AddFinalizer(rule, dbaasv1.PermanentBalancingRuleFinalizer)
+		return ctrl.Result{}, r.Patch(ctx, rule, patch)
 	}
 
 	if err := r.cleanupSupersededPermanentRules(ctx, rule); err != nil {
@@ -334,11 +313,6 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.MicroserviceBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueMicroserviceRulesForBinding),
-			// The binding status is written by its own controller; only create, delete,
-			// and spec changes can affect ownership, so status-only updates are ignored.
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("microservicebalancingrule").
 		Complete(reconcile.Func(r.ReconcileMicroservice)); err != nil {
@@ -348,19 +322,12 @@ func (r *BalancingRuleReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlco
 	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.NamespaceBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueNamespaceRulesForBinding),
-			// The binding status is written by its own controller; only create, delete,
-			// and spec changes can affect ownership, so status-only updates are ignored.
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(opts).
 		Named("namespacebalancingrule").
 		Complete(reconcile.Func(r.ReconcileNamespace)); err != nil {
 		return err
 	}
 
-	// PermanentBalancingRule has no NamespaceBinding watch because it is scoped to
-	// the operator namespace by the manager cache.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.PermanentBalancingRule{},
 			builder.WithPredicates(generationOrLifecycleChangedPredicate())).
@@ -686,8 +653,8 @@ func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.PermanentB
 	if rule.Name != dbaasv1.PermanentBalancingRuleName {
 		return fmt.Sprintf("metadata.name must be %q", dbaasv1.PermanentBalancingRuleName)
 	}
-	if r.MyNamespace != "" && rule.Namespace != r.MyNamespace {
-		return fmt.Sprintf("metadata.namespace must be operator namespace %q", r.MyNamespace)
+	if rule.Namespace != rule.Spec.OperatorNamespace {
+		return "metadata.namespace must equal spec.operatorNamespace"
 	}
 	if len(rule.Spec.Rules) == 0 {
 		return msgSpecRulesEmpty
@@ -712,33 +679,6 @@ func (r *BalancingRuleReconciler) validatePermanentRule(rule *dbaasv1.PermanentB
 		}
 	}
 	return ""
-}
-
-func (r *BalancingRuleReconciler) enqueueMicroserviceRulesForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.MicroserviceBalancingRuleList{}, obj.GetNamespace(),
-		func(o client.Object) {
-			r.stampBindingTrigger(microserviceRuleTriggerKey(o.GetNamespace(), o.GetName()))
-		})
-}
-
-func (r *BalancingRuleReconciler) enqueueNamespaceRulesForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.NamespaceBalancingRuleList{}, obj.GetNamespace(),
-		func(o client.Object) { r.stampBindingTrigger(namespaceRuleTriggerKey(o.GetNamespace(), o.GetName())) })
-}
-
-func (r *BalancingRuleReconciler) triggerForKey(key string) string {
-	if r.consumeBindingTrigger(key) {
-		return triggerNamespaceBindingChange
-	}
-	return triggerSpecChange
-}
-
-func microserviceRuleTriggerKey(namespace, name string) string {
-	return "microservice/" + namespace + "/" + name
-}
-
-func namespaceRuleTriggerKey(namespace, name string) string {
-	return "namespace/" + namespace + "/" + name
 }
 
 func differenceStrings(previous, current []string) []string {

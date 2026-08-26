@@ -22,19 +22,18 @@ rules:
       - databasesecretclaims/status
       - databaseaccesspolicies/status
       - externaldatabases/status
-      - namespacebindings/status
     verbs: [get, update, patch]
-  # permanentbalancingrules are operator-namespace-only (informer scoped to the
-  # operator namespace) — their RBAC is namespaced, in the Role below, not here.
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - microservicebalancingrules
       - namespacebalancingrules
+      - permanentbalancingrules
     verbs: [get, list, watch, patch]
   - apiGroups: [dbaas.netcracker.com]
     resources:
       - microservicebalancingrules/status
       - namespacebalancingrules/status
+      - permanentbalancingrules/status
     verbs: [get, update, patch]
   # databasesecretclaims/finalizers is required because SetControllerReference creates
   # the Secret ownerReference with blockOwnerDeletion=true.
@@ -43,21 +42,16 @@ rules:
       - databasesecretclaims/finalizers
       - microservicebalancingrules/finalizers
       - namespacebalancingrules/finalizers
+      - permanentbalancingrules/finalizers
     verbs: [update]
-  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
-  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
-  # databasesecretclaims / namespacebindings: patch on the main resource is needed —
-  # databasesecretclaims for the rotation-trigger annotation, namespacebindings for
-  # the protection finalizer (client.MergeFrom).
+  # databasesecretclaims: patch on the main resource is required for the
+  # rotation-trigger annotation.
   - apiGroups: [dbaas.netcracker.com]
-    resources: [databasesecretclaims, namespacebindings]
+    resources: [databasesecretclaims]
     verbs: [get, list, watch, patch]
-  - apiGroups: [dbaas.netcracker.com]
-    resources: [namespacebindings/finalizers]
-    verbs: [update]
   # Secrets are NOT in the ClusterRole: access is namespaced (a Role + RoleBinding per
-  # namespace, provisioned alongside the NamespaceBinding). The operator's own namespace is
-  # covered by the Role below; business namespaces by dev/test-resources/secret-rbac.yaml.
+  # namespace). The operator's own namespace is covered by the Role below; business
+  # namespaces by dev/test-resources/secret-rbac.yaml.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -86,19 +80,9 @@ rules:
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]
-  # permanentbalancingrules: operator-namespace-only, informer scoped here.
-  - apiGroups: [dbaas.netcracker.com]
-    resources: [permanentbalancingrules]
-    verbs: [get, list, watch, patch]
-  - apiGroups: [dbaas.netcracker.com]
-    resources: [permanentbalancingrules/status]
-    verbs: [get, update, patch]
-  - apiGroups: [dbaas.netcracker.com]
-    resources: [permanentbalancingrules/finalizers]
-    verbs: [update]
   # No Secret access here: the operator reads its own aggregator credentials from the mounted
   # dbaas-security-volume (not the API). DatabaseSecretClaim/ExternalDatabase Secret access is
-  # granted per namespace by dev/test-resources/secret-rbac.yaml, alongside the NamespaceBinding.
+  # granted per namespace by dev/test-resources/secret-rbac.yaml.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

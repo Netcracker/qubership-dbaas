@@ -6,6 +6,10 @@ SERVICE_NAME: quarkus-test-app-service
 APPLICATION_NAME: dbaas
 MANAGED_BY: Helm
 NAMESPACE: dbaas
+# Namespace where the target dbaas-operator runs. In this harness the operator shares the
+# workload namespace, but this is a separate value so a real deployment can point it at the
+# operator's own namespace (for example dbaas-system) instead of reusing NAMESPACE.
+DBAAS_OPERATOR_NAMESPACE: dbaas
 REPLICAS: 1
 IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-quarkus-test-app-service
 TAG: latest

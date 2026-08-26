@@ -4,6 +4,7 @@ metadata:
   name: dap-invalid-empty-spec
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   # Neither services nor policy are set — CRD allows it (both fields are +optional),
   # but the controller requires at least one to be non-empty.
   # Expected: Phase=InvalidConfiguration, Stalled=True, reason=InvalidSpec (no requeue, no aggregator call)

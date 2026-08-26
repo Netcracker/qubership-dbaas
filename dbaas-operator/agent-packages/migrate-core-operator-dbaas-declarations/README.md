@@ -27,6 +27,10 @@ many Kubernetes resources and deterministic splitting reduces manual errors.
 Its output remains a draft that must be compared with the source and validated
 against the target CRDs.
 
+The converter requires `--operator-namespace` and writes that value to every
+generated CR. Use the namespace of the dbaas-operator instance, which may differ
+from the workload namespace passed through `--namespace`.
+
 ## Install
 
 ```sh

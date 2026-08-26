@@ -25,11 +25,15 @@ behavior (role grants, provisioning, cloning) is unchanged.
 | `spec.apiVersion: v1` | present (declaration version) | **removed** — not part of the CRD |
 | Owning microservice | derived from label `app.kubernetes.io/name` (fallback `app.kubernetes.io/instance`) | **explicit field in `spec`** (see per-type sections) |
 | Labels | `app.kubernetes.io/instance`, `app.kubernetes.io/managed-by: operator` | `app.kubernetes.io/name` recommended; `managed-by` no longer required |
+| Operator assignment | implicit | `spec.operatorNamespace` (**required, immutable**) |
 
 > **Why `microserviceName` moves into `spec`.** Core Operator read the owning
 > service from the `app.kubernetes.io/name` label and injected it into the
 > declaration's `metadata.microserviceName`. The new CRDs make it an explicit,
 > validated, **immutable** spec field so the owner is unambiguous and auditable.
+
+Set `DBAAS_OPERATOR_NAMESPACE` to the namespace where the target dbaas-operator
+instance runs. It is independent of the workload's `NAMESPACE` value.
 
 ---
 
@@ -87,6 +91,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
+  operatorNamespace: "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}"
   microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
   services:
     - name: install-base-service
@@ -174,6 +179,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
+  operatorNamespace: "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}"
   classifier:
     microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
     scope: service

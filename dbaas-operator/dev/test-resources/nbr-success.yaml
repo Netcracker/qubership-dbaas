@@ -1,0 +1,12 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: NamespaceBalancingRule
+metadata:
+  name: namespace-balancing-rules
+  namespace: test-ns
+spec:
+  operatorNamespace: dbaas-system
+  rules:
+    - name: operator-namespace-smoke
+      type: postgresql
+      physicalDatabaseId: postgresql-smoke
+      order: 100

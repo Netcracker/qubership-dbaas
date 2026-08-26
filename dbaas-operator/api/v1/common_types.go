@@ -29,6 +29,16 @@ type ObservedGenerationSetter interface {
 	SetObservedGeneration(int64)
 }
 
+// IsAssignedTo reports whether a managed CR whose spec.operatorNamespace is
+// crOperatorNamespace belongs to the operator instance running in
+// operatorNamespace (its CLOUD_NAMESPACE). It is the single source of truth for
+// operator assignment: every reconciler, the resource-metrics collector, and the
+// rotation poller route through it so a future change to the rule (a wildcard, a
+// grace period) lands in one place rather than three.
+func IsAssignedTo(crOperatorNamespace, operatorNamespace string) bool {
+	return crOperatorNamespace == operatorNamespace
+}
+
 // Classifier uniquely identifies a database in dbaas-aggregator.
 // All keys are sorted alphabetically by the aggregator for identity comparison.
 //
@@ -158,10 +168,7 @@ type OperatorStatus struct {
 	// False on any error, with Reason carrying the error category. Success
 	// reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
 	// (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
-	// ProvisioningStarted while the async operation runs), BindingRegistered
-	// (NamespaceBinding; BindingBlocked while deletion is deferred,
-	// BindingReleased once only other controllers' finalizers keep the object
-	// alive, OwnershipCheckError when listing blocking resources fails).
+	// ProvisioningStarted while the async operation runs).
 	// Stalled=True marks a permanent error; the controller does not retry
 	// until the spec changes. Stalled=False covers successful, ongoing, and
 	// retriable states.
@@ -171,10 +178,9 @@ type OperatorStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// lastRequestId is the X-Request-Id of the most recent reconcile attempt
-	// that wrote this status; a reconcile that leaves the status untouched (for
-	// example a steady-state NamespaceBinding reconcile) keeps the previous
-	// value. Use it to correlate operator logs with dbaas-aggregator logs when
-	// investigating issues for a specific resource.
+	// that wrote this status; a reconcile that leaves the status untouched keeps
+	// the previous value. Use it to correlate operator logs with
+	// dbaas-aggregator logs when investigating issues for a specific resource.
 	// +optional
 	LastRequestID string `json:"lastRequestId,omitempty"`
 }

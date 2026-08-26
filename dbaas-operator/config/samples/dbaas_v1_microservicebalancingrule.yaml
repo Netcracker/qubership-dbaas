@@ -3,6 +3,7 @@ kind: MicroserviceBalancingRule
 metadata:
   name: microservice-balancing-rules
 spec:
+  operatorNamespace: dbaas-system
   rules:
     - type: postgresql
       label: zone=fast

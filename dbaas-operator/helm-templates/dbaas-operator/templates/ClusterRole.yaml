@@ -38,19 +38,16 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ databasesecretclaims/finalizers ]
     verbs: [ update ]
-  # balancing rule CRs: operator reads and watches list-based singleton rules and
+  # Balancing rule CRs: operator reads and watches list-based singleton rules and
   # requires patch/finalizer permissions for cleanup on deletion.
-  # NOTE: permanentbalancingrules are intentionally absent here. They are an
-  # operator-namespace-only resource (the informer is scoped to the operator
-  # namespace), so their RBAC is namespaced and lives in Role.yaml — no ClusterRole.
   - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ microservicebalancingrules, namespacebalancingrules ]
+    resources: [ microservicebalancingrules, namespacebalancingrules, permanentbalancingrules ]
     verbs: [ get, list, watch, patch ]
   - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ microservicebalancingrules/status, namespacebalancingrules/status ]
+    resources: [ microservicebalancingrules/status, namespacebalancingrules/status, permanentbalancingrules/status ]
     verbs: [ get, update, patch ]
   - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ microservicebalancingrules/finalizers, namespacebalancingrules/finalizers ]
+    resources: [ microservicebalancingrules/finalizers, namespacebalancingrules/finalizers, permanentbalancingrules/finalizers ]
     verbs: [ update ]
   # externaldatabases: operator only reads (Get/List) and watches; status is updated via the /status subresource.
   - apiGroups: [ dbaas.netcracker.com ]
@@ -59,20 +56,9 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ externaldatabases/status ]
     verbs: [ get, update, patch ]
-  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
-  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
-  - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ namespacebindings ]
-    verbs: [ get, list, watch, patch ]
-  - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ namespacebindings/status ]
-    verbs: [ get, update, patch ]
-  - apiGroups: [ dbaas.netcracker.com ]
-    resources: [ namespacebindings/finalizers ]
-    verbs: [ update ]
   # No Secret rule here: the operator holds NO cluster-wide Secret RBAC. Secret access is granted
-  # per namespace by a dbaas-operator-secrets Role + RoleBinding provisioned alongside that
-  # namespace's NamespaceBinding (see config/samples/namespaced-secret-rbac.yaml). The operator
+  # per namespace by a dbaas-operator-secrets Role + RoleBinding
+  # (see config/samples/namespaced-secret-rbac.yaml). The operator
   # reads its own aggregator credentials from a mounted volume, not the API.
   {{- if .Values.K8S_EVENTS_ENABLED }}
   # Event recording — events may be written to any namespace the operator reconciles

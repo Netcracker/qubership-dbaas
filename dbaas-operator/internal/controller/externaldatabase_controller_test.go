@@ -58,6 +58,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 	// Suitable for tests that only care about the aggregator response.
 	baseSpec := func() dbaasv1.ExternalDatabaseSpec {
 		return dbaasv1.ExternalDatabaseSpec{
+			OperatorNamespace: testOperatorNamespace,
 			Classifier: dbaasv1.Classifier{
 				MicroserviceName: "test-service",
 				Namespace:        ns,
@@ -80,11 +81,11 @@ var _ = Describe("ExternalDatabase Controller", func() {
 		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 		reconciler = &ExternalDatabaseReconciler{
-			Client:     k8sClient,
-			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
-			Recorder:   fixture.recorder,
-			Ownership:  mineOwnershipResolver(ns),
+			Client:      k8sClient,
+			Scheme:      k8sClient.Scheme(),
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
+			Recorder:    fixture.recorder,
+			MyNamespace: testOperatorNamespace,
 		}
 	})
 
@@ -1057,7 +1058,7 @@ var _ = Describe("ExternalDatabase Controller", func() {
 
 // ── Ownership requeue behavior ────────────────────────────────────────────────
 
-var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
+var _ = Describe("ExternalDatabase Controller — operator eligibility", func() {
 	const (
 		ns           = "default"
 		resourceName = "edb-ownership-test"
@@ -1073,6 +1074,7 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		return &dbaasv1.ExternalDatabase{
 			ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 			Spec: dbaasv1.ExternalDatabaseSpec{
+				OperatorNamespace:    testForeignOperatorNamespace,
 				Classifier:           dbaasv1.Classifier{Namespace: ns, MicroserviceName: "svc", Scope: "service"},
 				Type:                 "postgresql",
 				DBName:               "testdb",
@@ -1085,10 +1087,11 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 		reconciler = &ExternalDatabaseReconciler{
-			Client:     k8sClient,
-			Scheme:     k8sClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
-			Recorder:   fixture.recorder,
+			Client:      k8sClient,
+			Scheme:      k8sClient.Scheme(),
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
+			Recorder:    fixture.recorder,
+			MyNamespace: testOperatorNamespace,
 		}
 	})
 
@@ -1097,68 +1100,15 @@ var _ = Describe("ExternalDatabase Controller — ownership requeue", func() {
 		deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 	})
 
-	Context("when no NamespaceBinding exists (Unbound state after first reconcile)", func() {
-		It("returns ownershipUnboundRetryInterval as a lost-trigger safety net", func() {
-			reconciler.Ownership = emptyOwnershipResolver()
-			Expect(k8sClient.Create(ctx, baseEDB())).To(Succeed())
+	It("skips a resource assigned to another operator without requeueing or mutating status", func() {
+		Expect(k8sClient.Create(ctx, baseEDB())).To(Succeed())
 
-			_, result, err := reconcileAndFetchObject(reconciler, namespacedName,
-				func() *dbaasv1.ExternalDatabase { return &dbaasv1.ExternalDatabase{} })
-			Expect(err).NotTo(HaveOccurred())
-			// Requeue at the long Unbound interval so that if the NamespaceBinding →
-			// workloads watch fan-out loses its trigger the CR is eventually retried.
-			Expect(result.RequeueAfter).To(Equal(ownershipUnboundRetryInterval))
-			// No aggregator call should have been made.
-			Expect(fixture.capturedBody).To(BeEmpty())
-		})
-	})
-
-	Context("when the namespace belongs to a different operator (Foreign state)", func() {
-		It("returns an empty Result (no requeue needed — watch will fire on binding change)", func() {
-			reconciler.Ownership = foreignOwnershipResolver(ns)
-			Expect(k8sClient.Create(ctx, baseEDB())).To(Succeed())
-
-			_, result, err := reconcileAndFetchObject(reconciler, namespacedName,
-				func() *dbaasv1.ExternalDatabase { return &dbaasv1.ExternalDatabase{} })
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
-			Expect(fixture.capturedBody).To(BeEmpty())
-		})
-	})
-
-	Context("enqueueForBinding — fan-out mapping", func() {
-		It("returns a reconcile.Request for every ExternalDatabase in the namespace", func() {
-			reconciler.Ownership = mineOwnershipResolver(ns)
-
-			edb1 := baseEDB()
-			edb2 := baseEDB()
-			edb2.Name = resourceName + "-2"
-			Expect(k8sClient.Create(ctx, edb1)).To(Succeed())
-			Expect(k8sClient.Create(ctx, edb2)).To(Succeed())
-			DeferCleanup(func() {
-				deleteIfExists(&dbaasv1.ExternalDatabase{ObjectMeta: metav1.ObjectMeta{Name: edb2.Name, Namespace: ns}})
-			})
-
-			ob := &dbaasv1.NamespaceBinding{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBindingName, Namespace: ns},
-			}
-			reqs := reconciler.enqueueForBinding(ctx, ob)
-
-			names := make([]string, 0, len(reqs))
-			for _, r := range reqs {
-				names = append(names, r.Name)
-			}
-			Expect(names).To(ConsistOf(edb1.Name, edb2.Name))
-		})
-
-		It("returns an empty slice when no ExternalDatabases exist in the namespace", func() {
-			reconciler.Ownership = mineOwnershipResolver(ns)
-			ob := &dbaasv1.NamespaceBinding{
-				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBindingName, Namespace: "empty-ns"},
-			}
-			reqs := reconciler.enqueueForBinding(ctx, ob)
-			Expect(reqs).To(BeEmpty())
-		})
+		edb, result, err := reconcileAndFetchObject(reconciler, namespacedName,
+			func() *dbaasv1.ExternalDatabase { return &dbaasv1.ExternalDatabase{} })
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.RequeueAfter).To(BeZero())
+		Expect(fixture.capturedBody).To(BeEmpty())
+		Expect(edb.Status.Phase).To(BeEmpty())
 	})
 })
 
