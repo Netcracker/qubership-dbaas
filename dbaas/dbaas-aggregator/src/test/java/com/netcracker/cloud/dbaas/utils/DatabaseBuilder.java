@@ -47,8 +47,6 @@ public class DatabaseBuilder {
         List<DbResource> dbResources = List.of(
                 new DbResource("user", ADMIN_USER_NAME),
                 new DbResource("database", database.getName()));
-        dbResource.setKind("someKind");
-        dbResource.setName("someName");
         database.setResources(new ArrayList<>(dbResources));
         database.setConnectionProperties(new ArrayList<>(List.of(new HashMap<>(Map.of(
                 ROLE, Role.ADMIN.toString(),
