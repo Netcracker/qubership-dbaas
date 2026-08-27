@@ -17,7 +17,7 @@ restrictedEnvironment: false
 
 # ============== SERVICE VARIABLES ============================
 LOG_LEVEL: "info"
-K8S_EVENTS_ENABLED: false
+K8S_EVENTS_ENABLED: true
 LEADER_ELECT: true
 # Rotation poll period as a Go duration (e.g. 15s, 1m). Leave empty to use the
 # operator's built-in default (30s). The leader polls dbaas-aggregator's

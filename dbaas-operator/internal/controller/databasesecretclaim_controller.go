@@ -22,8 +22,8 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
 //
-// Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
-// NamespaceBinding (not a ClusterRole), so there is no cluster-wide secrets RBAC marker here.
+// Secret access is granted by a namespaced Role + RoleBinding, so there is no
+// cluster-wide secrets RBAC marker here.
 
 import (
 	"bytes"
@@ -45,7 +45,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -53,7 +52,6 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 // secretNameIndex is the field index key for DatabaseSecretClaim.Spec.SecretName,
@@ -69,12 +67,11 @@ const secretNameIndex = "spec.secretName"
 //  4. Creates or updates the core v1.Secret with the returned connectionProperties.
 type DatabaseSecretClaimReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Aggregator *aggregatorclient.AggregatorClient
-	Recorder   record.EventRecorder
-	Ownership  *ownership.OwnershipResolver
+	Scheme      *runtime.Scheme
+	Aggregator  *aggregatorclient.AggregatorClient
+	Recorder    record.EventRecorder
+	MyNamespace string
 
-	bindingTriggerTracker
 	triggerMu             sync.Mutex
 	siblingTriggerStamps  map[string]struct{}
 	rotationTriggerValues map[string]string
@@ -87,7 +84,6 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 	if err := r.Get(ctx, req.NamespacedName, s); err != nil {
 		if apierrors.IsNotFound(err) {
 			key := req.Namespace + "/" + req.Name
-			r.clearBindingTrigger(key)
 			r.clearSiblingTrigger(key)
 			r.clearRotationTrigger(key)
 		}
@@ -96,17 +92,11 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	key := s.Namespace + "/" + s.Name
 
-	owned, result, err := checkOwnership(ctx, r.Ownership, s.Namespace, s.Name, "DatabaseSecretClaim")
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if !owned {
-		if r.Ownership.GetState(s.Namespace) == ownership.Foreign {
-			r.clearBindingTrigger(key)
-			r.clearSiblingTrigger(key)
-			r.clearRotationTrigger(key)
-		}
-		return result, nil
+	if !isEligibleForOperator(ctx, s.Spec.OperatorNamespace, r.MyNamespace,
+		s.Namespace, s.Name, "DatabaseSecretClaim") {
+		r.clearSiblingTrigger(key)
+		r.clearRotationTrigger(key)
+		return ctrl.Result{}, nil
 	}
 	trigger := r.triggerForSecretClaim(key, s)
 	recordReconcileTrigger(controllerDSC, trigger)
@@ -229,6 +219,12 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	for i := range siblings.Items {
 		sib := &siblings.Items[i]
 		if sib.UID == s.UID {
+			continue
+		}
+		// A sibling assigned to a different operator is never reconciled here and
+		// never creates the Secret, so it cannot be the real owner. Skip it, or an
+		// older foreign claim would park this one in SecretConflict indefinitely.
+		if sib.Spec.OperatorNamespace != s.Spec.OperatorNamespace {
 			continue
 		}
 		if isOlderClaimant(sib, s) {
@@ -598,7 +594,7 @@ func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
 }
 
 // SetupWithManager registers indexes and watches for DatabaseSecretClaim reconciliation.
-func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&dbaasv1.DatabaseSecretClaim{},
@@ -629,11 +625,6 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseSecretClaim{},
 			builder.WithPredicates(specOrRotationTriggerPredicate{})).
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
-			// The binding status is written by its own controller; only create, delete,
-			// and spec changes can affect ownership, so status-only updates are ignored.
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue siblings that share spec.secretName when any DatabaseSecretClaim
 		// in the namespace is created, deleted, or has a spec change. This lets
 		// a loser CR recover automatically once the older claimant is removed or
@@ -644,14 +635,9 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 		Watches(&dbaasv1.DatabaseSecretClaim{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueSiblingsBySecretName),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("databasesecretclaim").
 		Complete(r)
-}
-
-func (r *DatabaseSecretClaimReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseSecretClaimList{}, obj.GetNamespace(),
-		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
 }
 
 // enqueueSiblingsBySecretName re-enqueues every DatabaseSecretClaim in the same
@@ -687,8 +673,6 @@ func (r *DatabaseSecretClaimReconciler) triggerForSecretClaim(key string, s *dba
 	switch {
 	case r.consumeRotationTrigger(key, s.Annotations[dbaasv1.AnnotationRotationTrigger]):
 		return triggerRotation
-	case r.consumeBindingTrigger(key):
-		return triggerNamespaceBindingChange
 	case r.consumeSiblingTrigger(key):
 		return triggerSiblingSecretClaim
 	case isReadyForGeneration(s.Status.Conditions, s.Generation):

@@ -19,8 +19,8 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=externaldatabases/status,verbs=get;update;patch
 //
-// Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
-// NamespaceBinding (not a ClusterRole), so there is no cluster-wide secrets RBAC marker here.
+// Secret access is granted by a namespaced Role + RoleBinding, so there is no
+// cluster-wide secrets RBAC marker here.
 
 import (
 	"context"
@@ -36,15 +36,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 // externalDatabaseDefaultResync is the fallback re-reconcile period used when
@@ -60,48 +56,31 @@ const externalDatabaseDefaultResync = 10 * time.Minute
 // `kubectl describe externaldatabase <name>`.
 type ExternalDatabaseReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Aggregator *aggregatorclient.AggregatorClient
-	Recorder   record.EventRecorder
-	Ownership  *ownership.OwnershipResolver
+	Scheme      *runtime.Scheme
+	Aggregator  *aggregatorclient.AggregatorClient
+	Recorder    record.EventRecorder
+	MyNamespace string
 
 	// ResyncInterval re-reconciles each ExternalDatabase periodically so a change to a
 	// referenced credentials Secret is eventually picked up without a Secret watch.
 	// Defaults to externalDatabaseDefaultResync when zero.
 	ResyncInterval time.Duration
-
-	bindingTriggerTracker
 }
 
 func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	ctx, requestID := initReconcileContext(ctx)
 
-	edbKey := req.Namespace + "/" + req.Name
 	edb := &dbaasv1.ExternalDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, edb); err != nil {
-		if apierrors.IsNotFound(err) {
-			r.clearBindingTrigger(edbKey)
-		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Classify the reconcile trigger for the metric: a spec change (default) or a
-	// NamespaceBinding change. Periodic resyncs are also counted as spec_change.
-	trigger := triggerSpecChange
-	if r.consumeBindingTrigger(edbKey) {
-		trigger = triggerNamespaceBindingChange
+	if !isEligibleForOperator(ctx, edb.Spec.OperatorNamespace, r.MyNamespace,
+		edb.Namespace, edb.Name, "ExternalDatabase") {
+		return ctrl.Result{}, nil
 	}
-
-	// Skip namespaces not owned by this operator instance.
-	owned, result, err := checkOwnership(ctx, r.Ownership, edb.Namespace, edb.Name, "ExternalDatabase")
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if !owned {
-		r.clearBindingTrigger(edbKey)
-		return result, nil
-	}
-	recordReconcileTrigger(controllerEDB, trigger)
+	// Periodic resyncs and refresh annotations are also counted as spec_change.
+	recordReconcileTrigger(controllerEDB, triggerSpecChange)
 
 	original := edb.DeepCopy()
 
@@ -324,11 +303,11 @@ func (specOrRefreshTriggerPredicate) Update(e event.UpdateEvent) bool {
 		e.ObjectNew.GetAnnotations()[dbaasv1.AnnotationRefresh]
 }
 
-// SetupWithManager registers watches for spec changes, refresh annotations, and
-// NamespaceBinding fan-out. There is intentionally no Secret watch (the operator
-// holds only namespaced Secret RBAC, no cluster-wide list/watch); credential
-// Secret changes are picked up by periodic resync or by changing AnnotationRefresh.
-func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+// SetupWithManager registers watches for spec changes and refresh annotations.
+// There is intentionally no Secret watch (the operator holds only namespaced
+// Secret RBAC, no cluster-wide list/watch); credential Secret changes are picked
+// up by periodic resync or by changing AnnotationRefresh.
+func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	if r.ResyncInterval == 0 {
 		r.ResyncInterval = externalDatabaseDefaultResync
 	}
@@ -336,22 +315,7 @@ func (r *ExternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctr
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.ExternalDatabase{},
 			builder.WithPredicates(specOrRefreshTriggerPredicate{})).
-		// Re-enqueue all ExternalDatabases in a namespace when its NamespaceBinding
-		// is created or updated, so existing CRs are reconciled without waiting for
-		// a spec change.
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
-			// The binding status is written by its own controller; only create, delete,
-			// and spec changes can affect ownership, so status-only updates are ignored.
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("externaldatabase").
 		Complete(r)
-}
-
-// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
-// all ExternalDatabases that live in the same namespace.
-func (r *ExternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.ExternalDatabaseList{}, obj.GetNamespace(),
-		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
 }

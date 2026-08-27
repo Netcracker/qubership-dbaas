@@ -53,7 +53,7 @@ log.ErrorC(ctx, "aggregator call failed: %v", err)
 - Use active voice: `"Created Deployment"`, not `"deployment was created"`.
 - Use past tense for completed actions: `"Failed to create Pod"`, not `"Cannot create Pod"`.
 - Always specify the object type: `"Deleted Pod"`, not `"Deleted"`.
-- Attach structured key=value pairs inline: `log.Infof("backoff configured base=%v max=%v", base, max)`.
+- Attach structured key=value pairs inline: `log.Infof("Backoff configured base=%v max=%v", base, max)`.
 
 ### Bridging logr (controller-runtime)
 
@@ -268,7 +268,9 @@ defer func() {
 
 - **GenerationChangedPredicate**: filter events to spec changes only.
 - Use `client.IgnoreNotFound(err)` for the initial GET.
-- Use `workqueue.NewTypedItemExponentialFailureRateLimiter` for backoff (configurable via flags).
+- Take a `RateLimiterConfig` in `SetupWithManager` and call `config.controllerOptions()` once per registered
+  controller, so each one gets its own backoff state. Never share one `ctrlcontroller.Options` value between
+  registrations. Delays come from the `--backoff-base-delay` and `--backoff-max-delay` flags.
 - **RBAC markers** live on the controller; regenerate with `make manifests`:
 
 ```go
@@ -345,7 +347,7 @@ as `cmd/` and `internal/client/`.)
   - `reconcileAndFetchObject[T]()` — reconcile then re-fetch.
   - `findCondition()` — locate a condition by type.
   - `expectRecordedEvent()` / `expectRecordedEventContaining()` — assert events.
-  - `mineOwnershipResolver()` / `foreignOwnershipResolver()` — pre-seed ownership cache.
+  - Set `spec.operatorNamespace` to the reconciler namespace or a foreign namespace to test operator eligibility.
 
 ### Running tests
 
@@ -443,14 +445,13 @@ cmd/credentials.go                    Basic Auth credential loader + Secret watc
 api/v1/*_types.go                     CRD schemas (all CRs are v1)
 api/v1/zz_generated.*.go              Auto-generated (DO NOT EDIT)
 internal/controller/*_controller.go   Reconciliation logic
-internal/controller/helpers.go        Shared condition/status/ownership utilities
+internal/controller/helpers.go        Shared condition/status/operator-eligibility utilities
 internal/controller/events.go         Event reason constants
 internal/controller/conditions.go     Condition type constants + timing intervals
 internal/controller/metrics.go        Prometheus metrics — definitions + recording helpers
 internal/controller/resource_metrics.go  Resource-state metrics (custom collector)
 internal/client/                      HTTP client for dbaas-aggregator
 internal/poller/                      Rotation poller (changed-databases feed)
-internal/ownership/                   Namespace ownership resolution
 config/                               Kustomize manifests (CRDs, RBAC, samples) — dev/test + envtest
 helm-templates/                       Helm chart templates (production install)
 dev/                                  Local development utilities (Kind, aggregator-mock)
@@ -460,7 +461,7 @@ docs/monitoring/                      Metrics & Grafana dashboard reference docs
 ### Custom Resources (all `dbaas.netcracker.com/v1`)
 
 `ExternalDatabase`, `InternalDatabase`, `DatabaseSecretClaim`, `DatabaseAccessPolicy`,
-`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`, `NamespaceBinding`.
+`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`.
 
 ---
 
@@ -479,10 +480,10 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result 
         return ctrl.Result{}, client.IgnoreNotFound(err)
     }
 
-    // 3. Check namespace ownership
-    owned, result, err := checkOwnership(ctx, r.Ownership, obj.Namespace, obj.Name, "MyResource")
-    if err != nil { return ctrl.Result{}, err }
-    if !owned  { return result, nil }
+    // 3. Check whether this CR is assigned to this operator instance
+    if !isEligibleForOperator(ctx, obj.Spec.OperatorNamespace, r.MyNamespace, obj.Namespace, obj.Name, "MyResource") {
+        return ctrl.Result{}, nil
+    }
 
     // 4. Snapshot + defer status patch
     original := obj.DeepCopy()
@@ -504,13 +505,11 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result 
 ### SetupWithManager skeleton
 
 ```go
-func (r *MyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *MyReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
     return ctrl.NewControllerManagedBy(mgr).
         For(&myapi.MyResource{},
             builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-        Watches(&dbaasv1.NamespaceBinding{},
-            handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding)).
-        WithOptions(opts).
+        WithOptions(config.controllerOptions()).
         Named("myresource").
         Complete(r)
 }
@@ -596,7 +595,7 @@ Variables read by the operator binary:
 
 | Variable | Purpose | Required |
 |---|---|---|
-| `CLOUD_NAMESPACE` | Operator's own namespace (ownership checks) | Yes |
+| `CLOUD_NAMESPACE` | Operator's own namespace; a managed CR is reconciled only when its `spec.operatorNamespace` equals this | Yes |
 | `DBAAS_AGGREGATOR_URL` | Aggregator base URL (default: `http://dbaas-aggregator:8080`) | No |
 | `KUBERNETES_M2M_ENABLED` | Auth mode; **must match the aggregator**. `false` (default) → HTTP Basic Auth (creds from `users.json` in the mounted `dbaas-security-configuration-secret`); `true` → M2M Bearer token. | No |
 | `DBAAS_ROTATION_POLL_INTERVAL` | Poll period for the changed-databases feed used to propagate credential rotations (Go duration; empty → built-in default `30s`). | No |

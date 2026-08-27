@@ -24,20 +24,15 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 // DatabaseAccessPolicyReconciler reconciles DatabaseAccessPolicy objects.
@@ -47,12 +42,10 @@ import (
 // Key outcomes are also emitted as Kubernetes Events.
 type DatabaseAccessPolicyReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Aggregator *aggregatorclient.AggregatorClient
-	Recorder   record.EventRecorder
-	Ownership  *ownership.OwnershipResolver
-
-	bindingTriggerTracker
+	Scheme      *runtime.Scheme
+	Aggregator  *aggregatorclient.AggregatorClient
+	Recorder    record.EventRecorder
+	MyNamespace string
 }
 
 func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -60,28 +53,15 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	dp := &dbaasv1.DatabaseAccessPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, dp); err != nil {
-		if apierrors.IsNotFound(err) {
-			r.clearBindingTrigger(req.Namespace + "/" + req.Name)
-		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	key := req.Namespace + "/" + req.Name
-	bindingTriggered := r.consumeBindingTrigger(key)
-
-	owned, result, err := checkOwnership(ctx, r.Ownership, dp.Namespace, dp.Name, "DatabaseAccessPolicy")
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if !owned {
-		return result, nil
+	if !isEligibleForOperator(ctx, dp.Spec.OperatorNamespace, r.MyNamespace,
+		dp.Namespace, dp.Name, "DatabaseAccessPolicy") {
+		return ctrl.Result{}, nil
 	}
 
-	trigger := triggerSpecChange
-	if bindingTriggered {
-		trigger = triggerNamespaceBindingChange
-	}
-	recordReconcileTrigger(controllerDAP, trigger)
+	recordReconcileTrigger(controllerDAP, triggerSpecChange)
 
 	original := dp.DeepCopy()
 
@@ -146,27 +126,12 @@ func (r *DatabaseAccessPolicyReconciler) buildPayload(dp *dbaasv1.DatabaseAccess
 	}
 }
 
-// SetupWithManager registers watches for spec changes and NamespaceBinding fan-out.
-func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+// SetupWithManager registers watches for spec changes.
+func (r *DatabaseAccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseAccessPolicy{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all DbPolicies in a namespace when its NamespaceBinding
-		// is created or updated, so existing CRs are reconciled without waiting for
-		// a spec change.
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
-			// The binding status is written by its own controller; only create, delete,
-			// and spec changes can affect ownership, so status-only updates are ignored.
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("databaseaccesspolicy").
 		Complete(r)
-}
-
-// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
-// all DbPolicies that live in the same namespace.
-func (r *DatabaseAccessPolicyReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseAccessPolicyList{}, obj.GetNamespace(),
-		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
 }

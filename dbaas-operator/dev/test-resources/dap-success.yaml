@@ -4,6 +4,7 @@ metadata:
   name: dap-success
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   # microserviceName has no matching rule in apply-rules.json → mock returns 200 COMPLETED
   microserviceName: svc-ok
   services:

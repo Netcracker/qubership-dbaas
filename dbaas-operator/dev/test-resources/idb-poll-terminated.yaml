@@ -18,6 +18,7 @@ metadata:
   name: idb-poll-terminated
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
       microserviceName: idb-poll-terminated
       scope: service

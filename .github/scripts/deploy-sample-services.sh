@@ -19,6 +19,7 @@ helm upgrade --install "$GO_SERVICE_NAME" \
   test-apps/go-test-app-service/helm-templates/go-test-app-service \
   --namespace "$TEST_NAMESPACE" \
   --set NAMESPACE="$TEST_NAMESPACE" \
+  --set DBAAS_OPERATOR_NAMESPACE="$TEST_NAMESPACE" \
   --set IMAGE_REPOSITORY="$GO_IMAGE_REPOSITORY" \
   --set TAG="$GO_IMAGE_TAG" \
   --set IMAGE_PULL_POLICY="Never" \
@@ -31,6 +32,7 @@ helm upgrade --install "$SPRING_SERVICE_NAME" \
   test-apps/spring-test-app-service/helm-templates/spring-test-app-service \
   --namespace "$TEST_NAMESPACE" \
   --set NAMESPACE="$TEST_NAMESPACE" \
+  --set DBAAS_OPERATOR_NAMESPACE="$TEST_NAMESPACE" \
   --set IMAGE_REPOSITORY="$SPRING_IMAGE_REPOSITORY" \
   --set TAG="$SPRING_IMAGE_TAG" \
   --set IMAGE_PULL_POLICY="Never" \
@@ -42,6 +44,7 @@ helm upgrade --install "$QUARKUS_SERVICE_NAME" \
   test-apps/quarkus-test-app-service/helm-templates/quarkus-test-app-service \
   --namespace "$TEST_NAMESPACE" \
   --set NAMESPACE="$TEST_NAMESPACE" \
+  --set DBAAS_OPERATOR_NAMESPACE="$TEST_NAMESPACE" \
   --set IMAGE_REPOSITORY="$QUARKUS_IMAGE_REPOSITORY" \
   --set TAG="$QUARKUS_IMAGE_TAG" \
   --set IMAGE_PULL_POLICY="Never" \

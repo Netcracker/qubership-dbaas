@@ -24,7 +24,6 @@ import okhttp3.Response;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
-import org.opentest4j.TestAbortedException;
 
 import java.io.IOException;
 import java.sql.SQLException;
@@ -49,7 +48,7 @@ public class OperatorIT extends AbstractIT {
     private static BalancingRulesHelperV3 balancingRulesHelperV3;
 
     // The operator deploy carries no Secret RBAC, so OperatorIT grants it per-namespace Secret
-    // access (a Role + RoleBinding) alongside the NamespaceBinding, mirroring real onboarding.
+    // access with a Role + RoleBinding, mirroring real onboarding.
     private static final String OPERATOR_SERVICE_ACCOUNT = "dbaas-operator";
     private static final String OPERATOR_SECRET_RBAC_NAME = "dbaas-operator-secrets";
 
@@ -62,7 +61,7 @@ public class OperatorIT extends AbstractIT {
         backupHelperV3 = new BackupHelperV3(helperV3);
         balancingRulesHelperV3 = new BalancingRulesHelperV3(helperV3);
         cleanUp();
-        createNamespaceBindingCROrSkipTests();
+        createOperatorSecretRbac();
     }
 
     @AfterAll
@@ -86,9 +85,6 @@ public class OperatorIT extends AbstractIT {
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.genericKubernetesResources(CRD_PERMANENT_BALANCING_RULE)
-                .withLabel(TEST_ID, TEST_ID)
-                .delete();
-        kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
                 .withLabel(TEST_ID, TEST_ID)
                 .delete();
         kubernetesClient.secrets()
@@ -627,114 +623,6 @@ public class OperatorIT extends AbstractIT {
 
                     var updatedDb = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
                     assertEquals(Map.of("role", "admin", TEST_ID, TEST_ID), updatedDb.getConnectionProperties());
-                }
-            }
-
-            @Nested
-            @EnableExtension
-            class NamespaceBinding {
-                @Test
-                void testNamespaceBindingWrongName() {
-                    String crName = generateName();
-                    var cr = buildNamespaceBindingCR(crName, NAMESPACE, NAMESPACE);
-
-                    KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_NAMESPACE_BINDING, cr));
-                    assertEquals(422, ex.getCode());
-                    assertTrue(ex.toString().contains("NamespaceBinding name must be 'binding'"));
-                }
-
-                @Test
-                void testNamespaceBindingEmptyOperatorNamespace() {
-                    var cr = buildNamespaceBindingCR(CR_NAMESPACE_BINDING_NAME, NAMESPACE, "");
-
-                    KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_NAMESPACE_BINDING, cr));
-                    assertEquals(422, ex.getCode());
-                    assertTrue(ex.toString().contains("spec.operatorNamespace in body should be at least 1 chars long"));
-                }
-
-                @Test
-                void testNamespaceBindingMissingOperatorNamespace() {
-                    var cr = buildNamespaceBindingCR(CR_NAMESPACE_BINDING_NAME, NAMESPACE, "");
-                    cr.setAdditionalProperty("spec", Map.of());
-
-                    KubernetesClientException ex = assertThrows(KubernetesClientException.class, () -> createCR(CRD_NAMESPACE_BINDING, cr));
-                    log.info("{}", ex.toString());
-                    assertEquals(422, ex.getCode());
-                    assertTrue(ex.toString().contains("spec.operatorNamespace: Required value"));
-                }
-
-                @Test
-                void testNamespaceBindingChangeOperatorNamespaceValue() {
-                    var cr = buildNamespaceBindingCR(CR_NAMESPACE_BINDING_NAME, NAMESPACE, NAMESPACE);
-
-                    KubernetesClientException ex = assertThrows(KubernetesClientException.class,
-                            () -> kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                                    .inNamespace(NAMESPACE)
-                                    .resource(cr)
-                                    .edit(r -> {
-                                        r.setAdditionalProperty("spec", Map.of(
-                                                "operatorNamespace", "updated-namespace"
-                                        ));
-                                        return r;
-                                    }));
-
-                    assertEquals(422, ex.getCode());
-                    assertTrue(ex.toString().contains("spec.operatorNamespace is immutable after creation"));
-                }
-
-                @Test
-                void testNamespaceBindingUpdateMetadata() {
-                    String label = generateName();
-                    var cr = buildNamespaceBindingCR(CR_NAMESPACE_BINDING_NAME, NAMESPACE, NAMESPACE);
-
-                    kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                            .inNamespace(NAMESPACE)
-                            .resource(cr)
-                            .edit(r -> {
-                                var metadata = r.getMetadata() != null ? r.getMetadata() : new ObjectMeta();
-                                metadata.getLabels().put(label, label);
-                                return r;
-                            });
-
-                    var updatedCR = kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                            .inNamespace(NAMESPACE)
-                            .resource(cr)
-                            .get();
-                    assertTrue(updatedCR.getMetadata().getLabels().containsKey(label));
-                }
-
-                @Test
-                void testNamespaceBindingTryToCreateSameOne() {
-                    var cr = buildNamespaceBindingCR(CR_NAMESPACE_BINDING_NAME, NAMESPACE, NAMESPACE);
-
-                    KubernetesClientException ex = assertThrows(KubernetesClientException.class,
-                            () -> createCR(CRD_NAMESPACE_BINDING, cr));
-                    assertEquals(409, ex.getCode());
-                    assertTrue(ex.toString().contains(String.format("namespacebindings.dbaas.netcracker.com \"%s\" already exists", CR_NAMESPACE_BINDING_NAME)));
-                }
-
-                @Test
-                void testNamespaceBindingDeletionBlockedByAnotherCRD() throws IOException {
-                    String crName = generateName();
-                    String microserviceName = generateName();
-
-                    var cr = buildExternalDatabaseCR(crName, microserviceName, NAMESPACE, "new-db", "");
-
-                    createCR(CRD_EXTERNAL_DATABASE, cr);
-                    waitForDesiredState(CRD_EXTERNAL_DATABASE, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_REGISTERED, STATUS_FALSE);
-                    helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), new ClassifierBuilder().ms(microserviceName).ns(NAMESPACE).build(), NAMESPACE, "postgresql", 200);
-
-                    kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                            .withLabel(TEST_ID, TEST_ID)
-                            .delete();
-
-                    var undeletedNamespaceBinding = kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                            .inNamespace(NAMESPACE)
-                            .withLabel(TEST_ID, TEST_ID)
-                            .list().getItems().getFirst();
-
-                    assertNotNull(undeletedNamespaceBinding.getMetadata().getDeletionTimestamp());
-                    assertTrue(undeletedNamespaceBinding.getMetadata().getFinalizers().contains("platform.dbaas.netcracker.com/binding-protection"));
                 }
             }
 
@@ -2289,31 +2177,9 @@ public class OperatorIT extends AbstractIT {
         assumeTrue(pods != null && !pods.isEmpty(), "dbaas-operator do not exists, 'OperatorIT' tests will be ignored");
     }
 
-    private static void createNamespaceBindingCROrSkipTests() {
-        try {
-            // The operator deploy holds no Secret RBAC, so grant it Secret access in this namespace
-            // via a Role + RoleBinding — provisioned alongside the NamespaceBinding, exactly as a
-            // real namespace onboarding would (see config/samples/namespaced-secret-rbac.yaml).
-            createOperatorSecretRbac();
-
-            var cr = buildNamespaceBindingCR();
-            kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                    .inNamespace(NAMESPACE)
-                    .resource(cr)
-                    .create();
-
-            kubernetesClient.genericKubernetesResources(CRD_NAMESPACE_BINDING)
-                    .inNamespace(NAMESPACE)
-                    .resource(cr)
-                    .waitUntilCondition(r -> r.getMetadata().getFinalizers().contains("platform.dbaas.netcracker.com/binding-protection"), 1, TimeUnit.MINUTES);
-        } catch (Exception ex) {
-            throw new TestAbortedException("Failed to create CR 'NamespaceBinding', tests aborted");
-        }
-    }
-
     // Grants the operator (dbaas-operator ServiceAccount) namespaced Secret access in NAMESPACE.
     // Mirrors production, where each namespace's onboarding provisions this Role + RoleBinding
-    // next to the NamespaceBinding; the operator deploy itself carries no Secret RBAC.
+    // for the namespaces it serves; the operator deploy itself carries no Secret RBAC.
     private static void createOperatorSecretRbac() {
         var role = new RoleBuilder()
                 .withNewMetadata()

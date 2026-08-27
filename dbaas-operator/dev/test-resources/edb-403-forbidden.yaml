@@ -4,6 +4,7 @@ metadata:
   name: edb-403
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
     microserviceName: test-service
     namespace: test-ns

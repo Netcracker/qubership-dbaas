@@ -7,6 +7,7 @@ metadata:
   name: idb-400-bad-request
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
       microserviceName: idb-svc-400
       scope: service

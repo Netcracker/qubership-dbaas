@@ -8,6 +8,7 @@ metadata:
   name: idb-poll-failed
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
       microserviceName: idb-poll-failed
       scope: service

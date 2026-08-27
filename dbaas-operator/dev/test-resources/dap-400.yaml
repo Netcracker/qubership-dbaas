@@ -4,6 +4,7 @@ metadata:
   name: dap-400
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   # microserviceName "svc-400" matches apply-rules.json → mock returns 400 CORE-DBAAS-4036
   # Expected result: Phase=InvalidConfiguration, Stalled=True, reason=AggregatorRejected
   microserviceName: svc-400

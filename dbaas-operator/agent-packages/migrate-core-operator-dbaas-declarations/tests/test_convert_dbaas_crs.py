@@ -60,6 +60,8 @@ class ConvertDbaasCrsSettingsTest(unittest.TestCase):
                     str(output_path),
                     "--namespace",
                     "test-namespace",
+                    "--operator-namespace",
+                    "dbaas-system",
                     "--service-name",
                     "dca",
                 ],
@@ -129,7 +131,27 @@ settings:
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNotNone(output)
         resource = yaml.safe_load(output)
+        self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas-system")
         self.assertEqual(resource["spec"]["settings"], settings)
+
+    @unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
+    def test_database_access_policy_includes_operator_namespace(self) -> None:
+        content = json.dumps(
+            {
+                "apiVersion": "nc.core.dbaas/v3",
+                "kind": "DbPolicy",
+                "microserviceName": "dca",
+                "services": [{"name": "inventory", "roles": ["readonly"]}],
+            }
+        )
+
+        result, output = self.run_converter(content, ".json")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNotNone(output)
+        resource = yaml.safe_load(output)
+        self.assertEqual(resource["kind"], "DatabaseAccessPolicy")
+        self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas-system")
 
 
 if __name__ == "__main__":

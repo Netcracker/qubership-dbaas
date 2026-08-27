@@ -165,7 +165,7 @@
       "$ref": "#/definitions/booleanOrString",
       "title": "The K8S_EVENTS_ENABLED schema",
       "description": "When true, the operator emits Kubernetes Events and requires events RBAC (create, patch on core/events).",
-      "default": false,
+      "default": true,
       "examples": [
         false,
         true
