@@ -49,6 +49,7 @@ class BalancingRulesV3IT extends AbstractIT {
         helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("Smoke")
     void testRuleOnMicroserviceNoConflictOnExistingDB() throws IOException {
@@ -61,6 +62,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testRuleOnMicroserviceNoConflictRecreateRule() throws IOException {
         Map.Entry<String, String> label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -115,6 +117,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testRuleOnMicroserviceNoConflictRecreateRuleMulitMicroservice() throws IOException {
         Map.Entry<String, String> label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -130,6 +133,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testRuleOnMicroserviceBadRequestMoreThanOneRule() throws IOException {
         Map.Entry<String, String> label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -141,6 +145,7 @@ class BalancingRulesV3IT extends AbstractIT {
     }
 
 
+    @Tag("postgresql")
     @Test
     void testRuleOnMicroserviceNotFoundLabel() throws IOException {
         try (Response response = createOnMicroserviceRule(
@@ -149,6 +154,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testCleanUpMicroserviceRuleIsIdempotent() throws IOException {
         Map.Entry<String, String> label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -177,6 +183,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testGetOnMicroservicePhysicalDatabaseBalancingRules() throws IOException {
         var label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -218,6 +225,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     public void testRuleOnMicroserviceValidationSuccessful() throws IOException {
         Map.Entry<String, String> label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -247,6 +255,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     public void testRuleOnMicroserviceValidationUnexistingLabel() throws IOException {
         String randomLabel = "TestLabel" + label_ID + "_balancing_rule=" + label_ID + "TestLabel";
@@ -258,6 +267,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     public void testRuleOnMicroserviceValidationIncorrectLabelFormat() throws IOException {
         String randomLabel = "TestLabel" + label_ID + "_balancing_rule:" + label_ID + "TestLabel";
@@ -269,6 +279,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testAddPermanentRuleOnDatabase() throws IOException {
         Map<String, PhysicalDatabaseRegistrationResponseDTOV3> databases = helperV3.getRegisteredPhysicalDatabases(POSTGRES_TYPE, helperV3.getClusterDbaAuthorization(), 200).getIdentified();
@@ -290,6 +301,7 @@ class BalancingRulesV3IT extends AbstractIT {
         cleanUpPermanentRules(TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     void testAddPermanentRulesConflictInRequest() throws IOException {
         List<PermanentPerNamespaceRuleDTO> listWithRules = new ArrayList<>();
@@ -302,6 +314,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testAddRulesForOneNamespace() throws IOException {
         List<PermanentPerNamespaceRuleDTO> listWithRules = new ArrayList<>();
@@ -338,6 +351,7 @@ class BalancingRulesV3IT extends AbstractIT {
         cleanUpPermanentRules(TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("Smoke")
     void testGetRulesForNamespace() throws IOException {
@@ -366,6 +380,7 @@ class BalancingRulesV3IT extends AbstractIT {
         cleanUpPermanentRules(TEST_NAMESPACE + "_2");
     }
 
+    @Tag("postgresql")
     @Test
     void testGetAllRules() throws IOException {
         List<PermanentPerNamespaceRuleDTO> listWithRules = new ArrayList<>();
@@ -392,6 +407,8 @@ class BalancingRulesV3IT extends AbstractIT {
         cleanUpPermanentRules(TEST_NAMESPACE + "_2");
     }
 
+    @Tag("postgresql")
+    @Tag("mongodb")
     @Test
     void testDeleteAllPermanentRulesForNamespace() throws IOException {
         List<PermanentPerNamespaceRuleDTO> listWithRules = new ArrayList<>();
@@ -424,6 +441,8 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
+    @Tag("mongodb")
     @Test
     void testDeletePermanentRulesForNamespaceAndDbType() throws IOException {
         List<PermanentPerNamespaceRuleDTO> listWithRules = new ArrayList<>();
@@ -455,6 +474,7 @@ class BalancingRulesV3IT extends AbstractIT {
         cleanUpPermanentRules(TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     void testDeletePermanentRulesIsIdempotent() throws IOException {
         String namespace = TEST_NAMESPACE + "-delete-retry-" + UUID.randomUUID();
@@ -482,6 +502,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testDebugBalancingRulesUseRequestRule() {
         Map.Entry<String, String> label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -503,6 +524,7 @@ class BalancingRulesV3IT extends AbstractIT {
         assertEquals(label.getValue(), pgDebugData.getLabels().get(label.getKey()));
     }
 
+    @Tag("postgresql")
     @Test
     void testDebugBalancingRulesUseStoredRule() throws IOException {
         Map.Entry<String, String> label = balancingRulesHelperV3.getUniqLabelsByDbType(POSTGRES_TYPE);
@@ -529,6 +551,7 @@ class BalancingRulesV3IT extends AbstractIT {
         assertEquals(label.getValue(), pgDebugData.getLabels().get(label.getKey()));
     }
 
+    @Tag("postgresql")
     @Test
     void testDebugBalancingRulesUseNamespaceRule() throws IOException {
         Map<String, PhysicalDatabaseRegistrationResponseDTOV3> databases = helperV3.getRegisteredPhysicalDatabases(POSTGRES_TYPE, helperV3.getClusterDbaAuthorization(), 200).getIdentified();
@@ -557,6 +580,7 @@ class BalancingRulesV3IT extends AbstractIT {
         assertEquals(physDbId, pgDebugData.getPhysicalDbIdentifier());
     }
 
+    @Tag("postgresql")
     @Test
     void testDeleteNamespaceBalancingRule() throws IOException {
         Map<String, PhysicalDatabaseRegistrationResponseDTOV3> databases = helperV3.getRegisteredPhysicalDatabases(POSTGRES_TYPE, helperV3.getClusterDbaAuthorization(), 200).getIdentified();
@@ -589,6 +613,7 @@ class BalancingRulesV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testDebugBalancingRulesUseDefaultRule() {
         boolean isDefaultDatabaseDisabled = helperV3.isDefaultDatabaseDisabled(pod);

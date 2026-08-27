@@ -80,6 +80,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
                 .build();
     }
 
+    @Tag("mongodb")
     @Test
     public void mongoTestDatabaseCreatedAndConnecting() throws IOException {
         assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
@@ -92,6 +93,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.checkConnectionMongo(created_1);
     }
 
+    @Tag("mongodb")
     @Test
     public void mongoTestDatabaseCreatedAndConnectingWithK8sToken() throws IOException {
         assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
@@ -107,6 +109,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), MONGODB_TYPE, req.getClassifier(), 200);
     }
 
+    @Tag("postgresql")
     @Test
     public void testDbsCleanedPostgres() throws IOException, SQLException {
         log.info("Create database");
@@ -140,6 +143,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
     }
 
 
+    @Tag("mongodb")
     @Test
     public void testDbsCleanedMongo() throws IOException {
         assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
@@ -156,6 +160,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
                         helperV3.checkConnectionMongo(mongoDB, true)));
     }
 
+    @Tag("postgresql")
     @Test
     public void postgresTestDatabaseCreatedAndConnecting() throws IOException, SQLException {
         DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
@@ -165,6 +170,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.checkConnectionPostgres(created_1);
     }
 
+    @Tag("postgresql")
     @Test
     public void postgresTestDatabaseCreatedAndConnectingWithK8sToken() throws IOException, SQLException {
         log.info("Create database with k8s token");
@@ -178,6 +184,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), POSTGRES_TYPE, req.getClassifier(), 200);
     }
 
+    @Tag("postgresql")
     @Test
     public void postgresTestAsyncDatabaseCreatedAndConnecting() throws IOException, SQLException {
         String requestUrl = String.format(DATABASES_V3_ASYNC, TEST_NAMESPACE);
@@ -194,6 +201,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.checkConnectionPostgres(createdResponse);
     }
 
+    @Tag("postgresql")
     @Test
     public void postgresTestDatabaseCreatedAndConnectionContainsTLS() throws IOException, SQLException {
         DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
@@ -204,8 +212,9 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.checkConnectionPostgres(created_1);
     }
 
-    @Test
+    @Tag("mongodb")
     @Tag("Smoke")
+    @Test
     public void createMongoDbInRegisteredPhysDb() throws IOException {
         assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
         List<DatabaseResponse> createdMongoDb = createDatabaseInRegisteredPhysDb("mongodb");
@@ -238,11 +247,13 @@ public class DatabasesAPIV3IT extends AbstractIT {
         });
     }
 
+    @Tag("postgresql")
     @Test
     public void testDeleteAllDatabasesInNamespaceUsingOldAPI() throws Exception {
         checkDatabaseDeletion(DATABASES_V3);
     }
 
+    @Tag("postgresql")
     @Test
     public void testDeleteAllDatabasesInNamespaceUsingNewAPI() throws Exception {
         checkDatabaseDeletion(DATABASES_DELETE_V3);
@@ -260,6 +271,8 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertThat(databasesInNamespace, hasSize(0));
     }
 
+    @Tag("postgresql")
+    @Tag("opensearch")
     @Test
     public void testDeleteAllDatabasesInNamespaceAsync_ButOpensearchSync() throws Exception {
         assumeTrue(helperV3.hasAdapterOfType(OPENSEARCH_TYPE));
@@ -282,6 +295,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         });
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("Smoke")
     public void createPostgresDbInRegisteredPhysDb() throws IOException {
@@ -348,17 +362,20 @@ public class DatabasesAPIV3IT extends AbstractIT {
     }
 
 
+    @Tag("mongodb")
     @Test
     public void mongoTestDuplicateNotCreated() throws IOException {
         assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
         testDuplicateNotCreated(MONGODB_TYPE);
     }
 
+    @Tag("postgresql")
     @Test
     public void postgresTestDuplicateNotCreated() throws IOException {
         testDuplicateNotCreated(POSTGRES_TYPE);
     }
 
+    @Tag("postgresql")
     @Test
     public void postgresTestInitialScript_LO() throws IOException {
         log.info("Create databases");
@@ -411,6 +428,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", true, 400);
     }
 
+    @Tag("postgresql")
     @Test
     public void getListDatabasesAnyType() throws IOException {
         ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external_any_type", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", TEST_NAMESPACE);
@@ -469,12 +487,15 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertNull(duplicate_2.getId());
     }
 
+    @Tag("mongodb")
+    @Tag("postgresql")
     @Test
     public void testGetNotExistingDBs() throws IOException {
         this.testGetNotExistingDB(MONGODB_TYPE);
         this.testGetNotExistingDB(POSTGRES_TYPE);
     }
 
+    @Tag("postgresql")
     @Test
     public void testDBCreationWithSettings() throws IOException {
         String authorization = helperV3.getClusterDbaAuthorization();
@@ -485,6 +506,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertEquals(settingsMap, databaseWithSettings.getSettings());
     }
 
+    @Tag("postgresql")
     @Test
     public void testSettingsUpdateCRUDScenarios() throws IOException {
         String authorization = helperV3.getClusterDbaAuthorization();
@@ -525,6 +547,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
     }
 
+    @Tag("postgresql")
     @Test
     public void testUpdateSettingsExtremeCases() throws IOException {
         String authorization = helperV3.getClusterDbaAuthorization();
@@ -552,6 +575,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertEquals(databaseWithSettings.getClassifier(), updatedDatabase.getClassifier());
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("Smoke")
     public void testGetAllPhysicalDBs() throws IOException {
@@ -564,6 +588,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertFalse(postgresqlDbs.isEmpty(), "At least 1 postgresql db must be returned");
     }
 
+    @Tag("postgresql")
     @Test
     public void checkResponseWhenDatabaseIsNotCreatedYet() throws InterruptedException, ExecutionException {
         Integer[] expectedAnswers = {201, 202};
@@ -588,6 +613,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("Smoke")
     void UserCreatedAndConnectingTest() throws IOException, SQLException {
@@ -625,6 +651,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertThrows(CannotConnect.class, () -> helperV3.checkConnectionPostgresUser(userWithNewPassword, "test", "test"));
     }
 
+    @Tag("postgresql")
     @Test
     void getAllDatabasesInNamespaceWithCreatedUsersTest() throws IOException, SQLException {
         String logicalUserId = "test-service";
@@ -655,6 +682,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         assertTrue(connections.isPresent());
     }
 
+    @Tag("postgresql")
     @Test
     void UserDeletedAfterDatabaseDeletionTest() throws IOException, SQLException {
         String logicalUserId = "test-service";
@@ -691,6 +719,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         helperV3.deleteUser(USER_API_URL_V3, userOperationRequest, 204);
     }
 
+    @Tag("postgresql")
     @Test
     void UsersRestoreTest() throws IOException, SQLException {
         DatabaseCreateRequestV3 createDbRequest = getSimplePostgresCreateRequest("dbaas_auto_test_1");

@@ -57,6 +57,7 @@ public class DatabaseMigrationIT extends AbstractIT {
         helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), DbaasHelperV3.TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateWithUserCreation_NotValidRequest() throws IOException {
         RegisterDatabaseWithUserCreationRequest requestBody = getNotValidRegisterDatabaseWithUserCreationRequest();
@@ -80,6 +81,7 @@ public class DatabaseMigrationIT extends AbstractIT {
         sendAndCheckBadRequestError(MIGRATE_WITH_USER_CREATION_API, requestBody, DATABASE_ERROR_MSG + "namespace in classifier");
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateWithUserCreation_NotValidClassifier() throws IOException {
         RegisterDatabaseWithUserCreationRequest requestBodySec = getNotValidRegisterDatabaseWithUserCreationRequest();
@@ -96,6 +98,7 @@ public class DatabaseMigrationIT extends AbstractIT {
         sendAndCheckBadRequestError(MIGRATE_WITH_USER_CREATION_API, requestBodySec, INVALID_CLASSIFIER_ERROR_MSG + requestBodySec.getClassifier());
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateWithUserCreation_NotValidPhysicalId() {
         RegisterDatabaseWithUserCreationRequest requestBodySec = new RegisterDatabaseWithUserCreationRequest(
@@ -112,6 +115,7 @@ public class DatabaseMigrationIT extends AbstractIT {
         Assertions.assertEquals("fake-name failed due to: Physical database fake-phys-id is not registered", resultMap.get(POSTGRES_TYPE).getFailureReasons().getFirst());
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateWithUserCreation_DatabaseNotExist() throws IOException {
         String physId = helperV3.getRegisteredPhysicalDatabases(POSTGRES_TYPE, helperV3.getClusterDbaAuthorization(), HttpStatus.OK.value()).
@@ -132,23 +136,27 @@ public class DatabaseMigrationIT extends AbstractIT {
         Assertions.assertTrue(resultMap.get(INCORRECT_POSTGRES_TYPE).getFailureReasons().getFirst().contains("fake-name failed due to: Could not find registered database by adapter"));
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("Smoke")
     public void migrateWithUserCreation_SuccessfullyMigratedPostgresql() throws IOException, SQLException {
         testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, false, true);
     }
 
+    @Tag("mongodb")
     @Test
     public void migrateWithUserCreation_SuccessfullyMigratedMongodb() throws IOException, SQLException {
         Assumptions.assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongodb adapter. Skip test.");
         testDatabaseMigration(MONGODB_TYPE, migrationHelper::removeMongoMetadata, false, true);
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateWithUserCreation_SuccessfullyMigratedPostgresql_SetOnlyHostDb() throws IOException, SQLException {
         testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, true, true);
     }
 
+    @Tag("postgresql")
     @Test
     void migrateWithUserCreation_MigrateExternalAsInternal() throws IOException, SQLException {
         Consumer<Map> removeMetadata = migrationHelper::removePgMetadata;
@@ -214,6 +222,7 @@ public class DatabaseMigrationIT extends AbstractIT {
         }, "Connection should fail after database deletion");
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateDatabase_NotValidClassifier() {
         RegisterDatabaseRequest requestBodySec = getNotValidRegisterDatabaseRequest();
@@ -230,17 +239,20 @@ public class DatabaseMigrationIT extends AbstractIT {
         sendAndCheckBadRequestError(MIGRATE_WITH_USER_CREATION_API, requestBodySec, INVALID_CLASSIFIER_ERROR_MSG + requestBodySec.getClassifier());
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateDatabaseSuccessfullyMigratedPostgreSql() throws IOException, SQLException {
         testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, false, false);
     }
 
+    @Tag("mongodb")
     @Test
     public void migrateDatabaseSuccessfullyMigratedMongodb() throws IOException, SQLException {
         Assumptions.assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongodb adapter. Skip test.");
         testDatabaseMigration(MONGODB_TYPE, migrationHelper::removeMongoMetadata, false, false);
     }
 
+    @Tag("postgresql")
     @Test
     public void migrateDatabaseSuccessfullyMigratedPostgresql_SetOnlyHostDb() throws IOException, SQLException {
         testDatabaseMigration(POSTGRES_TYPE, migrationHelper::removePgMetadata, true, false);

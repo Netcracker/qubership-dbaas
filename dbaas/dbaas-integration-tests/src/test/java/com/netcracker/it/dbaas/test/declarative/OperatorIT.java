@@ -22,6 +22,7 @@ import net.jodah.failsafe.Failsafe;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.opentest4j.TestAbortedException;
@@ -41,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
+@Tag("postgresql")
 public class OperatorIT extends AbstractIT {
 
     private static BGHelper bgHelper;
