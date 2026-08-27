@@ -1410,6 +1410,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimRotationTriggeredByBackupRestore() throws IOException {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
@@ -1440,6 +1441,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimUpdatedAfterBackupRestoreV3() throws IOException {
                     String sourceNamespace = helperV3.generateTestNamespace();
                     String dbSecretCRName = generateName();
@@ -1737,6 +1739,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimTenantRotationTriggeredByBackupRestore() throws IOException {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
@@ -1769,6 +1772,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimTenantUpdatedAfterBackupRestoreV3() throws IOException {
                     String sourceNamespace = helperV3.generateTestNamespace();
                     String dbSecretCRName = generateName();
