@@ -19,6 +19,7 @@ import org.apache.commons.lang.StringUtils;
 
 import javax.annotation.Nullable;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
@@ -64,6 +65,18 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         });
         log.debug("Was found {} logical database registry in namespace={}", databaseList.size(), namespace);
         return databaseList;
+    }
+
+    @Override
+    public List<DatabaseRegistry> findChangedSince(OffsetDateTime sinceTs, UUID sinceId, int limit) {
+        // PG-only: the rotation marker (last_rotated_at) is not mirrored to H2, so there is no H2 fallback.
+        // If Postgres is unavailable the operator poller simply retries on its next tick.
+        return databaseRegistryRepository.findChangedSince(sinceTs, sinceId, limit);
+    }
+
+    @Override
+    public Optional<DatabaseRegistry> latestChange() {
+        return databaseRegistryRepository.latestChange();
     }
 
     @Override
@@ -146,8 +159,10 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
     public void delete(DatabaseRegistry databaseRegistry) {
         UUID databaseRegistryId = databaseRegistry.getId();
         log.debug("Delete database registry with id={}", databaseRegistryId);
+        // Delete from Postgres outside the monitor; hold DBAAS_REPOSITORIES_MUTEX only for the H2 mirror.
+        // The monitor must never wrap a Postgres write — see save() for the cross-layer deadlock it caused.
+        deleteDatabase(databaseRegistryId);
         synchronized (getMutex()) {
-            deleteDatabase(databaseRegistryId);
             Failsafe.with(H2_DELETE_RETRY_POLICY).run(() -> safeDeleteAndFlushDatabaseRegistry(databaseRegistryId));
         }
     }
@@ -253,11 +268,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
 
     @Override
     public List<DatabaseRegistry> saveAll(List<DatabaseRegistry> databaseList) {
-        List<DatabaseRegistry> savedDatabases = new ArrayList<>();
-        for (DatabaseRegistry dr : databaseList) {
-            save(dr);
-        }
-        return savedDatabases;
+        return databaseList.stream().map(this::save).toList();
     }
 
     @Override
@@ -302,20 +313,23 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
             databaseRegistry.getConnectionProperties().stream().filter(cp -> cp.containsKey(ROLE)).forEach(cp -> cp.put(ROLE, ((String) cp.get(ROLE)).toLowerCase()));
         }
         log.debug("save classifier = {}", databaseRegistry);
-        synchronized (getMutex()) {
-            Database savedDatabase = databaseRegistry.getDatabase();
-            if (databaseRegistry.getId() == null) {
-                databasesRepository.persistAndFlush(savedDatabase);
-            } else {
-                EntityManager entityManager = databasesRepository.getEntityManager();
-                entityManager.merge(savedDatabase);
-                entityManager.flush();
-            }
-            Optional<DatabaseRegistry> savedDatabaseRegistry = savedDatabase.getDatabaseRegistry().stream()
-                    .filter(v -> v.getClassifier().equals(databaseRegistry.getClassifier())).findFirst();
-            log.debug("saved classifier = {}", savedDatabaseRegistry);
-            return savedDatabaseRegistry.orElseThrow();
+        // No getMutex() here: DBAAS_REPOSITORIES_MUTEX guards the in-memory H2 cache, and this method only
+        // writes Postgres. Holding the monitor across the Hibernate flush let one caller wait on the monitor
+        // while another thread's open transaction held a conflicting row lock — a deadlock spanning the JVM
+        // monitor and a Postgres row lock that neither side could detect. Postgres serializes the write itself;
+        // the H2 mirror is refreshed asynchronously by the classifier table listener.
+        Database savedDatabase = databaseRegistry.getDatabase();
+        if (databaseRegistry.getId() == null) {
+            databasesRepository.persistAndFlush(savedDatabase);
+        } else {
+            EntityManager entityManager = databasesRepository.getEntityManager();
+            savedDatabase = entityManager.merge(savedDatabase);
+            entityManager.flush();
         }
+        Optional<DatabaseRegistry> savedDatabaseRegistry = savedDatabase.getDatabaseRegistry().stream()
+                .filter(v -> v.getClassifier().equals(databaseRegistry.getClassifier())).findFirst();
+        log.debug("saved classifier = {}", savedDatabaseRegistry);
+        return savedDatabaseRegistry.orElseThrow();
     }
 
     private <T> T doGet(Callable<T> action, Function<Exception, T> rollback) {

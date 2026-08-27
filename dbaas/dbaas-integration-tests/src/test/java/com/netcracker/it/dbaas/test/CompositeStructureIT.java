@@ -116,7 +116,8 @@ public class CompositeStructureIT extends AbstractIT {
 
         String responseBody = helperV3.deleteDatabases(DbaasHelperV3.DATABASES_V3, helperV3.getClusterDbaAuthorization(), SATELLITE_1,
                 HttpStatus.SC_OK);
-        Assertions.assertEquals("Successfully deleted 0 databases and namespace specific resources in " + SATELLITE_1 + " namespace", responseBody);
+        Assertions.assertEquals("Successful '" + SATELLITE_1 + "' namespace cleanup: namespace specific resources are deleted synchronously - success, " +
+                "0 databases are deleted synchronously - success, 0 databases are marked for drop and asynchronous deletion is scheduled - success", responseBody);
         compositeStructure = getCompositeStructure(BASE_NAMESPACE, true);
         Assertions.assertEquals(2, compositeStructure.getNamespaces().size());
         Assertions.assertFalse(compositeStructure.getNamespaces().contains(SATELLITE_1));
@@ -133,7 +134,8 @@ public class CompositeStructureIT extends AbstractIT {
         helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, BASE_NAMESPACE, false, null);
 
         String responseBody = helperV3.deleteDatabases(DbaasHelperV3.DATABASES_V3, helperV3.getClusterDbaAuthorization(), BASE_NAMESPACE, HttpStatus.SC_OK);
-        Assertions.assertEquals("Successfully deleted 1 databases and namespace specific resources in " + BASE_NAMESPACE + " namespace", responseBody);
+        Assertions.assertEquals("Successful '" + BASE_NAMESPACE + "' namespace cleanup: namespace specific resources are deleted synchronously - success, " +
+                "0 databases are deleted synchronously - success, 1 databases are marked for drop and asynchronous deletion is scheduled - success", responseBody);
         getCompositeStructure(BASE_NAMESPACE, false);
     }
 

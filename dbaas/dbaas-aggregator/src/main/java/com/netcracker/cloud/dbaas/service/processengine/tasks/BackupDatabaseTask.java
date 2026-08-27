@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.service.processengine.tasks;
 
 import com.netcracker.cloud.dbaas.dto.bluegreen.CloneDatabaseProcessObject;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.service.BlueGreenService;
 import com.netcracker.core.scheduler.po.DataContext;
@@ -46,7 +47,11 @@ public class BackupDatabaseTask extends AbstractDbaaSTask implements Serializabl
             if (databaseRegistry.isEmpty()) {
                 throw new RuntimeException("Can't find source DB with classifier " + sourceClassifier);
             }
-            sourceRegistry.set(databaseRegistry.get());
+            DatabaseRegistry registry = databaseRegistry.get();
+            if (!isSourceDatabaseReady(registry)) {
+                throw new RuntimeException("Source DB with classifier " + sourceClassifier + " is not ready");
+            }
+            sourceRegistry.set(registry);
         });
 
         updateState(context, "Backup source DB with classifier " + sourceClassifier, false);
@@ -55,5 +60,12 @@ public class BackupDatabaseTask extends AbstractDbaaSTask implements Serializabl
         UUID backupId = cloneDatabaseProcessObject.getBackupId();
         blueGreenService.createDatabaseBackup(backupId, sourceNamespace, sourceDatabaseId);
         log.debug("Done '{}' task with databaseId = {}", super.getName(), sourceDatabaseId);
+    }
+
+    private boolean isSourceDatabaseReady(DatabaseRegistry databaseRegistry) {
+        return databaseRegistry.getDatabase() != null
+                && DatabaseStateStatus.CREATED.equals(databaseRegistry.getDbState().getDatabaseState())
+                && databaseRegistry.getAdapterId() != null
+                && !databaseRegistry.getAdapterId().isBlank();
     }
 }

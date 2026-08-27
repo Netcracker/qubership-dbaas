@@ -47,6 +47,6 @@ public class Constants {
             BACKUP_MANAGER = "BACKUP_MANAGER",
             DB_EDITOR = "DBAAS_DB_EDITOR",
             MIGRATION_CLIENT = "MIGRATION_CLIENT",
-            DISCR_TOOL_CLIENT = "DISCR_TOOL_CLIENT";
-
+            DISCR_TOOL_CLIENT = "DISCR_TOOL_CLIENT",
+            CLUSTER_OPERATOR = "CLUSTER_OPERATOR";
 }

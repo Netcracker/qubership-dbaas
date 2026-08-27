@@ -1,0 +1,14 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: MicroserviceBalancingRule
+metadata:
+  name: microservice-balancing-rules
+spec:
+  rules:
+    - type: postgresql
+      label: zone=fast
+      microservices:
+        - sample-service
+    - type: mongodb
+      label: tier=standard
+      microservices:
+        - notification-service

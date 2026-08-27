@@ -2,10 +2,9 @@ package com.netcracker.it.dbaas.entity.backup.v1;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.groups.ConvertGroup;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import javax.validation.groups.ConvertGroup;
 
 @Data
 @NoArgsConstructor

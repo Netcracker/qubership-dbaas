@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""Build a markdown summary of Surefire reports for a GitHub Issue comment or a report email."""
+import html
+import os
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from pathlib import Path
+
+ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "artifacts"))
+OUTPUT_FILE = Path(os.environ.get("OUTPUT_FILE", "report.md"))
+RUN_URL = os.environ.get("RUN_URL", "")
+ARTIFACT_URL = os.environ.get("ARTIFACT_URL", "")
+BRANCH = os.environ.get("BRANCH", "")
+COMMIT_SHA = os.environ.get("COMMIT_SHA", "")[:7]
+RUN_NUMBER = os.environ.get("RUN_NUMBER", "")
+MENTIONS = os.environ.get("MENTIONS", "").strip()
+# What the report calls itself (heading, email subject) and what its first column groups by.
+# The defaults keep the wording of the main integration-tests workflow.
+REPORT_LABEL = os.environ.get("REPORT_LABEL", "Integration tests").strip() or "Integration tests"
+GROUP_LABEL = os.environ.get("GROUP_LABEL", "Module").strip() or "Module"
+# Groups that must be present. A group listed here with no Surefire reports is reported as
+# "did not run" and fails the report, so a pass that never executed cannot look green.
+EXPECTED_GROUPS = [g.strip() for g in os.environ.get("EXPECTED_GROUPS", "").split(",") if g.strip()]
+
+STACK_TRACE_LINE_LIMIT = 60
+COMMENT_BYTE_BUDGET = 60000  # GitHub hard limit is 65536; leave headroom
+
+
+@dataclass
+class ModuleStats:
+    name: str
+    tests: int = 0
+    failures: int = 0
+    errors: int = 0
+    skipped: int = 0
+    time: float = 0.0
+    failed_cases: list = field(default_factory=list)
+    missing: bool = False
+
+
+def fmt_time(seconds: float) -> str:
+    s = int(round(seconds))
+    m, s = divmod(s, 60)
+    if m == 0:
+        return f"{s}s"
+    h, m = divmod(m, 60)
+    if h == 0:
+        return f"{m}m {s:02d}s"
+    return f"{h}h {m:02d}m {s:02d}s"
+
+
+def parse_module(module_dir: Path) -> ModuleStats:
+    stats = ModuleStats(name=module_dir.name)
+    reports_dir = module_dir / "surefire-reports"
+    if not reports_dir.is_dir():
+        return stats
+    for xml_path in sorted(reports_dir.glob("TEST-*.xml")):
+        try:
+            root = ET.parse(xml_path).getroot()
+        except ET.ParseError:
+            continue
+        stats.tests += int(root.get("tests", "0"))
+        stats.failures += int(root.get("failures", "0"))
+        stats.errors += int(root.get("errors", "0"))
+        stats.skipped += int(root.get("skipped", "0"))
+        try:
+            stats.time += float(root.get("time", "0"))
+        except ValueError:
+            pass
+        for tc in root.findall("testcase"):
+            for kind in ("failure", "error"):
+                elem = tc.find(kind)
+                if elem is None:
+                    continue
+                stats.failed_cases.append(
+                    {
+                        "classname": tc.get("classname", ""),
+                        "name": tc.get("name", ""),
+                        "kind": kind,
+                        "message": (elem.get("message") or "").strip(),
+                        "trace": (elem.text or "").strip(),
+                    }
+                )
+                break
+    return stats
+
+
+def collect_all() -> list[ModuleStats]:
+    present = {}
+    if ARTIFACTS_DIR.is_dir():
+        for child in sorted(ARTIFACTS_DIR.iterdir()):
+            # A group counts as run only once it has produced a Surefire XML. Maven creates the
+            # reports directory before it writes anything, so an empty one means the tests died
+            # first — reporting that as zero failures would turn a dead pass into a green row.
+            if child.is_dir() and any((child / "surefire-reports").glob("TEST-*.xml")):
+                present[child.name] = parse_module(child)
+    if not EXPECTED_GROUPS:
+        return list(present.values())
+    # Keep the declared order, and stand in for every expected group that produced nothing.
+    ordered = [present.pop(name, ModuleStats(name=name, missing=True)) for name in EXPECTED_GROUPS]
+    ordered.extend(present.values())
+    return ordered
+
+
+def truncate_trace(text: str) -> str:
+    lines = text.splitlines()
+    if len(lines) <= STACK_TRACE_LINE_LIMIT:
+        return text
+    omitted = len(lines) - STACK_TRACE_LINE_LIMIT
+    return "\n".join(lines[:STACK_TRACE_LINE_LIMIT]) + f"\n... ({omitted} more lines — see Surefire artifact)"
+
+
+def failure_summary(bad: int, missing: list[str]) -> str:
+    parts = []
+    if bad:
+        parts.append(f"{bad} {'test' if bad == 1 else 'tests'}")
+    if missing:
+        parts.append(f"{len(missing)} did not run")
+    return ", ".join(parts)
+
+
+def build_title(status: str, bad: int, missing: list[str]) -> str:
+    if status == "failed":
+        return f"❌ {REPORT_LABEL} #{RUN_NUMBER} FAILED ({failure_summary(bad, missing)}) — {BRANCH}"
+    if status == "success":
+        return f"✅ {REPORT_LABEL} #{RUN_NUMBER} PASSED — {BRANCH}"
+    return f"⚠️ {REPORT_LABEL} #{RUN_NUMBER} DID NOT RUN — {BRANCH}"
+
+
+def render(modules: list[ModuleStats]) -> tuple[str, str, str, int]:
+    ran = [m for m in modules if not m.missing]
+    missing = [m.name for m in modules if m.missing]
+    total_tests = sum(m.tests for m in ran)
+    total_failed = sum(m.failures for m in ran)
+    total_errors = sum(m.errors for m in ran)
+    total_skipped = sum(m.skipped for m in ran)
+    total_time = sum(m.time for m in ran)
+    bad = total_failed + total_errors
+
+    if not ran:
+        status = "no-tests"
+    elif bad > 0 or missing:
+        status = "failed"
+    else:
+        status = "success"
+    title = build_title(status, bad, missing)
+
+    lines = []
+    meta = f"**Branch:** `{BRANCH}` · **Commit:** `{COMMIT_SHA}`"
+
+    if status == "no-tests":
+        lines += [
+            f"### ⚠️ {REPORT_LABEL} #{RUN_NUMBER} — DID NOT RUN",
+            meta,
+            "",
+            "No Surefire reports found — a step before `mvn test` likely failed.",
+        ]
+        if MENTIONS:
+            lines += ["", f"cc {MENTIONS}"]
+        if RUN_URL:
+            lines += ["", f"[Workflow run]({RUN_URL})"]
+        return "\n".join(lines), status, title, 0
+
+    if status == "failed":
+        lines.append(f"### ❌ {REPORT_LABEL} #{RUN_NUMBER} — FAILED ({failure_summary(bad, missing)})")
+    else:
+        lines.append(f"### ✅ {REPORT_LABEL} #{RUN_NUMBER} — PASSED")
+
+    lines.append(f"{meta} · **Test time:** {fmt_time(total_time)}")
+    if MENTIONS:
+        lines += ["", f"cc {MENTIONS}"]
+
+    lines += [
+        "",
+        f"| {GROUP_LABEL} | Tests | Failed | Errors | Skipped | Time |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for m in modules:
+        if m.missing:
+            lines.append(f"| {m.name} | — | — | — | — | did not run |")
+            continue
+        lines.append(
+            f"| {m.name} | {m.tests} | {m.failures} | {m.errors} | {m.skipped} | {fmt_time(m.time)} |"
+        )
+    lines.append(
+        f"| **Total** | **{total_tests}** | **{total_failed}** | **{total_errors}** | **{total_skipped}** | **{fmt_time(total_time)}** |"
+    )
+
+    if missing:
+        names = ", ".join(f"`{name}`" for name in missing)
+        lines += [
+            "",
+            f"No Surefire reports for {names} — the step never ran, or wrote its reports elsewhere.",
+        ]
+
+    if status == "failed":
+        lines.append("")
+        for m in modules:
+            for case in m.failed_cases:
+                msg = case["message"]
+                short = (msg[:200] + "…") if len(msg) > 200 else msg
+                summary = html.escape(f"{m.name} → {case['classname']}.{case['name']}")
+                short_esc = html.escape(short)
+                lines += [
+                    "<details>",
+                    f"<summary><code>{summary}</code> — {case['kind']}: {short_esc}</summary>",
+                    "",
+                    "```",
+                    truncate_trace(case["trace"]),
+                    "```",
+                    "</details>",
+                    "",
+                ]
+
+    links = []
+    if RUN_URL:
+        links.append(f"[Workflow run]({RUN_URL})")
+    if ARTIFACT_URL:
+        links.append(f"[Surefire artifact]({ARTIFACT_URL})")
+    if links:
+        if lines and lines[-1] != "":
+            lines.append("")
+        lines.append(" · ".join(links))
+
+    body = "\n".join(lines)
+    if len(body.encode("utf-8")) > COMMENT_BYTE_BUDGET:
+        body = body.encode("utf-8")[:COMMENT_BYTE_BUDGET].decode("utf-8", errors="ignore")
+        body += "\n\n*…(truncated, see Surefire artifact)*"
+    return body, status, title, bad
+
+
+def main():
+    modules = collect_all()
+    body, status, title, bad = render(modules)
+    OUTPUT_FILE.write_text(body, encoding="utf-8")
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if output_path:
+        with open(output_path, "a", encoding="utf-8") as f:
+            f.write(f"status={status}\n")
+            f.write(f"failed_count={bad}\n")
+            f.write(f"title={title}\n")
+    print(f"Built report: status={status}, failed={bad}, title={title!r}, bytes={len(body.encode())}")
+
+
+if __name__ == "__main__":
+    main()

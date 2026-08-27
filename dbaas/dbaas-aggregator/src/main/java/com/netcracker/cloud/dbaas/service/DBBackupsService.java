@@ -35,6 +35,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -553,7 +554,7 @@ public class DBBackupsService {
                 );
             }
 
-            databaseRegistryDbaasRepository.saveAll(recreatedDatabasesFromBackup);
+            recreatedDatabasesFromBackup = databaseRegistryDbaasRepository.saveAll(recreatedDatabasesFromBackup);
         }
 
         return recreatedDatabasesFromBackup;
@@ -599,7 +600,7 @@ public class DBBackupsService {
                 deltaDatabases.size(), backup.getId(), backup.getNamespace()
         );
 
-        deletionService.markRegistriesForDrop(backup.getNamespace(), deltaDatabases);
+        deltaDatabases = deletionService.markRegistriesForDrop(backup.getNamespace(), deltaDatabases);
         deletionService.dropRegistriesSafe(backup.getNamespace(), deltaDatabases);
 
         log.info("Delta cleaned during restoration of backup {} in namespace {}", backup.getId(), backup.getNamespace());
@@ -663,7 +664,7 @@ public class DBBackupsService {
             log.info("Clean {} databases in target namespace {} during restoration of backup {}",
                     targetDatabasesToDrop.size(), targetNamespace, backup.getId());
             log.debug("databases to drop = {}", targetDatabasesToDrop);
-            deletionService.markRegistriesForDrop(targetNamespace, targetDatabasesToDrop);
+            targetDatabasesToDrop = deletionService.markRegistriesForDrop(targetNamespace, targetDatabasesToDrop);
             deletionService.dropRegistriesSafe(targetNamespace, targetDatabasesToDrop);
             saveRestoreDbWithAnotherName(targetNamespace, result, notMarkedForDropInBackup);
         }
@@ -876,6 +877,7 @@ public class DBBackupsService {
                     DescribedDatabase describedDatabase = describeDatabase(adapter, dbName);
                     db.setConnectionProperties(describedDatabase.getConnectionProperties());
                     db.setResources(describedDatabase.getResources());
+                    db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
                     databaseRegistryDbaasRepository.saveInternalDatabase(db);
                     log.info("Database {} described and saved", dbName);
                 }
@@ -927,6 +929,9 @@ public class DBBackupsService {
                 db.setResources(db.getResources().stream().distinct().collect(Collectors.toList()));
 
                 encryption.encryptPassword(db.getDatabase());
+                if (regenerateCredentials) {
+                    db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
+                }
                 databaseRegistryDbaasRepository.saveInternalDatabase(db);
                 log.info("Users {} ensured access to db {}",
                         users.stream()

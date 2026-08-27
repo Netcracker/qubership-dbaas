@@ -1,0 +1,29 @@
+FROM --platform=$BUILDPLATFORM golang:1.27@sha256:0ecdc2a9f6156af6451080bfe3d8382a662fcc4e209608c6f919e643453514c1 AS builder
+ARG TARGETOS
+ARG TARGETARCH
+# Allow Go toolchain auto-download when the image patch (e.g. 1.26.1) is
+# older than the minimum declared in go.mod (e.g. 1.26.2).
+ENV GOTOOLCHAIN=auto
+
+WORKDIR /app
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+# Copy the Go source (relies on .dockerignore to filter)
+COPY . .
+
+# The builder stage always runs on the build host platform (BUILDPLATFORM) to avoid QEMU emulation.
+# Cross-compilation is handled natively by Go via TARGETOS/TARGETARCH, which BuildKit sets automatically.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -a -o dbaas-operator ./cmd/
+
+FROM ghcr.io/netcracker/qubership-core-base:2.4.1@sha256:c668333b6b03d897bfea3a7345bcff14a3b9224fffe62024202b2a125a6b0171
+WORKDIR /app
+COPY --chown=10001:0 --chmod=555 --from=builder /app/dbaas-operator /app/dbaas-operator
+USER 10001:10001
+
+CMD ["/app/dbaas-operator"]

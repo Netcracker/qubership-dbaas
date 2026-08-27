@@ -548,6 +548,54 @@ public class BalancingRulesServiceTest {
     }
 
     @Test
+    void testDeleteNamespaceRule() {
+        String ruleName = "test-rule";
+        PerNamespaceRule rule = new PerNamespaceRule(ruleName, 1L, TEST_DB_TYPE, TEST_NAMESPACE, TEST_DB_ID, RuleType.NAMESPACE);
+        when(balancingRulesDbaasRepository.findByName(ruleName)).thenReturn(rule);
+
+        assertTrue(balancingRulesService.deleteNamespaceRule(TEST_NAMESPACE, ruleName));
+
+        verify(balancingRulesDbaasRepository).findByName(ruleName);
+        verify(balancingRulesDbaasRepository).delete(rule);
+        verifyNoMoreInteractions(balancingRulesDbaasRepository);
+    }
+
+    @Test
+    void testDeleteNamespaceRuleNotFound() {
+        String ruleName = "missing-rule";
+        when(balancingRulesDbaasRepository.findByName(ruleName)).thenReturn(null);
+
+        assertFalse(balancingRulesService.deleteNamespaceRule(TEST_NAMESPACE, ruleName));
+
+        verify(balancingRulesDbaasRepository).findByName(ruleName);
+        verifyNoMoreInteractions(balancingRulesDbaasRepository);
+    }
+
+    @Test
+    void testDeleteNamespaceRuleFromAnotherNamespace() {
+        String ruleName = "test-rule";
+        PerNamespaceRule rule = new PerNamespaceRule(ruleName, 1L, TEST_DB_TYPE, "another-namespace", TEST_DB_ID, RuleType.NAMESPACE);
+        when(balancingRulesDbaasRepository.findByName(ruleName)).thenReturn(rule);
+
+        assertFalse(balancingRulesService.deleteNamespaceRule(TEST_NAMESPACE, ruleName));
+
+        verify(balancingRulesDbaasRepository).findByName(ruleName);
+        verifyNoMoreInteractions(balancingRulesDbaasRepository);
+    }
+
+    @Test
+    void testDeleteNamespaceRuleDoesNotDeletePermanentRule() {
+        String ruleName = "test-rule";
+        PerNamespaceRule rule = new PerNamespaceRule(ruleName, 0L, TEST_DB_TYPE, TEST_NAMESPACE, TEST_DB_ID, RuleType.PERMANENT);
+        when(balancingRulesDbaasRepository.findByName(ruleName)).thenReturn(rule);
+
+        assertFalse(balancingRulesService.deleteNamespaceRule(TEST_NAMESPACE, ruleName));
+
+        verify(balancingRulesDbaasRepository).findByName(ruleName);
+        verifyNoMoreInteractions(balancingRulesDbaasRepository);
+    }
+
+    @Test
     void testCopyNamespaceRule() {
         PerNamespaceRule firstRule = getPerNamespaceRuleSample();
         when(balancingRulesDbaasRepository.findAllRulesByNamespace(TEST_NAMESPACE)).thenReturn(Arrays.asList(firstRule));

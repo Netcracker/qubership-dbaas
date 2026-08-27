@@ -8,7 +8,6 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -72,19 +71,20 @@ public class DeletionService {
         }
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void markRegistryForDrop(DatabaseRegistry registry) {
+    @Transactional
+    public DatabaseRegistry markRegistryForDrop(DatabaseRegistry registry) {
         markRegistryForDropWithoutTransaction(registry);
-        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(registry);
+        return logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(registry);
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void markRegistriesForDrop(String namespace, List<DatabaseRegistry> registries) {
+    @Transactional
+    public List<DatabaseRegistry> markRegistriesForDrop(String namespace, List<DatabaseRegistry> registries) {
         log.info("Mark {} registries for drop in '{}' namespace", registries.size(), namespace);
         registries.forEach(this::markRegistryForDropWithoutTransaction);
-        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(registries);
+        return logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(registries);
     }
 
+    @Transactional
     public int markNamespaceRegistriesForDrop(String namespace) {
         List<DatabaseRegistry> registries = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAnyLogDbRegistryTypeByNamespace(namespace);
         markRegistriesForDrop(namespace, registries);
@@ -104,13 +104,13 @@ public class DeletionService {
         database.getDbState().setDatabaseState(DbState.DatabaseStateStatus.ORPHAN);
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    @Transactional
     public void markDatabaseAsOrphan(DatabaseRegistry registry) {
         markDatabaseAsOrphanWithoutTransaction(registry);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(registry);
     }
 
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    @Transactional
     public void markDatabasesAsOrphan(List<DatabaseRegistry> registries) {
         log.info("Mark {} databases as orphan", registries.size());
         registries.forEach(this::markDatabaseAsOrphanWithoutTransaction);
@@ -238,12 +238,12 @@ public class DeletionService {
      * Called during Clean Install
      */
     @Transactional
-    public int cleanupNamespaceFullAsync(String namespace, boolean removeRules) {
+    public CleanupResult cleanupNamespaceFullAsync(String namespace, boolean removeRules) {
         compositeNamespaceService.deleteNamespace(namespace);
-        int markedForDropCount = markNamespaceRegistriesForDrop(namespace);
-        cleanupMarkedForDropRegistries(namespace);
+        markNamespaceRegistriesForDrop(namespace);
+        CleanupResult cleanupResult = cleanupMarkedForDropRegistries(namespace);
         cleanupNamespaceResources(namespace, removeRules);
-        return markedForDropCount;
+        return cleanupResult;
     }
 
     public boolean checkNamespaceAlreadyDropped(String namespace) {
@@ -271,7 +271,7 @@ public class DeletionService {
         dropRegistriesAsync(namespace, markedForDropRegistries, force);
     }
 
-    public void cleanupMarkedForDropRegistries(String namespace) {
+    public CleanupResult cleanupMarkedForDropRegistries(String namespace) {
         List<DatabaseRegistry> markedForDropRegistries = getMarkedForDropRegistries(namespace);
         List<DatabaseRegistry> opensearchDBs = markedForDropRegistries.stream()
                 .filter(registry -> DatabaseType.OPENSEARCH.toString().equalsIgnoreCase(registry.getType())).toList();
@@ -283,6 +283,7 @@ public class DeletionService {
             dropRegistriesSafe(namespace, opensearchDBs);
         }
         dropRegistriesAsync(namespace, markedForDropRegistries, false);
+        return new CleanupResult(opensearchDBs.size(), markedForDropRegistries.size());
     }
 
     private void dropRegistriesAsync(String namespace, List<DatabaseRegistry> registriesForDrop, boolean force) {
@@ -381,22 +382,23 @@ public class DeletionService {
     }
 
     private void registerDeletionError(Exception ex, DatabaseRegistry databaseRegistry) {
-        QuarkusTransaction.requiringNew().run(() -> {
-            log.warn("Register deletion error: '{}' of database {} with classifier {}", ex.getMessage(), DBaaService.getDatabaseName(databaseRegistry.getDatabase()), databaseRegistry.getClassifier());
-            try {
-                int status = 0;
-                if (ex instanceof AdapterException) {
-                    status = ((AdapterException) ex).getHttpCode();
-                }
-                if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
-                    databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING_FAILED);
-                    logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
-                }
-
-                logicalDbOperationErrorRepository.persist(new LogicalDbOperationError(UUID.randomUUID(), databaseRegistry.getDatabase(), new Date(), ex.getMessage(), status, LogicalDbOperationError.Operation.DELETE));
-            } catch (Exception e) {
-                log.error("Can't register DB deletion error", e);
+        log.warn("Register deletion error: '{}' of database {} with classifier {}", ex.getMessage(), DBaaService.getDatabaseName(databaseRegistry.getDatabase()), databaseRegistry.getClassifier());
+        try {
+            int status = 0;
+            if (ex instanceof AdapterException) {
+                status = ((AdapterException) ex).getHttpCode();
             }
-        });
+            if (databaseRegistry.getDatabase().getDatabaseRegistry().size() < 2) {
+                databaseRegistry.getDatabase().getDbState().setDatabaseState(DbState.DatabaseStateStatus.DELETING_FAILED);
+                logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(databaseRegistry);
+            }
+
+            logicalDbOperationErrorRepository.persist(new LogicalDbOperationError(UUID.randomUUID(), databaseRegistry.getDatabase(), new Date(), ex.getMessage(), status, LogicalDbOperationError.Operation.DELETE));
+        } catch (Exception e) {
+            log.error("Can't register DB deletion error", e);
+        }
+    }
+
+    public record CleanupResult(int databasesSyncDeletedCount, int databasesAsyncDeletionScheduledCount) {
     }
 }

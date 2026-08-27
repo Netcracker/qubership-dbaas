@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
+import com.netcracker.cloud.dbaas.Constants;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
@@ -31,6 +32,9 @@ public class NamespaceValidator {
 
     public boolean isNamespaceFromClassifierValid(SecurityContext securityContext, Map<String, Object> classifier) {
         if (!(securityContext.getUserPrincipal() instanceof JWTCallerPrincipal)) {
+            return true;
+        }
+        if (securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)) {
             return true;
         }
         String namespaceFromClassifier = (String) classifier.get("namespace");

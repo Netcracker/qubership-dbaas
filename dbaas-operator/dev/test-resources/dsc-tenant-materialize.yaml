@@ -1,0 +1,28 @@
+# DatabaseSecretClaim — tenant scope; materializes a Secret from the tenant database
+# that idb-tenant-materialize.yaml provisions.
+#
+# The claim's classifier matches idb-tenant-materialize's:
+#   {microserviceName: idb-tenant, scope: tenant, tenantId: acme, namespace: test-ns}.
+# The operator calls get-by-classifier; the mock returns the tenant database ONLY because
+# the InternalDatabase materialized it first via the get-or-create call — otherwise it
+# answers 404 (DatabaseNotFound) and the claim waits. On 200 the operator writes the Secret
+# "dsc-tenant-materialize-secret".
+#
+# The app.kubernetes.io/name label is REQUIRED — its value is sent as originService.
+# See dev/e2e-tenant-materialize.sh for the end-to-end check.
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: dsc-tenant-materialize
+  namespace: test-ns
+  labels:
+    app.kubernetes.io/name: idb-tenant
+spec:
+  type: postgresql
+  userRole: admin
+  secretName: dsc-tenant-materialize-secret
+  classifier:
+    microserviceName: idb-tenant
+    scope: tenant
+    tenantId: acme
+    namespace: test-ns

@@ -4,6 +4,7 @@ import com.arangodb.ArangoDB;
 import com.arangodb.entity.BaseDocument;
 import com.clickhouse.jdbc.ClickHouseDataSource;
 import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -84,10 +85,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Slf4j
 public class DbaasHelperV3 {
+
     public final static RetryPolicy<Object> AWAIT_DB_CREATION_RETRY_POLICY = new RetryPolicy<>()
             .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(2));
     private final static RetryPolicy<Object> NAMESPACES_DBS_CLEANUP_POLICY = new RetryPolicy<>()
             .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(10));
+    private static final RetryPolicy<Object> CASSANDRA_CHECK_RETRY_POLICY = new RetryPolicy<>()
+            .withMaxRetries(12).withDelay(Duration.ofSeconds(5));
 
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
@@ -708,7 +712,7 @@ public class DbaasHelperV3 {
                         key String,
                         value String
                     )
-                    ENGINE = ReplicatedMergeTree
+                    ENGINE = ReplicatedReplacingMergeTree
                     ORDER BY (key)""", tableName);
 
             stmt.execute(createQuery);
@@ -716,21 +720,14 @@ public class DbaasHelperV3 {
             if (setData != null) {
                 var key = "test_key";
                 var value = setData + "_value";
-
-                var rs = stmt.executeQuery(String.format("SELECT 1 FROM autotests WHERE key = '%s'", key));
-
-                if (rs.next()) {
-                    stmt.execute(String.format("UPDATE autotests SET value = '%s' WHERE key = '%s'", value, key));
-                } else {
-                    stmt.execute(String.format("INSERT INTO autotests (*) values ('%s', '%s')", key, value));
-                }
+                stmt.execute(String.format("INSERT INTO autotests (*) values ('%s', '%s')", key, value));
             }
 
             try {
                 if (checkData != null) {
                     var key = "test_key";
                     var value = checkData + "_value";
-                    var query = String.format("SELECT * FROM autotests WHERE key = '%s'", key);
+                    var query = String.format("SELECT * FROM autotests FINAL WHERE key = '%s'", key);
 
                     var rs = stmt.executeQuery(query);
                     int counter = 0;
@@ -932,9 +929,20 @@ public class DbaasHelperV3 {
             if (checkData != null) {
                 try {
                     var clause = QueryBuilder.eq("key", "test_key");
-                    var select = QueryBuilder.select().from(keyspace, "autotests").where(clause);
+                    var select = QueryBuilder.select().from(keyspace, "autotests").where(clause)
+                            .setConsistencyLevel(ConsistencyLevel.ALL);
 
-                    assertEquals(checkData + "_value", session.execute(select).one().getString("value"));
+                    String value = Failsafe.with(CASSANDRA_CHECK_RETRY_POLICY)
+                            .get(() -> {
+                                var row = session.execute(select).one();
+                                if (row == null) {
+                                    log.warn("Row not yet visible in cassandra db {} after restore, retrying", databaseToCheck);
+                                    throw new IllegalStateException("Row not yet visible after restore");
+                                }
+                                return row.getString("value");
+                            });
+
+                    assertEquals(checkData + "_value", value);
 
                     log.info("data {} checked in cassandra db {} ", checkData, databaseToCheck);
                 } catch (Throwable e) {
@@ -946,6 +954,37 @@ public class DbaasHelperV3 {
             }
 
             session.close();
+        }
+    }
+
+    public void checkConnection(Boolean expectCannotConnect, DatabaseResponse db,
+                                String setData, String checkData, Boolean expectCannotCheckData) {
+        try {
+            log.info("Check connection to created database {}", db);
+            switch (db.getType()) {
+                case MONGODB_TYPE -> checkConnectionMongo(db, expectCannotConnect, setData, checkData);
+                case POSTGRES_TYPE -> checkConnectionPostgres(db, setData, checkData);
+                case OPENSEARCH_TYPE -> checkConnectionOpensearch(db, setData, checkData);
+                case CASSANDRA_TYPE -> checkConnectionCassandra(db, setData, checkData);
+                case CLICKHOUSE_TYPE -> checkConnectionClickhouse(db, setData, checkData);
+                case ARANGODB_TYPE -> checkConnectionArangodb(db, setData, checkData);
+                case null, default -> fail("Database " + db + " has unknown type");
+            }
+            if (expectCannotConnect || expectCannotCheckData) {
+                fail("Expected exception to be thrown while connecting to " + db);
+            }
+        } catch (CannotConnect | SQLException | MongoException | IOException e) {
+            if (expectCannotConnect) {
+                log.info("Exception thrown as expected", e);
+            } else {
+                throw new RuntimeException(e);
+            }
+        } catch (CannotCheckData e) {
+            if (expectCannotCheckData) {
+                log.info("Exception thrown as expected", e);
+            } else {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -1621,12 +1660,16 @@ public class DbaasHelperV3 {
     }
 
     public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces() throws IOException {
+        deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(TEST_NAMESPACE_PATTERN);
+    }
+
+    public void deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces(Pattern namespacePattern) throws IOException {
         log.info("Finding test namespaces for deleting all logical databases and namespace backups");
 
         var namespaces = findAllRegisteredNamespaces();
 
         var testNamespaces = namespaces.stream()
-                .filter(namespace -> TEST_NAMESPACE_PATTERN.matcher(namespace).matches())
+                .filter(namespace -> namespacePattern.matcher(namespace).matches())
                 .toList();
 
         log.info("Found {} test namespaces: {}", namespaces.size(), namespaces);

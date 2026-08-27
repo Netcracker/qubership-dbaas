@@ -20,7 +20,7 @@ public class JwtUtilsTestResource implements QuarkusTestResourceLifecycleManager
         var conf = oidcWiremock.start();
         String issuer = conf.get("keycloak.url")+"/realms/quarkus";
         String audience = ConfigProvider.getConfig()
-                .getValue("dbaas.security.k8s.jwt.audience", String.class);
+                .getValue("dbaas.security.k8s.m2m.audience", String.class);
         System.setProperty("smallrye.jwt.sign.key.location", conf.get("smallrye.jwt.sign.key.location"));
         JWT_UTILS = new TestJwtUtils(issuer, audience, getTokenDir());
         return conf;

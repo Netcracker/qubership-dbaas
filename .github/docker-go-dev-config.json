@@ -1,0 +1,11 @@
+{
+    "components" : [
+      {
+        "name": "qubership-dbaas-operator",
+        "file": "dbaas-operator/Dockerfile",
+        "context": "dbaas-operator",
+        "download-artifact": false
+      }
+    ],
+    "platforms" : "linux/amd64,linux/arm64"
+}

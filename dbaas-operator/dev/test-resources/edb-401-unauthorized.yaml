@@ -1,0 +1,18 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: ExternalDatabase
+metadata:
+  name: edb-401
+  namespace: test-ns
+spec:
+  classifier:
+    microserviceName: test-service
+    namespace: test-ns
+    scope: service
+  type: postgresql
+  # dbName "db-401" is mapped to HTTP 401 in aggregator-mock-rules ConfigMap.
+  # Expected phase: BackingOff / reason: Unauthorized (operator credentials issue — retries)
+  dbName: db-401
+  connectionProperties:
+    - role: admin
+      extraProperties:
+        url: jdbc:postgresql://pg.example.com:5432/db-401

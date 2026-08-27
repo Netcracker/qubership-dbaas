@@ -1,0 +1,7 @@
+# Only the prebuilt jar is needed in the image context.
+src/
+helm-templates/
+dev/
+*.md
+target/*
+!target/spring-test-app-service.jar

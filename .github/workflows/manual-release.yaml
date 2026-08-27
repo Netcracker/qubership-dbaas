@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create Tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@v2.0.11
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@27fd7674286e5f561a6fd8277f2f389ff96ddb9e # v2.6.0
         with:
           ref: ${{ github.ref }}
           tag-name: v${{ inputs.version }}
@@ -33,42 +33,54 @@ jobs:
 
   mvn-build:
     needs: create-tag
-    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@v2.1.0
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@e8322e6ee168795edec1d103e289b3fe3ceb805d # v2.6.0
     with:
       upload-artifact: true
       ref: "refs/tags/v${{ inputs.version }}"
       maven-command: ${{ inputs.dry-run && 'verify' || 'deploy' }}
-      java-version: 21
+      java-version: 25
       dry-run: ${{ inputs.dry-run }}
 
+  go-build:
+    needs: [ create-tag, mvn-build ]
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@e8322e6ee168795edec1d103e289b3fe3ceb805d # v2.6.0
+    with:
+      install-envtest: true
+      envtest-version: latest
+      docker-config-file: 'docker-go-dev-config.json'
+      ref: "refs/tags/v${{ inputs.version }}"
+      dry-run: ${{ inputs.dry-run }}
+      go-module-dir: 'dbaas-operator'
+    secrets: inherit
+
   cleanup-on-dry-run:
-    needs: mvn-build
+    needs: [ mvn-build, go-build ]
     if: ${{ inputs.dry-run }}
     runs-on: ubuntu-latest
     steps:
       - name: Delete Tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@v2.0.11
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@27fd7674286e5f561a6fd8277f2f389ff96ddb9e # v2.6.0
         with:
           ref: ${{ github.ref }}
           tag-name: v${{ inputs.version }}
           delete-tag: true
 
   cleanup-on-failure:
-    needs: [create-tag, mvn-build]
+    needs: [ create-tag, mvn-build, go-build ]
     if: ${{ failure() && needs.create-tag.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Delete Tag on Failure
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@v2.0.11
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@27fd7674286e5f561a6fd8277f2f389ff96ddb9e # v2.6.0
         with:
           ref: ${{ github.ref }}
           tag-name: v${{ inputs.version }}
           delete-tag: true
 
   github-release:
-    needs: [ mvn-build ]
+    needs: [ mvn-build, go-build ]
     if: ${{ !inputs.dry-run }}
-    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@v2.0.11
+    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@27fd7674286e5f561a6fd8277f2f389ff96ddb9e # v2.6.0
     with:
       version: ${{ inputs.version }}
       publish: true

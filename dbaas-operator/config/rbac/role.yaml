@@ -1,0 +1,81 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - databaseaccesspolicies
+  - externaldatabases
+  - internaldatabases
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - databaseaccesspolicies/status
+  - databasesecretclaims/status
+  - externaldatabases/status
+  - internaldatabases/status
+  - microservicebalancingrules/status
+  - namespacebalancingrules/status
+  - namespacebindings/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - databasesecretclaims
+  - microservicebalancingrules
+  - namespacebalancingrules
+  - namespacebindings
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - databasesecretclaims/finalizers
+  - microservicebalancingrules/finalizers
+  - namespacebalancingrules/finalizers
+  - namespacebindings/finalizers
+  verbs:
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: manager-role
+  namespace: system
+rules:
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - permanentbalancingrules
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - permanentbalancingrules/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - dbaas.netcracker.com
+  resources:
+  - permanentbalancingrules/status
+  verbs:
+  - get
+  - patch
+  - update

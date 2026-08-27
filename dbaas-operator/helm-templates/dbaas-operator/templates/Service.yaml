@@ -1,0 +1,21 @@
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: 'dbaas'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: web
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    name: '{{ .Values.SERVICE_NAME }}'
+{{- end }}

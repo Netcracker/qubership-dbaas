@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Slf4j
 @AllArgsConstructor
 public class BackupHelperV1 {
-    public static final String STORAGE_NAME = "minio";
+    public static final String STORAGE_NAME = "default";
     public static final String BLOB_PATH = "tmp/a/b/c";
     public static final String DIGEST = "digest";
     public static final String BACKUP_METADATA = "metadata";
@@ -94,16 +94,7 @@ public class BackupHelperV1 {
                     return gson.fromJson(body, new TypeToken<BackupResponse>() {
                     }.getType());
                 case 202:
-                    log.info("Backup status checking");
-                    return Failsafe.with(BACKUP_RESTORE_RETRY_POLICY).get(() -> {
-                        var backup = getBackup(backupRequest.getBackupName(), 200);
-                        BackupStatus status = backup.getStatus();
-                        assertTrue(
-                                BackupStatus.COMPLETED == status ||
-                                        BackupStatus.FAILED == status
-                        );
-                        return backup;
-                    });
+                    return waitBackupFinish(backupRequest.getBackupName());
             }
         } catch (IOException e) {
             log.error("Error during backup process", e);
@@ -143,6 +134,19 @@ public class BackupHelperV1 {
         return null;
     }
 
+    public BackupResponse waitBackupFinish(String backupName) {
+        log.info("Backup status checking");
+        return Failsafe.with(BACKUP_RESTORE_RETRY_POLICY).get(() -> {
+            var backup = getBackup(backupName, 200);
+            BackupStatus status = backup.getStatus();
+            assertTrue(
+                    BackupStatus.COMPLETED == status ||
+                            BackupStatus.FAILED == status
+            );
+            return backup;
+        });
+    }
+
     public BackupResponse startBackup(BackupRequest backupRequest, boolean dryRun, int code) {
         Request startBackupRequest = startBackupRequest(helper.getBackupDaemonAuthorization(), backupRequest, dryRun);
         try (Response response = okHttpClient.newCall(startBackupRequest).execute()) {
@@ -172,6 +176,22 @@ public class BackupHelperV1 {
             }.getType());
         } catch (IOException e) {
             log.error("Error during start restore", e);
+        }
+        return null;
+    }
+
+    public RestoreResponse startRestoreParallel(String backupName, RestoreRequest restoreRequest, boolean dryRun, int code) {
+        Request request = startRestoreRequestAllowParallel(helper.getBackupDaemonAuthorization(), backupName, restoreRequest, dryRun);
+        try (Response response = okHttpClient.newCall(request).execute()){
+            log.info("Response: {}", response);
+            String body = response.body().string();
+            log.debug("Response body: {}", body);
+            assertThat(response.code(), equalTo(code));
+            log.info("Restore status result received");
+            return gson.fromJson(body, new com.google.gson.reflect.TypeToken<RestoreResponse>(){
+            }.getType());
+        } catch (IOException e) {
+            log.error("Error during start restore parallel", e);
         }
         return null;
     }

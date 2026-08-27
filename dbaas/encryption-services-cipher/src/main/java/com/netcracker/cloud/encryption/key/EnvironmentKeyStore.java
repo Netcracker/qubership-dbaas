@@ -14,6 +14,10 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.NoSuchAlgorithmException;
@@ -21,6 +25,8 @@ import java.util.*;
 import java.util.Base64.Decoder;
 
 public class EnvironmentKeyStore implements KeyStore {
+    private static final String POD_SECRETS_PATH = "/etc/secrets/pod-secrets";
+
     private final String identity;
     private final boolean deprecated;
     private final String prefix;
@@ -50,7 +56,7 @@ public class EnvironmentKeyStore implements KeyStore {
         final Decoder decoder = Base64.getDecoder();
         byte[] keyBytes;
         if (encrypted) {
-            final String encPassword = Strings.nullToEmpty(System.getenv(passwordVarName)).trim();
+            final String encPassword = Strings.nullToEmpty(readParameter(passwordVarName)).trim();
 
             final byte[] encPasswordBytes = decoder.decode(encPassword);
             final Key encPasswordKey = new SecretKeySpec(encPasswordBytes, "AES");
@@ -157,6 +163,45 @@ public class EnvironmentKeyStore implements KeyStore {
             }
         });
 
+        Path secretsDir = Paths.get(POD_SECRETS_PATH);
+        if (Files.isDirectory(secretsDir)) {
+            try {
+                Files.list(secretsDir).forEach(file -> {
+                    String fileName = file.getFileName().toString();
+                    if (fileName.startsWith(configPrefix) && !keyPasswords.containsKey(fileName.substring(prefixLength))) {
+                        try {
+                            String alias = fileName.substring(prefixLength);
+                            KeyXmlConf keyConfig = new KeyXmlConf();
+                            keyConfig.setAlias(alias);
+                            keyConfig.setDeprecated(false);
+                            keyConfig.setPassword(Files.readString(file).strip());
+                            keyPasswords.put(alias, keyConfig);
+                        } catch (IOException e) {
+                            throw new IllegalKeystoreConfigurationException("Failed to read key file " + file, e);
+                        }
+                    }
+                });
+            } catch (IOException e) {
+                throw new IllegalKeystoreConfigurationException("Failed to list pod-secrets directory", e);
+            }
+        }
+
         return keyPasswords;
+    }
+
+    private static String readParameter(String name) {
+        String value = System.getenv(name);
+        if (value != null) {
+            return value;
+        }
+        Path secretFile = Paths.get(POD_SECRETS_PATH, name);
+        if (Files.exists(secretFile)) {
+            try {
+                return Files.readString(secretFile).strip();
+            } catch (IOException e) {
+                return null;
+            }
+        }
+        return null;
     }
 }

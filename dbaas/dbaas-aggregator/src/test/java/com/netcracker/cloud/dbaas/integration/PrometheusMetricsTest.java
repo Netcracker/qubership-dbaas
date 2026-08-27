@@ -2,8 +2,10 @@ package com.netcracker.cloud.dbaas.integration;
 
 import com.netcracker.cloud.dbaas.dto.PrometheusMetric;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.integration.config.SchedulerEnabledTestProfile;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,7 @@ import static jakarta.ws.rs.core.Response.Status.OK;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
+@TestProfile(SchedulerEnabledTestProfile.class)
 @QuarkusTestResource(PostgresqlContainerResource.class)
 class PrometheusMetricsTest {
 

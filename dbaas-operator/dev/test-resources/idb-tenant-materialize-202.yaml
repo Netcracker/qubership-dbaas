@@ -1,0 +1,21 @@
+# InternalDatabase — tenant scope with a pinned tenantId, materialized ASYNCHRONOUSLY.
+#
+# The mock rule for originService=tenant-svc-202 carries "pendingCalls": 3, so the first
+# three get-or-create calls (PUT /api/v3/dbaas/{ns}/databases) answer 202 Accepted with no
+# usable credentials and the database stays invisible to get-by-classifier. The fourth call
+# creates it for real (200).
+#
+# Expected: Phase=WaitingForDependency while the aggregator is still creating the database
+# (Ready=False/ProvisioningStarted, Stalled=False, empty status.trackingId), then Succeeded
+# once the database answers. See dev/e2e-tenant-materialize-202.sh.
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: idb-tenant-materialize-202
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: tenant-svc-202
+      scope: tenant
+      tenantId: acme-202
+  type: postgresql

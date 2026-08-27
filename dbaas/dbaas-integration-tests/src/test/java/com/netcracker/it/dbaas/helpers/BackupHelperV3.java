@@ -2,16 +2,19 @@ package com.netcracker.it.dbaas.helpers;
 
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
-import com.mongodb.MongoException;
-import com.netcracker.it.dbaas.entity.*;
+import com.netcracker.it.dbaas.entity.ClassifierWithRolesRequest;
+import com.netcracker.it.dbaas.entity.DatabaseCreateRequestV3;
+import com.netcracker.it.dbaas.entity.DatabaseResponse;
+import com.netcracker.it.dbaas.entity.Role;
 import com.netcracker.it.dbaas.entity.backup.v3.*;
-import com.netcracker.it.dbaas.exceptions.CannotCheckData;
-import com.netcracker.it.dbaas.exceptions.CannotConnect;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
-import okhttp3.*;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.BaseMatcher;
 import org.hamcrest.Description;
@@ -22,7 +25,6 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import java.io.IOException;
 import java.net.URL;
-import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +32,8 @@ import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_CLASSIFIER_KEY;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_MICROSERVICE_NAME;
-import static com.netcracker.it.dbaas.test.AbstractIT.*;
+import static com.netcracker.it.dbaas.test.AbstractIT.DEFAULT_RETRY_POLICY;
+import static com.netcracker.it.dbaas.test.AbstractIT.OPENSEARCH_TYPE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -251,34 +254,7 @@ public class BackupHelperV3 {
     public void checkConnections(Boolean expectCannotConnect, List<DatabaseResponse> dbs, String setData, String checkData, Boolean expectCannotCheckData) {
         dbs.forEach(
                 db -> {
-                    try {
-                        log.info("Check connection to created database {}", db);
-                        switch (db.getType()) {
-                            case MONGODB_TYPE ->
-                                    helper.checkConnectionMongo(db, expectCannotConnect, setData, checkData);
-                            case POSTGRES_TYPE -> helper.checkConnectionPostgres(db, setData, checkData);
-                            case OPENSEARCH_TYPE -> helper.checkConnectionOpensearch(db, setData, checkData);
-                            case CASSANDRA_TYPE -> helper.checkConnectionCassandra(db, setData, checkData);
-                            case CLICKHOUSE_TYPE -> helper.checkConnectionClickhouse(db, setData, checkData);
-                            case ARANGODB_TYPE -> helper.checkConnectionArangodb(db, setData, checkData);
-                            case null, default -> fail("Database " + db + " has unknown type");
-                        }
-                        if (expectCannotConnect || expectCannotCheckData) {
-                            fail("Expected exception to be thrown while connecting to " + db);
-                        }
-                    } catch (CannotConnect | SQLException | MongoException | IOException e) {
-                        if (expectCannotConnect) {
-                            log.info("Exception thrown as expected", e);
-                        } else {
-                            throw new RuntimeException(e);
-                        }
-                    } catch (CannotCheckData e) {
-                        if (expectCannotCheckData) {
-                            log.info("Exception thrown as expected", e);
-                        } else {
-                            throw new RuntimeException(e);
-                        }
-                    }
+                    helper.checkConnection(expectCannotConnect, db, setData, checkData, expectCannotCheckData);
                 }
         );
     }

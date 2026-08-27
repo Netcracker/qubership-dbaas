@@ -23,6 +23,7 @@ import io.quarkus.test.junit.mockito.MockitoConfig;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
 import lombok.extern.slf4j.Slf4j;
+import org.hamcrest.Matchers;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -742,6 +743,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.setNamespace(TEST_NAMESPACE);
         List<DatabaseRegistry> listOfDbRegistry = database.getDatabaseRegistry();
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(listOfDbRegistry);
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 1));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
@@ -784,6 +786,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
 
         bgDomain.setNamespaces(Arrays.asList(activeBgNamespace, idleBgNamespace));
         when(blueGreenService.getBgDomainContains(TEST_NAMESPACE)).thenReturn(Optional.of(bgDomain));
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 1));
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE_IDLE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 1));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
@@ -824,6 +828,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.setClassifier(classifier);
         database.setNamespace(TEST_NAMESPACE);
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(true);
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_ANOTHER_NAMESPACE)
@@ -840,8 +845,70 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(deletionService).dropRegistrySafe(database);
+        verify(deletionService).dropRegistrySafe(database, false);
         verifyNoMoreInteractions(deletionService);
+    }
+
+    @Test
+    void testDeleteDatabaseByClassifier_ForceTrue() throws JsonProcessingException {
+        final UUID id = UUID.randomUUID();
+        TreeMap<String, Object> classifier = new TreeMap<>(getSampleClassifier());
+        ClassifierWithRolesRequest classifierWithRolesRequest = new ClassifierWithRolesRequest();
+        classifierWithRolesRequest.setClassifier(classifier);
+        classifierWithRolesRequest.setUserRole(ADMIN.toString());
+        classifierWithRolesRequest.setOriginService(TEST_MS_NAME);
+        when(dbaaSHelper.isProductionMode()).thenReturn(false);
+        doReturn(ADMIN.toString()).when(databaseRolesService).getSupportedRoleFromRequest(any(ClassifierWithRolesRequest.class), any(), any());
+        String requestBody = objectMapper.writer().withDefaultPrettyPrinter().writeValueAsString(classifierWithRolesRequest);
+
+        final DatabaseRegistry database = getDatabaseSample();
+        database.setId(id);
+        database.setType(POSTGRESQL.toString());
+        database.setClassifier(classifier);
+        database.setNamespace(TEST_NAMESPACE);
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, true)).thenReturn(true);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .queryParam("force", "true")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .when().delete("/{type}", POSTGRESQL.toString())
+                .then()
+                .statusCode(OK.getStatusCode());
+
+        verify(deletionService).dropRegistrySafe(database, true);
+        verifyNoMoreInteractions(deletionService);
+    }
+
+    @Test
+    void testDeleteDatabaseByClassifier_DeletionError() throws JsonProcessingException {
+        final UUID id = UUID.randomUUID();
+        TreeMap<String, Object> classifier = new TreeMap<>(getSampleClassifier());
+        ClassifierWithRolesRequest classifierWithRolesRequest = new ClassifierWithRolesRequest();
+        classifierWithRolesRequest.setClassifier(classifier);
+        classifierWithRolesRequest.setUserRole(ADMIN.toString());
+        classifierWithRolesRequest.setOriginService(TEST_MS_NAME);
+        when(dbaaSHelper.isProductionMode()).thenReturn(false);
+        doReturn(ADMIN.toString()).when(databaseRolesService).getSupportedRoleFromRequest(any(ClassifierWithRolesRequest.class), any(), any());
+        String requestBody = objectMapper.writer().withDefaultPrettyPrinter().writeValueAsString(classifierWithRolesRequest);
+
+        final DatabaseRegistry database = getDatabaseSample();
+        database.setId(id);
+        database.setType(POSTGRESQL.toString());
+        database.setClassifier(classifier);
+        database.setNamespace(TEST_NAMESPACE);
+        when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(false);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .when().delete("/{type}", POSTGRESQL.toString())
+                .then()
+                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode());
     }
 
     @Test
@@ -874,6 +941,8 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.getDatabaseRegistry().getFirst().setClassifier(classifier);
         database.setMarkedForDrop(true);
         doReturn(Optional.of(database.getDatabaseRegistry().getFirst())).when(databaseRegistryDbaasRepository).getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString());
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(true);
+
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_ANOTHER_NAMESPACE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -890,7 +959,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(deletionService).dropRegistrySafe(database);
+        verify(deletionService).dropRegistrySafe(database, false);
         verifyNoMoreInteractions(deletionService);
     }
 
@@ -921,6 +990,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         database.setNamespace(TEST_NAMESPACE);
         database.setMarkedForDrop(false);
         when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString())).thenReturn(Optional.of(database.getDatabaseRegistry().getFirst()));
+        when(deletionService.dropRegistrySafe(database, false)).thenReturn(true);
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_ANOTHER_NAMESPACE)
@@ -966,7 +1036,7 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .then()
                 .statusCode(OK.getStatusCode());
 
-        verify(deletionService).dropRegistrySafe(database);
+        verify(deletionService).dropRegistrySafe(database, false);
         verify(databaseRegistryDbaasRepository, times(3)).getDatabaseByClassifierAndType(classifier, POSTGRESQL.toString());
         verify(databaseRegistryDbaasRepository, times(1)).getDatabaseByClassifierAndType(classifier, anotherType);
         verify(databaseRegistryDbaasRepository, times(1)).getDatabaseByClassifierAndType(anotherClassifier, POSTGRESQL.toString());
@@ -1059,12 +1129,13 @@ class AggregatedDatabaseAdministrationControllerV3Test {
     void testDeleteOnlyComposite() {
         when(compositeNamespaceService.isNamespaceInComposite(TEST_NAMESPACE)).thenReturn(true);
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(Collections.emptyList());
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(0, 0));
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()
                 .then()
                 .statusCode(OK.getStatusCode())
-                .body(is("Successfully deleted 0 databases and namespace specific resources in " + TEST_NAMESPACE + " namespace"));
+                .body(is("Successful '" + TEST_NAMESPACE + "' namespace cleanup: namespace specific resources are deleted synchronously - success, 0 databases are deleted synchronously - success, 0 databases are marked for drop and asynchronous deletion is scheduled - success"));
     }
 
     @Test
@@ -1073,13 +1144,13 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         final DatabaseRegistry database = getDatabaseSample();
         List<DatabaseRegistry> dbForDeletion = singletonList(database.getDatabaseRegistry().getFirst());
         when(databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NAMESPACE)).thenReturn(dbForDeletion);
-        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(1);
+        when(deletionService.cleanupNamespaceFullAsync(eq(TEST_NAMESPACE), anyBoolean())).thenReturn(new DeletionService.CleanupResult(1, 2));
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .when().delete()
                 .then()
                 .statusCode(OK.getStatusCode())
-                .body(is("Successfully deleted 1 databases and namespace specific resources in " + TEST_NAMESPACE + " namespace"));
+                .body(is("Successful '" + TEST_NAMESPACE + "' namespace cleanup: namespace specific resources are deleted synchronously - success, 1 databases are deleted synchronously - success, 2 databases are marked for drop and asynchronous deletion is scheduled - success"));
     }
 
     @Test
@@ -1360,5 +1431,18 @@ class AggregatedDatabaseAdministrationControllerV3Test {
                 .peek(db -> db.getDatabase().setTimeDbCreation(null))
                 .toList();
         Assertions.assertEquals(database, capturedDatabase);
+    }
+
+    @Test
+    void bearerRequestWhenM2mDisabled_shouldReturn401WithBasicChallenge() {
+        given().auth().preemptive().oauth2("some.fake.bearer.token")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"type\":\"mongodb\", \"classifier\":{\"scope\":\"service\", \"microserviceName\":\"test\", \"namespace\":\"" + TEST_NAMESPACE + "\"}, \"originService\":\"test\"}")
+                .accept(MediaType.APPLICATION_JSON)
+                .when().put()
+                .then()
+                .statusCode(UNAUTHORIZED.getStatusCode())
+                .header("WWW-Authenticate", Matchers.startsWith("basic"));
     }
 }

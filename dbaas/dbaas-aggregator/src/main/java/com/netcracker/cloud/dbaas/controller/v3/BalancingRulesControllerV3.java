@@ -79,6 +79,32 @@ public class BalancingRulesControllerV3 {
                                 namespace + "/physical_databases/balancing/rules/" + ruleName)).build();
     }
 
+    @Operation(summary = "V3. Delete on namespace physDb balancing rule",
+            description = "Deletes a namespace balancing rule by name. The rule is deleted only if it belongs to the requested namespace.")
+    @APIResponses({
+            @APIResponse(responseCode = "200",
+                    description = "Rule deleted"),
+            @APIResponse(responseCode = "404",
+                    description = "Rule not found in the requested namespace")})
+    @Path("/balancing/rules/{ruleName}")
+    @DELETE
+    @RolesAllowed(DB_CLIENT)
+    @Transactional
+    public Response deleteRule(
+            @Parameter(
+                    description = "Namespace where the rule is placed",
+                    required = true)
+            @PathParam(NAMESPACE_PARAMETER) String namespace,
+            @Parameter(
+                    description = "Name of the rule used as an identifier",
+                    required = true)
+            @PathParam("ruleName") String ruleName) {
+        if (!balancingRulesService.deleteNamespaceRule(namespace, ruleName)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        return Response.ok().build();
+    }
+
 
     @Operation(summary = "V3. On microservice physDb balancing rule.",
             description = "Allows adding balancing rules for microservices.  Balancing rules are intended " +

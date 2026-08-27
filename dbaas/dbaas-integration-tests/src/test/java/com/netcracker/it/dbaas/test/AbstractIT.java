@@ -97,6 +97,7 @@ public abstract class AbstractIT {
         DbaasHelperV3.regenerateRequestId();
         log.info("Clean up for test class {} started", testInfo.getTestClass().orElse(AbstractIT.class).getSimpleName());
         portForwardService.closePortForward(new Endpoint(dbaasServiceUrl.getHost(), dbaasServiceUrl.getPort()));
+        helperV3.closePortForwardConnections();
     }
 
     @BeforeEach

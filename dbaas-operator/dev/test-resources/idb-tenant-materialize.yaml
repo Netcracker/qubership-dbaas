@@ -1,0 +1,17 @@
+# InternalDatabase — tenant scope with a pinned tenantId.
+# Beyond the declarative apply, the controller issues a get-or-create
+# (PUT /api/v3/dbaas/{ns}/databases) to materialize the concrete
+# {scope=tenant, tenantId=acme} database, so a matching DatabaseSecretClaim
+# would resolve. The mock returns 200 for the get-or-create by default.
+# Expected: Phase=Succeeded; mock logs show one "create database ... tenantId=acme" line.
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: idb-tenant-materialize
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: idb-tenant
+      scope: tenant
+      tenantId: acme
+  type: postgresql

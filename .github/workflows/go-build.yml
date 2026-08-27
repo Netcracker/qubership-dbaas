@@ -1,14 +1,3 @@
-# Go Build Workflow
-#
-# Builds, tests Go projects with SonarQube analysis and Docker image creation.
-# Uses generic-go-build.yaml for the actual build process.
-#
-# Triggers:
-#   - Push to main branch
-#   - Pull requests
-#
-# See generic-go-build.yaml for full documentation on build features and required secrets/vars.
-
 name: Go Build
 
 run-name: >
@@ -20,21 +9,101 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'dbaas-operator/**'
+    # Skip the operator build for commits that touch only operator docs/dev helpers.
+    # paths-ignore skips the run only when EVERY changed file matches; a mixed
+    # docs-plus-code commit still builds.
+    paths-ignore:
+      - 'dbaas-operator/docs/**'
+      - 'dbaas-operator/dev/**'
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - 'dbaas-operator/**'
+    paths-ignore:
+      - 'dbaas-operator/docs/**'
+      - 'dbaas-operator/dev/**'
   workflow_dispatch:
 
 jobs:
   build:
     name: Build and test
-    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@v2.2.0
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@e8322e6ee168795edec1d103e289b3fe3ceb805d # v2.6.0
     with:
-      sonar-project-key: ${{ vars.SONAR_PROJECT_KEY }}
       install-envtest: true
       envtest-version: latest
-      skip-docker: true
+      docker-config-file: 'docker-go-dev-config.json'
+      go-module-dir: 'dbaas-operator'
     secrets: inherit
+
+  test-agent-packages:
+    name: Test agent packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      - name: Install test dependencies
+        run: >-
+          python -m pip install
+          --disable-pip-version-check
+          --no-input
+          --requirement dbaas-operator/agent-packages/requirements-test.txt
+
+      - name: Run agent package tests
+        working-directory: dbaas-operator
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          found=false
+          for test_dir in agent-packages/*/tests; do
+            if [ ! -d "$test_dir" ]; then
+              continue
+            fi
+            found=true
+            python -m unittest discover -s "$test_dir" -v
+          done
+          if [ "$found" != true ]; then
+            echo "::error::No agent package test directories were found"
+            exit 1
+          fi
+
+  # CRDs, DeepCopy and the chart's CRD templates are generated from the markers in
+  # api/v1. Regenerate them here and fail if anything differs from what was committed,
+  # so a stale artifact cannot reach the chart. The Helm CRD templates used to be
+  # synced by hand and had already drifted — the chart shipped shortName "dbdp" while
+  # the source said "dbdap", breaking every documented `kubectl get dbdap`.
+  verify-generated:
+    name: Verify generated artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: dbaas-operator/go.mod
+          cache-dependency-path: dbaas-operator/go.sum
+
+      - name: Regenerate and check for drift
+        working-directory: dbaas-operator
+        run: |
+          make manifests generate sync-helm-crds
+          # git status --porcelain, unlike git diff, also reports untracked
+          # files — a brand-new CRD whose generated artifacts were never
+          # committed must fail the check too.
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            git diff
+            echo "::error::Generated artifacts are stale. Run 'make manifests generate sync-helm-crds' in dbaas-operator/ and commit the result."
+            exit 1
+          fi

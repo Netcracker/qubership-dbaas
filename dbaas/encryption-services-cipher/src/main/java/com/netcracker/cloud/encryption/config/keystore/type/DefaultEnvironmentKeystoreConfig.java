@@ -2,6 +2,10 @@ package com.netcracker.cloud.encryption.config.keystore.type;
 
 import com.google.common.base.MoreObjects;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 
@@ -11,6 +15,7 @@ public class DefaultEnvironmentKeystoreConfig implements EnvironmentKeystoreConf
     private static final String DEFAULT_ENV_KEY_VARNAME = "DEFAULT_KEY"; // TODO need a more friendly name for the
                                                                          // default key
     private static final String DEFAULT_ENV_KEY_PREFIX = "KS_"; // TODO need a more friendly prefix for the keys
+    private static final String POD_SECRETS_PATH = "/etc/secrets/pod-secrets";
 
     @Override
     public String getKeystoreIdentifier() {
@@ -35,7 +40,18 @@ public class DefaultEnvironmentKeystoreConfig implements EnvironmentKeystoreConf
     @Override
     public boolean isEncrypted() {
         final String symmetricKey = System.getenv(DEFAULT_SYMM_KEY_VARNAME);
-        return symmetricKey != null && !symmetricKey.trim().isEmpty();
+        if (symmetricKey != null && !symmetricKey.trim().isEmpty()) {
+            return true;
+        }
+        Path secretFile = Paths.get(POD_SECRETS_PATH, DEFAULT_SYMM_KEY_VARNAME);
+        if (Files.exists(secretFile)) {
+            try {
+                return !Files.readString(secretFile).isBlank();
+            } catch (IOException e) {
+                return false;
+            }
+        }
+        return false;
     }
 
     @Override

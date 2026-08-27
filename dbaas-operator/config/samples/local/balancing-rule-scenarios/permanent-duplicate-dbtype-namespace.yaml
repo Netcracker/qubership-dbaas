@@ -1,0 +1,15 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: PermanentBalancingRule
+metadata:
+  name: permanent-balancing-rules
+  namespace: dbaas-system
+spec:
+  rules:
+    - dbType: postgresql
+      physicalDatabaseId: postgresql-prod-a
+      namespaces:
+        - dbaas-system
+    - dbType: postgresql
+      physicalDatabaseId: postgresql-prod-b
+      namespaces:
+        - dbaas-system

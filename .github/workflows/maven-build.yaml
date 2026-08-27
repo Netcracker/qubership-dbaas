@@ -3,12 +3,16 @@ name: Maven build
 
 on:
   push:
+    branches:
+      - main
   pull_request:
     types: [ opened, synchronize, reopened ]
+  workflow_dispatch:
 
 jobs:
   mvn:
-    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@e7c8933e41d7e732f6f1f77dab34441d093c5577 # v2.1.0
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-maven-build.yaml@e8322e6ee168795edec1d103e289b3fe3ceb805d # v2.6.0
     with:
       upload-artifact: true
-      java-version: 21
+      java-version: 25
+      maven-command: 'verify'

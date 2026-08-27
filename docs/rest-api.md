@@ -31,6 +31,7 @@ such as type of database (service or tenant), microservice name and namespace, t
     * [Link databases to another namespace](#link-databases-to-another-namespace)
   * [Balancing rules](#balancing-rules)
     * [On Namespace PhysDB Balancing Rules](#on-namespace-physdb-balancing-rule)
+    * [Delete on namespace PhysDB Balancing Rule](#delete-on-namespace-physdb-balancing-rule)
     * [On Microservice PhysDB Balancing Rules](#on-microservice-physdb-balancing-rule)
     * [Validation for microservice balancing rules](#validation-for-microservices-balancing-rules)
     * [Debugging for microservice balancing rules](#debugging-for-microservice-balancing-rules)
@@ -578,11 +579,12 @@ Deletes database by classifier in the specific namespace.
   [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
-| Type     | Name                                  | Description                                                              | Schema                                                    |
-|----------|---------------------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------|
-| **Path** | **namespace**  <br>*required*         | Project namespace in which the base is used                              | string                                                    |
-| **Path** | **type**  <br>*required*              | The physical type of logical database. For example mongodb or postgresql | string                                                    |
-| **Body** | **classifierRequest**  <br>*required* | A unique identifier of the document in the database                      | [ClassifierWithRolesRequest](#classifierwithrolesrequest) |
+| Type      | Name                                  | Description                                                                       | Schema                                                    |
+|-----------|---------------------------------------|-----------------------------------------------------------------------------------|-----------------------------------------------------------|
+| **Path**  | **namespace**  <br>*required*         | Project namespace in which the base is used                                       | string                                                    |
+| **Path**  | **type**  <br>*required*              | The physical type of logical database. For example mongodb or postgresql          | string                                                    |
+| **Query** | **force**  <br>*optional*             | If true, errors from the physical adapter during drop are ignored. Default: false | boolean                                                   |
+| **Body**  | **classifierRequest**  <br>*required* | A unique identifier of the document in the database                               | [ClassifierWithRolesRequest](#classifierwithrolesrequest) |
 
 * **Success Response:**
 
@@ -1533,6 +1535,48 @@ Related page: https://perch.qubership.org/display/CLOUDCORE/How+to+configure+nam
     OK 200 
     or
     CREATED 201
+    ```
+
+### Delete on namespace physDb balancing rule
+Deletes a namespace balancing rule by name. The rule is deleted only if it belongs to the requested namespace.
+
+* **URI:**  `DELETE {dbaas_host}/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}`
+* **Headers:**  
+  Not required
+* **Authorization:**
+  Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
+  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+* **Request body:**
+
+| Type     | Name                          | Description                            | Schema |
+|----------|-------------------------------|----------------------------------------|--------|
+| **Path** | **namespace**  <br>*required* | Namespace where the rule is placed     | string |
+| **Path** | **ruleName**  <br>*required*  | Name of the rule used as an identifier | string |
+
+
+* **Success Response:**
+
+| HTTP Code | Description  | Schema     |
+|-----------|--------------|------------|
+| **200**   | Rule deleted | No Content |
+
+* **Error Response:**
+
+| HTTP Code | Description                              | Schema     |
+|-----------|------------------------------------------|------------|
+| **404**   | Rule not found in the requested namespace | No Content |
+
+* **Sample call**
+
+  Request:
+    ```bash
+    curl -X DELETE \
+     http://localhost:8080/api/v3/dbaas/test-namespace/physical_databases/balancing/rules/test-rule \
+      -H "Authorization: Basic ..."
+    ```
+  Response:
+    ```text
+    OK 200
     ```
 
 ### Add permanent namespace balancing rule

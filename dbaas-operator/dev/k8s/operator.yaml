@@ -1,0 +1,214 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dbaas-operator
+rules:
+  # dbaas CRs (read-only for workloads whose main resource the operator never mutates).
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - internaldatabases
+      - databaseaccesspolicies
+      - externaldatabases
+    verbs: [get, list, watch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - internaldatabases/status
+      - databasesecretclaims/status
+      - databaseaccesspolicies/status
+      - externaldatabases/status
+      - namespacebindings/status
+    verbs: [get, update, patch]
+  # permanentbalancingrules are operator-namespace-only (informer scoped to the
+  # operator namespace) — their RBAC is namespaced, in the Role below, not here.
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - microservicebalancingrules
+      - namespacebalancingrules
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - microservicebalancingrules/status
+      - namespacebalancingrules/status
+    verbs: [get, update, patch]
+  # databasesecretclaims/finalizers is required because SetControllerReference creates
+  # the Secret ownerReference with blockOwnerDeletion=true.
+  - apiGroups: [dbaas.netcracker.com]
+    resources:
+      - databasesecretclaims/finalizers
+      - microservicebalancingrules/finalizers
+      - namespacebalancingrules/finalizers
+    verbs: [update]
+  # namespacebindings: patch is required to add/remove the protection finalizer (client.MergeFrom).
+  # update on /finalizers is the additional Kubernetes check when metadata.finalizers changes.
+  # databasesecretclaims / namespacebindings: patch on the main resource is needed —
+  # databasesecretclaims for the rotation-trigger annotation, namespacebindings for
+  # the protection finalizer (client.MergeFrom).
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [databasesecretclaims, namespacebindings]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [namespacebindings/finalizers]
+    verbs: [update]
+  # Secrets are NOT in the ClusterRole: access is namespaced (a Role + RoleBinding per
+  # namespace, provisioned alongside the NamespaceBinding). The operator's own namespace is
+  # covered by the Role below; business namespaces by dev/test-resources/secret-rbac.yaml.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dbaas-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dbaas-operator
+subjects:
+  - kind: ServiceAccount
+    name: dbaas-operator
+    namespace: dbaas-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+rules:
+  # Leader election — leases are always in the operator's own namespace
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Event recording
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  # permanentbalancingrules: operator-namespace-only, informer scoped here.
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [permanentbalancingrules]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [permanentbalancingrules/status]
+    verbs: [get, update, patch]
+  - apiGroups: [dbaas.netcracker.com]
+    resources: [permanentbalancingrules/finalizers]
+    verbs: [update]
+  # No Secret access here: the operator reads its own aggregator credentials from the mounted
+  # dbaas-security-volume (not the API). DatabaseSecretClaim/ExternalDatabase Secret access is
+  # granted per namespace by dev/test-resources/secret-rbac.yaml, alongside the NamespaceBinding.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dbaas-operator
+subjects:
+  - kind: ServiceAccount
+    name: dbaas-operator
+    namespace: dbaas-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbaas-operator
+  namespace: dbaas-system
+  labels:
+    app: dbaas-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbaas-operator
+  template:
+    metadata:
+      labels:
+        app: dbaas-operator
+    spec:
+      serviceAccountName: dbaas-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # Both auth sources are mounted; the KUBERNETES_M2M_ENABLED env var below selects
+      # which one the operator actually uses (basic → dbaas-security-configuration-secret, m2m → the token).
+      volumes:
+        - name: projected-tokens
+          projected:
+            defaultMode: 292
+            sources:
+              - serviceAccountToken:
+                  path: dbaas/token
+                  audience: dbaas
+                  expirationSeconds: 600
+        - name: dbaas-security-volume
+          secret:
+            secretName: dbaas-security-configuration-secret
+      containers:
+        - name: manager
+          image: dbaas-operator:dev
+          imagePullPolicy: Never   # image is loaded into kind locally
+          env:
+            - name: CLOUD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Aggregator auth mode. Defaults to basic (false); kind-up.sh substitutes
+            # KUBERNETES_M2M_ENABLED to flip the operator onto the M2M Bearer-token path.
+            # In basic mode the operator reads username/password from the mounted
+            # credentials Secret at /etc/dbaas/security (no extra env needed).
+            - name: KUBERNETES_M2M_ENABLED
+              value: "${KUBERNETES_M2M_ENABLED}"
+            # ExternalDatabase has no Secret watch; this resync re-reads referenced credential
+            # Secrets. Short here so credential rotations are picked up quickly in dev.
+            - name: DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL
+              value: "2s"
+          # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
+          # which loads the Kubernetes service-account ca.crt into the trust store before
+          # exec'ing its args, so any outbound TLS (e.g. an HTTPS aggregator URL) trusts the
+          # cluster CA — bypassing the entrypoint fails with x509: certificate signed by
+          # unknown authority.
+          command:
+            - /usr/bin/entrypoint.sh
+          args:
+            - /app/dbaas-operator
+            - --health-probe-bind-address=:8081
+            - --http-bind-address=:8080
+            - --leader-elect
+          volumeMounts:
+            - name: projected-tokens
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
+            - name: dbaas-security-volume
+              mountPath: /etc/dbaas/security
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi

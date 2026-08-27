@@ -64,6 +64,10 @@ public class BalancingRulesDbaasRepositoryImpl implements BalancingRulesDbaasRep
         perNamespaceRule.forEach(rulesRepository::delete);
     }
 
+    public void delete(PerNamespaceRule perNamespaceRule) {
+        rulesRepository.delete(perNamespaceRule);
+    }
+
 
     public List<PerMicroserviceRule> findPerMicroserviceByNamespace(String namespace) {
         return rulesRepositoryPerMicroservice.findByNamespace(namespace);

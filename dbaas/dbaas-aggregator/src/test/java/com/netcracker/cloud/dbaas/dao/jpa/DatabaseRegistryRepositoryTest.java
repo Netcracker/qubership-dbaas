@@ -72,8 +72,10 @@ class DatabaseRegistryRepositoryTest {
         List<DatabaseRegistry> dbs = Stream.of(db_1, db_2).collect(Collectors.toList());
 
         when(databasesRepository.getEntityManager()).thenReturn(entityManager);
-        databaseRegistryDbaasRepository.saveAll(dbs);
+        when(entityManager.merge(any())).thenAnswer(invocationOnMock -> invocationOnMock.getArgument(0));
+        List<DatabaseRegistry> savedRegistries = databaseRegistryDbaasRepository.saveAll(dbs);
 
+        Assertions.assertEquals(dbs.size(), savedRegistries.size());
         verify(databasesRepository, times(dbs.size())).getEntityManager();
         verify(entityManager, times(dbs.size())).merge(any());
     }
@@ -128,7 +130,7 @@ class DatabaseRegistryRepositoryTest {
     @Test
     void testSaveAnyTypeLogDb() {
         DatabaseRegistry db = generateRandomDatabase(true);
-//        when(entityManager.merge(db.getDatabase())).then(invocationOnMock -> invocationOnMock.getArgument(0));
+        when(entityManager.merge(any())).then(invocationOnMock -> invocationOnMock.getArgument(0));
         when(databasesRepository.getEntityManager()).thenReturn(entityManager);
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(db);
 

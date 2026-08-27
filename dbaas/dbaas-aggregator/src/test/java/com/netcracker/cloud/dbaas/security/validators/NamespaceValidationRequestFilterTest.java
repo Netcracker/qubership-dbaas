@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.security.validators;
 
+import com.netcracker.cloud.dbaas.Constants;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.exceptions.FailedNamespaceIsolationCheckException;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
@@ -8,7 +9,7 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.UriInfo;
-import org.junit.Assert;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -95,11 +96,26 @@ class NamespaceValidationRequestFilterTest {
 
             when(namespaceValidator.isNamespaceFromPathValid("ns1", "other-ns")).thenReturn(false);
 
-            Assert.assertThrows(FailedNamespaceIsolationCheckException.class, () -> {
+            Assertions.assertThrows(FailedNamespaceIsolationCheckException.class, () -> {
                 filter.filter(requestContext);
             });
 
             verify(namespaceValidator, times(1)).isNamespaceFromPathValid("ns1", "other-ns");
         }
+    }
+
+    @Test
+    void testFilter_skipNamespaceIsolationForClusterOperator() throws IOException {
+        String nsFromPath = "ns1";
+        when(pathParams.getFirst(DbaasApiPath.NAMESPACE_PARAMETER)).thenReturn(nsFromPath);
+
+        JWTCallerPrincipal jwtPrincipal = mock(JWTCallerPrincipal.class);
+        when(securityContext.getUserPrincipal()).thenReturn(jwtPrincipal);
+        when(securityContext.isUserInRole(Constants.CLUSTER_OPERATOR)).thenReturn(true);
+
+        filter.filter(requestContext);
+
+        verify(securityContext, times(1)).isUserInRole(Constants.CLUSTER_OPERATOR);
+        verify(namespaceValidator, times(0)).isNamespaceFromPathValid(any(), any());
     }
 }

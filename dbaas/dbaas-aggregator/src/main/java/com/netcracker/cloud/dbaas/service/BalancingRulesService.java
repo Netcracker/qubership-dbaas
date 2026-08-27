@@ -258,6 +258,20 @@ public class BalancingRulesService {
         balancingRulesDbaasRepository.deleteAll(namespaceRules);
     }
 
+    @Transactional
+    public boolean deleteNamespaceRule(String namespace, String ruleName) {
+        PerNamespaceRule namespaceRule = balancingRulesDbaasRepository.findByName(ruleName);
+        if (namespaceRule == null ||
+                namespaceRule.getRuleType() != RuleType.NAMESPACE ||
+                !namespace.equals(namespaceRule.getNamespace())) {
+            log.info("Per namespace rule {} was not found in namespace {}", ruleName, namespace);
+            return false;
+        }
+        log.info("Removing per namespace rule: {}", namespaceRule);
+        balancingRulesDbaasRepository.delete(namespaceRule);
+        return true;
+    }
+
 
     @Transactional
     public void removePerMicroserviceRulesByNamespace(String namespace) {

@@ -173,8 +173,8 @@ fi
 echo "pg host: ${POSTGRES_HOST}, pg port: ${POSTGRES_PORT}, pg admin username: ${POSTGRES_DBA_USER}, pg dbaas username: ${POSTGRES_DBAAS_USER}"
 
 if [[ $USE_POSTGRES_PORT_FORWARD == 'true' ]]; then
-    pod_name=$(kubectl get pods --selector='pgtype=master' --output=go-template='{{ (index .items 0).metadata.name  }}' --namespace="${pg_namespace}")
-    echo "pg master pod name ${pod_name}"
+    pod_name=$(kubectl get pods --selector='pgtype=primary' --output=go-template='{{ (index .items 0).metadata.name  }}' --namespace="${pg_namespace}")
+    echo "pg primary pod name ${pod_name}"
     while :; do connection_port="`shuf -i 32768-60999 -n 1`"; ss -lpn | grep -q ":$connection_port " || break; done
     kubectl port-forward ${pod_name} "${connection_port}:${POSTGRES_PORT}" --request-timeout=20s --namespace=${pg_namespace} > /dev/null & # port-forward does not work in deploer 6.x using custom plugin
     PORT_FORWARD_PID="$!"

@@ -42,7 +42,7 @@ class BasicAndKubernetesAuthMechanismTest {
         when(basicAuth.getCredentialTypes()).thenReturn(basicTypes);
         when(jwtAuth.getCredentialTypes()).thenReturn(jwtTypes);
 
-        mechanism = new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth);
+        mechanism = new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, true);
 
         context = mock(RoutingContext.class);
         request = mock(HttpServerRequest.class);
@@ -150,5 +150,21 @@ class BasicAndKubernetesAuthMechanismTest {
 
         when(request.getHeader("Authorization")).thenReturn(null);
         assertFalse((Boolean) method.invoke(mechanism, context));
+    }
+
+    @Test
+    void testAuthenticate_withBearerToken_whenM2mDisabled_returnsFailure() {
+        BasicAndKubernetesAuthMechanism disabledMechanism =
+                new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, false);
+
+        when(request.getHeader("Authorization")).thenReturn("Bearer token");
+
+        Uni<SecurityIdentity> result = disabledMechanism.authenticate(context, idManager);
+
+        verify(basicAuth, never()).authenticate(any(), any());
+        verify(jwtAuth, never()).authenticate(any(), any());
+        var subscriber = result.subscribe().withSubscriber(io.smallrye.mutiny.helpers.test.UniAssertSubscriber.create());
+        subscriber.awaitFailure();
+        assertInstanceOf(io.quarkus.security.AuthenticationFailedException.class, subscriber.getFailure());
     }
 }

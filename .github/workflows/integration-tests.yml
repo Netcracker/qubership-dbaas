@@ -3,20 +3,54 @@ name: DBaaS Integration Tests
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
 
 jobs:
   integration-tests:
+    if: |
+      github.event_name != 'pull_request' ||
+      startsWith(github.event.pull_request.title, 'chore(deps)')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
 
     steps:
+      - name: Wait for other workflows on the current PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.event.pull_request.head.sha }}"
+          for i in $(seq 1 60); do
+            RUNS=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$SHA" \
+              --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }})]")
+            TOTAL=$(echo "$RUNS" | jq 'length')
+            IN_PROGRESS=$(echo "$RUNS" | jq '[.[] | select(.status != "completed")] | length')
+            FAILED=$(echo "$RUNS" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")] | length')
+            echo "attempt $i: total=$TOTAL in_progress=$IN_PROGRESS failed=$FAILED"
+            [ "$FAILED" -gt 0 ] && { echo "One or more workflows failed"; exit 1; }
+            [ "$TOTAL" -gt 0 ] && [ "$IN_PROGRESS" -eq 0 ] && exit 0
+            sleep 30
+          done
+          echo "Timed out waiting for other workflows"; exit 1
+
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Create kind config
         run: |
           cat <<EOF > kind-config.yaml
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
+          kubeadmConfigPatches:
+            - |
+              kind: ClusterConfiguration
+              apiServer:
+                extraArgs:
+                  - name: enable-admission-plugins
+                    value: NodeRestriction,OwnerReferencesPermissionEnforcement
           nodes:
             - role: control-plane
             - role: worker
@@ -24,18 +58,21 @@ jobs:
           EOF
 
       - name: Set up Kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
+          # kind v0.32.0 is the first release that generates kubeadm v1beta4
+          # config; the admission-plugin patch in kind-config.yaml uses its list-form extraArgs.
+          version: v0.32.0
           cluster_name: kind
           config: kind-config.yaml
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      - name: Set up JDK 25
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'temurin'
           cache: maven
 
@@ -103,7 +140,7 @@ jobs:
       - name: Wait for MinIO Tenant readiness
         run: |
           echo "Waiting for MinIO Tenant to become Ready..."
-      
+
           for i in {1..30}; do
             STATE=$(kubectl get tenant test-minio -n minio -o jsonpath='{.status.currentState}')
             echo "Current state: $STATE"
@@ -113,7 +150,7 @@ jobs:
             fi
             sleep 10
           done
-      
+
           echo "MinIO Tenant did not become ready in time"
           exit 1
 
@@ -121,23 +158,30 @@ jobs:
         run: |
           cat <<'EOF' > "$GITHUB_WORKSPACE/patroni-services-values.yaml"
           postgresPassword: ${POSTGRES_PASSWORD}
-      
+
           backupDaemon:
             install: true
             storage:
-              storageClass: ${STORAGE_CLASS}
-              type: pv
-              size: 2Gi
+              type: s3
             s3Storage:
               url: http://minio.minio.svc.cluster.local
               accessKeyId: minio
               secretAccessKey: minio123
               bucket: dbaas-backup-restore-test
-              region: region123
+              untrustedCert: true
             securityContext:
               runAsUser: 101
               fsGroup: 101
-      
+            s3Aliases:
+              - name: default
+                spec:
+                  storageServerUrl: http://minio.minio.svc.cluster.local
+                  storageBucket: dbaas-backup-restore-test
+                  storageUsername: minio
+                  storageRegion: region123
+                secretContent:
+                  storagePassword: minio123
+
           dbaas:
             install: true
             aggregator:
@@ -146,15 +190,58 @@ jobs:
               registrationPassword: password
           EOF
 
+      - name: Resolve image tags
+        env:
+          SOURCE_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          SAFE_REF="${SOURCE_REF//\//-}"
+          if [ "$SAFE_REF" = "main" ]; then
+            IMAGE_TAG=latest
+          else
+            IMAGE_TAG="${SAFE_REF}-snapshot"
+          fi
+          echo "Using image tag: $IMAGE_TAG"
+          echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
       - name: Deploy DBaaS
         working-directory: bootstrap
-        run: make install CONFIG_FILE=local.mk PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
+        run: make install CONFIG_FILE=local.mk KUBERNETES_M2M_ENABLED=true OPERATOR_M2M_ENABLED=false PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 
       - name: Wait for postgres-backup-daemon
         run: |
           kubectl rollout status deployment/postgres-backup-daemon \
             -n postgres \
             --timeout=300s
+
+      - name: Dump cluster diagnostics on deploy failure
+        if: failure()
+        run: |
+          set +e
+          echo "::group::All pods (all namespaces)"
+          kubectl get pods -A -o wide
+          echo "::endgroup::"
+          for pair in "dbaas-operator:dbaas" "dbaas-aggregator:dbaas" "postgres-backup-daemon:postgres"; do
+            d="${pair%%:*}"; ns="${pair##*:}"
+            echo "::group::describe deploy/$d ($ns)"
+            kubectl -n "$ns" describe deploy/"$d"
+            echo "::endgroup::"
+            echo "::group::describe pods $d ($ns)"
+            kubectl -n "$ns" describe pod -l "app.kubernetes.io/name=$d"
+            echo "::endgroup::"
+            echo "::group::logs $d ($ns, current)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --tail=300
+            echo "::endgroup::"
+            echo "::group::logs $d ($ns, PREVIOUS/crash)"
+            kubectl -n "$ns" logs deploy/"$d" --all-containers=true --previous --tail=300
+            echo "::endgroup::"
+          done
+          echo "::group::Recent events (ns=dbaas)"
+          kubectl -n dbaas get events --sort-by=.lastTimestamp | tail -80
+          echo "::endgroup::"
+          echo "::group::Recent events (ns=postgres)"
+          kubectl -n postgres get events --sort-by=.lastTimestamp | tail -40
+          echo "::endgroup::"
 
       - name: Run tests
         id: tests
@@ -177,38 +264,77 @@ jobs:
           done
 
       - name: Upload Surefire reports
+        id: upload_surefire
         if: always() && steps.collect_reports.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: surefire-reports
           path: artifacts/*
 
-      - name: Collect Fluent Bit logs
+      - name: Collect pod stdout (Fluent Bit)
         id: collect_fluentbit_logs
+        if: always()
         run: |
           chmod +x .github/scripts/collect-fluentbit-logs.sh && \
           .github/scripts/collect-fluentbit-logs.sh
 
-      - name: Upload Fluent Bit logs
+      - name: Upload pod stdout (Fluent Bit)
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: dbaas-pod-logs
+          name: dbaas-pod-stdout
           path: fluentbit-logs/**
           if-no-files-found: warn
 
-      - name: Collect DBaaS logs
+      - name: Collect K8s diagnostics (kubectl)
         id: collect_logs
+        if: always()
         run: |
           chmod +x .github/scripts/get-dbaas-logs.sh && \
           .github/scripts/get-dbaas-logs.sh
 
-      - name: Upload DBaaS logs
+      - name: Upload K8s diagnostics (kubectl)
         if: always() && steps.collect_logs.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: dbaas-logs
+          name: dbaas-k8s-diagnostics
           path: logs/*
-      
 
-  
+      - name: Build test report
+        id: build_report
+        if: always() && steps.tests.outcome != 'skipped'
+        env:
+          ARTIFACTS_DIR: artifacts
+          OUTPUT_FILE: report.md
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: python3 .github/scripts/build-test-report.py
+
+      - name: Email test report
+        if: always() && steps.build_report.outcome == 'success'
+        continue-on-error: true
+        # Pinned to the commit that adds email-action (#782); no release tag includes it yet.
+        uses: Netcracker/qubership-workflow-hub/actions/email-action@f4a2c6f57cfdd620676d0dc7321491b33d7c214b
+        env:
+          EMAIL_SMTP_HOST: ${{ vars.EMAIL_SMTP_HOST }}
+          EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          EMAIL_USERNAME: ${{ vars.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ vars.EMAIL_TO }}
+        with:
+          subject: ${{ steps.build_report.outputs.title }}
+          # convert-markdown only applies to html-body (dawidd6/action-send-mail
+          # renders markdown→HTML for the html part); body stays as the plain-text fallback.
+          body: file://report.md
+          html-body: file://report.md
+          convert-markdown: "true"
+
+      - name: Fail job if any tests failed
+        if: always() && steps.build_report.outputs.status == 'failed'
+        run: |
+          echo "::error::Integration tests failed (${{ steps.build_report.outputs.failed_count }} test(s))"
+          exit 1

@@ -6296,6 +6296,256 @@
       ],
       "title": "HTTP Errors",
       "type": "row"
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "$datasource",
+      "description": "Shows the number of databases that are registered in DBaaS but absent from adapter database lists.",
+      "fill": 1,
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 49
+      },
+      "id": 115,
+      "legend": {
+        "alignAsTable": true,
+        "avg": true,
+        "current": true,
+        "max": true,
+        "min": true,
+        "show": true,
+        "total": false,
+        "values": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "connected",
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+            {
+          "expr": "max(dbaas_registration_databases_lost_number{container=\u0022$service_name\u0022, namespace=\u0022$namespace\u0022} OR on() vector(0))",
+              "format": "time_series",
+              "interval": "",
+          "intervalFactor": 1,
+          "legendFormat": "lost databases",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [
+            {
+          "colorMode": "critical",
+          "fill": true,
+          "line": true,
+          "op": "gt",
+          "value": 0
+        }
+      ],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Registry discrepancy count over time",
+      "tooltip": {
+        "shared": true,
+        "sort": 2,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+            {
+          "decimals": 0,
+          "format": "short",
+          "label": "databases",
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+            },
+            {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+        "collapsed":  true,
+        "datasource":  null,
+        "gridPos":  {
+                        "h":  1,
+                        "w":  24,
+                        "x":  0,
+                        "y":  56
+                    },
+        "id":  122,
+        "panels":  [
+                       {
+                           "datasource":  "$datasource",
+                           "description":  "Total number of databases registered in DBaaS.",
+                           "format":  "short",
+                           "gridPos":  {
+                                           "h":  5,
+                                           "w":  24,
+                                           "x":  0,
+                                           "y":  57
+                                       },
+                           "id":  116,
+                           "targets":  [
+                                           {
+                                               "expr":  "max(dbaas_registration_databases_total_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
+                                               "format":  "time_series",
+                                               "instant":  true,
+                                               "refId":  "A"
+                                           }
+                                       ],
+                           "title":  "All registered databases",
+                           "type":  "singlestat",
+                           "valueName":  "current"
+                       },
+                       {
+                           "datasource":  "$datasource",
+                           "description":  "Number of PostgreSQL databases registered in DBaaS.",
+                           "format":  "short",
+                           "gridPos":  {
+                                           "h":  5,
+                                           "w":  8,
+                                           "x":  0,
+                                           "y":  62
+                                       },
+                           "id":  117,
+                           "targets":  [
+                                           {
+                                               "expr":  "max(dbaas_registration_databases_postgresql_total_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0)) + max(dbaas_registration_databases_postgresql_lost_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
+                                               "format":  "time_series",
+                                               "instant":  true,
+                                               "refId":  "A"
+                                           }
+                                       ],
+                           "title":  "PostgreSQL registered databases",
+                           "type":  "singlestat",
+                           "valueName":  "current"
+                       },
+                       {
+                           "datasource":  "$datasource",
+                           "description":  "Number of MongoDB databases registered in DBaaS.",
+                           "format":  "short",
+                           "gridPos":  {
+                                           "h":  5,
+                                           "w":  8,
+                                           "x":  8,
+                                           "y":  62
+                                       },
+                           "id":  118,
+                           "targets":  [
+                                           {
+                                               "expr":  "max(dbaas_registration_databases_mongodb_total_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0)) + max(dbaas_registration_databases_mongodb_lost_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
+                                               "format":  "time_series",
+                                               "instant":  true,
+                                               "refId":  "A"
+                                           }
+                                       ],
+                           "title":  "MongoDB registered databases",
+                           "type":  "singlestat",
+                           "valueName":  "current"
+                       },
+                       {
+                           "datasource":  "$datasource",
+                           "description":  "Number of Cassandra databases registered in DBaaS.",
+                           "format":  "short",
+                           "gridPos":  {
+                                           "h":  5,
+                                           "w":  8,
+                                           "x":  16,
+                                           "y":  62
+                                       },
+                           "id":  119,
+                           "targets":  [
+                                           {
+                                               "expr":  "max(dbaas_registration_databases_cassandra_total_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0)) + max(dbaas_registration_databases_cassandra_lost_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
+                                               "format":  "time_series",
+                                               "instant":  true,
+                                               "refId":  "A"
+                                           }
+                                       ],
+                           "title":  "Cassandra registered databases",
+                           "type":  "singlestat",
+                           "valueName":  "current"
+                       },
+                       {
+                           "datasource":  "$datasource",
+                           "description":  "Number of Elasticsearch databases registered in DBaaS.",
+                           "format":  "short",
+                           "gridPos":  {
+                                           "h":  5,
+                                           "w":  8,
+                                           "x":  0,
+                                           "y":  67
+                                       },
+                           "id":  120,
+                           "targets":  [
+                                           {
+                                               "expr":  "max(dbaas_registration_databases_elasticsearch_total_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0)) + max(dbaas_registration_databases_elasticsearch_lost_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
+                                               "format":  "time_series",
+                                               "instant":  true,
+                                               "refId":  "A"
+                                           }
+                                       ],
+                           "title":  "Elasticsearch registered databases",
+                           "type":  "singlestat",
+                           "valueName":  "current"
+                       },
+                       {
+                           "datasource":  "$datasource",
+                           "description":  "Number of Redis databases registered in DBaaS.",
+                           "format":  "short",
+                           "gridPos":  {
+                                           "h":  5,
+                                           "w":  8,
+                                           "x":  8,
+                                           "y":  67
+                                       },
+                           "id":  121,
+                           "targets":  [
+                                           {
+                                               "expr":  "max(dbaas_registration_databases_redis_total_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0)) + max(dbaas_registration_databases_redis_lost_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
+                                               "format":  "time_series",
+                                               "instant":  true,
+                                               "refId":  "A"
+                                           }
+                                       ],
+                           "title":  "Redis registered databases",
+                           "type":  "singlestat",
+                           "valueName":  "current"
+                       }
+                   ],
+        "repeat":  null,
+        "title":  "Registered databases",
+        "type":  "row"
     }
   ],
   "refresh": "30s",

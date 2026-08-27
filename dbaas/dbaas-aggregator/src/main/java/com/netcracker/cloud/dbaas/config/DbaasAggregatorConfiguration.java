@@ -8,7 +8,6 @@ import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.List;

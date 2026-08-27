@@ -1,0 +1,14 @@
+# InternalDatabase — async submit succeeds but provisioning fails during polling
+# No apply-rule → default 202 with trackingId="tracking-idb-poll-failed"
+# poll-rules.json key: "tracking-idb-poll-failed" → FAILED / "disk quota exceeded"
+# Expected: Phase=WaitingForDependency → Phase=InvalidConfiguration/AggregatorRejected, Stalled=True
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: idb-poll-failed
+  namespace: test-ns
+spec:
+  classifier:
+      microserviceName: idb-poll-failed
+      scope: service
+  type: postgresql
