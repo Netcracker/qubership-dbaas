@@ -1,0 +1,33 @@
+{{- if .Values.DATABASE_PROXY_STACK_ENABLED }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}-config'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+data:
+  haproxy.cfg: |
+    global
+      log stdout format raw local0
+      stats socket ipv4@0.0.0.0:{{ .Values.TCP_PROXY_ADMIN_PORT }} level admin
+
+    defaults
+      log global
+      mode tcp
+      timeout connect 5s
+      timeout client 5m
+      timeout server 5m
+    {{- range .Values.DATABASE_MAPPINGS }}
+
+    # {{ .name }}
+    frontend fe_{{ .listenPort }}
+      bind *:{{ .listenPort }}
+      default_backend be_{{ .listenPort }}
+
+    backend be_{{ .listenPort }}
+      server srv_{{ .listenPort }} {{ .targetHost }}:{{ .targetPort }} check
+    {{- end }}
+{{- end }}

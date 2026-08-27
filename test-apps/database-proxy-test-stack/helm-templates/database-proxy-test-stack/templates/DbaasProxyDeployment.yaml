@@ -1,0 +1,79 @@
+{{- if .Values.DATABASE_PROXY_STACK_ENABLED }}
+{{- if not .Values.DBAAS_PROXY_IMAGE_REPOSITORY }}
+{{- fail "DBAAS_PROXY_IMAGE_REPOSITORY is required. Build test-apps/dbaas-proxy first." }}
+{{- end }}
+{{- if not .Values.DBAAS_PROXY_TAG }}
+{{- fail "DBAAS_PROXY_TAG is required. Use an immutable tag or digest so a rerun deploys the same proxy." }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: '{{ .Values.DBAAS_PROXY_SERVICE_NAME }}'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.DBAAS_PROXY_SERVICE_NAME }}'
+    app.kubernetes.io/instance: '{{ cat .Values.DBAAS_PROXY_SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/component: test-fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: '{{ .Values.DBAAS_PROXY_SERVICE_NAME }}'
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: '{{ .Values.DBAAS_PROXY_SERVICE_NAME }}'
+        app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+      annotations:
+        # Roll the pod when the mappings change; they are read once at startup.
+        database-proxy-test-stack/mappings: '{{ include "database-proxy-test-stack.tcpProxyMappings" . | sha256sum }}'
+    spec:
+      containers:
+        - name: '{{ .Values.DBAAS_PROXY_SERVICE_NAME }}'
+          image: '{{ .Values.DBAAS_PROXY_IMAGE_REPOSITORY }}:{{ .Values.DBAAS_PROXY_TAG }}'
+          imagePullPolicy: '{{ .Values.DBAAS_PROXY_PULL_POLICY }}'
+          env:
+            - name: DBAAS_PROXY_URL
+              value: '{{ .Values.DBAAS_PROXY_UPSTREAM_URL }}'
+            - name: TCP_PROXY_HOST
+              value: '{{ include "database-proxy-test-stack.tcpProxyHost" . }}'
+            - name: TCP_PROXY_MAPPINGS
+              value: '{{ include "database-proxy-test-stack.tcpProxyMappings" . }}'
+            - name: HAPROXY_ADMIN_URL
+              value: 'tcp://{{ .Values.TCP_PROXY_SERVICE_NAME }}.{{ .Values.NAMESPACE }}:{{ .Values.TCP_PROXY_ADMIN_PORT }}'
+          ports:
+            - name: web
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: web
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: web
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: '{{ .Values.DBAAS_PROXY_CPU_REQUEST }}'
+              memory: '{{ .Values.DBAAS_PROXY_MEMORY_REQUEST }}'
+            limits:
+              cpu: '{{ .Values.DBAAS_PROXY_CPU_LIMIT }}'
+              memory: '{{ .Values.DBAAS_PROXY_MEMORY_LIMIT }}'
+{{- end }}

@@ -5,7 +5,9 @@ go 1.27.0
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.0
-	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.0
+	// TODO: Replace this pseudo-version with v4.5.1 when available.
+	// Source fix: Netcracker/qubership-core-lib-go-dbaas-postgres-client#106.
+	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.1-0.20260825141241-527964b4d879
 	github.com/netcracker/qubership-core-lib-go/v3 v3.13.5
 	github.com/uptrace/bun v1.2.18
 )
@@ -28,14 +30,13 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
-	github.com/rogpeppe/go-internal v1.15.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18 // indirect
 	github.com/viney-shih/go-lock v1.1.2 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.3 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 )
