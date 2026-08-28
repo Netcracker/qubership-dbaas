@@ -133,18 +133,16 @@ Secret in place under the same name.
 
 ### Secret permissions in the workload namespace
 
-The operator holds no cluster-wide Secret permission. Every namespace containing a `DatabaseSecretClaim`,
-or an `ExternalDatabase` that references a credential Secret, has to grant the operator's ServiceAccount
-`get`, `create`, `update` and `patch` on `secrets` through a Role and RoleBinding — conventionally named
-`dbaas-operator-secrets` — in that namespace. Without them the claim fails with `forbidden` and no Secret
-is written.
+The operator holds no cluster-wide Secret permission, so each namespace with a `DatabaseSecretClaim` —
+or an `ExternalDatabase` that references a credential Secret — has to grant the operator's ServiceAccount
+`get`, `create`, `update` and `patch` on `secrets`, through a Role and RoleBinding in that namespace.
+Without them both fail with `forbidden`.
 
-Where Cloud Core is installed, the dbaas-agent chart ships that pair. A namespace without Cloud Core has
-to supply it, either applied manually or shipped by the service's own chart.
+The dbaas-agent chart ships that pair, named `dbaas-operator-secrets`, wherever Cloud Core is installed.
+A namespace without Cloud Core has to supply it, applied manually or from the service's own chart.
 [`config/samples/namespaced-secret-rbac.yaml`](../../config/samples/namespaced-secret-rbac.yaml) is a
-ready-to-apply bundle for one namespace, and
-[Secret Access (Namespaced)](DBaaS%20Operator.md#secret-access-namespaced) explains why the permission is
-scoped this way.
+ready-to-apply bundle for one namespace; see
+[Secret Access (Namespaced)](DBaaS%20Operator.md#secret-access-namespaced) for the rationale.
 
 ### Starting before the Secret exists
 
