@@ -217,7 +217,7 @@ spec:
   on the wire, distinct from the nested `customKeys`. The reserved keys
   `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are rejected by the controller with
   phase `InvalidConfiguration` and reason `InvalidSpec`. See
-  [Classifier → Aggregator Wire Mapping](DBaaS%20Operator.md#classifier--aggregator-wire-mapping) for the
+  [Classifier → Aggregator Wire Mapping](../DBaaS%20Operator.md#classifier--aggregator-wire-mapping) for the
   full mapping. Because these fields are part of the database identity, **every
   consumer's dbaas-client must emit the same keys/values**, or the database (and its
   mounted Secret) won't be found.
@@ -239,7 +239,7 @@ spec:
 - **Status & lifecycle.** Each CR now carries its own `status.phase`, conditions, and
   `observedGeneration`; provisioning may be synchronous or asynchronous, and the controller polls the
   aggregator while an async operation is in flight. See
-  [InternalDatabase Status Reference](DBaaS%20Operator.md#internaldatabase-status-reference) for the
+  [InternalDatabase Status Reference](../DBaaS%20Operator.md#internaldatabase-status-reference) for the
   phase and condition reference.
 
 ---
