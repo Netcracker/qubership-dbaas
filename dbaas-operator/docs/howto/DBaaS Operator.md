@@ -27,6 +27,7 @@
     - [Permission Reference](#permission-reference)
   - [Secret Access (Namespaced)](#secret-access-namespaced)
 - [Custom Resources](#custom-resources)
+  - [Retired NamespaceBinding Model](#retired-namespacebinding-model)
   - [Common Status Model](#common-status-model)
   - [ExternalDatabase](#externaldatabase)
     - [Resource Fields](#externaldatabase-resource-fields)
@@ -64,8 +65,10 @@
   - [Startup Flags](#startup-flags)
   - [Reconcile Backoff](#reconcile-backoff)
 
-**Related documents:** [DBaaS Operator Metrics](../monitoring/DBaaS%20Operator%20Metrics.md) ·
-[Migrating declarations from Core Operator](migrate-declarations-from-core-operator.md)
+**Related documents:** [Onboarding a service](onboarding.md) ·
+[DBaaS Operator Metrics](../monitoring/DBaaS%20Operator%20Metrics.md) ·
+[Migrating declarations from Core Operator](migrate-declarations-from-core-operator.md) ·
+[Migrating from the retired NamespaceBinding model](migrate-from-namespacebinding.md)
 ---
 
 ## Overview
@@ -633,14 +636,12 @@ All managed CR kinds require immutable `spec.operatorNamespace`. The operator re
 a CR only when that value equals its `CLOUD_NAMESPACE`; otherwise it leaves the resource untouched.
 Change the assignment by deleting and recreating the CR.
 
-### Installation and the retired NamespaceBinding model
+### Retired NamespaceBinding Model
 
-This operator ships no automated upgrade from the retired `NamespaceBinding` model. It assumes
-either a greenfield install or GitOps-managed manifests: the assignment is carried declaratively by
-each CR's `spec.operatorNamespace`, so a GitOps tool applies the field and prunes the old
-`NamespaceBinding` objects during a normal sync. A cluster that still runs live `NamespaceBinding`
-resources needs its own migration before adopting this chart, because `spec.operatorNamespace` is
-required and immutable once set.
+Version 6.15.0 removes the `NamespaceBinding` CR that used to carry the operator assignment for a whole namespace.
+Every managed CR now declares its own `spec.operatorNamespace` instead. A cluster with live `NamespaceBinding`
+objects needs a manual migration before it moves to 6.15.0 — see
+[Migrating from the Retired NamespaceBinding Model](migrate-from-namespacebinding.md).
 
 ### Common Status Model
 
