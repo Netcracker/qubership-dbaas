@@ -4,7 +4,7 @@ Version 6.15.0 removes the `NamespaceBinding` CR. This guide is for clusters tha
 `NamespaceBinding` objects; a greenfield install needs nothing from it.
 
 For everything else about the operator — the CR reference, status model, RBAC, and configuration —
-see [DBaaS Operator](DBaaS%20Operator.md).
+see [DBaaS Operator](../DBaaS%20Operator.md).
 
 ---
 

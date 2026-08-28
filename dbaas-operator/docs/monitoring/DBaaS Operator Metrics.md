@@ -14,7 +14,7 @@ This page documents the Prometheus metrics exposed by **dbaas-operator** and how
 - [Example PromQL queries](#example-promql-queries)
 - [Cardinality & high-availability notes](#cardinality--high-availability-notes)
 
-**Related documents:** [DBaaS Operator](../howto/DBaaS%20Operator.md) — custom resources, phases, and
+**Related documents:** [DBaaS Operator](../DBaaS%20Operator.md) — custom resources, phases, and
 condition reasons behind these metrics.
 
 ---

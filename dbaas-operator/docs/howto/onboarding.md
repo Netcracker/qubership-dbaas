@@ -6,7 +6,7 @@ with its Helm chart. Where a service previously called dbaas-aggregator on start
 reconciles both.
 
 The complete custom resource reference, status model, and configuration parameters are documented in
-[DBaaS Operator](DBaaS%20Operator.md).
+[DBaaS Operator](../DBaaS%20Operator.md).
 
 ---
 
@@ -142,7 +142,7 @@ The dbaas-agent chart ships that pair, named `dbaas-operator-secrets`, wherever 
 A namespace without Cloud Core has to supply it, applied manually or from the service's own chart.
 [`config/samples/namespaced-secret-rbac.yaml`](../../config/samples/namespaced-secret-rbac.yaml) is a
 ready-to-apply bundle for one namespace; see
-[Secret Access (Namespaced)](DBaaS%20Operator.md#secret-access-namespaced) for the rationale.
+[Secret Access (Namespaced)](../DBaaS%20Operator.md#secret-access-namespaced) for the rationale.
 
 ### Starting before the Secret exists
 
@@ -196,7 +196,7 @@ normally assigned to the wrong operator: check `spec.operatorNamespace`.
 
 ## Related documentation
 
-- [DBaaS Operator](DBaaS%20Operator.md) — custom resource reference, status and condition vocabulary,
+- [DBaaS Operator](../DBaaS%20Operator.md) — custom resource reference, status and condition vocabulary,
   RBAC, authentication, and configuration parameters.
 - [Migrating declarations from Core Operator](migrate-declarations-from-core-operator.md) — the
   field-by-field mapping that underlies the declaration skill.
