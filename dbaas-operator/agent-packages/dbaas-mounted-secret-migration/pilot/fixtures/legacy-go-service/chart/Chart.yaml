@@ -1,0 +1,4 @@
+apiVersion: v2
+name: legacy-go-service
+description: A pre-migration Go service that provisions its database with a legacy DatabaseDeclaration
+version: 0.1.0

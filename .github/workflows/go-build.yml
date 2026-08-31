@@ -48,6 +48,9 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Verify Helm
+        run: helm version --short
+
       - name: Install test dependencies
         run: >-
           python -m pip install

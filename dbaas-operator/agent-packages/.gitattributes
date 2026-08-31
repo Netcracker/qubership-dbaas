@@ -1,0 +1,8 @@
+# The runner scripts build candidate files with LF and compare them byte-for-byte
+# (the vendored _migration_common.py drift check, and idempotent re-runs). Keep
+# the sources LF in every working tree so those comparisons are stable on Windows.
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
