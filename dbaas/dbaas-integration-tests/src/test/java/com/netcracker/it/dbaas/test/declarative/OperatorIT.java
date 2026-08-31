@@ -22,6 +22,7 @@ import net.jodah.failsafe.Failsafe;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
+@Tag("postgresql")
 public class OperatorIT extends AbstractIT {
 
     private static BGHelper bgHelper;
@@ -1296,6 +1298,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimRotationTriggeredByBackupRestore() throws IOException {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
@@ -1326,6 +1329,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimUpdatedAfterBackupRestoreV3() throws IOException {
                     String sourceNamespace = helperV3.generateTestNamespace();
                     String dbSecretCRName = generateName();
@@ -1623,6 +1627,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimTenantRotationTriggeredByBackupRestore() throws IOException {
                     String dbSecretCRName = generateName();
                     String microserviceName = generateName();
@@ -1655,6 +1660,7 @@ public class OperatorIT extends AbstractIT {
                 }
 
                 @Test
+                @Tag("backup")
                 void testDatabaseSecretClaimTenantUpdatedAfterBackupRestoreV3() throws IOException {
                     String sourceNamespace = helperV3.generateTestNamespace();
                     String dbSecretCRName = generateName();
