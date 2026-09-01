@@ -197,6 +197,10 @@ For `InternalDatabase` the default response is HTTP 202 (async) with
 `trackingId = "tracking-<microserviceName>"`. Poll responses are controlled by
 `poll-rules.json` (keyed by `trackingId`); missing rule → `COMPLETED`.
 
+Async operation polls and pending pinned-tenant get-or-create retries use the same in-memory, bounded exponential
+poll schedule: nominally 5 s, 10 s, 20 s, 40 s, then 60 s, with jitter. The step resets after an operator restart or
+leader change, and for a new object UID, spec generation, or logical provisioning operation.
+
 For a **tenant-scoped** declaration that pins a `tenantId`, the controller additionally
 issues a get-or-create (`PUT /api/v3/dbaas/{ns}/databases`) once the apply completes, to
 materialize the concrete `{scope=tenant, tenantId}` database (a tenant declaration is
@@ -376,8 +380,8 @@ It asserts:
    `Succeeded` and its Secret carries the tenant identity (`scope=tenant`, `tenantId=acme`).
 
 Restart the mock (`kubectl rollout restart deployment/dbaas-aggregator -n dbaas-system`) to
-clear the in-memory store, then apply the claim alone — it backs off on `DatabaseNotFound`
-until the `InternalDatabase` materializes its database. Pass `KEEP=1` to keep the CRs and Secret.
+clear the in-memory store, then apply the claim alone — it uses the bounded exponential poll schedule on
+`DatabaseNotFound` until the `InternalDatabase` materializes its database. Pass `KEEP=1` to keep the CRs and Secret.
 
 #### asynchronous tenant materialization (`dev/e2e-tenant-materialize-202.sh`)
 

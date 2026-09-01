@@ -172,7 +172,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 				"a successful reconcile schedules the safety-net re-poll")
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(ds.Status.ObservedGeneration).To(Equal(ds.Generation))
-
 			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
@@ -466,7 +465,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			ds, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
@@ -475,6 +474,12 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonEmptyConnectionProperties)
 			expectNoRecordedEvent(fixture.recorder.Events)
+
+			// A second consecutive empty-connectionProperties response advances the
+			// same scheduler used by the not-found paths.
+			ds, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 1)
 		})
 	})
 
@@ -496,7 +501,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			ds, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(ds.Status.ObservedGeneration).To(BeZero())
 			Expect(ds.Status.FirstNotFoundAt).NotTo(BeNil(), "first 404 must stamp FirstNotFoundAt")
@@ -550,8 +555,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			got, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter),
-				"polling must continue so the CR can self-heal if the database appears later")
+			expectRequeueAfterStep(result, 0)
 			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff),
 				"phase must remain BackingOff — timeout is informational, not permanent")
 			Expect(got.Status.FirstNotFoundAt).NotTo(BeNil(),
@@ -676,7 +680,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
-
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
@@ -703,7 +706,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
-
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
@@ -766,7 +768,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
-
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))

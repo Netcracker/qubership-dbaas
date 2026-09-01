@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -119,6 +121,22 @@ func reconcileAndFetchObject[T client.Object](
 	obj := newObj()
 	Expect(k8sClient.Get(ctx, key, obj)).To(Succeed())
 	return obj, result, err
+}
+
+// expectRequeueAfterStep asserts that result.RequeueAfter is the jittered delay
+// for the given backoff step: in [nominal, nominal*(1+pollJitterFactor)) below
+// the cap, or in (pollMaxInterval*(1-pollJitterFactor), pollMaxInterval] once
+// pollDelayForStep(step) has reached the cap.
+func expectRequeueAfterStep(result ctrl.Result, step int32) {
+	GinkgoHelper()
+	nominal := pollDelayForStep(step)
+	if nominal >= pollMaxInterval {
+		Expect(result.RequeueAfter).To(BeNumerically(">", time.Duration(float64(pollMaxInterval)*(1-pollJitterFactor))))
+		Expect(result.RequeueAfter).To(BeNumerically("<=", pollMaxInterval))
+		return
+	}
+	Expect(result.RequeueAfter).To(BeNumerically(">=", nominal))
+	Expect(result.RequeueAfter).To(BeNumerically("<", time.Duration(float64(nominal)*(1+pollJitterFactor))))
 }
 
 func deleteIfExists(obj client.Object) {
