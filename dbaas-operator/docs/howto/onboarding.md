@@ -174,10 +174,10 @@ containers:
         readOnly: true
 ```
 
-For multiple claims, add one volume and one immediate child mount per Secret to each container that
-uses it. Do not mount the Secret's files directly at `/etc/secrets/dbaas-secrets`, add another level of
-nesting, or use a different base path: the client scans only the immediate child directories. Do not
-use `subPath` either, because Kubernetes does not propagate Secret updates to a `subPath` mount.
+The DBaaS client requires each generated Secret to appear as an immediate child directory under
+`/etc/secrets/dbaas-secrets` in every application container that uses it. Each child directory must
+contain `metadata.json` and `connectionProperties.json`. Do not place these files directly in the base
+directory, add another directory level, use a different base path, or mount the Secret using `subPath`.
 
 ### Secret permissions in the workload namespace
 
