@@ -46,6 +46,7 @@ Each old database declaration becomes one `InternalDatabase`.
 | `lazy` | `spec.lazy` | coerce string `"true"`/`"false"`; flag other non-booleans; do not combine `true` with clone |
 | `settings` | `spec.settings` | preserve entries verbatim; each value may be any valid JSON type |
 | `namePrefix` | `spec.namePrefix` | optional |
+| `physicalDatabaseId` | `spec.physicalDatabaseId` | optional; preserve verbatim, no transformation. Pins only new-creation databases — ignored for `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`, which follow the source/backup adapter instead |
 | `versioningConfig` | `spec.versioningConfig` | marks configuration/versioned database |
 | `initialInstantiation` | `spec.initialInstantiation` | optional |
 | `initialInstantiation.sourceClassifier` | `spec.initialInstantiation.sourceClassifier` | convert classifier keys; its `microserviceName` must equal the target classifier owner |

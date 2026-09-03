@@ -90,6 +90,10 @@ duplicate resources require manual review.
   the target when absent, and require manual correction when an explicit source owner differs.
 - Preserve valid JSON values in `spec.settings` without conversion. The converter rejects non-finite numbers,
   non-string object keys, and YAML-only values, and identifies each invalid field by its full settings path.
+- Preserve `physicalDatabaseId` verbatim as `spec.physicalDatabaseId`; it is an optional physical-database pin, not a
+  value to transform or validate. It only pins new-creation databases — the aggregator ignores it for
+  `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`, so do not describe it as
+  pinning a clone or a backup restore.
 - Choose stable, DNS-compatible resource names and check for duplicate kind/name pairs across all generated files.
 
 ## Validation
