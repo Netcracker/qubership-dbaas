@@ -131,6 +131,54 @@ the `Ready` reason changes to `DatabaseNotFoundTimeout` and one Warning event is
 continues and the claim still recovers on its own. When credentials rotate, the operator rewrites the
 Secret in place under the same name.
 
+### Mounting credentials in the application container
+
+The operator creates the Kubernetes Secret, but it does not modify the application's workload. The
+service chart must expose that Secret as a volume in every application container that uses the
+database.
+
+Mounted-secret-capable DBaaS clients look in one fixed absolute path **inside the application
+container**:
+
+```text
+/etc/secrets/dbaas-secrets
+```
+
+Each Secret must appear in its own immediate child directory. Mount the complete Secret read-only;
+Kubernetes projects the two data keys written by the operator as files:
+
+```text
+/etc/secrets/dbaas-secrets/<secret-name>/metadata.json
+/etc/secrets/dbaas-secrets/<secret-name>/connectionProperties.json
+```
+
+Set `<secret-name>` to the exact value of `DatabaseSecretClaim.spec.secretName`. For the claim above,
+the complete mount path is `/etc/secrets/dbaas-secrets/orders-db-admin-secret`.
+
+`spec.secretName` has no mandatory business naming pattern: it must be a valid Kubernetes Secret name
+and must be unique among `DatabaseSecretClaim` resources in the namespace.
+
+The Pod volume name is separate from the Secret name. It can be any valid, unique volume name, but the
+same value must be used by `volumes[].name` and `volumeMounts[].name`:
+
+```yaml
+volumes:
+  - name: orders-db-secret
+    secret:
+      secretName: orders-db-admin-secret
+containers:
+  - name: orders
+    volumeMounts:
+      - name: orders-db-secret
+        mountPath: /etc/secrets/dbaas-secrets/orders-db-admin-secret
+        readOnly: true
+```
+
+The DBaaS client requires each generated Secret to appear as an immediate child directory under
+`/etc/secrets/dbaas-secrets` in every application container that uses it. Each child directory must
+contain `metadata.json` and `connectionProperties.json`. Do not place these files directly in the base
+directory, add another directory level, use a different base path, or mount the Secret using `subPath`.
+
 ### Secret permissions in the workload namespace
 
 The operator holds no cluster-wide Secret permission, so each namespace with a `DatabaseSecretClaim` —
@@ -169,8 +217,9 @@ containers:
 Use a volume, not an environment variable. `envFrom.secretRef.optional` and
 `env.valueFrom.secretKeyRef.optional` also let the pod start, but environment variables are resolved
 once at container start, so neither the first write nor a later rotation reaches a running container.
-A mounted volume is refreshed by the kubelet and covers both. Do not mount it through `subPath`, which
-is resolved once and receives no later updates.
+A mounted volume is refreshed by the kubelet and covers both. Keep the
+[mounting layout described above](#mounting-credentials-in-the-application-container) so the client
+can discover it.
 
 `optional` governs pod startup only. The application still has to tolerate an absent file at startup
 and read it once it appears, rather than resolving its datasource during initialization.
