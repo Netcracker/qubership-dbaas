@@ -1,3 +1,3 @@
 module github.com/netcracker/qubership-dbaas/test-apps/dbaas-agent-stub
 
-go 1.27.0
+go 1.27.1
