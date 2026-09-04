@@ -48,6 +48,7 @@ public class DeclarativeIT extends AbstractIT {
         helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     public void postgresTestDatabaseCreatedAndConnecting() throws IOException, SQLException {
         helperV3.createServicesRoles(POSTGRES_TYPE);
@@ -59,6 +60,7 @@ public class DeclarativeIT extends AbstractIT {
         helperV3.checkConnectionPostgres(created_1);
     }
 
+    @Tag("mongodb")
     @Test
     public void mongoTestDatabaseCreatedAndConnecting() throws IOException {
         Assumptions.assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
@@ -71,6 +73,7 @@ public class DeclarativeIT extends AbstractIT {
         helperV3.checkConnectionMongo(created_1);
     }
 
+    @Tag("cassandra")
     @Test
     public void cassandraTestDatabaseCreatedAndConnecting() throws IOException {
         Assumptions.assumeTrue(helperV3.hasAdapterOfType(CASSANDRA_TYPE), "No cassandra adapter. Skip test.");
@@ -83,6 +86,7 @@ public class DeclarativeIT extends AbstractIT {
         helperV3.checkConnectionCassandra(created_1, "test", "test");
     }
 
+    @Tag("postgresql")
     @Test
     void getAccessGrantsTest() {
         ServiceRole rwServiceRole = new ServiceRole();
@@ -106,6 +110,7 @@ public class DeclarativeIT extends AbstractIT {
         helperV3.getAccessRoles(TEST_NAMESPACE, "wrong-service", 404);
     }
 
+    @Tag("postgresql")
     @Test
     void testDeclarativeConfigurationOnlyDbCreateRequest() throws IOException, InterruptedException {
         Map<String, Object> classifier = new HashMap<>();
@@ -132,6 +137,7 @@ public class DeclarativeIT extends AbstractIT {
         helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), classifier, TEST_NAMESPACE, POSTGRES_TYPE, 200);
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("Smoke")
     void testDeclarativeConfigurationCompositeRequest() throws IOException, InterruptedException {
@@ -164,6 +170,7 @@ public class DeclarativeIT extends AbstractIT {
         helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), classifier, TEST_NAMESPACE, POSTGRES_TYPE, 200);
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("backup")
     void testDeclarativeCloneDatabaseRequest() throws IOException, InterruptedException, SQLException {
@@ -209,6 +216,7 @@ public class DeclarativeIT extends AbstractIT {
         checkDatabaseDoesNotHaveValue(firstService, "test2");
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("backup")
     void testDeclarativeCloneDatabaseRequestWithSourceInDeclaration() throws IOException, InterruptedException, SQLException {
@@ -270,6 +278,7 @@ public class DeclarativeIT extends AbstractIT {
         }
     }
 
+    @Tag("postgresql")
     @Test
     void testDeclarativeConfigurationWrongConfigKind() throws IOException {
         Map<String, Object> classifier = new HashMap<>();

@@ -52,6 +52,7 @@ class DeclarationsV1IT extends AbstractIT {
         helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     @Tag("backup")
     void testApplyConfig() throws IOException, SQLException {

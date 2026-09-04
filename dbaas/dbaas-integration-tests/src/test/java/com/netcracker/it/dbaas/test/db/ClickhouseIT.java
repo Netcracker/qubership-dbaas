@@ -6,6 +6,7 @@ import com.netcracker.it.dbaas.test.AbstractIT;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
+@Tag("clickhouse")
 public class ClickhouseIT extends AbstractIT {
     @BeforeEach
     public void initHelper() throws IOException {

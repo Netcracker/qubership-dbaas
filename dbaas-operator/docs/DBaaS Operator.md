@@ -27,6 +27,7 @@
     - [Permission Reference](#permission-reference)
   - [Secret Access (Namespaced)](#secret-access-namespaced)
 - [Custom Resources](#custom-resources)
+  - [Retired NamespaceBinding Model](#retired-namespacebinding-model)
   - [Common Status Model](#common-status-model)
   - [ExternalDatabase](#externaldatabase)
     - [Resource Fields](#externaldatabase-resource-fields)
@@ -64,8 +65,10 @@
   - [Startup Flags](#startup-flags)
   - [Reconcile Backoff](#reconcile-backoff)
 
-**Related documents:** [DBaaS Operator Metrics](../monitoring/DBaaS%20Operator%20Metrics.md) ·
-[Migrating declarations from Core Operator](migrate-declarations-from-core-operator.md)
+**Related documents:** [Onboarding a service](howto/onboarding.md) ·
+[DBaaS Operator Metrics](monitoring/DBaaS%20Operator%20Metrics.md) ·
+[Migrating declarations from Core Operator](howto/migrate-declarations-from-core-operator.md) ·
+[Migrating from the retired NamespaceBinding model](howto/migrate-from-namespacebinding.md)
 ---
 
 ## Overview
@@ -502,17 +505,17 @@ The chart renders the RBAC objects from the templates below. They are the single
 source of truth and are intentionally **not** reproduced inline here (so this doc
 never drifts from the code):
 
-- [`ClusterRole.yaml`](../../helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas
+- [`ClusterRole.yaml`](../helm-templates/dbaas-operator/templates/ClusterRole.yaml) — cluster-wide access to dbaas
   CRs and Event recording when enabled (no `secrets`)
-- [`ClusterRoleBinding.yaml`](../../helm-templates/dbaas-operator/templates/ClusterRoleBinding.yaml) — binds the
+- [`ClusterRoleBinding.yaml`](../helm-templates/dbaas-operator/templates/ClusterRoleBinding.yaml) — binds the
   `ClusterRole` to the `ServiceAccount`
-- [`Role.yaml`](../../helm-templates/dbaas-operator/templates/Role.yaml) — operator-namespace-only access for
+- [`Role.yaml`](../helm-templates/dbaas-operator/templates/Role.yaml) — operator-namespace-only access for
   leader-election leases and Events
-- [`RoleBinding.yaml`](../../helm-templates/dbaas-operator/templates/RoleBinding.yaml) — binds the `Role` to the
+- [`RoleBinding.yaml`](../helm-templates/dbaas-operator/templates/RoleBinding.yaml) — binds the `Role` to the
   `ServiceAccount`
 
 The Helm RBAC templates are **hand-maintained**: `make manifests` regenerates only
-[`config/rbac/role.yaml`](../../config/rbac/role.yaml) from the controllers' `+kubebuilder:rbac`
+[`config/rbac/role.yaml`](../config/rbac/role.yaml) from the controllers' `+kubebuilder:rbac`
 markers, and `make sync-helm-crds` regenerates only the CRD templates. Keep the chart
 templates in step with `config/rbac/role.yaml` by hand when the markers change.
 
@@ -608,7 +611,7 @@ Secret access is granted **per namespace** by a `Role` + `RoleBinding`:
   leader-election leases, Events, and balancing-rule CRs do not require Secret access.
 
 A ready-to-apply `Role` + `RoleBinding` bundle for one namespace is in
-[`config/samples/namespaced-secret-rbac.yaml`](../../config/samples/namespaced-secret-rbac.yaml). Apply it for each
+[`config/samples/namespaced-secret-rbac.yaml`](../config/samples/namespaced-secret-rbac.yaml). Apply it for each
 namespace the operator manages.
 
 ---
@@ -633,14 +636,12 @@ All managed CR kinds require immutable `spec.operatorNamespace`. The operator re
 a CR only when that value equals its `CLOUD_NAMESPACE`; otherwise it leaves the resource untouched.
 Change the assignment by deleting and recreating the CR.
 
-### Installation and the retired NamespaceBinding model
+### Retired NamespaceBinding Model
 
-This operator ships no automated upgrade from the retired `NamespaceBinding` model. It assumes
-either a greenfield install or GitOps-managed manifests: the assignment is carried declaratively by
-each CR's `spec.operatorNamespace`, so a GitOps tool applies the field and prunes the old
-`NamespaceBinding` objects during a normal sync. A cluster that still runs live `NamespaceBinding`
-resources needs its own migration before adopting this chart, because `spec.operatorNamespace` is
-required and immutable once set.
+Version 6.15.0 removes the `NamespaceBinding` CR that used to carry the operator assignment for a whole namespace.
+Every managed CR now declares its own `spec.operatorNamespace` instead. A cluster with live `NamespaceBinding`
+objects needs a manual migration before it moves to 6.15.0 — see
+[Migrating from the Retired NamespaceBinding Model](howto/migrate-from-namespacebinding.md).
 
 ### Common Status Model
 
@@ -2279,14 +2280,14 @@ or leaves them unset:
 | `HPA_MAX_REPLICAS` | integer | — | Maximum number of replicas for HPA. |
 | `HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT` | integer | — | Target average CPU utilization (%) for HPA scale decisions. |
 
-See [`values.schema.json`](../../helm-templates/dbaas-operator/values.schema.json) for the full set of chart
+See [`values.schema.json`](../helm-templates/dbaas-operator/values.schema.json) for the full set of chart
 values, including the topology, deployment-strategy, and `HPA_SCALING_*` knobs not listed above.
 
 ### Ports and Probes
 
 | Port | Container port name | Serves |
 |------|---------------------|--------|
-| `8080` | `metrics` | Prometheus `/metrics` (plain HTTP, no auth) — see [DBaaS Operator Metrics](../monitoring/DBaaS%20Operator%20Metrics.md) |
+| `8080` | `metrics` | Prometheus `/metrics` (plain HTTP, no auth) — see [DBaaS Operator Metrics](monitoring/DBaaS%20Operator%20Metrics.md) |
 | `8081` | `web` | Health probes: liveness `GET /healthz`, readiness `GET /readyz` |
 
 The liveness probe starts after `LIVENESS_PROBE_INITIAL_DELAY_SECONDS` (default `15`) and runs every 20 s; the

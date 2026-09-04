@@ -11,6 +11,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
+@Tag("postgresql")
 public class TLSAdapterIT extends AbstractIT {
 
     private final String HTTPS = "https";

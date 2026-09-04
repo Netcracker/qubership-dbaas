@@ -1,31 +1,29 @@
 module github.com/netcracker/qubership-dbaas/test-apps/go-test-app-service
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.0
-	// TODO: Replace this pseudo-version with v4.5.1 when available.
-	// Source fix: Netcracker/qubership-core-lib-go-dbaas-postgres-client#106.
-	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.1-0.20260825141241-527964b4d879
-	github.com/netcracker/qubership-core-lib-go/v3 v3.13.5
+	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.1
+	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.1
+	github.com/netcracker/qubership-core-lib-go/v3 v3.14.0
 	github.com/uptrace/bun v1.2.18
 )
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/go-pkgz/expirable-cache/v3 v3.1.0 // indirect
+	github.com/go-pkgz/expirable-cache/v3 v3.1.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
-	github.com/knadh/koanf/maps v0.1.2 // indirect
-	github.com/knadh/koanf/parsers/yaml v1.1.0 // indirect
-	github.com/knadh/koanf/providers/env/v2 v2.0.0 // indirect
+	github.com/knadh/koanf/maps v0.1.3 // indirect
+	github.com/knadh/koanf/parsers/yaml v1.1.1 // indirect
+	github.com/knadh/koanf/providers/env/v2 v2.0.1 // indirect
 	github.com/knadh/koanf/providers/file v1.2.1 // indirect
-	github.com/knadh/koanf/v2 v2.3.5 // indirect
+	github.com/knadh/koanf/v2 v2.3.6 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -39,4 +37,5 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

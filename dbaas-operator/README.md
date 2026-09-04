@@ -2,7 +2,10 @@
 
 `dbaas-operator` integrates Kubernetes with DBaaS by reconciling a family of custom resources that describe databases, credentials, access policies, and physical-database balancing rules, and driving them through dbaas-aggregator. It lets workloads declare and consume databases the Kubernetes-native way, and keeps `DatabaseSecretClaim` secrets in sync as credentials rotate.
 
-> **Full reference:** see **[docs/howto/DBaaS Operator.md](docs/howto/DBaaS%20Operator.md)** for the complete design, status/condition reference, RBAC, authentication, and credential-rotation details. For a local kind environment see **[dev/README.md](dev/README.md)**.
+> **Onboarding a service:** see **[docs/howto/onboarding.md](docs/howto/onboarding.md)** for the migration
+> paths available to a service adopting the operator, automated and manual.
+>
+> **Full reference:** see **[docs/DBaaS Operator.md](docs/DBaaS%20Operator.md)** for the complete design, status/condition reference, RBAC, authentication, and credential-rotation details. For a local kind environment see **[dev/README.md](dev/README.md)**.
 
 ## Custom Resources
 
@@ -29,7 +32,7 @@ The operator authenticates to dbaas-aggregator in one of two modes, selected by 
 - `false` (default) — HTTP Basic Auth, using the `dbaas-operator` entry of `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security`;
 - `true` — a Kubernetes projected service-account token (Bearer / M2M).
 
-Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](docs/howto/DBaaS%20Operator.md#configuration-parameters) for the full list.
+Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](docs/DBaaS%20Operator.md#configuration-parameters) for the full list.
 
 ## Getting Started
 

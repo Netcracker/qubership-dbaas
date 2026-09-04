@@ -31,6 +31,7 @@ import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.postgresql.util.PSQLException;
 
@@ -64,6 +65,7 @@ public class MultiusersIT extends AbstractIT {
         helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE);
     }
 
+    @Tag("postgresql")
     @Test
     void postgresTestDatabaseCreatedAndConnecting() throws IOException {
         Assumptions.assumeTrue(isAdapterSupportMultiusersFeature(POSTGRES_TYPE), "Postgres adapter is not support multiusers feature. Skip test.");
@@ -85,6 +87,7 @@ public class MultiusersIT extends AbstractIT {
 
     }
 
+    @Tag("mongodb")
     @Test
     void mongoTestDatabaseCreatedAndConnecting() throws IOException {
         Assumptions.assumeTrue(isAdapterSupportMultiusersFeature(MONGODB_TYPE), "No adapter found with supported multiusers feature. Skip test.");
@@ -116,6 +119,7 @@ public class MultiusersIT extends AbstractIT {
 
     }
 
+    @Tag("cassandra")
     @Test
     void cassandraTestDatabaseCreatedAndConnecting() throws IOException {
         Assumptions.assumeTrue(isAdapterSupportMultiusersFeature(CASSANDRA_TYPE), "No adapter found with supported multiusers feature. Skip test.");
@@ -147,6 +151,7 @@ public class MultiusersIT extends AbstractIT {
 
     }
 
+    @Tag("clickhouse")
     @Test
     void clickhouseTestDatabaseCreatedAndConnecting() throws IOException, SQLException {
         Assumptions.assumeTrue(isAdapterSupportMultiusersFeature(CLICKHOUSE_TYPE), "No adapter found with supported multiusers feature. Skip test.");
@@ -177,6 +182,7 @@ public class MultiusersIT extends AbstractIT {
                 403);
     }
 
+    @Tag("arangodb")
     @Test
     void arangoTestDatabaseCreatedAndConnecting() throws IOException {
         Assumptions.assumeTrue(isAdapterSupportMultiusersFeature(ARANGODB_TYPE), "No adapter found with supported multiusers feature. Skip test.");

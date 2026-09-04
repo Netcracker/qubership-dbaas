@@ -43,6 +43,8 @@ public class RedisBackupIT extends AbstractIT {
     }
 
 
+    @Tag("redis")
+    @Tag("postgresql")
     @Test
     public void testCollectWithoutIgnoreNotBackupableDatabases() throws IOException {
         log.info("check backup procedure without ignoreNotBackupableDatabases flag");
@@ -57,6 +59,8 @@ public class RedisBackupIT extends AbstractIT {
         }
     }
 
+    @Tag("redis")
+    @Tag("postgresql")
     @Test
     public void testCollectWithIgnoreNotBackupableDatabases() throws IOException {
         log.info("Check backup procedure with ignoreNotBackupableDatabases flag");
