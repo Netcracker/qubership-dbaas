@@ -42,9 +42,6 @@ import (
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
 
-// pollRequeueAfter is the interval between polls of an in-progress async operation.
-const pollRequeueAfter = 5 * time.Second
-
 // InternalDatabaseReconciler reconciles InternalDatabase objects.
 //
 // The reconcile loop has two branches:
@@ -65,6 +62,7 @@ type InternalDatabaseReconciler struct {
 	// submitted (HTTP 202), keyed by "namespace/name". Consumed when the
 	// operation reaches a terminal state (COMPLETED, FAILED, TERMINATED).
 	asyncStartTimes map[string]time.Time
+	pollBackoff     pollBackoffTracker
 }
 
 func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -75,6 +73,7 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if apierrors.IsNotFound(err) {
 			key := req.Namespace + "/" + req.Name
 			r.clearAsyncStart(key)
+			r.pollBackoff.forget(req.NamespacedName)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -84,6 +83,7 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if !isEligibleForOperator(ctx, dd.Spec.OperatorNamespace, r.MyNamespace,
 		dd.Namespace, dd.Name, "InternalDatabase") {
 		r.clearAsyncStart(key)
+		r.pollBackoff.forget(req.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
@@ -132,6 +132,7 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 	dd.Status.Phase = dbaasv1.PhaseProcessing
 
 	if msg := validateInternalDatabaseSpec(dd); msg != "" {
+		r.pollBackoff.forgetObject(dd)
 		return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 	}
 
@@ -142,7 +143,11 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 	recordAggregatorCall(controllerIDB, operationApplyConfig, aggStart, err)
 	if err != nil {
 		log.ErrorC(ctx, "failed to apply InternalDatabase to dbaas-aggregator: %v", err)
-		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		if callErr == nil {
+			r.pollBackoff.forgetObject(dd)
+		}
+		return result, callErr
 	}
 
 	if resp.TrackingID != "" {
@@ -155,11 +160,12 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 		}
 		r.asyncStartTimes[ddKey] = time.Now()
 		r.asyncStartMu.Unlock()
+		r.pollBackoff.forgetObject(dd)
 		markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s, requestId=%s)",
 			resp.TrackingID, requestID)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(dd), nil
 	}
 
 	// HTTP 200 OK — synchronous completion.
@@ -167,13 +173,18 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 	pending, err := r.materializeTenantDatabaseIfPinned(ctx, dd)
 	if err != nil {
 		log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
-		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		if callErr == nil {
+			r.pollBackoff.forgetObject(dd)
+		}
+		return result, callErr
 	}
 	if pending {
 		log.InfoC(ctx, "tenant database creation accepted, not ready yet; will retry")
 		markTenantMaterializationPending(dd)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(dd), nil
 	}
+	r.pollBackoff.forgetObject(dd)
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 		"database provisioned synchronously (microserviceName=%s)",
@@ -441,8 +452,12 @@ func (r *InternalDatabaseReconciler) handlePollError(
 ) (ctrl.Result, error) {
 	var requestContextErr *aggregatorclient.RequestContextError
 	if errors.As(err, &requestContextErr) {
-		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+		result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			r.Recorder, dd, err, requestID)
+		if callErr == nil {
+			r.pollBackoff.forgetObject(dd)
+		}
+		return result, callErr
 	}
 
 	var aggErr *aggregatorclient.AggregatorError
@@ -463,6 +478,7 @@ func (r *InternalDatabaseReconciler) handlePollError(
 			log.InfoC(ctx, "trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
 			r.clearAsyncStart(dd.Namespace + "/" + dd.Name)
 			clearPendingOperation(dd)
+			r.pollBackoff.forgetObject(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
 			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
@@ -495,16 +511,21 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		log.InfoC(ctx, "database provisioned. trackingId = %v, microserviceName = %v",
 			trackingID, dd.Spec.Classifier.MicroserviceName)
 		clearPendingOperation(dd)
+		r.pollBackoff.forgetObject(dd)
 		r.observeAsyncCompletion(dd, resultSuccess)
 		pending, err := r.materializeTenantDatabaseIfPinned(ctx, dd)
 		if err != nil {
 			log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
-			return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+			result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+			if callErr == nil {
+				r.pollBackoff.forgetObject(dd)
+			}
+			return result, callErr
 		}
 		if pending {
 			log.InfoC(ctx, "tenant database creation accepted, not ready yet; will retry")
 			markTenantMaterializationPending(dd)
-			return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+			return r.pollBackoff.schedule(dd), nil
 		}
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
@@ -517,6 +538,7 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		log.InfoC(ctx, "database provisioning failed trackingId=%v status=%v reason=%v",
 			trackingID, resp.Status, reason)
 		clearPendingOperation(dd)
+		r.pollBackoff.forgetObject(dd)
 		r.observeAsyncCompletion(dd, asyncResultFailed)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonAggregatorRejected, reason)
@@ -531,12 +553,13 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		// Clear the stale trackingID so the next reconcile enters the SUBMIT branch.
 		log.InfoC(ctx, "provisioning was terminated, clearing trackingId for resubmit trackingId=%v", trackingID)
 		clearPendingOperation(dd)
+		r.pollBackoff.forgetObject(dd)
 		r.observeAsyncCompletion(dd, asyncResultTerminated)
 		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonOperationTerminated, "provisioning was terminated by the aggregator, resubmitting")
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonOperationTerminated,
 			"provisioning terminated (trackingId=%s, requestId=%s), resubmitting", trackingID, requestID)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(dd), nil
 
 	default: // IN_PROGRESS, NOT_STARTED — keep polling
 		log.DebugC(ctx, "provisioning still in progress status=%v trackingId=%v", resp.Status, trackingID)
@@ -544,7 +567,7 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 			setCondition(&dd.Status.Conditions, dd.Generation,
 				conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted, msg)
 		}
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(dd), nil
 	}
 }
 

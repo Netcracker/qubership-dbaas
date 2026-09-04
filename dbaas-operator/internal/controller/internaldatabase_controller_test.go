@@ -445,7 +445,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 			// First reconcile: async submit (202) — must NOT materialize yet.
 			dd, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(dd.Status.TrackingID).To(Equal("trk-1"))
 			Expect(createReqCount).To(Equal(0), "must not materialize before provisioning completes")
 
@@ -500,7 +500,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 
 			dd, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred(), "202 must not surface as a reconcile error")
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
 			Expect(dd.Status.TrackingID).To(BeEmpty(), "this endpoint returns no trackingId to poll")
 
@@ -512,12 +512,14 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse), "waiting is not a permanent failure")
 
-			// Without a trackingId the retry repeats the whole submit path.
+			// Without a trackingId the retry repeats the whole submit path, and the
+			// same backoff pair keeps advancing across the repeated 202 responses.
 			applyCountBefore := createReqCount
-			_, _, err = reconcileAndFetch()
+			dd, result, err = reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(createReqCount).To(Equal(applyCountBefore+1), "get-or-create must be retried")
 			Expect(capturedApplyBody).NotTo(BeEmpty(), "the idempotent apply is repeated too")
+			expectRequeueAfterStep(result, 1)
 
 			// Once the database is ready the CR converges.
 			createCode = http.StatusOK
@@ -538,17 +540,29 @@ var _ = Describe("InternalDatabase Controller", func() {
 			})).To(Succeed())
 
 			// First reconcile: async apply accepted, tracking stored, nothing materialized yet.
-			dd, _, err := reconcileAndFetch()
+			dd, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dd.Status.TrackingID).To(Equal("track-202"))
 			Expect(createReqCount).To(Equal(0))
+			expectRequeueAfterStep(result, 0)
 
-			// Second reconcile: the operation reports COMPLETED, materialization answers 202.
+			// Advance the async-poll backoff a couple more steps before the
+			// operation completes, to prove the tenant-materialization cycle
+			// below starts over rather than continuing from this step.
+			pollCode = http.StatusOK
+			pollBody = `{"status":"IN_PROGRESS"}`
+			for i := 0; i < 2; i++ {
+				dd, result, err = reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// Next reconcile: the operation reports COMPLETED, materialization answers 202.
+			// The old async-poll backoff must reset so tenant materialization starts at 5s.
 			pollCode = http.StatusOK
 			pollBody = statusCompleted
-			dd, result, err := reconcileAndFetch()
+			dd, result, err = reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
 			Expect(dd.Status.TrackingID).To(BeEmpty(), "the completed operation's tracking is cleared")
 			Expect(createReqCount).To(Equal(1))
@@ -744,7 +758,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
 			Expect(dd.Status.TrackingID).To(Equal("track-abc-123"))
 			Expect(dd.Status.PendingOperationGeneration).To(Equal(dd.Generation))
@@ -866,8 +880,10 @@ var _ = Describe("InternalDatabase Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			// Transient — requeues automatically.
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			// Transient — requeues automatically. TERMINATED resubmission starts a
+			// new cycle, so the old step-3 backoff resets to step 0 (5s) rather
+			// than continuing.
+			expectRequeueAfterStep(result, 0)
 			// BackingOff (not InvalidConfiguration) so the operator keeps retrying.
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			// trackingID cleared so the next reconcile enters the SUBMIT branch.
@@ -918,7 +934,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 			pollBody = `{"status":"IN_PROGRESS"}`
 			dd, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(capturedApplyBody).NotTo(BeEmpty(), "apply must be called on resubmit")
 			Expect(dd.Status.TrackingID).To(Equal("track-resubmit"))
 		})
@@ -947,7 +963,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 			dd, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
 			Expect(dd.Status.TrackingID).To(Equal("track-in-progress"))
 			Expect(dd.Status.ObservedGeneration).To(BeZero(),
@@ -955,6 +971,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 
 			expectNoRecordedEvent(fakeRecorder.Events)
 		})
+
 	})
 
 	// ── POLL — HTTP 404 ───────────────────────────────────────────────────────
@@ -1017,7 +1034,6 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dd.Status.TrackingID).To(Equal("track-unauth"),
 				"trackingId must be retained on 401 to resume polling after credentials are fixed")
-
 			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
 			Expect(ready.Reason).To(Equal(EventReasonUnauthorized))
 
@@ -1054,7 +1070,6 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(dd.Status.TrackingID).To(Equal("track-500"),
 				"trackingId must be retained on 5xx to resume polling after the aggregator recovers")
-
 			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
@@ -1254,6 +1269,7 @@ var _ = Describe("InternalDatabase Controller", func() {
 			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeNormal, EventReasonDatabaseProvisioned)
 			expectNoRecordedEvent(fakeRecorder.Events)
 		})
+
 	})
 })
 
