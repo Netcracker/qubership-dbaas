@@ -28,6 +28,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
+	github.com/rogpeppe/go-internal v1.15.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18 // indirect
 	github.com/viney-shih/go-lock v1.1.2 // indirect
