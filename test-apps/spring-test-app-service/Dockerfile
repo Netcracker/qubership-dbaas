@@ -1,7 +1,7 @@
 # Same Java base image as dbaas-aggregator (see dbaas/Dockerfile). The jar is built by the CI
 # Maven step (which carries GitHub Packages credentials for the dbaas-client snapshot) and copied
 # in here.
-FROM ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.4.1@sha256:c33b9a91364471981f577ce52410c6d376bd3b503276b9612294a0450fe55d51
+FROM ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.4.2@sha256:a2b0e7ed969e2c18f0c650a2e3b4a42f02ae1a9965888a8b3d24daa20626a356
 LABEL maintainer="qubership"
 
 WORKDIR /app
