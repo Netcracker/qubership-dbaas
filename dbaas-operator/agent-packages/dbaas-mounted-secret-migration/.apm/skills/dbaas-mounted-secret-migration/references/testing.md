@@ -3,6 +3,17 @@
 Use layered tests. A mounted static Secret test proves only the application-side client contract;
 it does not prove that either CR is valid or that the operator creates the Secret.
 
+The generation and mount steps are owned by `scripts/apply_migration.py` and are covered by the
+package's own fixtures under `tests/`. On every `--check` and `--apply` the runner validates the
+result in a temporary tree: a plain root is checked with `validate_generated.py` directly; a `helm`
+root is rendered with `helm template` (with deterministic values) and the rendered Kubernetes objects
+are checked -- `helm` must be on PATH or the run is blocked. `pilot/run_pilot.py` exercises the full
+`--check` -> `--apply` -> re-apply flow against a legacy chart fixture (or a real chart via
+`--chart`); `--validate-chart <chart> --inventory <inv.json> --operator-namespace <ns>` renders an
+already-migrated real chart and runs the rendered-manifest validator on it. The checks below are the
+remaining manual layers: manifest schema validation on a cluster, the mounted-client integration
+test, and the framework end-to-end matrix.
+
 ## Static transformation checks
 
 Use fixtures that cover at least:

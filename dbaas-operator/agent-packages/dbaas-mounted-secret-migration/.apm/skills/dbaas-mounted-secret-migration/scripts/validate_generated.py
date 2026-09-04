@@ -13,11 +13,8 @@ from typing import Any, Iterable
 
 try:
     import yaml
-except ImportError as exc:  # pragma: no cover - exercised only without the pinned dependency
-    raise SystemExit(
-        "PyYAML is required; install it in the execution environment before running "
-        "scripts/validate_generated.py"
-    ) from exc
+except ImportError:  # pragma: no cover - exercised only without the pinned dependency
+    yaml = None  # type: ignore[assignment]
 
 
 DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
@@ -80,9 +77,21 @@ def load_objects(paths: list[Path]) -> list[dict[str, Any]]:
     return objects
 
 
+# The effective namespace for a resource that omits metadata.namespace. A
+# namespace-less Helm chart is installed into (and its CRs land in) the release
+# namespace; ``validate`` sets this to the resolved workload namespace so those
+# resources still match claims generated in it.
+_DEFAULT_NAMESPACE = "default"
+
+
+def _ns(metadata: dict[str, Any]) -> str:
+    value = metadata.get("namespace")
+    return value if isinstance(value, str) and value else _DEFAULT_NAMESPACE
+
+
 def object_identity(obj: dict[str, Any]) -> str:
     metadata = obj.get("metadata") or {}
-    return f"{obj.get('kind', '<missing>')}/{metadata.get('namespace', 'default')}/{metadata.get('name', '<missing>')}"
+    return f"{obj.get('kind', '<missing>')}/{_ns(metadata)}/{metadata.get('name', '<missing>')}"
 
 
 def check_name(name: Any, what: str, errors: list[str]) -> None:
@@ -101,7 +110,7 @@ def effective_classifier(obj: dict[str, Any], errors: list[str]) -> dict[str, An
         return None
 
     metadata = obj.get("metadata") or {}
-    namespace = metadata.get("namespace", "default")
+    namespace = _ns(metadata)
     classifier = dict(classifier)
     classifier_namespace = classifier.get("namespace")
     if classifier_namespace not in (None, "", namespace):
@@ -196,7 +205,15 @@ def validate_inventory(
         errors.append(f"unexpected DatabaseSecretClaim identities: {describe_keys(extra_claims)}")
 
 
-def validate(paths: list[Path], inventory: Path | None, operator_namespace: str | None = None) -> list[str]:
+def validate(
+    paths: list[Path],
+    inventory: Path | None,
+    operator_namespace: str | None = None,
+    *,
+    default_namespace: str = "default",
+) -> list[str]:
+    global _DEFAULT_NAMESPACE
+    _DEFAULT_NAMESPACE = default_namespace or "default"
     errors: list[str] = []
     objects = load_objects(paths)
     seen_objects: set[str] = set()
@@ -263,7 +280,7 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
         claims[key] = obj
         secret_name = spec.get("secretName")
         check_name(secret_name, f"{identity} spec.secretName", errors)
-        namespace = metadata.get("namespace", "default")
+        namespace = _ns(metadata)
         secret_key = (namespace, secret_name)
         if secret_key in secret_claims:
             errors.append(f"{identity}: Secret {namespace}/{secret_name} is also claimed by {secret_claims[secret_key]}")
@@ -279,7 +296,7 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
         if obj.get("kind") not in WORKLOAD_KINDS:
             continue
         metadata = obj.get("metadata") or {}
-        namespace = metadata.get("namespace", "default")
+        namespace = _ns(metadata)
         pod_spec = (((obj.get("spec") or {}).get("template") or {}).get("spec") or {})
         volume_secrets: dict[str, str] = {}
         seen_volume_names: set[str] = set()
@@ -336,6 +353,9 @@ def main() -> int:
         help="If set, assert every managed CR's spec.operatorNamespace equals this value",
     )
     args = parser.parse_args()
+    if yaml is None:
+        print("error: PyYAML is required; install it and re-run", file=sys.stderr)
+        return 2
     try:
         errors = validate(args.manifests, args.inventory, args.operator_namespace)
     except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
