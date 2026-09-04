@@ -27,6 +27,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -72,6 +73,19 @@ public class QuarkusTestAppServiceIT {
     private static final String SECRET_TENANT = "quarkus-test-app-service-postgres-tenant";
     private static final String SECRET_TENANT_ADMIN = "quarkus-test-app-service-postgres-tenant-admin";
 
+    /**
+     * Ready reasons that all mean the claim is healthy. The reason reports the latest reconciliation
+     * outcome rather than a permanent creation marker, so a claim whose credential was rotated
+     * between passes reports SecretRotated or SecretUpToDate while being exactly as ready as one
+     * reporting SecretCreated. Requiring a single reason would tie the test to reconciliation
+     * history instead of current readiness.
+     */
+    private static final Set<String> SUCCESSFUL_SECRET_READY_REASONS =
+            Set.of("SecretCreated", "SecretRotated", "SecretUpToDate");
+
+    /** An InternalDatabase has only one successful Ready reason, so its check stays exact. */
+    private static final Set<String> DATABASE_PROVISIONED_REASONS = Set.of("DatabaseProvisioned");
+
     private static final CustomResourceDefinitionContext CRD_INTERNAL_DATABASE =
             new CustomResourceDefinitionContext.Builder()
                     .withGroup("dbaas.netcracker.com")
@@ -104,12 +118,12 @@ public class QuarkusTestAppServiceIT {
         namespace = getRequiredPropertyOrEnv("clouds.cloud.namespaces.namespace");
         kubernetesClient = new KubernetesClientBuilder().build();
 
-        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_SERVICE, "Succeeded", "True", "DatabaseProvisioned", "False");
-        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_TENANT, "Succeeded", "True", "DatabaseProvisioned", "False");
-        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE, "Succeeded", "True", "SecretCreated", "False");
-        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE_ADMIN, "Succeeded", "True", "SecretCreated", "False");
-        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT, "Succeeded", "True", "SecretCreated", "False");
-        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT_ADMIN, "Succeeded", "True", "SecretCreated", "False");
+        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_SERVICE, "Succeeded", "True", DATABASE_PROVISIONED_REASONS, "False");
+        waitForDesiredState(CRD_INTERNAL_DATABASE, INTERNAL_DB_TENANT, "Succeeded", "True", DATABASE_PROVISIONED_REASONS, "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE, "Succeeded", "True", SUCCESSFUL_SECRET_READY_REASONS, "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_SERVICE_ADMIN, "Succeeded", "True", SUCCESSFUL_SECRET_READY_REASONS, "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT, "Succeeded", "True", SUCCESSFUL_SECRET_READY_REASONS, "False");
+        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, CLAIM_TENANT_ADMIN, "Succeeded", "True", SUCCESSFUL_SECRET_READY_REASONS, "False");
 
         assertSecret(waitForSecret(SECRET_SERVICE), "service", null, null);
         assertSecret(waitForSecret(SECRET_SERVICE_ADMIN), "service", null, ADMIN_ROLE);
@@ -316,19 +330,19 @@ public class QuarkusTestAppServiceIT {
 
     private static GenericKubernetesResource waitForDesiredState(CustomResourceDefinitionContext crd, String name,
                                                                  String desiredPhase, String desiredReadiness,
-                                                                 String desiredReadyReason, String desiredStalling) {
+                                                                 Set<String> desiredReadyReasons, String desiredStalling) {
         var resource = kubernetesClient.genericKubernetesResources(crd).inNamespace(namespace).withName(name);
-        resource.waitUntilCondition(r -> isDesiredState(r, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling),
+        resource.waitUntilCondition(r -> isDesiredState(r, desiredPhase, desiredReadiness, desiredReadyReasons, desiredStalling),
                 3, TimeUnit.MINUTES);
         GenericKubernetesResource result = resource.get();
         assertNotNull(result, "CR must exist: " + name);
-        assertDesiredState(result, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling);
+        assertDesiredState(result, desiredPhase, desiredReadiness, desiredReadyReasons, desiredStalling);
         return result;
     }
 
     @SuppressWarnings("unchecked")
     private static boolean isDesiredState(GenericKubernetesResource cr, String desiredPhase, String desiredReadiness,
-                                          String desiredReadyReason, String desiredStalling) {
+                                          Set<String> desiredReadyReasons, String desiredStalling) {
         if (cr == null || cr.getAdditionalProperties() == null) {
             return false;
         }
@@ -338,20 +352,22 @@ public class QuarkusTestAppServiceIT {
         }
         Map<String, Map<String, Object>> conditions = conditionMap(status);
         return desiredReadiness.equals(conditionValue(conditions, "Ready", "status"))
-                && desiredReadyReason.equals(conditionValue(conditions, "Ready", "reason"))
+                && desiredReadyReasons.contains(conditionValue(conditions, "Ready", "reason"))
                 && desiredStalling.equals(conditionValue(conditions, "Stalled", "status"));
     }
 
     @SuppressWarnings("unchecked")
     private static void assertDesiredState(GenericKubernetesResource cr, String desiredPhase, String desiredReadiness,
-                                           String desiredReadyReason, String desiredStalling) {
+                                           Set<String> desiredReadyReasons, String desiredStalling) {
         Map<String, Object> status = (Map<String, Object>) cr.getAdditionalProperties().get("status");
         assertNotNull(status, "status must not be null");
         assertEquals(desiredPhase, status.get("phase"), "unexpected CR phase");
 
         Map<String, Map<String, Object>> conditions = conditionMap(status);
         assertEquals(desiredReadiness, conditionValue(conditions, "Ready", "status"), "unexpected Ready status");
-        assertEquals(desiredReadyReason, conditionValue(conditions, "Ready", "reason"), "unexpected Ready reason");
+        String readyReason = conditionValue(conditions, "Ready", "reason");
+        assertTrue(desiredReadyReasons.contains(readyReason),
+                "unexpected Ready reason: " + readyReason + ", expected one of " + desiredReadyReasons);
         assertEquals(desiredStalling, conditionValue(conditions, "Stalled", "status"), "unexpected Stalled status");
     }
 

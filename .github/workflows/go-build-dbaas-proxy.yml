@@ -1,0 +1,42 @@
+name: DBaaS Proxy Build
+
+run-name: >
+  Build DBaaS Proxy -
+  ${{ github.event_name == 'push' && format('push [{0}]', github.event.head_commit.message) || '' }}
+  ${{ github.event_name == 'pull_request' && format('PR ({0}) [{1}]', github.head_ref, github.event.pull_request.title) || '' }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'test-apps/dbaas-proxy/**'
+      - '.github/workflows/go-build-dbaas-proxy.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'test-apps/dbaas-proxy/**'
+      - '.github/workflows/go-build-dbaas-proxy.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test dbaas-proxy
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    # Build/test only, matching go-build-sample-service.yml: the image is built in-job by the
+    # integration-tests workflow and loaded into kind, so nothing is published from here.
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@e8322e6ee168795edec1d103e289b3fe3ceb805d # v2.6.0
+    with:
+      skip-docker: true
+      go-module-dir: 'test-apps/dbaas-proxy'
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
