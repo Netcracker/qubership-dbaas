@@ -172,6 +172,7 @@ public class DeclarativeDbaasCreationService {
         databaseConfigFromDb.setLazy(newDatabaseConfig.getLazy());
         databaseConfigFromDb.setSettings(newDatabaseConfig.getSettings());
         databaseConfigFromDb.setNamePrefix(newDatabaseConfig.getNamePrefix());
+        databaseConfigFromDb.setPhysicalDatabaseId(newDatabaseConfig.getPhysicalDatabaseId());
         databaseConfigFromDb.setVersioningType(newDatabaseConfig.getVersioningType());
         databaseConfigFromDb.setVersioningApproach(newDatabaseConfig.getVersioningApproach());
         databaseConfigFromDb.setInstantiationApproach(newDatabaseConfig.getInstantiationApproach());

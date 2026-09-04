@@ -232,6 +232,9 @@ func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx conte
 	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantID == "" {
 		return false, nil
 	}
+	// physicalDatabaseId is not sent here: the declarative apply above has already persisted it on the
+	// declaration, and the aggregator's get-or-create rebuilds this request from that stored declaration
+	// (AggregatedDatabaseAdministrationService), so any value passed on the request would be overwritten.
 	req := &aggregatorclient.CreateDatabaseRequest{
 		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(dd.Spec.Classifier, dd.Namespace)),
 		Type:          dd.Spec.Type,
@@ -277,10 +280,11 @@ func toWireSpec(spec dbaasv1.InternalDatabaseSpec, namespace string) aggregatorc
 		ClassifierConfig: aggregatorclient.ClassifierConfigWire{
 			Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(spec.Classifier, namespace)),
 		},
-		Type:       spec.Type,
-		Lazy:       spec.Lazy,
-		Settings:   spec.Settings,
-		NamePrefix: spec.NamePrefix,
+		Type:               spec.Type,
+		Lazy:               spec.Lazy,
+		Settings:           spec.Settings,
+		NamePrefix:         spec.NamePrefix,
+		PhysicalDatabaseID: spec.PhysicalDatabaseID,
 	}
 	if spec.VersioningConfig != nil {
 		wire.VersioningConfig = &aggregatorclient.VersioningConfigWire{

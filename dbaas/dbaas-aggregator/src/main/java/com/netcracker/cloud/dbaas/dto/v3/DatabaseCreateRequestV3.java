@@ -31,6 +31,7 @@ public class DatabaseCreateRequestV3 extends AbstractDatabaseCreateRequest imple
         super.setBackupDisabled(false);
         super.setSettings(databaseDeclarativeConfig.getSettings());
         super.setNamePrefix(databaseDeclarativeConfig.getNamePrefix());
+        super.setPhysicalDatabaseId(databaseDeclarativeConfig.getPhysicalDatabaseId());
         this.originService = originService;
         this.userRole = userRole;
     }
