@@ -50,10 +50,7 @@ type Classifier struct {
 	// +kubebuilder:validation:MinLength=1
 	MicroserviceName string `json:"microserviceName"`
 
-	// scope selects how dbaas-aggregator resolves the database's identity:
-	// "service" for a database shared by every instance of the microservice in
-	// its namespace, or "tenant" for one partitioned by tenantId. These are the
-	// only accepted values.
+	// scope is the classifier scope: "service" or "tenant".
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=service;tenant
 	Scope string `json:"scope"`

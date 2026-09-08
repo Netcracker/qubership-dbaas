@@ -186,16 +186,6 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 		return res, true, err
 	}
 
-	// scope must be one of the accepted classifier scopes. The CRD enum blocks
-	// this at admission; the re-check covers objects admitted before the enum.
-	if !dbaasv1.ScopeIsValid(s.Spec.Classifier.Scope) {
-		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
-			r.Recorder, s,
-			fmt.Sprintf("spec.classifier.scope %q must be %q or %q",
-				s.Spec.Classifier.Scope, dbaasv1.ScopeService, dbaasv1.ScopeTenant))
-		return res, true, err
-	}
-
 	if s.Labels["app.kubernetes.io/name"] == "" {
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,

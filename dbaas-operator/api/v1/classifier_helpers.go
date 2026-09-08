@@ -110,25 +110,6 @@ var reservedClassifierKeys = map[string]struct{}{
 	"customKeys":       {},
 }
 
-// Accepted classifier scopes. The scope decides how dbaas-aggregator resolves a
-// database's identity: a ScopeService database is shared by every instance of the
-// microservice in its namespace, while a ScopeTenant database is partitioned by
-// tenantId. These mirror the aggregator's SCOPE_VALUE_SERVICE and
-// SCOPE_VALUE_TENANT constants.
-const (
-	ScopeService = "service"
-	ScopeTenant  = "tenant"
-)
-
-// ScopeIsValid reports whether scope is one of the accepted classifier scopes,
-// ScopeService or ScopeTenant. The CRD schema enforces the same set with an enum;
-// the controllers re-check it as a backstop for objects admitted before the enum
-// existed, so a stale value fails as InvalidConfiguration with a clear message
-// instead of an opaque aggregator rejection.
-func ScopeIsValid(scope string) bool {
-	return scope == ScopeService || scope == ScopeTenant
-}
-
 // ReservedExtraKeys returns, sorted, any extraKeys entries whose names collide
 // with the typed classifier fields. ClassifierFlatMap already ignores such
 // entries (the typed field wins), but a collision is always a spec mistake —

@@ -367,13 +367,6 @@ func validateInternalDatabaseSpec(dd *dbaasv1.InternalDatabase) string {
 			reserved)
 	}
 
-	// scope must be one of the accepted classifier scopes. The CRD enum blocks
-	// this at admission; the re-check covers objects admitted before the enum.
-	if !dbaasv1.ScopeIsValid(dd.Spec.Classifier.Scope) {
-		return fmt.Sprintf("spec.classifier.scope %q must be %q or %q",
-			dd.Spec.Classifier.Scope, dbaasv1.ScopeService, dbaasv1.ScopeTenant)
-	}
-
 	if dd.Spec.Lazy &&
 		dd.Spec.InitialInstantiation != nil &&
 		dd.Spec.InitialInstantiation.Approach == "clone" {
@@ -397,11 +390,6 @@ func validateInternalDatabaseSpec(dd *dbaasv1.InternalDatabase) string {
 				return fmt.Sprintf(
 					"spec.initialInstantiation.sourceClassifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields",
 					reserved)
-			}
-			if !dbaasv1.ScopeIsValid(sc.Scope) {
-				return fmt.Sprintf(
-					"spec.initialInstantiation.sourceClassifier.scope %q must be %q or %q",
-					sc.Scope, dbaasv1.ScopeService, dbaasv1.ScopeTenant)
 			}
 		}
 	}

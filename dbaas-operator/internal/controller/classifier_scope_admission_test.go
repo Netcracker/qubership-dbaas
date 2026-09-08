@@ -26,9 +26,8 @@ import (
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 )
 
-// The CRD schema pins spec.classifier.scope to an enum, so the API server rejects
-// an unknown value at admission; the controllers never see it. These specs are
-// otherwise valid, and only the scope varies.
+// spec.classifier.scope is an enum, so the API server rejects any other value at
+// admission. Each spec below is otherwise valid; only the scope varies.
 var _ = Describe("Classifier scope CRD admission", func() {
 	const admissionNS = "default"
 
@@ -83,7 +82,7 @@ var _ = Describe("Classifier scope CRD admission", func() {
 
 	DescribeTable("admits service and tenant",
 		func(makeObj func(string) client.Object) {
-			for _, scope := range []string{dbaasv1.ScopeService, dbaasv1.ScopeTenant} {
+			for _, scope := range []string{"service", "tenant"} {
 				obj := makeObj(scope)
 				Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 				deleteIfExists(obj)
