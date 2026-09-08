@@ -135,6 +135,19 @@ settings:
         self.assertEqual(resource["spec"]["settings"], settings)
 
     @unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
+    def test_physical_database_id_is_preserved(self) -> None:
+        payload = declaration({})
+        payload["physicalDatabaseId"] = "postgresql-prod-a"
+        content = json.dumps(payload)
+
+        result, output = self.run_converter(content, ".json")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNotNone(output)
+        resource = yaml.safe_load(output)
+        self.assertEqual(resource["spec"]["physicalDatabaseId"], "postgresql-prod-a")
+
+    @unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
     def test_database_access_policy_includes_operator_namespace(self) -> None:
         content = json.dumps(
             {

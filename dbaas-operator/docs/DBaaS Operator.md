@@ -1246,6 +1246,7 @@ spec:
   type: postgresql
   # lazy: false                    # if true, defer provisioning until first access
   # namePrefix: "myapp"            # prefix applied to the physical DB name
+  # physicalDatabaseId: "postgresql-prod-a"  # pin to this physical DB; omit to use balancing rules
   # settings:                      # adapter-specific connection / DB settings (JSON values)
   #   encoding: UTF8
   #   pgExtensions:
@@ -1279,6 +1280,7 @@ spec:
 | `spec.lazy` | No | Yes | When `true`, provisioning is deferred until first access. Defaults to `false`. **Prohibited** in combination with `initialInstantiation.approach=clone` — controller rejects with `InvalidSpec` |
 | `spec.settings` | No | Yes | Free-form map of adapter-specific settings. Values may be any valid JSON type |
 | `spec.namePrefix` | No | Yes | Prefix applied to the physical database name created in the DBMS |
+| `spec.physicalDatabaseId` | No | Yes | Pins **new-creation** database placement to a registered physical database; if absent, dbaas-aggregator applies its balancing rules. Changing it does not relocate an existing database; it applies only to databases created after the change (see [Tenant Database Materialization](#tenant-database-materialization)). Ignored for `initialInstantiation.approach=clone` and blue-green `versioningConfig.approach=clone`, which place the database on the source database's adapter instead; cross-physical-database clone, versioning, and restore cannot be pinned. |
 | `spec.versioningConfig` | No | Yes | Strategy for blue-green database versioning. If absent → `versioningType=static`. If present → `versioningType=version` |
 | `spec.initialInstantiation` | No | Yes | Initial database creation strategy. If absent → `approach=new` |
 

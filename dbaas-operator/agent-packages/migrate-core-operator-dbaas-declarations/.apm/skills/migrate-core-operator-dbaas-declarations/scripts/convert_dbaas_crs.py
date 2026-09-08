@@ -35,6 +35,7 @@ DATABASE_DECLARATION_FIELDS = {
     "lazy",
     "settings",
     "namePrefix",
+    "physicalDatabaseId",
     "versioningConfig",
     "initialInstantiation",
 }
@@ -258,7 +259,7 @@ def convert_database_declaration(
         "classifier": target_classifier,
     }
 
-    for field in ("type", "namePrefix", "versioningConfig", "initialInstantiation"):
+    for field in ("type", "namePrefix", "physicalDatabaseId", "versioningConfig", "initialInstantiation"):
         if field in declaration:
             spec[field] = convert_nested_classifiers(declaration[field], args.service_name)
 
