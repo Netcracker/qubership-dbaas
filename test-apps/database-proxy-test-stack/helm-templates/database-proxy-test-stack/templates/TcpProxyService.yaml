@@ -1,0 +1,27 @@
+{{- if .Values.DATABASE_PROXY_STACK_ENABLED }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+spec:
+  # ClusterIP keeps the admin port reachable from DBaaS Proxy but not from outside the cluster.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+  ports:
+    {{- range .Values.DATABASE_MAPPINGS }}
+    - name: 'db-{{ .listenPort }}'
+      port: {{ .listenPort }}
+      targetPort: 'db-{{ .listenPort }}'
+      protocol: TCP
+    {{- end }}
+    - name: admin
+      port: {{ .Values.TCP_PROXY_ADMIN_PORT }}
+      targetPort: admin
+      protocol: TCP
+{{- end }}

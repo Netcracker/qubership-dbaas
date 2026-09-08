@@ -1,0 +1,77 @@
+{{- if .Values.DATABASE_PROXY_STACK_ENABLED }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+  namespace: '{{ .Values.NAMESPACE }}'
+  labels:
+    app.kubernetes.io/name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+    app.kubernetes.io/instance: '{{ cat .Values.TCP_PROXY_SERVICE_NAME "-" .Values.NAMESPACE | nospace | trunc 63 | trimSuffix "-" }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/component: test-fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+        app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+      annotations:
+        # HAProxy reads its configuration once at startup, so a mapping change must replace the pod.
+        database-proxy-test-stack/config: '{{ include (print $.Template.BasePath "/TcpProxyConfigMap.yaml") . | sha256sum }}'
+    spec:
+      volumes:
+        - name: config
+          configMap:
+            name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}-config'
+      containers:
+        - name: '{{ .Values.TCP_PROXY_SERVICE_NAME }}'
+          image: '{{ .Values.TCP_PROXY_IMAGE }}'
+          imagePullPolicy: '{{ .Values.TCP_PROXY_PULL_POLICY }}'
+          args:
+            - -f
+            - /usr/local/etc/haproxy/haproxy.cfg
+          ports:
+            {{- range .Values.DATABASE_MAPPINGS }}
+            - name: 'db-{{ .listenPort }}'
+              containerPort: {{ .listenPort }}
+              protocol: TCP
+            {{- end }}
+            - name: admin
+              containerPort: {{ .Values.TCP_PROXY_ADMIN_PORT }}
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/haproxy
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: admin
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.TCP_PROXY_RUN_AS_USER }}
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: '{{ .Values.TCP_PROXY_CPU_REQUEST }}'
+              memory: '{{ .Values.TCP_PROXY_MEMORY_REQUEST }}'
+            limits:
+              cpu: '{{ .Values.TCP_PROXY_CPU_LIMIT }}'
+              memory: '{{ .Values.TCP_PROXY_MEMORY_LIMIT }}'
+{{- end }}
