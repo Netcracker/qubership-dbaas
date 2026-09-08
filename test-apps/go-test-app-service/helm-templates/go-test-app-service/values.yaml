@@ -6,10 +6,6 @@ SERVICE_NAME: go-test-app-service
 APPLICATION_NAME: dbaas
 MANAGED_BY: Helm
 NAMESPACE: dbaas
-# Namespace where the target dbaas-operator runs. In this harness the operator shares the
-# workload namespace, but this is a separate value so a real deployment can point it at the
-# operator's own namespace (for example dbaas-system) instead of reusing NAMESPACE.
-DBAAS_OPERATOR_NAMESPACE: dbaas
 REPLICAS: 1
 IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-go-test-app-service
 TAG: latest
@@ -24,8 +20,11 @@ DBAAS_AGENT: http://dbaas-aggregator.dbaas:8080
 # base client calls API_DBAAS_ADDRESS directly with a Bearer (no dbaas-agent). Default false keeps
 # the mounted-secret / REST-fallback phases unchanged.
 M2M_ENABLED: false
-# Direct aggregator URL used only when M2M_ENABLED is true (koanf key api.dbaas.address).
-API_DBAAS_ADDRESS: ""
+# Aggregator address with two consumers: the direct-M2M phase uses it as the aggregator URL (koanf
+# key api.dbaas.address), and the InternalDatabase / DatabaseSecretClaim templates read its second
+# DNS label as spec.operatorNamespace. Must be a namespaced in-cluster service host of the form
+# <scheme>://<service>.<namespace>[:<port>].
+API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
 BASECLIENT_RETRY_MAX_ATTEMPTS: 0
 BASECLIENT_RETRY_DELAY_MS: 10
 

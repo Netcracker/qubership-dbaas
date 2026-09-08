@@ -81,14 +81,50 @@ The equivalent work performed by hand, and the starting point for a service with
    contend for the same object.
 
 3. **Set `spec.operatorNamespace` on every resource.** The value is the namespace the dbaas-operator
-   instance that should reconcile the resource runs in. The field is required and immutable, and the
-   ways a chart can supply it are described in
+   instance that should reconcile the resource runs in; the field is required and immutable.
+   dbaas-aggregator and dbaas-operator share that namespace, so a Helm chart derives the value from a
+   namespaced `API_DBAAS_ADDRESS` instead of taking a separate input — see the templates below. A plain
+   `kubectl apply` manifest uses the literal namespace. Both forms are covered in
    [Setting the operator namespace](migrate-from-namespacebinding.md#setting-the-operator-namespace).
+   The onboarding chart does not need a `DBAAS_OPERATOR_NAMESPACE` value or environment variable.
 
 4. **Ship the resources in the service chart** and mount the Secret produced by `DatabaseSecretClaim`
    instead of provisioning at startup. The
    [`go-test-app-service` chart](../../../test-apps/go-test-app-service/helm-templates/go-test-app-service)
-   demonstrates both.
+   is the worked example; its CR templates use the expression shown below.
+
+### Starter templates
+
+Most services need two resources: an `InternalDatabase` for the database and a `DatabaseSecretClaim`
+for its credentials. Ship both from the chart. `spec.operatorNamespace` follows the aggregator address,
+so no separate operator-namespace input is required:
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: orders-db
+  namespace: {{ .Values.NAMESPACE | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.SERVICE_NAME | quote }}
+spec:
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  classifier:
+    microserviceName: {{ .Values.SERVICE_NAME | quote }}
+    scope: service
+  type: postgresql
+```
+
+`API_DBAAS_ADDRESS` must be a namespaced in-cluster service host of the form
+`<scheme>://<service>.<namespace>[:<port>]` — for example `http://dbaas-aggregator.dbaas:8080`. The
+expression reads the second DNS label as the namespace shared by dbaas-aggregator and dbaas-operator;
+`.svc` or `.svc.cluster.local` after the namespace is fine. A short host such as
+`http://dbaas-aggregator:8080` fails Helm rendering, and an ingress host such as
+`https://dbaas.example.com` renders the wrong value. With plain YAML, replace the expression with the
+literal namespace where dbaas-operator runs.
+
+`ExternalDatabase`, `DatabaseAccessPolicy`, and the balancing-rule resources take the same
+`spec.operatorNamespace`; their full schemas are in [DBaaS Operator](../DBaaS%20Operator.md).
 
 ---
 
@@ -100,30 +136,31 @@ Neither delivers credentials or produces a Kubernetes Secret.
 
 Credentials are requested separately, through `DatabaseSecretClaim`, which resolves an
 already-registered database by classifier and writes its connection properties into a Secret in the
-workload namespace:
+workload namespace. It uses the same `spec.operatorNamespace` expression as the `InternalDatabase`:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
 kind: DatabaseSecretClaim
 metadata:
   name: orders-db-admin
-  namespace: <workload-namespace>
+  namespace: {{ .Values.NAMESPACE | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.SERVICE_NAME | quote }}
 spec:
-  operatorNamespace: <operator-namespace>
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
   classifier:
-    microserviceName: orders
-    namespace: <workload-namespace>
+    microserviceName: {{ .Values.SERVICE_NAME | quote }}
     scope: service
   type: postgresql
   userRole: admin
   secretName: orders-db-admin-secret
 ```
 
-The `classifier` and `type` must identify the same database the `InternalDatabase` or
-`ExternalDatabase` describes, and `userRole` selects which role's credentials are written — one claim
-per role. The Secret holds `connectionProperties.json` with the adapter-specific connection details,
-and `metadata.json` describing the database, so a client can match the Secret to a request without
-calling the aggregator.
+The `app.kubernetes.io/name` label is required; the operator sends it as `originService`. The
+`classifier` and `type` must identify the same database the `InternalDatabase` or `ExternalDatabase`
+describes, and `userRole` selects which role's credentials are written — one claim per role. The Secret
+holds `connectionProperties.json` with the adapter-specific connection details, and `metadata.json`
+describing the database, so a client can match the Secret to a request without calling the aggregator.
 
 Ordering does not have to be managed: a claim whose database does not exist yet receives
 `DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. After ten minutes

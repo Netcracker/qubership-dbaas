@@ -55,8 +55,16 @@ Never repeat reserved keys (`microserviceName`, `scope`, `namespace`, `tenantId`
 
 ## InternalDatabase template
 
-Replace `<operator-namespace>` with the verified namespace of the operator instance that must manage
-the generated CRs. It is not necessarily the workload namespace.
+The `<operator-namespace>` placeholder below stands for the value recorded in the inventory. For a
+Helm layout it is the `API_DBAAS_ADDRESS`-derived expression (dbaas-aggregator and dbaas-operator share
+a namespace):
+
+```text
+{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+```
+
+For a plain manifest it is the verified literal namespace of the managing operator instance. It is not
+necessarily the workload namespace.
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1

@@ -108,22 +108,30 @@ place top-level extension keys directly in the classifier. Do not use `extraKeys
 
 Produce the inventory before making changes:
 
-The operator assignment is a deploy-time value, not a namespace baked into the repository. Expose it
-as `DBAAS_OPERATOR_NAMESPACE` — a Helm value the service populates when it deploys (for example through
-Argo CD) — and template `spec.operatorNamespace` from it. The operator reads its own namespace from
-`CLOUD_NAMESPACE` (injected from its Pod), so the two only have to agree at deploy time; nothing needs
-to be hardcoded here.
+The operator assignment is a deploy-time value, not a namespace baked into the repository.
+dbaas-aggregator and dbaas-operator run in the same namespace, so for a Helm layout derive
+`spec.operatorNamespace` from the chart's existing namespaced aggregator address instead of adding a
+value. Template it with the root-context expression:
 
-For a Helm layout, record `operatorNamespace` in the inventory as the placeholder
-`{{ .Values.DBAAS_OPERATOR_NAMESPACE }}` and let the deployment supply the real value. Only for plain
-manifests, which cannot template a value, resolve a concrete namespace instead: prefer an explicit
-deployment value, verify it against the intended `dbaas-operator` Deployment or Pod when a cluster is
-available, and stop and ask if it cannot be proven — never assume `dbaas-system` or reuse the workload
-namespace by default.
+```text
+{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+```
+
+This reads the namespace label of `<scheme>://<service>.<namespace>[:<port>]`. It requires the chart to
+carry a namespaced in-cluster address. If the chart holds only a short host
+(`http://dbaas-aggregator:8080`) or an ingress or gateway host, do not generate the expression: report
+that the chart must gain a namespaced `API_DBAAS_ADDRESS`, and keep the identity `BLOCKED` on operator
+assignment until it does.
+
+For a Helm layout, record `operatorNamespace` in the inventory as that Helm expression string. Only for
+plain manifests, which cannot template a value, resolve a concrete namespace instead: prefer an
+explicit deployment value, verify it against the intended `dbaas-operator` Deployment or Pod when a
+cluster is available, and stop and ask if it cannot be proven — never assume `dbaas-system` or reuse
+the workload namespace by default.
 
 ```json
 {
-  "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
+  "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) | quote }}",
   "datasources": [
     {
       "id": "orders-postgresql-service",
@@ -206,8 +214,8 @@ that identity, generate a claim. Use the canonical templates in
 Rules:
 
 - Set every generated CR's `spec.operatorNamespace` to the `operatorNamespace` recorded in the
-  inventory — the `{{ .Values.DBAAS_OPERATOR_NAMESPACE }}` placeholder for a Helm layout, or the
-  resolved namespace for plain manifests. Do not derive it from `metadata.namespace`.
+  inventory — the `API_DBAAS_ADDRESS`-derived expression for a Helm layout, or the resolved namespace
+  for plain manifests. Do not derive it from `metadata.namespace`.
 - Set `metadata.namespace` to the workload namespace.
 - Omit `classifier.namespace` and let the operator derive it, or set it to the workload namespace
   consistently in both resources. Never copy a differing legacy namespace.
@@ -254,9 +262,11 @@ Perform all applicable checks from [testing.md](references/testing.md):
 1. Run `scripts/validate_generated.py --inventory <inventory.json> <rendered-or-plain-yaml>`.
 1. Validate syntax and run client-side and server-side dry runs when a suitable cluster is present.
 1. Compare canonical classifiers and type between each InternalDatabase and claim.
-1. Verify every generated managed CR carries `spec.operatorNamespace`. On rendered Helm output, pass
-   `--operator-namespace <deployed-namespace>` to `validate_generated.py` to assert it resolved to the
-   intended operator.
+1. Verify every generated managed CR carries `spec.operatorNamespace`. For a Helm layout, render the
+   chart with the deployment's `API_DBAAS_ADDRESS` and pass `--operator-namespace <deployed-namespace>`
+   to `validate_generated.py` to assert the expression resolved to the intended operator. Render once
+   with a short, non-namespaced `API_DBAAS_ADDRESS` and confirm the chart fails instead of assigning
+   the workload namespace.
 1. Verify claim role against every client request role.
 1. Verify that all names are unique and DNS-compatible.
 1. Verify each claim Secret has at least one consuming volume/mount and every consumer uses the
@@ -271,8 +281,8 @@ multiple claims for one database.
 Report:
 
 - every discovered logical database identity and its evidence;
-- the operator assignment used — the `DBAAS_OPERATOR_NAMESPACE` deploy-time value for a Helm layout, or
-  the resolved namespace and its evidence for plain manifests;
+- the operator assignment used — the `API_DBAAS_ADDRESS`-derived expression and the namespace it renders
+  to for a Helm layout, or the resolved namespace and its evidence for plain manifests;
 - supported, dynamic, blocked, and ambiguous counts;
 - the deduplication decisions;
 - every generated or modified file;

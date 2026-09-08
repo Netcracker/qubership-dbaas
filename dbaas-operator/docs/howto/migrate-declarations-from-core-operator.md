@@ -32,8 +32,13 @@ behavior (role grants, provisioning, cloning) is unchanged.
 > declaration's `metadata.microserviceName`. The new CRDs make it an explicit,
 > validated, **immutable** spec field so the owner is unambiguous and auditable.
 
-Set `DBAAS_OPERATOR_NAMESPACE` to the namespace where the target dbaas-operator
-instance runs. It is independent of the workload's `NAMESPACE` value.
+`spec.operatorNamespace` is the namespace where the target dbaas-operator instance runs, independent of
+the workload's `NAMESPACE`. dbaas-aggregator and dbaas-operator share that namespace, so a Helm chart
+with a namespaced `API_DBAAS_ADDRESS` (`<scheme>://<service>.<namespace>[:<port>]`) derives the value
+from that address with the expression the examples below use — see
+[Setting the operator namespace](migrate-from-namespacebinding.md#setting-the-operator-namespace) for
+its constraints. A plain `kubectl apply` manifest cannot render Helm, so it carries the literal operator
+namespace instead.
 
 ---
 
@@ -91,7 +96,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
-  operatorNamespace: "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}"
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
   microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
   services:
     - name: install-base-service
@@ -179,7 +184,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
-  operatorNamespace: "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}"
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
   classifier:
     microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
     scope: service
