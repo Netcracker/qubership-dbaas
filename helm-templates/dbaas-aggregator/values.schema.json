@@ -152,7 +152,7 @@
       "description": "Addresses of the dbaas adapters.",
       "default": "",
       "examples": [
-        "http://dbaas-elasticsearch-adapter.elasticsearch5-cluster:8080,http://dbaas-postgres-adapter.postgresql-dbaas:8080,http://dbaas-mongo-adapter.mongo-cluster:8080"
+        "http://dbaas-opensearch-adapter.opensearch:8080,http://dbaas-postgres-adapter.postgresql-dbaas:8080,http://dbaas-mongo-adapter.mongo-cluster:8080"
       ]
     },
     "DBAAS_SECURITY_CONFIGURATION_LOCATION": {

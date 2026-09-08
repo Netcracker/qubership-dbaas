@@ -421,6 +421,9 @@ classifier, should be generated on DBaaS installation.
 
 Removed RUN_SMOKE_ELASTICSEARCH parameter as elasticsearch is not supported since DBaaS 4.0.0.
 
+DBaaS now supports OpenSearch instead. To run the equivalent smoke test, use
+[RUN_SMOKE_OPENSEARCH](#run_dbaas_smoke--run_smoke_postgres--run_smoke_mongo--run_smoke_opensearch).
+
 #### ELASTICSEARCH_DBAAS_ADAPTER_ADDRESS
 
 **since 1.3.0**
@@ -436,6 +439,9 @@ Although it is monitored, but if value is empty, elasticsearch considered not in
 lowering.
 
 Since 1.4.0 this parameter would be used only once during migration.
+
+For the supported OpenSearch adapter, register the adapter address through
+[DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES](#dbaas_premature_registration_adapter_addresses) instead.
 
 | Default                                                                                              | Recommended                                                                                                                                                                                                                                                                                                                                                                                                | 
 |------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

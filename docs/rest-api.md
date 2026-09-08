@@ -849,7 +849,7 @@ An existing database stays as a ghost if it was not registered in DBaaS.
             "deletingDatabases": []
         },
         {
-            "name": "elasticsearch",
+            "name": "opensearch",
             "totalDatabases": [],
             "registration": {
                 "totalDatabases": [],
@@ -1943,7 +1943,6 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/On+microservice+b
       },
       "defaultPhysicalDatabases": {
         "postgresql": "core-postgresql",
-        "elasticsearch": "core-elasticsearch",
         "opensearch": "core-opensearch",
         "cassandra": "core-cassandra",
         "arangodb": "core-arangodb",
@@ -2139,7 +2138,7 @@ Moves the 'global' flag to the specified existing physical database
 
 | Type     | Name                        | Description                                                                      | Schema |
 |----------|-----------------------------|----------------------------------------------------------------------------------|--------|
-| **Path** | **type**  <br>*required*    | Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.              | string |
+| **Path** | **type**  <br>*required*    | Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.              | string |
 | **Path** | **phydbid**  <br>*required* | Physical database identifier. The value belongs to the specific database cluster | string |
 
 * **Success Response:**
@@ -2242,7 +2241,7 @@ Creates new physical database and returns path to it with physical database iden
 | Type     | Name                           | Description                                                                      | Schema                                                              |
 |----------|--------------------------------|----------------------------------------------------------------------------------|---------------------------------------------------------------------|
 | **Path** | **phydbid**  <br>*required*    | Physical database identifier. The value belongs to the specific database cluster | string                                                              |
-| **Path** | **type**  <br>*required*       | Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.              | string                                                              |
+| **Path** | **type**  <br>*required*       | Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.              | string                                                              |
 | **Body** | **parameters**  <br>*required* | Parameters for registering physical database.                                    | [PhysicalDatabaseRegistryRequest](#physicaldatabaseregistryrequest) |
 
 * **Success Response:**
@@ -2309,7 +2308,7 @@ then all registered physical databases for all types will be shown.
 
 | Type     | Name                     | Description                                                                                                                | Schema |
 |----------|--------------------------|----------------------------------------------------------------------------------------------------------------------------|--------|
-| **Path** | **type**  <br>*required* | Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc. or all - to list all registered physical databases | string |
+| **Path** | **type**  <br>*required* | Type of database, for example: MongoDB, PostgreSQL, opensearch, etc. or all - to list all registered physical databases | string |
 
 * **Success Response:**
 
@@ -2364,7 +2363,7 @@ then all registered physical databases for all types will be shown.
           "multiusers": true
         }
       },
-      "core-elasticsearch": {
+      "core-opensearch": {
         ...
       },
       "core-postgresql": {
@@ -2388,7 +2387,7 @@ Deletes physical database by database type and physical database id
 | Type     | Name                        | Description                                                                      | Schema |
 |----------|-----------------------------|----------------------------------------------------------------------------------|--------|
 | **Path** | **phydbid**  <br>*required* | Physical database identifier. The value belongs to the specific database cluster | string |
-| **Path** | **type**  <br>*required*    | Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc.          | string |
+| **Path** | **type**  <br>*required*    | Type of database, for example: MongoDB, PostgreSQL, opensearch, etc.          | string |
 
 * **Success Response:**
 
