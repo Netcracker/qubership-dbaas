@@ -268,9 +268,7 @@ jobs:
       # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
       # quadrant tests prove every datasource reads its connection from the mount. Tenant databases are
       # materialized by the operator (a pinned-tenant InternalDatabase get-or-creates after apply).
-      # The host stays unresolvable (no dbaas-aggregator-unreachable Service), but its second DNS label
-      # must be the real namespace: the CR templates derive spec.operatorNamespace from it, and all
-      # three passes must render the same immutable value.
+      # Keep the operator namespace as the second DNS label.
       - name: "Pass A — deploy sample services (broken aggregator + mounted secrets)"
         run: |
           chmod +x .github/scripts/deploy-sample-services.sh

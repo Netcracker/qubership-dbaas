@@ -80,13 +80,10 @@ The equivalent work performed by hand, and the starting point for a service with
    Each is a singleton with a fixed name in its scope, so two services in a namespace shipping one will
    contend for the same object.
 
-3. **Set `spec.operatorNamespace` on every resource.** The value is the namespace the dbaas-operator
-   instance that should reconcile the resource runs in; the field is required and immutable.
-   dbaas-aggregator and dbaas-operator share that namespace, so a Helm chart derives the value from a
-   namespaced `API_DBAAS_ADDRESS` instead of taking a separate input — see the templates below. A plain
-   `kubectl apply` manifest uses the literal namespace. Both forms are covered in
+3. **Set `spec.operatorNamespace` on every resource.** The field is required and immutable. A Helm chart
+   derives it from `API_DBAAS_ADDRESS` using the templates below; a plain `kubectl apply` manifest uses
+   the literal namespace. Both forms are covered in
    [Setting the operator namespace](migrate-from-namespacebinding.md#setting-the-operator-namespace).
-   The onboarding chart does not need a `DBAAS_OPERATOR_NAMESPACE` value or environment variable.
 
 4. **Ship the resources in the service chart** and mount the Secret produced by `DatabaseSecretClaim`
    instead of provisioning at startup. The
@@ -115,13 +112,8 @@ spec:
   type: postgresql
 ```
 
-`API_DBAAS_ADDRESS` must be a namespaced in-cluster service host of the form
-`<scheme>://<service>.<namespace>[:<port>]` — for example `http://dbaas-aggregator.dbaas:8080`. The
-expression reads the second DNS label as the namespace shared by dbaas-aggregator and dbaas-operator;
-`.svc` or `.svc.cluster.local` after the namespace is fine. A short host such as
-`http://dbaas-aggregator:8080` fails Helm rendering, and an ingress host such as
-`https://dbaas.example.com` renders the wrong value. With plain YAML, replace the expression with the
-literal namespace where dbaas-operator runs.
+For example, `API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080` renders
+`operatorNamespace: "dbaas"`. With plain YAML, replace the expression with the literal namespace.
 
 `ExternalDatabase`, `DatabaseAccessPolicy`, and the balancing-rule resources take the same
 `spec.operatorNamespace`; their full schemas are in [DBaaS Operator](../DBaaS%20Operator.md).

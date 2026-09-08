@@ -153,8 +153,6 @@ settings:
         self.assertEqual(resource["kind"], "DatabaseAccessPolicy")
         self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas-system")
 
-    # The address-derived Helm expression a chart-local conversion passes through
-    # --operator-namespace. It must reach spec.operatorNamespace unchanged on every kind.
     ADDRESS_DERIVED_OPERATOR_NAMESPACE = (
         '{{ index (splitList "." (first (splitList ":" '
         '(last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'

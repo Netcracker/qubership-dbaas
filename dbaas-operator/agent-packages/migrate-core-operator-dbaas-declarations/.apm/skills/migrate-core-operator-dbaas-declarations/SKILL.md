@@ -62,18 +62,9 @@ python <skill-directory>/scripts/convert_dbaas_crs.py \
   --operator-namespace '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
 ```
 
-`--operator-namespace` takes whichever form the output layout needs, and the converter writes it into
-`spec.operatorNamespace` on every generated resource verbatim:
-
-- **Chart-local manifests:** the Helm expression above. dbaas-aggregator and dbaas-operator share a
-  namespace, so it takes the operator namespace from the chart's namespaced `API_DBAAS_ADDRESS`
-  (`<scheme>://<service>.<namespace>[:<port>]`) rather than adding a value. Pass it without a trailing
-  `| quote` — the converter's YAML output already quotes the scalar. A chart whose address is a short
-  host or an ingress host cannot use the expression and must gain a namespaced `API_DBAAS_ADDRESS`
-  first.
-- **Plain JSON or non-chart YAML:** the concrete namespace of the dbaas-operator instance, alongside
-  concrete `--service-name` and `--namespace` values so no Helm expressions are emitted. Do not infer
-  it from the workload namespace.
+`--operator-namespace` writes its value to every generated resource. For chart-local manifests, pass
+the Helm expression above without `| quote`; the generated YAML already quotes the scalar. For plain
+JSON or non-chart YAML, pass the literal namespace with concrete service and namespace values.
 
 The script reads JSON with the Python standard library. YAML input requires PyYAML. If PyYAML is unavailable, continue
 manually from [references/mapping.md](references/mapping.md) or use a YAML parser already provided by the environment;
@@ -88,10 +79,8 @@ duplicate resources require manual review.
 
 - Derive required `DatabaseAccessPolicy.spec.microserviceName` from the owning service only when the source context is
   unambiguous; otherwise ask the user.
-- Set required `spec.operatorNamespace` on every generated resource. For a chart-local layout, use the
-  `API_DBAAS_ADDRESS`-derived Helm expression; for a plain manifest, use the concrete namespace of the
-  operator instance that will manage it. Ask when the assignment is not known; it is not necessarily
-  the workload namespace.
+- Set required `spec.operatorNamespace` on every generated resource. Use the `API_DBAAS_ADDRESS`
+  expression for chart-local output and the literal namespace for plain output.
 - Move old classifier keys outside `microserviceName`, `scope`, `namespace`, `tenantId`, and `customKeys` to
   `spec.classifier.extraKeys`.
 - Omit the target `spec.classifier.namespace` so the operator derives it from `metadata.namespace`. Preserve
@@ -112,9 +101,8 @@ Always perform these offline checks; they do not require a Kubernetes cluster:
 3. Confirm no legacy wrapper or `spec.classifierConfig` fields remain.
 4. Confirm every target-required field is present, including `spec.operatorNamespace`; source and target clone owners
    match; and kind/name pairs are unique.
-5. Render Helm templates before treating the manifests as deployable YAML. For a chart-local layout,
-   confirm `spec.operatorNamespace` renders to the intended operator namespace from the deployment's
-   `API_DBAAS_ADDRESS`, and that a short non-namespaced address fails rendering.
+5. Render Helm templates before treating the manifests as deployable YAML, and confirm
+   `spec.operatorNamespace` has the expected value.
 
 When current CRD files are available, validate the rendered manifests against their OpenAPI schemas. When a suitable
 isolated cluster is also available, optionally run `kubectl apply --dry-run=server`. Apply the resources only when the

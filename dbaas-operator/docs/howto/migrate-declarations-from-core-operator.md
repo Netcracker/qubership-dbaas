@@ -32,13 +32,8 @@ behavior (role grants, provisioning, cloning) is unchanged.
 > declaration's `metadata.microserviceName`. The new CRDs make it an explicit,
 > validated, **immutable** spec field so the owner is unambiguous and auditable.
 
-`spec.operatorNamespace` is the namespace where the target dbaas-operator instance runs, independent of
-the workload's `NAMESPACE`. dbaas-aggregator and dbaas-operator share that namespace, so a Helm chart
-with a namespaced `API_DBAAS_ADDRESS` (`<scheme>://<service>.<namespace>[:<port>]`) derives the value
-from that address with the expression the examples below use — see
-[Setting the operator namespace](migrate-from-namespacebinding.md#setting-the-operator-namespace) for
-its constraints. A plain `kubectl apply` manifest cannot render Helm, so it carries the literal operator
-namespace instead.
+For Helm charts, derive `spec.operatorNamespace` from `API_DBAAS_ADDRESS` using the expression in the
+examples below. A plain `kubectl apply` manifest uses the literal namespace instead.
 
 ---
 

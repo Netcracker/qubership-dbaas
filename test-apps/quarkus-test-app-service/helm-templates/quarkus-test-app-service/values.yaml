@@ -16,9 +16,8 @@ REGION_DBAAS: database
 
 LOG_LEVEL: info
 # REST fallback target. The mounted secret is consulted first; the integration test sets this to a
-# bogus host to prove every datasource keeps working without dbaas-aggregator. The InternalDatabase
-# and DatabaseSecretClaim templates also read its second DNS label as spec.operatorNamespace, so it
-# must stay a namespaced in-cluster host of the form <scheme>://<service>.<namespace>[:<port>].
+# bogus host to prove every datasource keeps working without dbaas-aggregator.
+# CR templates derive spec.operatorNamespace from the second DNS label; use <service>.<namespace>.
 API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
 # Direct-M2M phase toggle. When true, the pod mounts a `dbaas`-audience projected token, the
 # aggregator basic-auth creds are cleared (so the M2M client is chosen), and the client calls

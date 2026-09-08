@@ -30,46 +30,34 @@ The chart ships no automated upgrade between the two models, so the path below i
 
 ## Setting the operator namespace
 
-`spec.operatorNamespace` is the namespace the dbaas-operator instance runs in. The operator compares it
-against its own `CLOUD_NAMESPACE`, which the chart injects from the pod's namespace through the downward
-API (`fieldRef: metadata.namespace` in
+`spec.operatorNamespace` must match the operator's `CLOUD_NAMESPACE`, which the chart injects from
+the pod's namespace through the downward API (`fieldRef: metadata.namespace` in
 [`Deployment.yaml`](../../helm-templates/dbaas-operator/templates/Deployment.yaml)) — so the operator
 side needs no configuration, and only the CR has to carry the value.
 
-In this migration the value is the one recorded from each `NamespaceBinding` in step 1. For a service
-adopting the operator later, it is the namespace the dbaas-operator Deployment is installed in.
+In this migration, use the value recorded from each `NamespaceBinding` in step 1.
 
 Nothing fills the field in automatically: the operator defines no defaulting webhook, so whatever
 applies the CR (Helm, a GitOps sync, `kubectl apply`) has to carry the value. The API server rejects a
 managed CR that omits it, and validates it as an RFC-1123 label: `MinLength=1`, `MaxLength=63`,
 lowercase alphanumerics and hyphens.
 
-Do not confuse it with a `CLOUD_NAMESPACE` that another component defines for its own namespace, as
-dbaas-aggregator does; the operator never reads those. A value pointing at a workload namespace leaves
-the resource assigned to no operator.
+Do not use the workload's `NAMESPACE` value.
 
 `spec.operatorNamespace` is immutable. A wrong value cannot be corrected in place: the resource has to
 be deleted and recreated.
 
 ### Helm charts: derive it from the aggregator address
 
-dbaas-aggregator and dbaas-operator run in the same namespace, so a chart that already passes the
-in-cluster aggregator address to its workload can take the operator namespace out of that address
-instead of adding a deployment value. This is the standard path for the sample charts in this
-repository and for a service chart with the same shape:
+Derive `spec.operatorNamespace` from the chart's `API_DBAAS_ADDRESS`:
 
 ```yaml
 spec:
   operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
 ```
 
-The expression reads the second DNS label of the aggregator's service host — the shared namespace.
-`API_DBAAS_ADDRESS` must therefore be a namespaced in-cluster service host, of the form
-`<scheme>://<service>.<namespace>[:<port>]`; `.svc` or `.svc.cluster.local` after the namespace is
-fine. A short in-namespace host such as `http://dbaas-aggregator:8080` has no second label and fails
-Helm rendering with `error calling index: reflect: slice index out of range`. An ingress or gateway
-host such as `https://dbaas.example.com` does not identify the operator namespace and renders the
-wrong value (`example`); do not feed one to this expression.
+For example, `API_DBAAS_ADDRESS: http://dbaas-aggregator.team-a-operator:8080` renders
+`operatorNamespace: "team-a-operator"`.
 
 ### Plain manifests: use the recorded namespace literally
 

@@ -93,21 +93,15 @@ Do not copy status blocks. Do not copy old generic CR labels unless the target d
 
 ## Operator assignment
 
-`spec.operatorNamespace` is required and immutable. dbaas-aggregator and dbaas-operator run in the same namespace, so
-its value depends on the output layout:
+`spec.operatorNamespace` is required and immutable. Its value depends on the output layout:
 
-- **Chart-local manifests** take the namespace from the chart's namespaced aggregator address
-  (`API_DBAAS_ADDRESS`, of the form `<scheme>://<service>.<namespace>[:<port>]`) instead of adding a value:
+- **Chart-local manifests** use this expression:
 
   ```yaml
   operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
   ```
 
-  The expression reads the second DNS label. A short host (`http://dbaas-aggregator:8080`) has no such label and
-  fails Helm rendering; an ingress or gateway host renders the wrong value. A chart without a namespaced address must
-  gain one before it can use the expression.
-
-- **Plain manifests** cannot render Helm, so they carry the literal namespace of the dbaas-operator instance.
+- **Plain manifests** carry the literal namespace.
 
 ## Validation checklist
 
