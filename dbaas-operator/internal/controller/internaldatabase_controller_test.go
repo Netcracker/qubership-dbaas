@@ -938,6 +938,96 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(capturedApplyBody).NotTo(BeEmpty(), "apply must be called on resubmit")
 			Expect(dd.Status.TrackingID).To(Equal("track-resubmit"))
 		})
+
+		It("starts synchronous pinned-tenant materialization with a fresh 5-second cycle", func() {
+			applyCode = http.StatusOK
+			applyBody = statusCompleted
+			createCode = http.StatusAccepted
+
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       tenantSpec("acme"),
+			})).To(Succeed())
+
+			dd := &dbaasv1.InternalDatabase{}
+			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
+			dd.Status.TrackingID = "track-terminated-before-tenant"
+			dd.Status.PendingOperationGeneration = dd.Generation
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
+			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
+
+			// Advance the old operation before it terminates. Its state must not be
+			// inherited by either the resubmit delay or the new tenant cycle.
+			for range 3 {
+				reconciler.pollBackoff.schedule(dd)
+			}
+			Expect(reconciler.pollBackoff.states[namespacedName].step).To(Equal(int32(3)))
+			pollBody = `{"status":"TERMINATED"}`
+
+			dd, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 0)
+			Expect(dd.Status.TrackingID).To(BeEmpty())
+			Expect(reconciler.pollBackoff.states).To(BeEmpty(),
+				"the delay before resubmission must not start the next polling cycle")
+
+			// The synchronous resubmit starts pinned-tenant materialization. Its
+			// first 202 response must start at step 0, not the resubmit's step 1.
+			dd, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 0)
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseWaitingForDependency))
+			Expect(createReqCount).To(Equal(1))
+			Expect(reconciler.pollBackoff.states[namespacedName].step).To(Equal(int32(1)))
+		})
+	})
+
+	Context("POLL — invalid request context", func() {
+		It("preserves the trackingId so a restarted reconciler can recover the existing operation", func() {
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			dd := &dbaasv1.InternalDatabase{}
+			Expect(k8sClient.Get(ctx, namespacedName, dd)).To(Succeed())
+			dd.Status.TrackingID = "track-recover-after-restart"
+			dd.Status.PendingOperationGeneration = dd.Generation
+			dd.Status.Phase = dbaasv1.PhaseWaitingForDependency
+
+			contextErr := &aggregatorclient.RequestContextError{
+				Cause: context.Canceled,
+			}
+			result, err := reconciler.handlePollError(ctx, dd, dd.Status.TrackingID, "request-invalid", contextErr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsZero()).To(BeTrue())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(dd.Status.TrackingID).To(Equal("track-recover-after-restart"))
+			Expect(dd.Status.PendingOperationGeneration).To(Equal(dd.Generation))
+			Expect(k8sClient.Status().Update(ctx, dd)).To(Succeed())
+
+			// A new reconciler models process/leader restart: its in-memory tracker
+			// is empty, but the persisted trackingId still identifies the remote job.
+			restarted := &InternalDatabaseReconciler{
+				Client:      k8sClient,
+				Scheme:      k8sClient.Scheme(),
+				Aggregator:  reconciler.Aggregator,
+				Recorder:    fakeRecorder,
+				MyNamespace: testOperatorNamespace,
+			}
+			pollBody = statusCompleted
+			dd, result, err = reconcileAndFetchObject(restarted, namespacedName, func() *dbaasv1.InternalDatabase {
+				return &dbaasv1.InternalDatabase{}
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsZero()).To(BeTrue())
+			Expect(capturedApplyBody).To(BeEmpty(), "recovery must poll the existing job instead of submitting a duplicate")
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(dd.Status.TrackingID).To(BeEmpty())
+			stalled := findCondition(dd.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+		})
 	})
 
 	// ── POLL — IN_PROGRESS ────────────────────────────────────────────────────

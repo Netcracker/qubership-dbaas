@@ -21,9 +21,12 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 var _ = Describe("pollDelayForStep", func() {
@@ -117,5 +120,37 @@ var _ = Describe("pollBackoffTracker", func() {
 
 		restartedTracker := pollBackoffTracker{}
 		expectRequeueAfterStep(restartedTracker.schedule(obj), 0)
+	})
+
+	It("couples tracked state to a bounded requeue and removes it after either CR kind is deleted", func() {
+		key := types.NamespacedName{Namespace: "default", Name: "deleted-polling-object"}
+		internalDatabase := &dbaasv1.InternalDatabase{ObjectMeta: metav1.ObjectMeta{
+			Namespace: key.Namespace, Name: key.Name, UID: "internal-uid", Generation: 1,
+		}}
+		secretClaim := &dbaasv1.DatabaseSecretClaim{ObjectMeta: metav1.ObjectMeta{
+			Namespace: key.Namespace, Name: key.Name, UID: "claim-uid", Generation: 1,
+		}}
+		internalReconciler := &InternalDatabaseReconciler{Client: k8sClient}
+		claimReconciler := &DatabaseSecretClaimReconciler{Client: k8sClient}
+
+		internalResult := internalReconciler.pollBackoff.schedule(internalDatabase)
+		claimResult := claimReconciler.pollBackoff.schedule(secretClaim)
+		Expect(internalResult.RequeueAfter).To(BeNumerically(">", 0))
+		Expect(internalResult.RequeueAfter).To(BeNumerically("<=", pollMaxInterval))
+		Expect(claimResult.RequeueAfter).To(BeNumerically(">", 0))
+		Expect(claimResult.RequeueAfter).To(BeNumerically("<=", pollMaxInterval))
+		Expect(internalReconciler.pollBackoff.states).To(HaveLen(1))
+		Expect(claimReconciler.pollBackoff.states).To(HaveLen(1))
+
+		// Neither object exists anymore. The already-scheduled reconciliation
+		// observes NotFound and removes the corresponding tracker entry.
+		internalResult, err := internalReconciler.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(internalResult.IsZero()).To(BeTrue())
+		claimResult, err = claimReconciler.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimResult.IsZero()).To(BeTrue())
+		Expect(internalReconciler.pollBackoff.states).To(BeEmpty())
+		Expect(claimReconciler.pollBackoff.states).To(BeEmpty())
 	})
 })

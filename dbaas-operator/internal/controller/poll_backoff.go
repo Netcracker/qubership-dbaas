@@ -65,6 +65,13 @@ func jitteredPollDelay(delay time.Duration) time.Duration {
 	return min(wait.Jitter(delay, pollJitterFactor), pollMaxInterval)
 }
 
+// initialPollRequeue returns the initial delay without creating tracker state.
+// It is used between logical operations, when the delayed reconcile must not
+// advance the polling sequence of the operation that starts next.
+func initialPollRequeue() ctrl.Result {
+	return ctrl.Result{RequeueAfter: jitteredPollDelay(pollInitialInterval)}
+}
+
 type pollBackoffState struct {
 	uid        types.UID
 	generation int64

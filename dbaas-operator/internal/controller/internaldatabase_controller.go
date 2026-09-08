@@ -556,7 +556,7 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 			EventReasonOperationTerminated, "provisioning was terminated by the aggregator, resubmitting")
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonOperationTerminated,
 			"provisioning terminated (trackingId=%s, requestId=%s), resubmitting", trackingID, requestID)
-		return r.pollBackoff.schedule(dd), nil
+		return initialPollRequeue(), nil
 
 	default: // IN_PROGRESS, NOT_STARTED — keep polling
 		log.DebugC(ctx, "provisioning still in progress status=%v trackingId=%v", resp.Status, trackingID)
