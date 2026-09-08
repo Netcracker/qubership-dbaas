@@ -517,9 +517,6 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		if err != nil {
 			log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
 			result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
-			if callErr == nil {
-				r.pollBackoff.forgetObject(dd)
-			}
 			return result, callErr
 		}
 		if pending {
