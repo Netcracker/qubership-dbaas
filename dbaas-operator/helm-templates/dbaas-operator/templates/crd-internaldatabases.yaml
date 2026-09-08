@@ -118,9 +118,14 @@ spec:
                       InvalidConfiguration at the controller level.
                     type: string
                   scope:
-                    description: scope defines the logical scope of the database,
-                      e.g. "service" or "tenant".
-                    minLength: 1
+                    description: |-
+                      scope selects how dbaas-aggregator resolves the database's identity:
+                      "service" for a database shared by every instance of the microservice in
+                      its namespace, or "tenant" for one partitioned by tenantId. These are the
+                      only accepted values.
+                    enum:
+                    - service
+                    - tenant
                     type: string
                   tenantId:
                     description: |-
@@ -195,9 +200,14 @@ spec:
                           InvalidConfiguration at the controller level.
                         type: string
                       scope:
-                        description: scope defines the logical scope of the database,
-                          e.g. "service" or "tenant".
-                        minLength: 1
+                        description: |-
+                          scope selects how dbaas-aggregator resolves the database's identity:
+                          "service" for a database shared by every instance of the microservice in
+                          its namespace, or "tenant" for one partitioned by tenantId. These are the
+                          only accepted values.
+                        enum:
+                        - service
+                        - tenant
                         type: string
                       tenantId:
                         description: |-

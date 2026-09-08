@@ -108,6 +108,15 @@ func (r *ExternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			fmt.Sprintf("spec.classifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields", reserved))
 	}
 
+	// scope must be one of the accepted classifier scopes. The CRD enum blocks
+	// this at admission; the re-check covers objects admitted before the enum.
+	if !dbaasv1.ScopeIsValid(edb.Spec.Classifier.Scope) {
+		return invalidSpec(ctx, &edb.Status.Phase, &edb.Status.Conditions, edb.Generation,
+			r.Recorder, edb,
+			fmt.Sprintf("spec.classifier.scope %q must be %q or %q",
+				edb.Spec.Classifier.Scope, dbaasv1.ScopeService, dbaasv1.ScopeTenant))
+	}
+
 	// Validate that all keys[].name values are unique within each connectionProperties entry.
 	// Duplicate names would silently overwrite each other in the aggregator request.
 	for i, cp := range edb.Spec.ConnectionProperties {

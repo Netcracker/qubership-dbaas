@@ -299,6 +299,19 @@ func TestReservedExtraKeys(t *testing.T) {
 	}
 }
 
+func TestScopeIsValid(t *testing.T) {
+	for _, scope := range []string{ScopeService, ScopeTenant} {
+		if !ScopeIsValid(scope) {
+			t.Errorf("ScopeIsValid(%q) = false, want true", scope)
+		}
+	}
+	for _, scope := range []string{"", "Service", "TENANT", "svc", "tenants", " tenant"} {
+		if ScopeIsValid(scope) {
+			t.Errorf("ScopeIsValid(%q) = true, want false", scope)
+		}
+	}
+}
+
 // Large integers (> 2^53) must keep their exact literal through ClassifierFlatMap
 // and into the index key — a float64 round-trip would silently truncate them and
 // change the database identity relative to an external dbaas-client.
