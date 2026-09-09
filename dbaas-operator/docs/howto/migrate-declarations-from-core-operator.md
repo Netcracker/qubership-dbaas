@@ -32,8 +32,8 @@ behavior (role grants, provisioning, cloning) is unchanged.
 > declaration's `metadata.microserviceName`. The new CRDs make it an explicit,
 > validated, **immutable** spec field so the owner is unambiguous and auditable.
 
-Set `DBAAS_OPERATOR_NAMESPACE` to the namespace where the target dbaas-operator
-instance runs. It is independent of the workload's `NAMESPACE` value.
+For Helm charts, derive `spec.operatorNamespace` from `API_DBAAS_ADDRESS` using the expression in the
+examples below. A plain `kubectl apply` manifest uses the literal namespace instead.
 
 ---
 
@@ -91,7 +91,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
-  operatorNamespace: "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}"
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
   microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
   services:
     - name: install-base-service
@@ -179,7 +179,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
-  operatorNamespace: "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}"
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
   classifier:
     microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
     scope: service
