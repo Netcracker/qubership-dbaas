@@ -721,7 +721,7 @@ spec:
   operatorNamespace: dbaas-system
   classifier:
     microserviceName: my-service   # required, minLength: 1
-    scope: service                 # required, minLength: 1; "service" or "tenant"
+    scope: service                 # required; "service" or "tenant" (CRD enum)
     namespace: my-namespace        # optional; if set, must equal metadata.namespace
     # tenantId: my-tenant          # required when scope=tenant
     # customKeys:                  # optional, adapter-specific identifiers (nested under "customKeys" on the wire)
@@ -751,7 +751,7 @@ spec:
 | Field | Required | Notes |
 |-------|:--------:|-------|
 | `microserviceName` | Yes | Name of the owning microservice. `minLength: 1`. CRD admission rejects missing/empty values. |
-| `scope` | Yes | `service` or `tenant`. `minLength: 1`. |
+| `scope` | Yes | `service` or `tenant` — a CRD enum; admission rejects any other value. |
 | `tenantId` | When `scope=tenant` | Tenant identifier for multi-tenant deployments. |
 | `namespace` | No | If set, must equal `metadata.namespace` (controller-side check); if absent, `metadata.namespace` is used in the aggregator URL. |
 | `customKeys` | No | Adapter-specific identifiers (e.g. `logicalDBName`), emitted as a **nested** `customKeys` object on the wire (`classifier.customKeys.*`). Values can be any valid JSON type (string, number, boolean, nested object, array); not validated by the aggregator. See the mapping rules below. |

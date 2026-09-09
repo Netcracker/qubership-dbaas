@@ -623,7 +623,6 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         classifierWithRolesRequest.setClassifier(classifier);
         classifierWithRolesRequest.setUserRole(ADMIN.toString());
         classifierWithRolesRequest.setOriginService(TEST_MS_NAME);
-        Mockito.when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         doReturn(ADMIN.toString()).when(databaseRolesService).getSupportedRoleFromRequest(any(ClassifierWithRolesRequest.class), any(), any());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
@@ -669,8 +668,6 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         classifierWithRolesRequest.setOriginService(TEST_MS_NAME);
         classifierWithRolesRequest.setUserRole(null);
 
-        when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
-
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -700,7 +697,6 @@ class AggregatedDatabaseAdministrationControllerV3Test {
         classifierWithRolesRequest.setOriginService(TEST_ANOTHER_MS_NAME);
         classifierWithRolesRequest.setUserRole(ADMIN.toString());
 
-        when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         when(databaseRolesService.getSupportedRoleFromRequest(any(DatabaseCreateRequestV3.class), any(), any())).thenReturn(null);
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")

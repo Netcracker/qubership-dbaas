@@ -263,6 +263,14 @@ class DeclarativeDbaasCreationServiceTest {
     @Test
     void saveNewDatabaseConfigValidateClassifierIncorrectTargetClassifierScope() {
         DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
+        databaseDeclaration.getClassifierConfig().getClassifier().put("scope", "wrong scope");
+        Assertions.assertThrows(DeclarativeConfigurationValidationException.class,
+                () -> declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration));
+    }
+
+    @Test
+    void saveNewDatabaseConfigValidateClassifierAbsentTargetClassifierScope() {
+        DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
         databaseDeclaration.getClassifierConfig().getClassifier().remove("scope");
         Assertions.assertThrows(DeclarativeConfigurationValidationException.class,
                 () -> declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration));
@@ -283,6 +291,20 @@ class DeclarativeDbaasCreationServiceTest {
         initialInstantiation.setApproach("clone");
         SortedMap<String, Object> sourceClassifier = new TreeMap<>();
         sourceClassifier.put("microserviceName", TEST_MICROSERVICE_NAME);
+        initialInstantiation.setSourceClassifier(sourceClassifier);
+        databaseDeclaration.setInitialInstantiation(initialInstantiation);
+        Assertions.assertThrows(DeclarativeConfigurationValidationException.class,
+                () -> declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration));
+    }
+
+    @Test
+    void saveNewDatabaseConfigValidateClassifierIncorrectSourceClassifierScope() {
+        DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
+        DatabaseDeclaration.InitialInstantiation initialInstantiation = new DatabaseDeclaration.InitialInstantiation();
+        initialInstantiation.setApproach("clone");
+        SortedMap<String, Object> sourceClassifier = new TreeMap<>();
+        sourceClassifier.put("microserviceName", TEST_MICROSERVICE_NAME);
+        sourceClassifier.put("scope", "wrong scope");
         initialInstantiation.setSourceClassifier(sourceClassifier);
         databaseDeclaration.setInitialInstantiation(initialInstantiation);
         Assertions.assertThrows(DeclarativeConfigurationValidationException.class,
