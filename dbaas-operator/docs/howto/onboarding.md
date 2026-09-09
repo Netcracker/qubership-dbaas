@@ -18,10 +18,6 @@ The complete custom resource reference, status model, and configuration paramete
 | Ships Core Operator `kind: DBaaS` declarations | [Automated migration](#automated-migration) with `migrate-core-operator-dbaas-declarations`, or the [declaration mapping guide](migrate-declarations-from-core-operator.md) |
 | Has no existing DBaaS integration | [Manual migration](#manual-migration) |
 
-A cluster that still runs `NamespaceBinding` objects requires
-[the NamespaceBinding migration](migrate-from-namespacebinding.md) before it moves to 6.15.0. That
-is a cluster-level prerequisite, not per-service work.
-
 ---
 
 ## Automated migration
@@ -82,8 +78,7 @@ The equivalent work performed by hand, and the starting point for a service with
 
 3. **Set `spec.operatorNamespace` on every resource.** The field is required and immutable. A Helm chart
    derives it from `API_DBAAS_ADDRESS` using the templates below; a plain `kubectl apply` manifest uses
-   the literal namespace. Both forms are covered in
-   [Setting the operator namespace](migrate-from-namespacebinding.md#setting-the-operator-namespace).
+   the literal namespace.
 
 4. **Ship the resources in the service chart** and mount the Secret produced by `DatabaseSecretClaim`
    instead of provisioning at startup. The
@@ -92,9 +87,21 @@ The equivalent work performed by hand, and the starting point for a service with
 
 ### Starter templates
 
-Most services need two resources: an `InternalDatabase` for the database and a `DatabaseSecretClaim`
-for its credentials. Ship both from the chart. `spec.operatorNamespace` follows the aggregator address,
-so no separate operator-namespace input is required:
+Most services ship two resources in the same workload namespace:
+
+- `InternalDatabase` declares the logical database that dbaas-aggregator should provision and manage.
+- `DatabaseSecretClaim` requests credentials for that database and names the Kubernetes Secret where
+  the operator writes them.
+
+Use the same `spec.operatorNamespace`, `spec.classifier`, and `spec.type` in both resources so they
+refer to the same database. You can deploy them together: if the claim is reconciled before the
+database exists, the operator keeps polling until the database becomes available.
+
+The templates below derive `spec.operatorNamespace` from `API_DBAAS_ADDRESS`. For example,
+`API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080` renders `operatorNamespace: "dbaas"`.
+When applying plain YAML, replace each Helm expression with its literal value.
+
+Declare the database:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
@@ -112,23 +119,7 @@ spec:
   type: postgresql
 ```
 
-For example, `API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080` renders
-`operatorNamespace: "dbaas"`. With plain YAML, replace the expression with the literal namespace.
-
-`ExternalDatabase`, `DatabaseAccessPolicy`, and the balancing-rule resources take the same
-`spec.operatorNamespace`; their full schemas are in [DBaaS Operator](../DBaaS%20Operator.md).
-
----
-
-## Obtaining credentials
-
-`InternalDatabase` and `ExternalDatabase` concern only the existence of a database: the first asks
-dbaas-aggregator to provision a new logical database, the second registers one that already exists.
-Neither delivers credentials or produces a Kubernetes Secret.
-
-Credentials are requested separately, through `DatabaseSecretClaim`, which resolves an
-already-registered database by classifier and writes its connection properties into a Secret in the
-workload namespace. It uses the same `spec.operatorNamespace` expression as the `InternalDatabase`:
+Request its credentials:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
@@ -147,6 +138,25 @@ spec:
   userRole: admin
   secretName: orders-db-admin-secret
 ```
+
+The operator creates or updates `orders-db-admin-secret`. Mount that Secret in each application
+container that uses the database, as described in
+[Mounting credentials in the application container](#mounting-credentials-in-the-application-container).
+
+`ExternalDatabase`, `DatabaseAccessPolicy`, and the balancing-rule resources take the same
+`spec.operatorNamespace`; their full schemas are in [DBaaS Operator](../DBaaS%20Operator.md).
+
+---
+
+## Obtaining credentials
+
+`InternalDatabase` and `ExternalDatabase` concern only the existence of a database: the first asks
+dbaas-aggregator to provision a new logical database, the second registers one that already exists.
+Neither delivers credentials or produces a Kubernetes Secret.
+
+Credentials are requested separately, through `DatabaseSecretClaim`, which resolves an
+already-registered database by classifier and writes its connection properties into a Secret in the
+workload namespace.
 
 The `app.kubernetes.io/name` label is required; the operator sends it as `originService`. The
 `classifier` and `type` must identify the same database the `InternalDatabase` or `ExternalDatabase`
@@ -278,5 +288,3 @@ normally assigned to the wrong operator: check `spec.operatorNamespace`.
   RBAC, authentication, and configuration parameters.
 - [Migrating declarations from Core Operator](migrate-declarations-from-core-operator.md) — the
   field-by-field mapping that underlies the declaration skill.
-- [Migrating from the retired NamespaceBinding model](migrate-from-namespacebinding.md) — the
-  cluster-level change required before 6.15.0.
